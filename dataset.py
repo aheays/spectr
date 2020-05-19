@@ -1,8 +1,8 @@
-from anh import *
-
+import numpy as np
+from numpy import nan,array
 
 class Data:
-
+    """A scalar or array value, possibly with an uncertainty."""
 
     _kind_defaults = {
         'f': {'default_value':nan       ,'cast':float ,'fmt'   :'+12.8e'    ,'name':'float','description':'float' ,}                    ,
@@ -193,18 +193,22 @@ class Data:
             
 class Dataset():
 
+    """A collection of scalar or array values, possibly with uncertainties."""
 
     def __init__(self,**keys_vals):
         self._data = dict()
         self._infer_functions = dict()
         self._inferences = dict()
         self._inferred_from = dict()
-        self._length = 0
+        self._length = None
         for key,val in keys_vals.items():
             self.set(key,val)
 
     def __len__(self):
+        assert self._length is not None,'Dataset has no length because all data is scalar'
         return(self._length)
+
+    
 
     def __setitem__(self,key,value):
         self.set(key,value)
@@ -213,7 +217,7 @@ class Dataset():
         """Set a value and possibly its uncertainty."""
         self._data[key] = Data(name=key,value=value,uncertainty=uncertainty)
         if not self._data[key].is_scalar:
-            if self._length == 0:
+            if self._length == None:
                 ## first array data, use this to define the length of self
                 self._length = len(self._data[key])
             else:
@@ -400,8 +404,16 @@ class Dataset():
     def __str__(self):
         return(self.format_data(self.keys()))
 
-    def is_scalar(self,key):
-        return(self._data[key].is_scalar)
+    def is_scalar(self,key=None):
+        """Return boolean whether data for key is scalar or not. If key not
+        provided return whether all data is scalara or not."""
+        if key is None:
+            if self._length is None:
+                return(True)
+            else:
+                return(False)
+        else:
+            return(self._data[key].is_scalar)
 
     def make_array(self,key):
         return(self._data[key].make_array(len(self)))
@@ -410,7 +422,7 @@ class Dataset():
         for key in self:
             self._data[key].make_scalar()
         if all([self._data[key].is_scalar for key in self]):
-            self._length = 0
+            self._length = None
 
     def append(self,**new_keys_vals):
         """Append a single row of data from new scalar values."""
@@ -430,36 +442,40 @@ class Dataset():
     def concatenate(self,new_dataset):
         """Concatenate data from another Dataset object to this one."""
         assert isinstance(new_dataset,Dataset)
-        all_keys = set(list(self)+list(new_dataset))
+        ## get keys to copy, and check fro problems
+        all_keys = set(list(self.keys())+list(new_dataset.keys()))
         for key in copy(all_keys):
             if key not in self:
-                raise Exception                
+                raise Exception(f"Key not in existing dataset: {repr(key)}")
             if key not in new_dataset:
-                raise Exception
+                raise Exception(f"Key not in concatenating dataset: {repr(key)}")
             if ((self.get_uncertainty(key) is None)
                 is not (new_dataset.get_uncertainty(key) is None)):
-                raise Exception
+                raise Exception(f"Uncertainty must be both set or not set in existing and concatenating dataset for key: {repr(key)}")
             if (self.is_scalar(key) and new_dataset.is_scalar(key) # both scalar
                 and self.get_value(key) == new_dataset.get_value(key)                  # values match
                 and my.equal_or_none(
                     self.get_uncertainty[key],
                     new_dataset.get_uncertainty[key])): # uncertainties match
                 all_keys.remove(key)  # keep existing scalar value
-        if len(new_dataset)==0:
+        if new_dataset.is_scalar() or len(new_dataset)==0:
+            ## nothing to add
             return
-        if len(self)==0:
+        elif self.is_scalar() or len(self)==0:
+            ## currently no data, just add the new stuff
             for key in all_keys:
                 self[key] = new_dataset[key]
                 self._length = len(new_dataset)
-            return
-        for key in all_keys:
-            if self.is_scalar(key):
-                self.make_array(key)
-            if new_dataset.is_scalar(key):
-                new_dataset.make_array(key)
-            self._data[key].extend(
-                new_dataset.get_value(key),
-                new_dataset.get_uncertainty(key))
-        self._length += len(new_dataset)
+        else:
+            ## extend data key by key
+            for key in all_keys:
+                if self.is_scalar(key):
+                    self.make_array(key)
+                if new_dataset.is_scalar(key):
+                    new_dataset.make_array(key)
+                self._data[key].extend(
+                    new_dataset.get_value(key),
+                    new_dataset.get_uncertainty(key))
+            self._length += len(new_dataset)
 
 

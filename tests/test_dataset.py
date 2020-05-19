@@ -67,12 +67,20 @@ def test_dataset_set_get_value():
     t = Dataset()
     t['y'] = ['a','b']
     assert list(t['y']) == ['a','b']
+    t = Dataset(y=['a','b'])
+    assert list(t['y']) == ['a','b']
 
-def test_dataset_len():
+def test_dataset_len_is_scalar():
     t = Dataset()
     t['y'] = ['a','b']
     assert len(t) == 2
-
+    t = Dataset(y='a')
+    assert t.is_scalar()
+    t = Dataset(y='a',x=[1,2])
+    assert not t.is_scalar()
+    assert not t.is_scalar('x')
+    assert t.is_scalar('y')
+    
 def test_dataset_index():
     t = Dataset(x=[1,2,3,4,5])
     t.index([0,1])
@@ -100,12 +108,12 @@ def test_dataset_construct_set_value():
 def test_dataset_concatenate():
     t = Dataset()
     t.concatenate(Dataset())
-    assert len(t) == 0
+    assert t.is_scalar()
     t = Dataset(x=1)
     t.concatenate(Dataset(x=2))
     print( t['x'])
     assert t['x'] == 1
-    assert len(t) == 0
+    assert t.is_scalar()
     t = Dataset(x=[1,2])
     t.concatenate(Dataset(x=3))
     assert list(t['x']) == [1,2]
@@ -128,12 +136,12 @@ def test_dataset_concatenate():
 def test_dataset_extend():
     t = Dataset()
     t.extend()
-    assert len(t) == 0
+    assert t.is_scalar()
     t = Dataset(x=1)
     t.extend(x=2)
     print( t['x'])
     assert t['x'] == 1
-    assert len(t) == 0
+    assert t.is_scalar()
     t = Dataset(x=[1,2])
     t.extend(x=3)
     assert list(t['x']) == [1,2]
