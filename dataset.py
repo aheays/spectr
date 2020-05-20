@@ -1,5 +1,7 @@
 import numpy as np
 from numpy import nan,array
+from copy import copy,deepcopy
+from spectr import tools
 
 class Data:
     """A scalar or array value, possibly with an uncertainty."""
@@ -208,8 +210,6 @@ class Dataset():
         assert self._length is not None,'Dataset has no length because all data is scalar'
         return(self._length)
 
-    
-
     def __setitem__(self,key,value):
         self.set(key,value)
 
@@ -307,7 +307,7 @@ class Dataset():
 
     def unique_combinations(self,*keys):
         """Return a list of all unique combination of keys."""
-        return(my.unique_combinations(*[self[key] for key in keys]))
+        return(tools.unique_combinations(*[self[key] for key in keys]))
 
     def unique_dicts(self,*keys):
         """Return an iterator where each element is a unique set of keys as a
@@ -398,7 +398,7 @@ class Dataset():
                     columns['d'+key]  = self.get_uncertainty(key)
         retval = '\n'.join(header)
         if len(columns)>0:
-            retval += my.format_columns(columns)
+            retval += tools.format_columns(columns)
         return(retval)
 
     def __str__(self):
@@ -454,7 +454,7 @@ class Dataset():
                 raise Exception(f"Uncertainty must be both set or not set in existing and concatenating dataset for key: {repr(key)}")
             if (self.is_scalar(key) and new_dataset.is_scalar(key) # both scalar
                 and self.get_value(key) == new_dataset.get_value(key)                  # values match
-                and my.equal_or_none(
+                and tools.equal_or_none(
                     self.get_uncertainty[key],
                     new_dataset.get_uncertainty[key])): # uncertainties match
                 all_keys.remove(key)  # keep existing scalar value
