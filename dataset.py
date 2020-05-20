@@ -1,6 +1,9 @@
+import re
+from copy import copy,deepcopy
+
 import numpy as np
 from numpy import nan,array
-from copy import copy,deepcopy
+
 from spectr import tools
 
 class Data:
@@ -47,11 +50,12 @@ class Data:
         self.value = value
         self.uncertainty = uncertainty
         self.default_differentiation_stepsize = default_differentiation_stepsize
-
+        self._inferences = []
+        self._inferred_from = []
 
     is_scalar = property(lambda self:self._length is None)
 
-    def _set_value(self,value,uncertainty=None):
+    def _set_value(self,value):
         if value is None:
             self._value = None
             self._length = None
@@ -67,7 +71,6 @@ class Data:
         if uncertainty is None:
             self._uncertainty = None
         else:
-            assert self.kind == 'f','Uncertainty only defined for float kind'
             if self.is_scalar:
                 self._uncertainty = float(uncertainty)
             else:
@@ -77,15 +80,11 @@ class Data:
                     assert len(uncertainty)==len(self)
                     self._uncertainty = np.asarray(uncertainty,dtype=float)
 
-    def _get_value(self,index=None):
+    def _get_value(self):
         if self.is_scalar:
-            assert index is None
             return(self._value)
         else:
-            if index is None:
-                return(self._value[:len(self)])
-            else:
-                return(self._value[:len(self)][index])
+            return(self._value[:self._length])
 
     def _get_uncertainty(self):
         if self._uncertainty is None:
@@ -93,7 +92,7 @@ class Data:
         elif self.is_scalar:
             return(self._uncertainty)
         else:
-            return(self._uncertainty[:len(self)])
+            return(self._uncertainty[:self._length])
 
     value = property(_get_value,_set_value)
     uncertainty = property(_get_uncertainty,_set_uncertainty)
@@ -101,6 +100,16 @@ class Data:
     def __len__(self):
         assert not self.is_scalar, 'Scalar'
         return(self._length)
+
+    def index(self,index):
+        """Set self to index"""
+        assert not self.is_scalar, 'Cannot index because it is scalar'
+        value = self.value[index]
+        if self.uncertainty is None:
+            uncertainty  = None
+        else:
+            uncertainty = self.uncertainty[index]
+        self.value,self.uncertainty = value,uncertainty
 
     def __str__(self):
         if self.uncertainty is None:
@@ -200,8 +209,6 @@ class Dataset():
     def __init__(self,**keys_vals):
         self._data = dict()
         self._infer_functions = dict()
-        self._inferences = dict()
-        self._inferred_from = dict()
         self._length = None
         for key,val in keys_vals.items():
             self.set(key,val)
@@ -215,6 +222,16 @@ class Dataset():
 
     def set(self,key,value,uncertainty=None):
         """Set a value and possibly its uncertainty."""
+        ## If the key exists it is being reset. Then clean up the record of what
+        ## is inferred from it, and what it is inferred from.
+        if key in self._data:
+            for inferred_from_key in self._data[key]._inferred_from:
+                self._data[inferred_from_key]._inferences.remove(key)
+            self._data[key]._inferred_from = []
+            for inferred_key in self._data[key]._inferences:
+                self._data.pop(inferred_key)
+            self._data[key]._inferences = []
+        ## set the data
         self._data[key] = Data(name=key,value=value,uncertainty=uncertainty)
         if not self._data[key].is_scalar:
             if self._length == None:
@@ -222,13 +239,6 @@ class Dataset():
                 self._length = len(self._data[key])
             else:
                 assert len(self._data[key])==len(self),'Length does not match existing data.'
-        ## since this has been set/reset, clean up the record of what
-        ## is inferred from what
-        if key in self._inferred_from:
-            self._inferred_from.pop(key)
-        if key in self._inferences:
-            for inferred_key in self._inferences[key]:
-                self._data.pop(inferred_key)
 
     def get_value(self,key):
         if key not in self._data:
@@ -239,6 +249,14 @@ class Dataset():
         if key not in self._data:
             self._infer(key)
         return(self._data[key].uncertainty)
+
+    def has_uncertainty(self,key):
+        if key not in self._data:
+            self._infer(key)
+        if self._data[key].uncertainty is None:
+            return(False)
+        else:
+            return( True)
 
     def add_infer_function(
             self,
@@ -364,11 +382,9 @@ class Dataset():
                     uncertainty = None
                 self.set(key,value,uncertainty)
                 ## if we get this far without an InferException then success!
-                self._inferred_from[key] = dependencies
+                self._data[key]._inferred_from = dependencies
                 for dependency in dependencies:
-                    if dependency not in self._inferences:
-                        self._inferences[dependency] = set()
-                    self._inferences[dependency].add(key)
+                    self._data[dependency]._inferences.append(key)
                 break           
             ## some kind of InferException 
             except InferException as err:
@@ -384,25 +400,143 @@ class Dataset():
     def keys(self):
         return(list(self._data.keys()))
 
-    def format_data(self,keys):
+    def assert_known(self,*keys):
+        for key in keys:
+            self.get_value(key)
+
+    def sort(self,first_key,*more_keys):
+        """Sort rows according to key or keys."""
+        if self.is_scalar() or len(self)==0:
+            return
+            
+        i = np.argsort(self[first_key])
+        for key in more_keys:
+            i = i[np.argsort(self[key][i])]
+        for key in self:
+            self._data[key].index(i)
+
+    def format(self,keys=None,comment='# ',delimiter=' '):
+        if keys is None:
+            keys = self.keys()
         header,columns = [],{}
         for key in keys:
             if self._data[key].is_scalar:
-                if self.get_uncertainty(key) is None:
-                    header.append(f'# {key} = {repr(self.get_value(key))}')
-                else:
+                if self.has_uncertainty(key):
                     header.append(f'# {key} = {repr(self.get_value(key))} ± {repr(self.get_uncertainty(key))}')
+                else:
+                    header.append(f'# {key} = {repr(self.get_value(key))}')
             else:
                 columns[key]  = self.get_value(key)
                 if self.get_uncertainty(key) is not None:
                     columns['d'+key]  = self.get_uncertainty(key)
         retval = '\n'.join(header)
         if len(columns)>0:
-            retval += tools.format_columns(columns)
+            retval += '\n'+tools.format_columns(columns,delimiter=delimiter)
         return(retval)
 
     def __str__(self):
-        return(self.format_data(self.keys()))
+        return(self.format(self.keys()))
+
+
+    def save_to_file(self,filename,keys=None,**format_kwargs,):
+        """Save some or all data to a text file."""
+        if keys is None:
+            keys = self.keys()
+        if re.match(r'.*\.npz',filename):
+            ## numpy archive
+            np.savez(
+                filename,
+                **{key:self[key] for key in keys},
+                **{'d'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+        elif re.match(r'.*\.h5',filename):
+            ## hdf5 file
+            np.dict_to_hdf5(
+                filename,
+                **{key:self[key] for key in keys},
+                **{'d'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+        else:
+            ## text file
+            if re.match(r'.*\.csv',filename):
+                format_kwargs.setdefault('delimiter',', ')
+            elif re.match(r'.*\.rs',filename):
+                format_kwargs.setdefault('delimiter',' ␞ ')
+            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+
+    # def load_from_file(self,filename):
+        # '''Load data from a text file in standard format generated by
+        # save_to_file.'''
+        # # # filename = tools.expand_path(filename)
+        # # ## text file
+        # # data = tools.file_to_dict(filename,**file_to_recarray_kwargs)
+        # ## load common data in file header if a text file
+        # if re.match(r'.*\.(h5|hdf5)',filename):
+        # elif re.match(r'.*\.npz',filename):
+        # elif re.match(r'.*\.csv',filename):
+        # elif re.match(r'.*\.rs',filename):
+        # else:
+        # if load_common_data and not re.match(r'.*\.(h5|hdf5|npz)',filename):
+            # with open(my.expand_path(filename),'r') as fid:
+                # for line in fid:
+                    # if line[0]!='#': break # end of header
+                    # r = re.match(r'^[ #]*([^:=]+)= *([^:]+) *: *(.*)$',line) # looking to match:  "# variable = value : description"
+                    # if r:
+                        # key,val,description = r.group(1).strip(),r.group(2).strip(),r.group(3).strip()
+                        # ## check if given as a quoted string or not
+                        # if (len(val)>=2
+                            # and ((val[0]=='"' and val[-1]=='"')
+                                 # or (val[0]=="'" and val[-1]=="'"))):
+                            # val_quoted = True
+                            # val = val[1:-1].strip() # remove quotes and excess white space
+                        # else:
+                            # val_quoted = False
+                        # ## HACK TO DEAL WITH CHANIGN DATATYPE NAMES
+                        # if hasattr(self,'_load_from_file_with_translation_dict'): # HACK
+                            # if key in self._load_from_file_with_translation_dict:
+                                # key = self._load_from_file_with_translation_dict[key]
+                        # ## set if scalar data
+                        # if key in self.scalar_data:
+                            # if self.scalar_data[key].dtype.kind != 'O':
+                                # data.setdefault(key,self.scalar_data[key].cast(val))
+                            # else:
+                                # ## THIS IS THE PLACE TO LOAD SCALAR DATA OBJECTS, NOT IMPLEMENTED
+                                # pass
+                        # ## default value for vector data
+                        # elif key in self.vector_data:
+                            # if self.vector_data[key].dtype.kind != 'O':
+                                # data.setdefault(key,self.vector_data[key].cast(val))
+                        # ## else unknown raise error
+                        # elif not self.permit_new_keys:
+                            # warnings.warn("Unknown header key: "+repr(key)+' in file '+repr(filename))
+                        # ## or add with inferred type
+                        # else:
+                            # if val_quoted:
+                                # data[key] = val
+                            # else:
+                                # data[key] = my.string_to_number(val) # convert to numerical value
+    # ## add data to self
+    # if len(data)==0: return # no data
+    # ## translate input keys if provided as an argument, or if
+    # ## default values reside in
+    # t = copy(self._load_from_file_with_translation_dict)
+    # if label_translation_dict is not None: t.update(label_translation_dict)
+    # for key in list(data.keys()):
+        # if key in t:
+            # data[t[key]] = data.pop(key)
+    # ## leave out keys already known to be objects -- these cannot
+    # ## be loaded from a file
+    # for key in list(data.keys()):
+        # if key in self.all_keys() and self.get_data_type(key).dtype.kind == 'O':
+            # data.pop(key)
+    # # ## add data
+    # # new_dynamic_recarray = self.__class__(**data,permit_new_keys=True)
+    # # if keys is not None:
+        # # new_dynamic_recarray.limit_to_keys(*keys)
+    # # if limit_to_matches is not None:
+        # # new_dynamic_recarray.limit_to_matches(**limit_to_matches)
+    # # ## add new data -- this is quiet slow but provides a means for loading from multiple files
+    # # self.extend(new_dynamic_recarray,permit_new_keys=permit_new_keys)
+    # self.append(**data,error_on_mismatching_scalar_data=error_on_mismatching_scalar_data)
+
 
     def is_scalar(self,key=None):
         """Return boolean whether data for key is scalar or not. If key not
@@ -449,8 +583,7 @@ class Dataset():
                 raise Exception(f"Key not in existing dataset: {repr(key)}")
             if key not in new_dataset:
                 raise Exception(f"Key not in concatenating dataset: {repr(key)}")
-            if ((self.get_uncertainty(key) is None)
-                is not (new_dataset.get_uncertainty(key) is None)):
+            if self.has_uncertainty(key) is not new_dataset.has_uncertainty(key):
                 raise Exception(f"Uncertainty must be both set or not set in existing and concatenating dataset for key: {repr(key)}")
             if (self.is_scalar(key) and new_dataset.is_scalar(key) # both scalar
                 and self.get_value(key) == new_dataset.get_value(key)                  # values match
@@ -478,4 +611,128 @@ class Dataset():
                     new_dataset.get_uncertainty(key))
             self._length += len(new_dataset)
 
+    def plot(
+            self,
+            xkey,
+            ykeys,
+            zkeys=(),
+            fig=None,           # otherwise automatic
+            ax=None,            # otherwise automatic
+            ynewaxes=True,
+            znewaxes=False,
+            legend=True,
+            zlabel_format_function=None, # accept key=val pairs, defaults to printing them
+            plot_errorbars=True, # if uncertainty available
+            xscale='linear',     # 'log' or 'linear'
+            yscale='linear',     # 'log' or 'linear'
+            show=True,
+            **plot_kwargs,      # e.g. color, linestyle, label etc
+    ):
+        """Plot a few standard values for looking at. If ax is set then all
+        keys will be printed on that axes, otherwise new ones will be appended
+        to figure."""
+        from matplotlib import pyplot as plt
+        from spectr import plotting
 
+        if len(self)==0:
+            return
+        if ax is not None:
+            ynewaxes,znewaxes = False,False
+            fig = ax.figure
+        if fig is None:
+            fig = plt.gcf()
+            fig.clf()
+        if xkey is None:
+            assert 'index' not in self.keys()
+            self['index'] = np.arange(len(self),dtype=int)
+            xkey = 'index'
+        zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey] # remove xkey and ykeys from zkeys
+        ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
+        ymin = {}
+        self.assert_known(xkey,*ykeys,*zkeys)
+        for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
+            ylabel = ykey
+            for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
+                z.sort(xkey)
+                if zlabel_format_function is None:
+                    zlabel = tools.dict_to_kwargs(dz)
+                else:
+                    zlabel = zlabel_format_function(**dz)
+                if ynewaxes and znewaxes:
+                    ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig)
+                    color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
+                    label = None
+                    title = ylabel+' '+zlabel
+                elif ynewaxes and not znewaxes:
+                    ax = plotting.subplot(n=iy,fig=fig)
+                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(0),plotting.newlinestyle(0)
+                    label = (zlabel if len(zkeys)>0 else None) 
+                    title = ylabel
+                elif not ynewaxes and znewaxes:
+                    ax = plotting.subplot(n=iz,fig=fig)
+                    color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
+                    label = ylabel
+                    title = zlabel
+                elif not ynewaxes and not znewaxes:
+                    ax = fig.gca()
+                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iy),plotting.newlinestyle(iy)
+                    # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
+                    label = ylabel+' '+zlabel
+                    title = None
+                kwargs = copy(plot_kwargs)
+                kwargs.setdefault('marker',marker)
+                kwargs.setdefault('ls',linestyle)
+                kwargs.setdefault('mew',1)
+                kwargs.setdefault('markersize',7)
+                kwargs.setdefault('color',color)
+                kwargs.setdefault('mec',kwargs['color'])
+                x = z[xkey]
+                y = z.get_value(ykey)
+                if label is not None:
+                    kwargs.setdefault('label',label)
+                if plot_errorbars and self.has_uncertainty(ykey):
+                    ## plot errorbars
+                    kwargs.setdefault('mfc','none')
+                    dy = z.get_uncertainty(ykey)
+                    ax.errorbar(x,y,dy,**kwargs)
+                    ## plot zero/undefined uncertainty data as filled symbols
+                    i = np.isnan(dy)|(dy==0)
+                    if np.any(i):
+                        kwargs['mfc'] = kwargs['color']
+                        kwargs['fillstyle'] = 'full'
+                        if 'ls' in kwargs:
+                            kwargs['ls'] = ''
+                        else:
+                            kwargs['linestyle'] = ''
+                        kwargs['label'] = None
+                        ax.plot(z[xkey][i],z[ykey][i],**kwargs)
+                else:
+                    kwargs.setdefault('mfc',kwargs['color'])
+                    kwargs.setdefault('fillstyle','full')
+                    ax.plot(x,y,**kwargs)
+                if title is not None: ax.set_title(title)
+                if legend and 'label' in kwargs:
+                    plotting.legend(fontsize='x-small')
+                ax.set_xlabel(xkey)
+                ax.grid(True,color='gray',zorder=-5)
+                ax.set_yscale(yscale)
+                ax.set_xscale(xscale)
+        if show:
+            plotting.show()
+        return(fig)
+
+        
+
+
+if __name__=='__main__':
+    t = Dataset()
+    t.set('a','So be it.')
+    t.set('b',1.32e25)
+    t.set('x',[1,2,3])
+    t.set('y',[1,2,3],[0.1,0.2,0.3])
+    t.set('z',[2,4,5])
+    print( t.format(delimiter=' ␞ '))
+    t.save_to_file('t0')
+    t.load_from_file('t0')
+    # t.plot('x',('y','z'))
+   #  

@@ -1,3 +1,8 @@
+import subprocess
+from cycler import cycler
+from copy import copy,deepcopy
+
+import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 
@@ -115,7 +120,7 @@ def presetRcParams(
     presets['article_single_column']=deepcopy(presets['base'])
     presets['article_single_column'].update({
         'text.usetex'          :False,
-        'figure.figsize'       :(papersize['article_single_column_width'],papersize['article_single_column_width']/golden_ratio_ratio),
+        'figure.figsize'       :(papersize['article_single_column_width'],papersize['article_single_column_width']/golden_ratio),
         # 'lines.linewidth'    : 0.5,
         'lines.linewidth'    : 1,
         'figure.subplot.left'  :0.15,
@@ -310,7 +315,7 @@ def presetRcParams(
     presets['a4_portrait'] = deepcopy(presets['base'])
     presets['a4_portrait'].update({
             'text.usetex'          :False,
-            'figure.figsize':papersize.a4_portrait,
+            'figure.figsize':papersize['a4_portrait'],
             'figure.subplot.left':0.11,
             'figure.subplot.right':0.92,
             'figure.subplot.top':0.94,
@@ -324,7 +329,7 @@ def presetRcParams(
 
     presets['a4_landscape'] = deepcopy(presets['a4_portrait'])
     presets['a4_landscape'].update({
-            'figure.figsize':papersize.a4_landscape,
+            'figure.figsize':papersize['a4_landscape'],
             'figure.subplot.left':0.07,
             'figure.subplot.right':0.95,
             'figure.subplot.top':0.95,
@@ -337,7 +342,7 @@ def presetRcParams(
 
     presets['letter_portrait'] = deepcopy(presets['a4_portrait'])
     presets['letter_portrait'].update({
-            'figure.figsize':papersize.letter_portrait,
+            'figure.figsize':papersize['letter_portrait'],
             'figure.subplot.left':0.11,
             'figure.subplot.right':0.92,
             'figure.subplot.top':0.94,
@@ -348,7 +353,7 @@ def presetRcParams(
 
     presets['letter_landscape'] = deepcopy(presets['a4_portrait'])
     presets['letter_landscape'].update({
-            'figure.figsize':papersize.letter_landscape,
+            'figure.figsize':papersize['letter_landscape'],
             'figure.subplot.left':0.08,
             'figure.subplot.right':0.93,
             'figure.subplot.top':0.92,
@@ -1054,7 +1059,7 @@ def subplot(
         ## create and return new subplot
         ax = fig.add_subplot(rows,columns,nsubplots,**add_subplot_kwargs)
         # return(axes)
-    plt.sca(ax)      # set to current axes
+    fig.sca(ax)      # set to current axes
     ## set some other things if a quick figure
     if hasattr(fig,'_my_fig') and fig._my_fig is True:
         ax.xaxis.set_major_formatter(mpl.ticker.FormatStrFormatter('%0.10g'))

@@ -33,6 +33,16 @@ def test_data_set_and_get_value_and_uncertainty():
     t.uncertainty = [0.2,0.2]
     assert list(t.uncertainty) == [0.2,0.2]
 
+def test_data_index():
+    t = Data(value=[1,2,3])
+    t.index([True,True,False])
+    assert list(t.value) == [1,2]
+    assert len(t) == 2
+    t = Data(value=[1,2,3],uncertainty=[0.1,0.2,0.3])
+    t.index([True,True,False])
+    assert list(t.value) == [1,2]
+    assert list(t.uncertainty) == [0.1,0.2]
+
 def test_data_append():
     t = Data(value=[2,34])
     t.append(5)
@@ -204,11 +214,14 @@ def test_dataset_infer():
     t.set('y',2.,0.5)
     t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
     t['z']
-    assert t['z'] == 3
+    assert 'z' in t
     t.set('x',2.,0.2)
     assert 'z' not in t
     t['z']
-    assert t['z'] == 4
+    print( t._data['z']._inferred_from)
+    t['z'] = 5
+    t.set('x',2.,0.2)
+    assert 'z' in t
 
 def test_dataset_match_matches():
     t = Dataset(x=[1,2,2,3],y=4)
@@ -229,3 +242,20 @@ def test_dataset_unique_functions():
     u = t.unique_dicts_match('x','y')
     assert str(u) == "[({'x': 1, 'y': 'a'}, array([ True, False, False, False])), ({'x': 2, 'y': 'b'}, array([False,  True,  True, False])), ({'x': 2, 'y': 'c'}, array([False, False, False,  True]))]"
     u = t.unique_dicts_matches('x','y')
+
+def test_sort():
+    t = Dataset(x=[1,3,2])
+    t.sort('x')
+    assert list(t['x']) == [1,2,3]
+    t = Dataset(x=[2,1,3,4],y=[3,3,1,2],z=['3','3','2','1'])
+    t.sort('x','y','z')
+    assert list(t['x']) == [4,3,1,2]
+    assert list(t['y']) == [2,1,3,3]
+    assert list(t['z']) == ['1','2','3','3']
+
+def test_plotting():
+    t = Dataset()
+    t.set('x',[1,2,3])
+    t.set('y',[1,2,3],[0.1,0.2,0.3])
+    t.set('z',[2,4,5])
+    t.plot('x',('y','z'),show=False)

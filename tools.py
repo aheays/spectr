@@ -1,4 +1,6 @@
 import functools
+import re
+
 import numpy as np
 
 #################################
@@ -1375,7 +1377,7 @@ def format_columns(
         labels=None,
         header=None,
         record_separator='\n',
-        field_separator=' ',
+        delimiter=' ',
         comment_string='# ',
 ):
     """Print args in with fixed column width. Labels are column
@@ -1405,10 +1407,10 @@ def format_columns(
         records.append(comment_string+header.strip().replace('\n','\n'+comment_string))
     ## labels if required
     if labels!=None:
-        records.append(comment_string+field_separator.join([f(label) for (f,label) in zip(fmt_functions,labels)]))
+        records.append(comment_string+delimiter.join([f(label) for (f,label) in zip(fmt_functions,labels)]))
     ## compose formatted data columns
     comment_pad = ''.join([' ' for t in comment_string])
-    records.extend([comment_pad+field_separator.join([f(field) for (f,field) in zip(fmt_functions,record)]) for record in zip(*data)])
+    records.extend([comment_pad+delimiter.join([f(field) for (f,field) in zip(fmt_functions,record)]) for record in zip(*data)])
     return(record_separator.join(records))
 
 def print_columns(data,**kwargs):
