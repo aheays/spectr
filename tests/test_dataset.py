@@ -243,7 +243,7 @@ def test_dataset_unique_functions():
     assert str(u) == "[({'x': 1, 'y': 'a'}, array([ True, False, False, False])), ({'x': 2, 'y': 'b'}, array([False,  True,  True, False])), ({'x': 2, 'y': 'c'}, array([False, False, False,  True]))]"
     u = t.unique_dicts_matches('x','y')
 
-def test_sort():
+def test_dataset_sort():
     t = Dataset(x=[1,3,2])
     t.sort('x')
     assert list(t['x']) == [1,2,3]
@@ -253,9 +253,45 @@ def test_sort():
     assert list(t['y']) == [2,1,3,3]
     assert list(t['z']) == ['1','2','3','3']
 
-def test_plotting():
+def test_dataset_plotting():
     t = Dataset()
     t.set('x',[1,2,3])
     t.set('y',[1,2,3],[0.1,0.2,0.3])
     t.set('z',[2,4,5])
     t.plot('x',('y','z'),show=False)
+
+def test_dataset_load_save_to_file():
+    ## npz archive
+    t = Dataset()
+    t.set('x',[1,2,3],)
+    t.set('f',1.29)
+    t.save('tmp/t0.npz')
+    u = Dataset()
+    u.load('tmp/t0.npz')
+    assert set(u.keys()) == {'x','f'}
+    assert list(u['x']) == list(t['x'])
+    assert u['f'] == t['f']
+    ## hdf5 archive
+    t = Dataset()
+    t.set('x',[1,2,3],)
+    t.set('f',1.29)
+    t.save('tmp/t0.h5')
+    u = Dataset()
+    u.load('tmp/t0.h5')
+    assert set(u.keys()) == {'x','f'}
+    assert list(u['x']) == list(t['x'])
+    assert u['f'] == t['f']
+    ## text file
+    t = Dataset()
+    t.set('x',[1,2,3],)
+    t.set('z',['a','b','c'],)
+    t.set('f',1.29)
+    t.save('tmp/t0.txt')
+    u = Dataset()
+    u.load('tmp/t0.txt')
+    assert set(u.keys()) == {'x','f','z'}
+    assert list(u['x']) == list(t['x'])
+    assert list(u['z']) == list(t['z'])
+    assert u['f'] == t['f']
+
+
