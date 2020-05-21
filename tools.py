@@ -1,7 +1,9 @@
 import functools
 import re
+import os
 
 import numpy as np
+import h5py
 
 #################################
 ## decorators / function tools ##
@@ -43,10 +45,10 @@ def pick_function_kwargs(kwargs,function):
     else:
         args,varargs,keywords,defaults = inspect.getargspec(function)
     ## pick these into a new dict
-    picked_kwargs = collections.OrderedDict()
+    picked_kwargs = dict()
     for key,val in kwargs.items():
         if key in args: picked_kwargs[key] = val
-    other_kwargs = collections.OrderedDict()
+    other_kwargs = dict()
     for key,val in kwargs.items():
         if key not in picked_kwargs:
             other_kwargs[key] = val
@@ -266,7 +268,7 @@ def mkdir(*directories,trash_existing_directory=False):
     ## if multiple loop through them
     if len(directories)>1:
         for directory in directories:
-            mkdir_if_necessary(directory)
+            mkdir(directory)
         return
     ## if single then do it
     directory = expand_path(directories[0])
@@ -791,7 +793,7 @@ def format_dict_key_tree(d,prefix='└─ '):
 def recarray_to_dict(ra):
     """Convert a record array to a dictionary. There may be a builtin
     way to do this."""
-    retval = collections.OrderedDict()
+    retval = dict()
     for key in ra.dtype.names:
         retval[key] = np.array(ra[key])
     return(retval)
@@ -831,7 +833,7 @@ def recarray_concatenate_fields(*recarrays):
     for t in recarrays: all_keys.extend(t.dtype.names)
     assert len(all_keys)==len(np.unique(all_keys)),f'keys not unique: {repr(all_keys)}'
     ## join into one recarray
-    keys_vals = collections.OrderedDict()
+    keys_vals = dict()
     for t in recarrays:
         for key in t.dtype.names:
             keys_vals[key] = t[key]
@@ -897,7 +899,7 @@ def dict_to_hdf5(
     import h5py
     import os
     filename = expand_path(filename)
-    mkdir_if_necessary(dirname(filename)) # make leading directories if not currently there
+    mkdir(dirname(filename)) # make leading directories if not currently there
     if keys is None:
         keys = list(dictionary.keys()) # default add all keys to datasets
     if overwrite:
@@ -932,7 +934,7 @@ def dict_to_directory(
         make_directory=True
 ):
     """Create a directory and save contents of dictionary into it."""
-    if make_directory: mkdir_if_necessary(directory)
+    if make_directory: mkdir(directory)
     for key,val in dictionary.items():
         ## save strings to text files
         if isinstance(val,str):
@@ -3247,7 +3249,7 @@ def array_to_file(filename,*args,mkdir=False,**kwargs):
     directories if they don't exist. """
     filename = expand_path(filename)
     extension = os.path.splitext(filename)[1]
-    if mkdir: mkdir_if_necessary(dirname(filename))
+    if mkdir: mkdir(dirname(filename))
     if extension in ('.hdf5','.h5'):
         array_to_hdf5(filename,*args,**kwargs)
     elif extension=='.npy':
@@ -3473,11 +3475,17 @@ def array_to_string(*arrays,fmt='g',field_sep=' ',record_sep='\n'):
             [format(t0,t1) for (t0,t1) in zip(record,fmt)]
         ) for record in a]))
             
-def string_to_file(filename,string,mode='w',encoding='utf8',make_directory=False):
+def string_to_file(
+        filename,
+        string,
+        mode='w',
+        encoding='utf8',
+        make_directory=False,
+):
     """Write string to file_name."""
     filename = expand_path(filename)
     if make_directory:
-        mkdir_if_necessary(dirname(filename)) 
+        mkdir(dirname(filename)) 
     with open(filename,mode=mode,encoding=encoding) as f: 
         f.write(string)
 
@@ -3834,7 +3842,7 @@ def txt_to_dict(
     assert len(labels)==number_of_columns,f'Number of labels ({len(labels)}) does not match number of columns ({number_of_columns})'
     if len(lines)==0: return({t:[] for t in key}) #  no data
     ## get data from rest of file, and convert to arrays
-    data = collections.OrderedDict()
+    data = dict()
     for key,column in zip(labels,zip(*lines)):
         column = [(t.strip() if len(t.strip())>0 else replacement_for_blank_elements) for t in column]
         data[key] = try_cast_to_numerical_array(column)
@@ -3866,7 +3874,7 @@ def org_table_to_recarray(filename,table_name):
 numbers if possible, else strings. The table_name is expected to be an
 org-mode name: e.g., #+NAME: table_name"""
     fid = open(expand_path(filename),'r')
-    data = collections.OrderedDict()
+    data = dict()
     ## read file to table found
     for line in fid:
         if re.match('^ *#\\+NAME\\: *'+re.escape(table_name.strip())+' *$',line): break
@@ -4055,7 +4063,7 @@ def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
     ## if requested return all tables. Fine all names and then call
     ## sheet2dict separately for all found tables.
     if return_all_tables:
-        return_dict = collections.OrderedDict()
+        return_dict = dict()
         for line in reader:
             if len(line)==0: continue
             r = re.match(r'<([^\\][^>]*)>',line[0],)
@@ -4138,7 +4146,7 @@ def stream_to_dict(
     ## check no repeated keys
     assert len(keys)==len(np.unique(keys)),'repeated keys'
     ## initialise dictionary of lists
-    data = collections.OrderedDict()
+    data = dict()
     for key in keys: data[key] = []
     ## read line-by-line, collecting data
     while True:
@@ -4365,7 +4373,7 @@ def bibtex_file_to_dict(filename):
     from pybtex.database import parse_file
     database  = parse_file(filename)
     entries = database.entries
-    retval_dict = collections.OrderedDict()
+    retval_dict = dict()
     for key in entries:
         fields = entries[key].rich_fields
         retval_dict[key] = {key:str(fields[key]) for key in fields}
