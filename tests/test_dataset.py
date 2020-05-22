@@ -79,6 +79,16 @@ def test_dataset_set_get_value():
     assert list(t['y']) == ['a','b']
     t = Dataset(y=['a','b'])
     assert list(t['y']) == ['a','b']
+    t = Dataset()
+    t.set('x',5,kind=float)
+    assert isinstance(t['x'],float)
+
+def test_dataset_prototypes():
+    t = Dataset()
+    t.add_prototype('x',description="X is a thing.",kind=float)
+    t.set('x',5)
+    assert isinstance(t['x'],float)
+    assert t._data['x'].description == "X is a thing."
 
 def test_dataset_len_is_scalar():
     t = Dataset()
