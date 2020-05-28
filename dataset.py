@@ -217,6 +217,7 @@ class Dataset():
         self._inferred_from = DictOfLists()
         for key,val in keys_vals.items():
             self.set(key,val)
+        self.verbose = True
 
     def __len__(self):
         assert self._length is not None,'Dataset has no length because all data is scalar'
@@ -390,6 +391,8 @@ class Dataset():
         already_attempted.append(key) 
         ## Loop through possible methods of inferences.
         for dependencies,value_fcn,uncertainty_fcn in infer_functions:
+            if self.verbose:
+                print(f'Attempting to infer {repr(key)} from {repr(dependencies)}')
             try:
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted)) # copy of already_attempted so it will not feed back here
