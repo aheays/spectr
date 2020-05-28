@@ -1,6 +1,22 @@
 from spectr.dataset import Dataset
 
-class Level(Dataset):
+class Base(Dataset):
+    
+    _class_prototypes = {
+
+        'class':{'description':"What kind of data this is.",'kind':'str',
+                 'infer_functions':(('self',lambda self:self.__class__.__name__,None,),),},
+        'notes':{'description':"Notes regarding this line. Character length limited.", 'kind':str, },
+        'description':{'kind':str,'description':"",'fmt':'s','default_value':''},
+        'author':{'description':"Author of data or printed file", 'kind':str, },
+        'reference':{'description':"", 'kind':str, },
+        'date':{'description':"Date data collected or printed", 'kind':str, },
+        'Tref':{'description':"Reference point of energy scale relative to potential-energy minimum (cm-1).", 'kind':float, 'fmt':'0.4f', 'infer_functions':[(),lambda:0,None]},
+        'dTref':{'description':"Systematic uncertainty in the energy scale (cm-1 1σ).", 'kind':float, 'fmt':'0.4f', },
+        # 'partition_source':{'description':"Data source for computing partition function, 'self' or 'database' (default).", 'kind':'U8', 'infer_functions':{('database',):lambda:'database',}) # defaults to 'database},
+        # 'index':{'description':"Index data.", 'kind':int, 'infer_functions':{('self',):lambda self:np.arange(len(self),'kind':int),}},
+
+        }
 
     # (_class_key_data, _class_scalar_data, _class_vector_data) = _generate_keys(
         # more_vector_other_keys=('index','name',),
@@ -32,11 +48,19 @@ class Level(Dataset):
             # set_all_defaults=False,
             # description=None,   # set if a key but also passed to Optimiser -- confusing!
             # **kwargs
+            **dataset_kwargs,
     ):
         """Default_name is decoded to give default values. Kwargs can be
         scalar data, further default values of vector data, or if vectors
         themselves will populate data arrays."""
-        pass
+            
+        Dataset.__init__(self,**dataset_kwargs)
+        self._prototypes = self._class_prototypes
+
+        self['class'] = type(self).__name__.lower()
+        self.name = (name if name is not None else self['class'])
+
+
         # ## make internal data array
         # Dynamic_Recarray.__init__(
             # self,
