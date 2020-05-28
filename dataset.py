@@ -212,7 +212,7 @@ class Dataset():
         self._data = dict()
         self._length = None
         self._prototypes = {}
-        self._infer_functions = DictOfLists()
+        # self._infer_functions = DictOfLists()
         self._inferences = DictOfLists()
         self._inferred_from = DictOfLists()
         for key,val in keys_vals.items():
@@ -235,11 +235,10 @@ class Dataset():
         self.unset_inferences(key)
         ## if not previously set then get perhaps get a prototype
         if key not in self and key in self._prototypes:
-            prototype = copy(self._prototypes[key])
-            ## look for infer functions
-            if 'infer_functions' in prototype:
-                self._infer_functions[key] = prototype.pop('infer_functions')
+            prototype = self._prototypes[key]
             for tkey,tval in prototype.items():
+                if tkey == 'infer':
+                    continue
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
         self._data[key] = Data(key=key,value=value,uncertainty=uncertainty,**data_kwargs)
@@ -286,7 +285,11 @@ class Dataset():
         self._prototypes[key] = dict(**data_kwargs)
 
     def add_infer_function(self,key,dependencies,value_function,uncertainty_function=None,):
-        self._infer_functions[key].append(
+        if key not in self._prototypes:
+            self._prototypes[key] = {}
+        if 'infer' not in self._prototypes[key]:
+            self._prototypes[key]['infer'] = []
+        self._prototypes[key]['infer'].append(
             (tuple(dependencies),value_function,uncertainty_function))
 
     def index(self,index):
@@ -377,13 +380,16 @@ class Dataset():
     def _infer(self,key,already_attempted=None):
         if key in self:
             return
+        if key not in self._prototypes or 'infer' not in self._prototypes[key]:
+            raise InferException(f"No infer functions for: {repr(key)}")
+        infer_functions = self._prototypes[key]['infer']
         if already_attempted is None:
             already_attempted = []
         if key in already_attempted:
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key) 
         ## Loop through possible methods of inferences.
-        for dependencies,value_fcn,uncertainty_fcn in self._infer_functions[key]:
+        for dependencies,value_fcn,uncertainty_fcn in infer_functions:
             try:
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted)) # copy of already_attempted so it will not feed back here
@@ -707,33 +713,33 @@ class Dataset():
         
 
 
-if __name__=='__main__':
+# if __name__=='__main__':
 
-    t = Dataset(x=1,y=2)
-    t.add_infer_function('z',('x','y'),lambda x,y:x+y)
-    print( t._infer_functions)
-    assert t['z'] == 3
-    # t.add_infer_function('w',('y','z'),lambda y,z:y*z)
-    # assert t['w'] == 6
-    # t = Dataset(x=[1,2,3],y=2)
+    # t = Dataset(x=1,y=2)
     # t.add_infer_function('z',('x','y'),lambda x,y:x+y)
-    # assert list(t['z']) == [3,4,5]
-    # t = Dataset()
-    # t.set('x',1.,0.1)
-    # t.set('y',2.,0.5)
-    # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
+    # print( t._infer_functions)
     # assert t['z'] == 3
-    # assert t.get_uncertainty('z') == np.sqrt(0.1**2+0.5**2)
-    # t = Dataset()
-    # t.set('x',1.,0.1)
-    # t.set('y',2.,0.5)
-    # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
-    # t['z']
-    # assert 'z' in t
-    # t.set('x',2.,0.2)
-    # assert 'z' not in t
-    # t['z']
-    # print( t._data['z']._inferred_from)
-    # t['z'] = 5
-    # t.set('x',2.,0.2)
-    # assert 'z' in t
+    # # t.add_infer_function('w',('y','z'),lambda y,z:y*z)
+    # # assert t['w'] == 6
+    # # t = Dataset(x=[1,2,3],y=2)
+    # # t.add_infer_function('z',('x','y'),lambda x,y:x+y)
+    # # assert list(t['z']) == [3,4,5]
+    # # t = Dataset()
+    # # t.set('x',1.,0.1)
+    # # t.set('y',2.,0.5)
+    # # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
+    # # assert t['z'] == 3
+    # # assert t.get_uncertainty('z') == np.sqrt(0.1**2+0.5**2)
+    # # t = Dataset()
+    # # t.set('x',1.,0.1)
+    # # t.set('y',2.,0.5)
+    # # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
+    # # t['z']
+    # # assert 'z' in t
+    # # t.set('x',2.,0.2)
+    # # assert 'z' not in t
+    # # t['z']
+    # # print( t._data['z']._inferred_from)
+    # # t['z'] = 5
+    # # t.set('x',2.,0.2)
+    # # assert 'z' in t
