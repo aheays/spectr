@@ -207,13 +207,14 @@ class Dataset():
 
     """A collection of scalar or array values, possibly with uncertainties."""
 
-    def __init__(self,**keys_vals):
+    def __init__(self, **keys_vals):
         self._data = dict()
         self._length = None
         self._prototypes = {}
         self._infer_functions = tools.AutoDict({})
         self._inferences = tools.AutoDict([])
         self._inferred_from = tools.AutoDict([])
+        self.permit_nonprototyped_data =  True
         for key,val in keys_vals.items():
             self.set(key,val)
         self.verbose = True
@@ -233,6 +234,8 @@ class Dataset():
             self.unset(inferred_key)
         ## delete any record of inferences to do with this key
         self.unset_inferences(key)
+        if not self.permit_nonprototyped_data and key not in self._prototypes:
+            raise Exception(f'New data is not in prototypes: {repr(key)}')
         ## if not previously set then get perhaps get a prototype
         if key not in self and key in self._prototypes:
             prototype = self._prototypes[key]

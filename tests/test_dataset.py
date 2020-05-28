@@ -82,6 +82,7 @@ def test_dataset_set_get_value():
     t = Dataset()
     t.set('x',5,kind=float)
     assert isinstance(t['x'],float)
+    
 
 def test_dataset_prototypes():
     t = Dataset()
@@ -89,6 +90,13 @@ def test_dataset_prototypes():
     t.set('x',5)
     assert isinstance(t['x'],float)
     assert t._data['x'].description == "X is a thing."
+
+def test_dataset_permit_nonprototyped_data():
+    t = Dataset()
+    t.permit_nonprototyped_data = True
+    t.set('x',5)
+    # t.permit_nonprototyped_data = False
+    # t.set('y',5)
 
 def test_dataset_len_is_scalar():
     t = Dataset()
