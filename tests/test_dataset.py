@@ -207,6 +207,7 @@ def test_dataset_append():
 def test_dataset_infer():
     t = Dataset(x=1,y=2)
     t.add_infer_function('z',('x','y'),lambda x,y:x+y)
+    print( t._infer_functions)
     assert t['z'] == 3
     t.add_infer_function('w',('y','z'),lambda y,z:y*z)
     assert t['w'] == 6
@@ -228,7 +229,6 @@ def test_dataset_infer():
     t.set('x',2.,0.2)
     assert 'z' not in t
     t['z']
-    print( t._data['z']._inferred_from)
     t['z'] = 5
     t.set('x',2.,0.2)
     assert 'z' in t

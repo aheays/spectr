@@ -5,6 +5,8 @@ import numpy as np
 from numpy import nan
 
 from spectr import tools
+from spectr.tools import DictOfLists
+from spectra.exceptions import InferException
 
 class Data:
     """A scalar or array value, possibly with an uncertainty."""
@@ -52,8 +54,6 @@ class Data:
         self.value = value
         self.uncertainty = uncertainty
         self.default_differentiation_stepsize = default_differentiation_stepsize
-        self._inferences = []
-        self._inferred_from = []
 
     is_scalar = property(lambda self:self._length is None)
 
@@ -210,9 +210,11 @@ class Dataset():
 
     def __init__(self,**keys_vals):
         self._data = dict()
-        self._infer_functions = dict()
         self._length = None
         self._prototypes = {}
+        self._infer_functions = DictOfLists()
+        self._inferences = DictOfLists()
+        self._inferred_from = DictOfLists()
         for key,val in keys_vals.items():
             self.set(key,val)
 
@@ -223,28 +225,44 @@ class Dataset():
     def __setitem__(self,key,value):
         self.set(key,value)
 
-    def set(self,key,value,uncertainty=None,**kwargs):
+    def set(self,key,value,uncertainty=None,**data_kwargs):
         """Set a value and possibly its uncertainty."""
-        ## If the key exists it is being reset. Then clean up the record of what
-        ## is inferred from it, and what it is inferred from.
-        if key in self._data:
-            for inferred_from_key in self._data[key]._inferred_from:
-                self._data[inferred_from_key]._inferences.remove(key)
-            self._data[key]._inferred_from = []
-            for inferred_key in self._data[key]._inferences:
-                self._data.pop(inferred_key)
-            self._data[key]._inferences = []
+        ## unset anything inferred from this key now that it has been
+        ## changed
+        for inferred_key in self._inferences[key]:
+            self.unset(inferred_key)
+        ## delete any record of inferences to do with this key
+        self.unset_inferences(key)
+        ## if not previously set then get perhaps get a prototype
+        if key not in self and key in self._prototypes:
+            prototype = copy(self._prototypes[key])
+            ## look for infer functions
+            if 'infer_functions' in prototype:
+                self._infer_functions[key] = prototype.pop('infer_functions')
+            for tkey,tval in prototype.items():
+                data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
-        if key in self._prototypes:
-            for tkey,tval in self._prototypes[key].items():
-                kwargs.setdefault(tkey,tval)
-        self._data[key] = Data(key=key,value=value,uncertainty=uncertainty,**kwargs)
+        self._data[key] = Data(key=key,value=value,uncertainty=uncertainty,**data_kwargs)
         if not self._data[key].is_scalar:
             if self._length == None:
                 ## first array data, use this to define the length of self
                 self._length = len(self._data[key])
             else:
                 assert len(self._data[key])==len(self),'Length does not match existing data.'
+    
+    def unset_inferences(self,key):
+        """Delete any record of inferences to or from this key."""
+        for inferred_from_key in self._inferred_from[key]:
+            self._inferences[inferred_from_key].remove(key)
+            self._inferred_from[key].remove(inferred_from_key)
+        for inferred_key in self._inferences[key]:
+            self._inferred_from[inferred_key].remove(key)
+            self._inferences[key].remove(inferred_key)
+
+    def unset(self,key):
+        """Delete data.  Also clean up inferences."""
+        self.unset_inferences(key)
+        self._data.pop(key)
 
     def get_value(self,key):
         if key not in self._data:
@@ -264,22 +282,12 @@ class Dataset():
         else:
             return( True)
 
-    def add_prototype(self,key,**keys_vals):
-        self._prototypes[key] = dict(**keys_vals)
+    def add_prototype(self,key,**data_kwargs):
+        self._prototypes[key] = dict(**data_kwargs)
 
-    def add_infer_function(
-            self,
-            key,
-            dependencies,
-            value_function,
-            uncertainty_function=None,
-    ):
-        if key not in self._infer_functions:
-            self._infer_functions[key] = []
-        self._infer_functions[key].append((
-            tuple(dependencies),
-            value_function,
-            uncertainty_function))
+    def add_infer_function(self,key,dependencies,value_function,uncertainty_function=None,):
+        self._infer_functions[key].append(
+            (tuple(dependencies),value_function,uncertainty_function))
 
     def index(self,index):
         """Index all array data in place."""
@@ -390,17 +398,18 @@ class Dataset():
                 else:
                     uncertainty = None
                 self.set(key,value,uncertainty)
-                ## if we get this far without an InferException then success!
-                self._data[key]._inferred_from = dependencies
+                ## if we get this far without an InferException then
+                ## success!.  Record inference dependencies.
+                self._inferred_from[key].extend(dependencies)
                 for dependency in dependencies:
-                    self._data[dependency]._inferences.append(key)
+                    self._inferences[dependency].append(key)
                 break           
             ## some kind of InferException 
             except InferException as err:
                 continue      
-        ## complete failure to infer
-        else:
-            raise InferException(f"Could not infer key: {repr(key)}")
+            ## complete failure to infer
+            else:
+                raise InferException(f"Could not infer key: {repr(key)}")
 
     def __iter__(self):
         for key in self._data:
@@ -699,14 +708,32 @@ class Dataset():
 
 
 if __name__=='__main__':
-    t = Dataset()
-    t.set('a','So be it.')
-    t.set('b',1.32e25)
-    t.set('x',[1,2,3])
-    t.set('y',[1,2,3],[0.1,0.2,0.3])
-    t.set('z',[2,4,5])
-    print( t.format(delimiter=' ␞ '))
-    t.save_to_file('t0')
-    t.load_from_file('t0')
-    # t.plot('x',('y','z'))
-   #  
+
+    t = Dataset(x=1,y=2)
+    t.add_infer_function('z',('x','y'),lambda x,y:x+y)
+    print( t._infer_functions)
+    assert t['z'] == 3
+    # t.add_infer_function('w',('y','z'),lambda y,z:y*z)
+    # assert t['w'] == 6
+    # t = Dataset(x=[1,2,3],y=2)
+    # t.add_infer_function('z',('x','y'),lambda x,y:x+y)
+    # assert list(t['z']) == [3,4,5]
+    # t = Dataset()
+    # t.set('x',1.,0.1)
+    # t.set('y',2.,0.5)
+    # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
+    # assert t['z'] == 3
+    # assert t.get_uncertainty('z') == np.sqrt(0.1**2+0.5**2)
+    # t = Dataset()
+    # t.set('x',1.,0.1)
+    # t.set('y',2.,0.5)
+    # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
+    # t['z']
+    # assert 'z' in t
+    # t.set('x',2.,0.2)
+    # assert 'z' not in t
+    # t['z']
+    # print( t._data['z']._inferred_from)
+    # t['z'] = 5
+    # t.set('x',2.,0.2)
+    # assert 'z' in t
