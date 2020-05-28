@@ -5,7 +5,6 @@ import numpy as np
 from numpy import nan
 
 from spectr import tools
-from spectr.tools import DictOfLists
 from spectra.exceptions import InferException
 
 class Data:
@@ -212,9 +211,9 @@ class Dataset():
         self._data = dict()
         self._length = None
         self._prototypes = {}
-        # self._infer_functions = DictOfLists()
-        self._inferences = DictOfLists()
-        self._inferred_from = DictOfLists()
+        self._infer_functions = tools.AutoDict({})
+        self._inferences = tools.AutoDict([])
+        self._inferred_from = tools.AutoDict([])
         for key,val in keys_vals.items():
             self.set(key,val)
         self.verbose = True
@@ -238,8 +237,6 @@ class Dataset():
         if key not in self and key in self._prototypes:
             prototype = self._prototypes[key]
             for tkey,tval in prototype.items():
-                if tkey == 'infer':
-                    continue
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
         self._data[key] = Data(key=key,value=value,uncertainty=uncertainty,**data_kwargs)
@@ -286,12 +283,7 @@ class Dataset():
         self._prototypes[key] = dict(**data_kwargs)
 
     def add_infer_function(self,key,dependencies,value_function,uncertainty_function=None,):
-        if key not in self._prototypes:
-            self._prototypes[key] = {}
-        if 'infer' not in self._prototypes[key]:
-            self._prototypes[key]['infer'] = []
-        self._prototypes[key]['infer'].append(
-            (tuple(dependencies),value_function,uncertainty_function))
+        self._infer_functions[key][dependencies] = (value_function,uncertainty_function)
 
     def index(self,index):
         """Index all array data in place."""
@@ -381,16 +373,21 @@ class Dataset():
     def _infer(self,key,already_attempted=None):
         if key in self:
             return
-        if key not in self._prototypes or 'infer' not in self._prototypes[key]:
-            raise InferException(f"No infer functions for: {repr(key)}")
-        infer_functions = self._prototypes[key]['infer']
         if already_attempted is None:
             already_attempted = []
         if key in already_attempted:
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key) 
         ## Loop through possible methods of inferences.
-        for dependencies,value_fcn,uncertainty_fcn in infer_functions:
+        for dependencies,value_function in self._infer_functions[key].items():
+            ## sometimes dependencies end up as a string instead of a list of strings
+            if isinstance(dependencies,str):
+                dependencies = (dependencies,)
+            ## may value_function might actually include uncertainty_function
+            if tools.isiterable(value_function):
+                value_function,uncertainty_function = value_function
+            else:
+                uncertainty_function = None
             if self.verbose:
                 print(f'Attempting to infer {repr(key)} from {repr(dependencies)}')
             try:
@@ -399,9 +396,9 @@ class Dataset():
                     already_attempted.append(dependency) # in case it comes up again at this level
                 ## Compute key. There is trivial case of no vector to
                 ## add to, and whether or not self is an argument.
-                value = value_fcn(*[self.get_value(key) for key in dependencies])
-                if uncertainty_fcn is not None:
-                    uncertainty = uncertainty_fcn(
+                value = value_function(*[self.get_value(key) for key in dependencies])
+                if uncertainty_function is not None:
+                    uncertainty = uncertainty_function(
                         *[self.get_value(key) for key in dependencies],
                         *[self.get_uncertainty(key) for key in dependencies])
                 else:

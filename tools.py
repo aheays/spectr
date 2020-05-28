@@ -15,7 +15,6 @@ class AutoDict:
     def __init__(self,default_value):
         self._dict = dict()
         self.default_value = default_value
-        print('DEBUG:', self.default_value)
 
     def __getitem__(self,key):
         if key not in self._dict:

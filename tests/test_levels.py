@@ -14,7 +14,7 @@ def test_level_assignment():
 
 def test_level_str():
     t = Level(name='ddd',description='fff',notes=['a','b'])
-    print( t)
+    print(t)
 
 def test_level_decode():
     t = Level(encoded='32S16O_A.3Π(v=0,Ω=1,J=5)')
