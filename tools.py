@@ -1,31 +1,36 @@
 import functools
 import re
 import os
+from copy import copy
 
 import numpy as np
 import h5py
 
 
-class DictOfLists:
+class AutoDict:
 
     """Kind of like a dictionary of lists. If an unknown key is given then
     creates an empty list."""
 
-    def __init__(self):
+    def __init__(self,default_value):
         self._dict = dict()
+        self.default_value = default_value
+        print('DEBUG:', self.default_value)
 
     def __getitem__(self,key):
         if key not in self._dict:
-            self._dict[key] = []
+            self._dict[key] = copy(self.default_value)
         return(self._dict[key])
 
     def __setitem__(self,key,val):
-        if key not in self._dict:
-            self._dict[key] = []
-        self._dict[key] = list(val)
+        self._dict[key] = val
     
     def __str__(self):
         return(str(self._dict))
+
+    def __items__(self):
+        for key,val in self._dict.items():
+            yield key,val
 
 #################################
 ## decorators / function tools ##
