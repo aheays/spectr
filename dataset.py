@@ -1,10 +1,12 @@
 import re
 from copy import copy,deepcopy
+from pprint import pprint
 
 import numpy as np
 from numpy import nan
 
 from spectr import tools
+from spectr.tools import AutoDict
 from spectra.exceptions import InferException
 
 class Data:
@@ -210,10 +212,13 @@ class Dataset():
     def __init__(self, **keys_vals):
         self._data = dict()
         self._length = None
-        self._prototypes = {}
-        self._infer_functions = tools.AutoDict({})
-        self._inferences = tools.AutoDict([])
-        self._inferred_from = tools.AutoDict([])
+        if not hasattr(self,'_prototypes'):
+            ## derived classes might set this in class definition, so
+            ## do not overwrite here
+            self._prototypes = {}
+        # self._infer_functions = AutoDict({})
+        self._inferences = AutoDict([])
+        self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
         for key,val in keys_vals.items():
             self.set(key,val)
@@ -238,8 +243,9 @@ class Dataset():
             raise Exception(f'New data is not in prototypes: {repr(key)}')
         ## if not previously set then get perhaps get a prototype
         if key not in self and key in self._prototypes:
-            prototype = self._prototypes[key]
-            for tkey,tval in prototype.items():
+            for tkey,tval in self._prototypes[key].items():
+                if tkey == 'infer':
+                    continue # not a Data kwarg
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
         self._data[key] = Data(key=key,value=value,uncertainty=uncertainty,**data_kwargs)
@@ -282,11 +288,15 @@ class Dataset():
         else:
             return( True)
 
-    def add_prototype(self,key,**data_kwargs):
-        self._prototypes[key] = dict(**data_kwargs)
+    def add_prototype(self,key,infer=None,**Data_kwargs):
+        if infer is None:
+            infer = {}
+        self._prototypes[key] = dict(infer=infer,**Data_kwargs)
 
-    def add_infer_function(self,key,dependencies,value_function,uncertainty_function=None,):
-        self._infer_functions[key][dependencies] = (value_function,uncertainty_function)
+    def add_infer_function(self,key,dependencies,value_function,uncertainty_function=None):
+        if key not in self._prototypes:
+            self.add_prototype(key)
+        self._prototypes[key]['infer'][dependencies] = (value_function,uncertainty_function)
 
     def index(self,index):
         """Index all array data in place."""
@@ -382,7 +392,9 @@ class Dataset():
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key) 
         ## Loop through possible methods of inferences.
-        for dependencies,value_function in self._infer_functions[key].items():
+        if key not in self._prototypes or 'infer' not in self._prototypes[key]:
+                raise InferException(f"No infer functions for: {repr(key)}")
+        for dependencies,value_function in self._prototypes[key]['infer'].items():
             ## sometimes dependencies end up as a string instead of a list of strings
             if isinstance(dependencies,str):
                 dependencies = (dependencies,)

@@ -31,11 +31,11 @@ class AutoDict:
         return(repr(self._dict))
 
     def __iter__(self):
-        for key in self._dict.items():
+        for key in self._dict.keys():
             yield key
 
     def keys(self):
-        for key in self._dict.items():
+        for key in self._dict.keys():
             yield key
 
     def values(self):

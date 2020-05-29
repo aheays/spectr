@@ -1,9 +1,11 @@
+from pprint import pprint 
 from spectr.levels import Levels
 
 def test_construct():
     t = Levels()
     assert t.name == 'Levels'
     assert t['class'] == 'Levels'
+    assert len(t._prototypes)>0 
 
 def test_assignment():
     t = Levels(name='ddd')
