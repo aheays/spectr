@@ -26,8 +26,23 @@ class AutoDict:
     
     def __str__(self):
         return(str(self._dict))
+    
+    def __repr__(self):
+        return(repr(self._dict))
 
-    def __items__(self):
+    def __iter__(self):
+        for key in self._dict.items():
+            yield key
+
+    def keys(self):
+        for key in self._dict.items():
+            yield key
+
+    def values(self):
+        for val in self._dict.values():
+            yield val
+
+    def items(self):
         for key,val in self._dict.items():
             yield key,val
 

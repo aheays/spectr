@@ -13,5 +13,10 @@ def test_AutoDict():
     assert t['y'] == {}
     t['x']['a'] = 1
     assert t['x'] == {'a':1}
+    ## two of them!
+    t = tools.AutoDict(tools.AutoDict({}))
+    assert t['x']['a'] == {}
+    t['y']['b'][1] = 5
+    assert t['y']['b'] == {1:5}
 
 
