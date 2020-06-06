@@ -1,5 +1,5 @@
 from pprint import pprint 
-from spectr.levels import Levels
+from spectr.levels import *
 
 def test_construct():
     t = Levels()
@@ -17,6 +17,19 @@ def test_assignment():
 def test_str():
     t = Levels(name='ddd',description='fff',notes=['a','b'])
     print(t)
+
+def test_load():
+    t = Levels()
+    t.load('data/levels_14N2')
+    assert t['species'] == '14N2'
+    assert list(t['J']) == [0,1,2,3,4]
+
+def test_inheritance():
+    t = Cinfv()
+    t.load('data/levels_14N2')
+    assert t['species'] == '14N2'
+    assert list(t['J']) == [0,1,2,3,4]
+    assert list(t['g']) == [1,3,5,7,9]
 
 # def test_decode():
     # t = Levels(encoded='32S16O_A.3Π(v=0,Ω=1,J=5)')

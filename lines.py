@@ -5,8 +5,6 @@ from pprint import pprint
 
 from spectr.dataset import Dataset
 from spectr.levels import Levels
-from spectr.prototypes import prototypes
-from spectr.infer_functions import infer_functions
 
 def expand_level_keys(level_class):
     retval = {}

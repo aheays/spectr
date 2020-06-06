@@ -534,7 +534,7 @@ class Dataset():
                     ## test for end of header
                     if not re.match(r'^ *'+comment,line):
                         break
-                    if r := re.match(r'^ *'+comment+f' *([^= ]+) *=(.+)',line): # looking to match:  "# variable = value : description"
+                    if r := re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line): # looking to match:  "# variable = value : description"
                         key = r.group(1)
                         value = tools.string_to_number_if_possible(r.group(2))
                         self[key] = value
