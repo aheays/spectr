@@ -84,7 +84,13 @@ class AutoDict:
     # if function.__name__ == 'plot':    # special case for plot since args not in function definition line
         # args = ('agg_filter','alpha','animated','antialiased','aa','clip_box','clip_on','clip_path','color','c','contains','dash_capstyle','dash_joinstyle','dashes','drawstyle','figure','fillstyle','gid','label','linestyle','ls','linewidth','lw','marker','markeredgecolor','mec','markeredgewidth','mew','markerfacecolor','mfc','markerfacecoloralt','mfcalt','markersize','ms','markevery','path_effects','picker','pickradius','rasterized','sketch_params','snap','solid_capstyle','solid_joinstyle','transform','url','visible','xdata','ydata','zorder')
     # else:
-        # args,varargs,keywords,defaults = inspect.getargspec(function)
+        # # args,varargs,keywords,defaults = inspect.getargspec(function)
+        # t = inspect.signature(function)
+        # print( t)
+        # print( dir(t))
+        # t = inspect.getfullargspec(function)
+        # print( t)
+        # args,varargs,keywords,defaults = inspect.signature(function)
     # ## pick these into a new dict
     # picked_kwargs = dict()
     # for key,val in kwargs.items():

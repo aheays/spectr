@@ -32,8 +32,6 @@ class Levels(Dataset):
         for key,val in keys_vals.items():
             self[key] = val
 
-
-
 class Cinfv(Levels):
     """Rotational levels of a C∞v diatomic molecule"""
 

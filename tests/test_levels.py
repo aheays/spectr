@@ -48,7 +48,6 @@ def test_load_complex_Cinfv():
     assert t.unique('species') == ['32S16O']
     assert abs(np.sum(t['E'])-3383596.8)<1
 
-
 def test_plot():
     t = Cinfv()
     t.load('data/SO_rotational_levels')

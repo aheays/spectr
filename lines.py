@@ -7,6 +7,7 @@ import numpy as np
 from spectr.dataset import Dataset
 from spectr.levels import Levels
 from spectr import lineshapes
+from spectr import tools
 
 def expand_level_keys(level_class):
     retval = {}
@@ -223,3 +224,46 @@ class Lines(Dataset):
             for key in cache_keys:
                 self._cache['calculate_spectrum'][key] = copy(self[key])
         return(x,y)
+
+    def plot_spectrum(
+            self,
+            x=None,
+            xkey='ν',
+            ykey='σ',
+            zkeys=None,         # None or list of keys to plot as separate lines
+            ax=None,
+            xunits = 'cm-1', # alternative is 'nm'
+            xlim=None,
+            show=False,
+            **plot_kwargs # can be calculate_spectrum or plot kwargs
+    ):
+        from matplotlib import pyplot as plt
+        """Plot a nice cross section. If zkeys given then divide into multiple
+        lines accordings."""
+        if ax is None:
+            ax = plt.gca()
+        if x is not None and len(x)==0:
+            return(ax)
+        if zkeys==None:
+            ## one line
+            x,y = self.calculate_spectrum(x,ykey=ykey,xkey=xkey)
+            if xunits=='cm-1':
+                x = x
+            # elif xunits=='nm':
+                # x = my.k2nm(x)
+            else:
+                raise Exception(f"Unknown sunits: {repr(xunits)}")
+            line = ax.plot(x,y,**plot_kwargs)[0]
+            if xlim is not None:   ax.set_xlim(*xlim)
+        else:
+            ## multiple lines
+            for iz,(qn,t) in enumerate(self.unique_dicts_matches(*zkeys)):
+                t_plot_kwargs = copy(plot_kwargs)
+                t_plot_kwargs.setdefault('color',my.newcolor(iz))
+                t_plot_kwargs.setdefault('label',my.dict_to_kwargs(qn))
+                t.plot_spectrum(
+                    x=x,ykey=ykey,zkeys=None,ax=ax,xunits=xunits,xlim=xlim,
+                    **calculate_spectrum_kwargs,**t_plot_kwargs)
+        if show:
+            plt.show()
+        return(ax)
