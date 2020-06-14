@@ -467,7 +467,7 @@ class Dataset():
             else:
                 columns[key]  = self.get_value(key)
                 if self.get_uncertainty(key) is not None:
-                    columns['d'+key]  = self.get_uncertainty(key)
+                    columns[key+'unc']  = self.get_uncertainty(key)
         retval = '\n'.join(header)
         if len(columns)>0:
             retval += '\n'+tools.format_columns(columns,delimiter=delimiter)
@@ -492,11 +492,11 @@ class Dataset():
             np.savez(
                 filename,
                 **{key:self[key] for key in keys},
-                **{'d'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+                **{key+'unc':self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
             d = {key:self[key] for key in keys}
-            d.update({'d'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+            d.update({key+'unc':self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
             tools.dict_to_hdf5(filename,d)
         else:
             ## text file
@@ -541,6 +541,8 @@ class Dataset():
                 d = tools.txt_to_dict(filename, delimiter=delimiter, comment_regexp=comment,)
                 for key,val in d.items():
                     self[key] = val
+
+
 
 
     def is_scalar(self,key=None):
