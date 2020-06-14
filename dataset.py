@@ -376,8 +376,14 @@ class Dataset():
         return([(d,self.matches(**d)) for d in self.unique_dicts(*keys)])
 
     def __getitem__(self,arg):
+        """If string return that value. If "xunc" reutrn uncertianty
+        of x. If list of strings return a copy of self restricted to
+        that data. If an index, return an indexed copy of self."""
         if isinstance(arg,str):
-            return(self.get_value(arg))
+            if r:=re.match(r'(.+)unc',arg):
+                return(self.get_uncertainty(r.group(1)))
+            else:
+                return(self.get_value(arg))
         elif np.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
             return(self.copy(keys=arg))
         else:
@@ -439,6 +445,14 @@ class Dataset():
     def keys(self):
         return(list(self._data.keys()))
 
+    def is_known(self,*keys):
+        for key in keys:
+            try:
+                self.get_value(key)
+            except InferException:
+                return(False)
+        return(True)
+
     def assert_known(self,*keys):
         for key in keys:
             self.get_value(key)
@@ -452,7 +466,8 @@ class Dataset():
         for key in more_keys:
             i = i[np.argsort(self[key][i])]
         for key in self:
-            self._data[key].index(i)
+            if not self.is_scalar(key):
+                self._data[key].index(i)
 
     def format(self,keys=None,comment='# ',delimiter=' '):
         if keys is None:
@@ -475,7 +490,6 @@ class Dataset():
 
     def __str__(self):
         return(self.format(self.keys()))
-
 
     def get_description(self):
         """Get a string listing data keys and descriptions."""
@@ -512,38 +526,56 @@ class Dataset():
         ## load common data in file header if a text file
         if re.match(r'.*\.(h5|hdf5)',filename):
             ## hdf5 archive
-            for key,val in tools.hdf5_to_dict(filename).items():
-                self[key] = val
+            data =  tools.hdf5_to_dict(filename)
         elif re.match(r'.*\.npz',filename):
-            ## numpy npz archive
+            ## numpy npz archive.  get as scalar rather than
+            ## zero-dimensional numpy array
+            data = {}
             for key,val in np.load(filename).items():
                 if val.ndim == 0:
-                    val = val.item() # get as scalar rather than zero-dimensional numpy array
-                self[key] = val
+                    val = val.item()
+                data[key] = val
         else:
             ## text file
             if re.match(r'.*\.csv',filename):
                 delimiter = ','
             elif re.match(r'.*\.rs',filename):
                 delimiter = '␞'
-            ## load header
             assert comment not in ['',' '], "Not implemented"
             filename = tools.expand_path(filename)
+            data = {}
+            ## load header
             with open(filename,'r') as fid:
                 for line in fid:
                     ## test for end of header
                     if not re.match(r'^ *'+comment,line):
                         break
-                    if r := re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line): # looking to match:  "# variable = value : description"
-                        key = r.group(1)
-                        value = tools.string_to_number_if_possible(r.group(2))
-                        self[key] = value
-                d = tools.txt_to_dict(filename, delimiter=delimiter, comment_regexp=comment,)
-                for key,val in d.items():
-                    self[key] = val
-
-
-
+                    ## looking to match:  "# key = 'string'"
+                    if r := re.match(r'^ *'+comment+f' *([^= ]+) *= *["\'](.+)["\'] *',line): 
+                        data[r.group(1)] = r.group(2)
+                    ## looking to match:  "# key = number"
+                    elif r := re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line): 
+                        data[r.group(1)] = tools.string_to_number_if_possible(r.group(2))
+            ## load array data
+            data.update(tools.txt_to_dict(filename, delimiter=delimiter, comment_regexp=comment,))
+        ## Set data in self. Match up uncerainties with data if both
+        ## are present.
+        keys = list(data)
+        while len(keys)>0:
+            key = keys[0]
+            if r:=re.match(r'(.+)unc',key):
+                tkey = r.group(1)
+                assert tkey in keys,f'Uncertainy {repr(key)} in data but {repr(tkey)} is not.'
+                self.set(tkey,data[tkey],data[key])
+                keys.remove(tkey)
+                keys.remove(key)
+            elif key+'unc' in keys:
+                self.set(key,data[key],data[key+'unc'])
+                keys.remove(key)
+                keys.remove(key+'unc')
+            else:
+                self.set(key,data[key])
+                keys.remove(key)
 
     def is_scalar(self,key=None):
         """Return boolean whether data for key is scalar or not. If key not

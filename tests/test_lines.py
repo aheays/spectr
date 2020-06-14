@@ -20,4 +20,18 @@ def test_infer_with_level_keys():
     assert t['ν'] == 50.
     t = Lines(ν=100,Ep=150)
     assert t['Epp'] == 50.
+
+def test_load_lines():
+    t = Lines()
+    t.load('data/test_lines')
+    assert abs(t['ν'][0]-38358.664)<1e-2
+    assert len(t)==32
+
+def test_calculate_spectrum():
+    t = Lines()
+    t.load('data/test_lines')
+    x,y = t.calculate_spectrum(xkey='ν',ykey='f')
+    assert len(x)==10000
+    assert abs(sum(y)-0.00903753325337632)<1e-6
     
+test_load_lines()

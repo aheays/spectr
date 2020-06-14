@@ -1,4 +1,5 @@
 from pprint import pprint 
+import numpy as np
 from spectr.levels import *
 
 def test_construct():
@@ -24,6 +25,16 @@ def test_load():
     assert t['species'] == '14N2'
     assert list(t['J']) == [0,1,2,3,4]
 
+def test_load_uncertainties():
+    t = Levels()
+    t.load('data/levels_14N2_with_uncertainties')
+    print( t)
+    assert t['species'] == '14N2'
+    assert list(t['J']) == [0,1,2,3,4]
+    assert np.max(np.abs(np.array(t['E'])-np.array([0.0000000,3.9791592,11.9373395,23.8742646,39.7895202])))<1e-3
+    print( t['Eunc'])
+    assert np.max(np.abs(np.array(t['Eunc'])-np.array(([0.1,0.1,0.2,0.2,0.1]))))<1e-3
+
 def test_inheritance():
     t = Cinfv()
     t.load('data/levels_14N2')
@@ -31,11 +42,10 @@ def test_inheritance():
     assert list(t['J']) == [0,1,2,3,4]
     assert list(t['g']) == [1,3,5,7,9]
 
-# def test_decode():
-    # t = Levels(encoded='32S16O_A.3Π(v=0,Ω=1,J=5)')
-    # assert t['species'] == '32S16O'
-    # t = Levels(encoded=['32S16O_A.3Π(v=0,Ω=1,J=5)', '33S16O_A.3Π(v=0,Ω=1,J=6)'])
-    # assert list(t['species']) == ['32S16O', '33S16O']
-
+def test_load_complex_Cinfv():
+    t = Cinfv()
+    t.load('data/SO_rotational_levels')
+    assert t.unique('species') == ['32S16O']
+    assert abs(np.sum(t['E'])-3383596.8)<1
 
     

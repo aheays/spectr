@@ -82,7 +82,15 @@ def test_dataset_set_get_value():
     t = Dataset()
     t.set('x',5,kind=float)
     assert isinstance(t['x'],float)
-    
+
+def test_setitem_getitem():
+    t = Dataset()
+    t['x'] = 5
+    assert t['x']==5
+    t.set('y',5.,0.1)
+    assert t['y']==5
+    assert t['yunc']==0.1
+
 
 def test_dataset_prototypes():
     t = Dataset()
