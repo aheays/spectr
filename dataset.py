@@ -270,7 +270,7 @@ class Dataset():
                 self._length = len(self._data[key])
             else:
                 assert len(self._data[key])==len(self),'Length does not match existing data.'
-    
+
     def unset_inferences(self,key):
         """Delete any record of inferences to or from this key."""
         for inferred_from_key in self._inferred_from[key]:

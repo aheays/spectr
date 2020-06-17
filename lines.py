@@ -22,6 +22,7 @@ class Lines(Dataset):
 
     _prototypes = {
         'class':{'description':"What kind of data this is.",'kind':'str',},
+        'levels_class':{'description':"What kind of level this is a transition between.",'kind':'object','infer':{():lambda: Levels,}},
         'description':{'kind':str,'description':"",},
         'notes':{'description':"Notes regarding this line.", 'kind':str, },
         'author':{'description':"Author of data or printed file", 'kind':str, },
@@ -267,3 +268,24 @@ class Lines(Dataset):
         if show:
             plt.show()
         return(ax)
+
+    def get_levels(
+            self,
+            upper_or_lower='upper',      # 'upper' or 'lower'
+            # treat_common_data='weighted average', # 'average','unweighted average','weighted_average', or 'reduce'
+            # **level_kwargs,             # added to constructor of returned Level object
+    ):
+        """Get a Level object containing all possible data about the 'upper'
+        or 'lower' level. If treat_common_data is 'reduce' get level
+        from first transition involving this level, if 'average' then
+        take the mean of level data from all relevant transitinos and
+        add their uncertainties as if independent data."""
+        levels = self['levels_class']()
+        assert upper_or_lower in ('upper','lower'),f'upper_or_lower must be "lower" or "upper", not {repr(upper_or_lower)}'
+        key_suffix = 'p' if upper_or_lower=='upper' else'pp'
+        for key in self.keys():
+            if len(key)<len(key_suffix) or key[:-len(key_suffix)] not in levels._prototypes:
+                continue
+            levels.set(key[:-len(key_suffix)],self.get_value(key),self.get_uncertainty(key))
+        return(levels)
+

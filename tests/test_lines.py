@@ -1,10 +1,11 @@
 from spectr.lines import Lines
+from spectr.levels import Levels
 
 def test_construct():
     t = Lines()
     assert t.name == 'Lines'
     assert t['class'] == 'Lines'
-    assert 'classpp' in t._prototypes
+    assert t['levels_class'] == Levels
 
 def test_assignment():
     t = Lines(name='ddd')
@@ -33,4 +34,12 @@ def test_calculate_plot_spectrum():
     x,y = t.calculate_spectrum(xkey='ν',ykey='f')
     assert len(x)==10000
     assert abs(sum(y)-0.00903753325337632)<1e-6
-    t.plot_spectrum(xkey='ν',ykey='f',show= True)
+    t.plot_spectrum(xkey='ν',ykey='f',show=False)
+
+def test_get_upper_lower_levels():
+    t = Lines()
+    t.load('data/test_lines')
+    print( t[:5])
+    t.get_levels()
+
+test_get_upper_lower_levels()
