@@ -399,7 +399,7 @@ class Dataset():
                 return(self.get_uncertainty(r.group(1)))
             else:
                 return(self.get_value(arg))
-        elif np.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
+        elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
             return(self.copy(keys=arg))
         else:
             return(self.copy(index=arg))
