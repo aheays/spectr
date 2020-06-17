@@ -61,8 +61,18 @@ def test_data_extend():
     assert list(t.value) == [1.,2.,3.,4.,]
     assert list(t.uncertainty) == [0.1,0.1,1.,2.]
 
+def test_data_object():
+    t = Data(value=[[1,2],None],kind=object)
+    assert list(t.value) == [[1,2],None]
+    t = Data(value=None,kind=object)
+    assert t.value is None
+    t = Data(value=[1,2,3],kind='S')
+    assert t.value == [1,2,3]
+    t = Data(value=['a',{},25],kind='O')
+    assert list(t.value) == ['a',{},25]
+
 ######################
-## Test Data object ##
+## Test Dataset object ##
 ######################
 
 def test_dataset_construct():

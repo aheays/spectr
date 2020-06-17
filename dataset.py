@@ -17,7 +17,9 @@ class Data:
         'i': {'key':'int'   ,'default_value':999999,'cast':int  ,'fmt'   :'+8d'   ,'description':'int'   ,},
         'b': {'key':'bool'  ,'default_value':True  ,'cast':bool ,'fmt'   :'g'     ,'description':'bool'  ,},
         'U': {'key':'string','default_value':''    ,'cast':str  ,'fmt'   :'<10s'  ,'description':'str'   ,},
-        'O': {'key':'object','default_value':None  ,'cast':str  ,'fmt'   :None    ,'description':'object',},
+        # 'O': {'key':'scalar object','default_value':None  ,'cast':str  ,'fmt'   :None    ,'description':'scalar object',},
+        'S': {'key':'scalar_object','default_value':None  ,'cast':lambda x:x  ,'fmt'   :None    ,'description':'scalar object',},
+        'O': {'key':'vector_object','default_value':None  ,'cast':lambda x:x  ,'fmt'   :None    ,'description':'vector object',},
     }
     
     def __init__(
@@ -45,6 +47,16 @@ class Data:
             self.kind = np.dtype(type(default_value)).kind
         else:
             self.kind = 'f'
+
+        ## figure out scalar or vector object data
+        if self.kind=='O':
+            if value is None:
+                self.kind = 'S'
+            else:
+                if tools.isiterable(value):
+                    self.kind = 'O'
+                else:
+                    self.kind = 'S'
         ## determine cast etc from args or kind
         d = self._kind_defaults[self.kind]
         self.key = (key if key is not None else d['key'])
@@ -59,7 +71,10 @@ class Data:
     is_scalar = property(lambda self:self._length is None)
 
     def _set_value(self,value):
-        if value is None:
+        if self.kind == 'S':
+            self._value = value
+            self._length = None
+        elif value is None:
             self._value = None
             self._length = None
         elif np.ndim(value)==0:
