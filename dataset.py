@@ -7,7 +7,7 @@ from numpy import nan
 
 from spectr import tools
 from spectr.tools import AutoDict
-from spectra.exceptions import InferException
+from spectr.exceptions import InferException
 
 class Data:
     """A scalar or array value, possibly with an uncertainty."""
