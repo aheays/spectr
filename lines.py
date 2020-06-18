@@ -269,17 +269,8 @@ class Lines(Dataset):
             plt.show()
         return(ax)
 
-    def get_levels(
-            self,
-            upper_or_lower='upper',      # 'upper' or 'lower'
-            # treat_common_data='weighted average', # 'average','unweighted average','weighted_average', or 'reduce'
-            # **level_kwargs,             # added to constructor of returned Level object
-    ):
-        """Get a Level object containing all possible data about the 'upper'
-        or 'lower' level. If treat_common_data is 'reduce' get level
-        from first transition involving this level, if 'average' then
-        take the mean of level data from all relevant transitinos and
-        add their uncertainties as if independent data."""
+    def get_levels(self,upper_or_lower='upper'):
+        """Get all data corresponding to upper level into self."""
         levels = self['levels_class']()
         assert upper_or_lower in ('upper','lower'),f'upper_or_lower must be "lower" or "upper", not {repr(upper_or_lower)}'
         key_suffix = 'p' if upper_or_lower=='upper' else'pp'

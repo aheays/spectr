@@ -21,6 +21,8 @@ def test_infer_with_level_keys():
     assert t['ν'] == 50.
     t = Lines(ν=100,Ep=150)
     assert t['Epp'] == 50.
+    t = Lines(Epp=100,Eppunc=0.5,Ep=150,Epunc=0.2)
+    assert t['ν'] == 50.
 
 def test_load_lines():
     t = Lines()

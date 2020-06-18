@@ -236,7 +236,7 @@ class Dataset():
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
         for key,val in keys_vals.items():
-            self.set(key,val)
+            self[key] = val
         self.verbose = True
 
     def __len__(self):
@@ -244,7 +244,10 @@ class Dataset():
         return(self._length)
 
     def __setitem__(self,key,value):
-        self.set(key,value)
+        if len(key)>3 and key[-3:]=='unc' and key[:-3] in self:
+            self.set(key[:-3],self[key[:-3]],value)
+        else:
+            self.set(key,value)
 
     def set(self,key,value,uncertainty=None,**data_kwargs):
         """Set a value and possibly its uncertainty."""
