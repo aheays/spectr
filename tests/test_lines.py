@@ -14,14 +14,14 @@ def test_assignment():
     t['notes'] = ['a','b']
     assert list(t['notes']) == ['a','b']
     t['ν'] = 100.
-    t['Epp'] = 150.
+    t['El'] = 150.
 
 def test_infer_with_level_keys():
-    t = Lines(Epp=100,Ep=150)
+    t = Lines(El=100,Eu=150)
     assert t['ν'] == 50.
-    t = Lines(ν=100,Ep=150)
-    assert t['Epp'] == 50.
-    t = Lines(Epp=100,uEpp=0.5,Ep=150,uEp=0.2)
+    t = Lines(ν=100,Eu=150)
+    assert t['El'] == 50.
+    t = Lines(El=100,uEl=0.5,Eu=150,uEu=0.2)
     assert t['ν'] == 50.
 
 def test_load_lines():
@@ -41,6 +41,5 @@ def test_calculate_plot_spectrum():
 def test_get_upper_lower_levels():
     t = Lines()
     t.load('data/test_lines')
-    print( t[:5])
     t.get_levels()
 

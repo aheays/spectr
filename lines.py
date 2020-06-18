@@ -12,8 +12,8 @@ from spectr import tools
 def expand_level_keys(level_class):
     retval = {}
     for key,val in level_class._prototypes.items():
-        retval[key+'p'] = copy(val)
-        retval[key+'pp'] = copy(val)
+        retval[key+'u'] = copy(val)
+        retval[key+'l'] = copy(val)
     return(retval)
 
 
@@ -28,17 +28,17 @@ class Lines(Dataset):
         'author':{'description':"Author of data or printed file", 'kind':str, },
         'reference':{'description':"", 'kind':str, },
         'date':{'description':"Date data collected or printed", 'kind':str, },
-        'branch':dict(description="Rotational branch ΔJ.Fp.Fpp.efp.efpp", dtype='8U', cast=str, fmt='<10s'),
+        'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", dtype='8U', cast=str, fmt='<10s'),
         'ν':dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>13.6f', infer={}),
-        'Γ':dict(description="Natural linewidth of transition (cm-1 FWHM)",kind=float,fmt='<10.5g',infer={('Γp','Γpp'):lambda Γp,Γpp: Γp+Γpp},),
+        'Γ':dict(description="Natural linewidth of transition (cm-1 FWHM)",kind=float,fmt='<10.5g',infer={('Γu','Γl'):lambda Γu,Γl: Γu+Γl},),
         'ΓD':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={}),
         'f':dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e',infer={}),
 
     }
     _prototypes.update(expand_level_keys(Levels))
-    _prototypes['ν']['infer']['Ep','Epp'] = lambda Ep,Epp: Ep-Epp
-    _prototypes['Epp']['infer']['Ep','ν'] = lambda Ep,ν: Ep-ν
-    _prototypes['Ep']['infer']['Epp','ν'] = lambda Epp,ν: Epp+ν
+    _prototypes['ν']['infer']['Eu','El'] = lambda Eu,El: Eu-El
+    _prototypes['El']['infer']['Eu','ν'] = lambda Eu,ν: Eu-ν
+    _prototypes['Eu']['infer']['El','ν'] = lambda Eu,ν: El+ν
 
     def __init__(
             self,
@@ -65,8 +65,8 @@ class Lines(Dataset):
             ymin=None,     # minimum value of ykey before a line is ignored, None for use all lines
             gaussian_method='fortran', #'fortran stepwise', 'fortran', 'python'
             voigt_method='wofz',   
-            # temperaturepp=None,
-            # column_densitypp=None,
+            # temperaturel=None,
+            # column_densityl=None,
             use_multiprocessing=False, # might see a speed up
             use_cache=False,    # is it actually any faster?!?
             # ycache = None,
@@ -168,14 +168,14 @@ class Lines(Dataset):
                             y.append(result)
                         number_of_processes_per_mass_temperature_combination = 6 # if there are multiple temperature/mass combinations there will more be more processes, with an associated memory danger
                         self.assert_known(xkey,ykey,'Γ')
-                        for d in self.unique_dicts('masspp','TDopplerpp'):
+                        for d in self.unique_dicts('massl','TDopplerl'):
                             m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
                             ibeg,istep = 0,int(len(m)/number_of_processes_per_mass_temperature_combination)
                             while ibeg<len(m): # loop through lines in chunks, starting subprocesses
                                 iend = min(ibeg+istep,len(m))
                                 t = p.apply_async(lineshapes.voigt_spectrum_with_gaussian_doppler_width,
                                                   args=(x,m[xkey][ibeg:iend],m[ykey][ibeg:iend],m['Γ'][ibeg:iend],
-                                                        d['masspp'],d['TDopplerpp'], nfwhmL,nfwhmG,ymin),
+                                                        d['massl'],d['TDopplerl'], nfwhmL,nfwhmG,ymin),
                                                   callback=handle_result)
                                 ibeg += istep
                         ## wait for all subprocesses with a tidy keyboard quit
@@ -190,11 +190,11 @@ class Lines(Dataset):
                     else:
                         ## no multiprocessing
                         y = np.zeros(x.shape)
-                        self.assert_known(ykey,xkey,'Γ','masspp','TDopplerpp')
-                        for d in self.unique_dicts('masspp','TDopplerpp'):
+                        self.assert_known(ykey,xkey,'Γ','massl','TDopplerl')
+                        for d in self.unique_dicts('massl','TDopplerl'):
                             m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
                             y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
-                                x,m[xkey],m[ykey],m['Γ'],d['masspp'],d['TDopplerpp'],
+                                x,m[xkey],m[ykey],m['Γ'],d['massl'],d['TDopplerl'],
                                 nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
                 else:
                     raise Exception(f"voigt_method unknown: {repr(voigt_method)}")
@@ -269,14 +269,13 @@ class Lines(Dataset):
             plt.show()
         return(ax)
 
-    def get_levels(self,upper_or_lower='upper'):
+    def get_levels(self,upper_or_lower='u'):
         """Get all data corresponding to upper level into self."""
         levels = self['levels_class']()
-        assert upper_or_lower in ('upper','lower'),f'upper_or_lower must be "lower" or "upper", not {repr(upper_or_lower)}'
-        key_suffix = 'p' if upper_or_lower=='upper' else'pp'
+        assert upper_or_lower in ('u','l'),f'upper_or_lower must be "u" or "l", not {repr(upper_or_lower)}'
         for key in self.keys():
-            if len(key)<len(key_suffix) or key[:-len(key_suffix)] not in levels._prototypes:
+            if len(key)==1 or key[-1]!=upper_or_lower:
                 continue
-            levels.set(key[:-len(key_suffix)],self.get_value(key),self.get_uncertainty(key))
+            levels.set(key[:-1],self.get_value(key),self.get_uncertainty(key))
         return(levels)
 
