@@ -21,7 +21,7 @@ def test_infer_with_level_keys():
     assert t['ν'] == 50.
     t = Lines(ν=100,Ep=150)
     assert t['Epp'] == 50.
-    t = Lines(Epp=100,Eppunc=0.5,Ep=150,Epunc=0.2)
+    t = Lines(Epp=100,uEpp=0.5,Ep=150,uEp=0.2)
     assert t['ν'] == 50.
 
 def test_load_lines():
@@ -44,4 +44,3 @@ def test_get_upper_lower_levels():
     print( t[:5])
     t.get_levels()
 
-test_get_upper_lower_levels()

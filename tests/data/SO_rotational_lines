@@ -1,11 +1,11 @@
 # description = "Fitted rovibronic transitions."
 # Eref = 0.0000                 
-# dνref = 0.05                  
+# νref_unc = 0.05                  
 # labelpp = "X"                 
 # Λpp = 0                       
 # spp = 1                       
 # Spp = 1                       
-# dEpp = 0.0e+00                
+# uEpp = 0.0e+00                
 # Sp = 1                        
 # speciespp Σpp  Ωpp efpp vpp Jpp  Epp            speciesp labelp Λp sp  Σp   Ωp  efp vp  Jp   Ep             Γp         ΔJ   ν             Sij         f           Γ         
 32S16O      +0   0   +1    0   1    569.2004999    32S16O   A      1  0   -1   0   +1   1   0    38927.8636513  0            -1  38358.663151 1.39602e-05 5.42280e-07 0         

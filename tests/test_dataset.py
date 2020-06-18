@@ -101,7 +101,7 @@ def test_construct_with_data_initialisation():
     t = Dataset(x=['a','b'],y=5)
     assert t['y'] == 5
     assert list(t['x']) == ['a','b']
-    t = Dataset(x=[1.,2.],xunc=[0.1,0.2])
+    t = Dataset(x=[1.,2.],ux=[0.1,0.2])
     assert list(t['x']) == [1.,2.]
     assert list(t.get_uncertainty('x')) == [0.1,0.2]
     
@@ -111,7 +111,7 @@ def test_setitem_getitem():
     assert t['x']==5
     t.set('y',5.,0.1)
     assert t['y']==5
-    assert t['yunc']==0.1
+    assert t['uy']==0.1
 
 def test_dataset_prototypes():
     t = Dataset()

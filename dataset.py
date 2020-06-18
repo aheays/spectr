@@ -17,7 +17,6 @@ class Data:
         'i': {'key':'int'   ,'default_value':999999,'cast':int  ,'fmt'   :'+8d'   ,'description':'int'   ,},
         'b': {'key':'bool'  ,'default_value':True  ,'cast':bool ,'fmt'   :'g'     ,'description':'bool'  ,},
         'U': {'key':'string','default_value':''    ,'cast':str  ,'fmt'   :'<10s'  ,'description':'str'   ,},
-        # 'O': {'key':'scalar object','default_value':None  ,'cast':str  ,'fmt'   :None    ,'description':'scalar object',},
         'S': {'key':'scalar_object','default_value':None  ,'cast':lambda x:x  ,'fmt'   :None    ,'description':'scalar object',},
         'O': {'key':'vector_object','default_value':None  ,'cast':lambda x:x  ,'fmt'   :None    ,'description':'vector object',},
     }
@@ -133,7 +132,7 @@ class Data:
         if self.uncertainty is None:
             return(str(self.value))
         else:
-            return(str(self.value)+' ± '+str(self.uncertainty))
+            return(str(self.value)+' u '+str(self.uncertainty))
 
     def __iter__(self):
         for val in self.value:
@@ -244,13 +243,15 @@ class Dataset():
         return(self._length)
 
     def __setitem__(self,key,value):
-        if len(key)>3 and key[-3:]=='unc' and key[:-3] in self:
-            self.set(key[:-3],self[key[:-3]],value)
+        if key[0]=='u':
+            key = key[1:]
+            self.set(key,self[key],value)
         else:
             self.set(key,value)
 
     def set(self,key,value,uncertainty=None,**data_kwargs):
         """Set a value and possibly its uncertainty."""
+        assert key[0]!='u', f'Keys beginning with "u" are reserved as uncertainties. Cannot set: {repr(key)}'
         ## unset anything inferred from this key now that it has been
         ## changed
         for inferred_key in self._inferences[key]:
@@ -394,12 +395,12 @@ class Dataset():
         return([(d,self.matches(**d)) for d in self.unique_dicts(*keys)])
 
     def __getitem__(self,arg):
-        """If string return that value. If "xunc" reutrn uncertianty
+        """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
         that data. If an index, return an indexed copy of self."""
         if isinstance(arg,str):
-            if r:=re.match(r'(.+)unc',arg):
-                return(self.get_uncertainty(r.group(1)))
+            if arg[0]=='u':
+                return(self.get_uncertainty(arg[1:]))
             else:
                 return(self.get_value(arg))
         elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
@@ -500,7 +501,7 @@ class Dataset():
             else:
                 columns[key]  = self.get_value(key)
                 if self.get_uncertainty(key) is not None:
-                    columns[key+'unc']  = self.get_uncertainty(key)
+                    columns['u'+key]  = self.get_uncertainty(key)
         retval = '\n'.join(header)
         if len(columns)>0:
             retval += '\n'+tools.format_columns(columns,delimiter=delimiter)
@@ -524,11 +525,11 @@ class Dataset():
             np.savez(
                 filename,
                 **{key:self[key] for key in keys},
-                **{key+'unc':self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+                **{'u'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
             d = {key:self[key] for key in keys}
-            d.update({key+'unc':self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+            d.update({'u'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
             tools.dict_to_hdf5(filename,d)
         else:
             ## text file
@@ -581,16 +582,16 @@ class Dataset():
         keys = list(data)
         while len(keys)>0:
             key = keys[0]
-            if r:=re.match(r'(.+)unc',key):
-                tkey = r.group(1)
+            if key[0] == 'u':
+                tkey = key[1:]
                 assert tkey in keys,f'Uncertainy {repr(key)} in data but {repr(tkey)} is not.'
                 self.set(tkey,data[tkey],data[key])
                 keys.remove(tkey)
                 keys.remove(key)
-            elif key+'unc' in keys:
-                self.set(key,data[key],data[key+'unc'])
+            elif 'u'+key in keys:
+                self.set(key,data[key],data['u'+key])
                 keys.remove(key)
-                keys.remove(key+'unc')
+                keys.remove('u'+key)
             else:
                 self.set(key,data[key])
                 keys.remove(key)
