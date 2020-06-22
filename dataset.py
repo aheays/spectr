@@ -13,14 +13,14 @@ class Data:
     """A scalar or array value, possibly with an uncertainty."""
 
     _kind_defaults = {
-        'f': {'key':'float' ,'default_value':nan   ,'cast':float,'fmt'   :'+12.8e','description':'float' ,},
-        'i': {'key':'int'   ,'default_value':999999,'cast':int  ,'fmt'   :'+8d'   ,'description':'int'   ,},
-        'b': {'key':'bool'  ,'default_value':True  ,'cast':bool ,'fmt'   :'g'     ,'description':'bool'  ,},
-        'U': {'key':'string','default_value':''    ,'cast':str  ,'fmt'   :'<10s'  ,'description':'str'   ,},
-        'S': {'key':'scalar_object','default_value':None  ,'cast':lambda x:x  ,'fmt'   :None    ,'description':'scalar object',},
-        'O': {'key':'vector_object','default_value':None  ,'cast':lambda x:x  ,'fmt'   :None    ,'description':'vector object',},
+        'f': {'key':'float'        ,'cast':float     ,'fmt'   :'+12.8e','description':'float'        ,},
+        'i': {'key':'int'          ,'cast':int       ,'fmt'   :'+8d'   ,'description':'int'          ,},
+        'b': {'key':'bool'         ,'cast':bool      ,'fmt'   :'g'     ,'description':'bool'         ,},
+        'U': {'key':'string'       ,'cast':str       ,'fmt'   :'<10s'  ,'description':'str'          ,},
+        'S': {'key':'scalar_object','cast':lambda x:x,'fmt'   :None    ,'description':'scalar object',},
+        'O': {'key':'vector_object','cast':lambda x:x,'fmt'   :None    ,'description':'vector object',},
     }
-    
+
     def __init__(
             self,
             key=None,          # short string
@@ -28,25 +28,22 @@ class Data:
             uncertainty=None,         # if it has an associated value stored in the type itself
             kind=None,
             description=None,   # long string
-            default_value=None, # a scalar default value for missing data
-            default_differentiation_stepsize=None, # if it requires a default value for missing data
             fmt=None,
     ):
         ## determine kind
         if kind is not None:
             self.kind = np.dtype(kind).kind
         elif value is not None:
-            # if isinstance(value,np.ndarray):
-                # self.kind = value.dtype.kind
             if np.isscalar(value):
                 self.kind = np.dtype(type(value)).kind
             else:
                 self.kind = np.dtype(type(value[0])).kind
-        elif default_value is not None:
-            self.kind = np.dtype(type(default_value)).kind
+            ## if inferred kind is an int, but a uncertainty is given,
+            ## then make kind a float instead
+            if self.kind=='i' and uncertainty is not None:
+                self.kind = 'f'
         else:
             self.kind = 'f'
-
         ## figure out scalar or vector object data
         if self.kind=='O':
             if value is None:
@@ -62,163 +59,180 @@ class Data:
         self.description = (description if description is not None else d['description'])
         self.fmt = (fmt if fmt is not None else d['fmt'])
         self.cast = d['cast']
-        ## set value and uncertainty
-        self.value = value
-        self.uncertainty = uncertainty
-        self.default_differentiation_stepsize = default_differentiation_stepsize
+        ## set the data
+        self.set(value,uncertainty)
 
-    is_scalar = property(lambda self:self._length is None)
-
-    def _set_value(self,value):
+    def set(self,value,uncertainty=None):
+        """Set the value of this data and optionally its
+        uncertainty."""
         if self.kind == 'S':
+            ## special case scalar_object
             self._value = value
             self._length = None
+            assert uncertainty is None,'Cannot assign uncertainty to scalar_object'
+            self._uncertainty = None
         elif value is None:
+            ## blank / empty 
             self._value = None
             self._length = None
+            assert uncertainty is None,'Cannot assign uncertainty to when value is None'
+            self._uncertainty = None
         elif np.ndim(value)==0:
+            ## scalar data
             self._value = self.cast(value)
             self._length = None
-        else:
-            self._value = np.asarray(value,dtype=self.kind)
-            self._length = len(value)
-        self.uncertainty = None
-
-    def _set_uncertainty(self,uncertainty):
-        if uncertainty is None:
-            self._uncertainty = None
-        else:
-            if self.is_scalar:
+            if uncertainty is not None:
+                assert self.kind=='f','Uncertainty is only defined for float kind.'
                 self._uncertainty = float(uncertainty)
             else:
+                self._uncertainty = None
+        else:
+            ## vector data
+            self._value = np.asarray(value,dtype=self.kind)
+            self._length = len(value)
+            if uncertainty is not None:
+                assert self.kind=='f','Uncertainty is only defined for float kind.'
                 if np.ndim(uncertainty)==0:
+                    ## broadcast uncertainty
                     self._uncertainty = np.full(len(self),uncertainty,dtype=float)
                 else:
                     assert len(uncertainty)==len(self)
                     self._uncertainty = np.asarray(uncertainty,dtype=float)
+            else:
+                self._uncertainty = None
 
-    def _get_value(self):
-        if self.is_scalar:
+    def get_value(self):
+        if self.is_scalar():
             return(self._value)
         else:
             return(self._value[:self._length])
 
-    def _get_uncertainty(self):
-        if self._uncertainty is None:
+    def get_uncertainty(self):
+        # assert self.has_uncertainty(),'Uncertainty not set.'
+        if not self.has_uncertainty():
+            return None
+        if self.is_scalar():
             return(self._uncertainty)
-        elif self.is_scalar:
-            return(self._uncertainty)
-        else:
-            return(self._uncertainty[:self._length])
+        return(self._uncertainty[:self._length])
 
-    value = property(_get_value,_set_value)
-    uncertainty = property(_get_uncertainty,_set_uncertainty)
+    def is_scalar(self):
+        """True if data is scalar, else False."""
+        return(self._length is None)
+
+    def has_uncertainty(self):
+        """If uncertainty is set or not."""
+        return(self._uncertainty is not None)
 
     def __len__(self):
-        assert not self.is_scalar, 'Scalar'
+        assert not self.is_scalar(), 'Scalar data has no length.'
         return(self._length)
 
-    def index(self,index):
-        """Set self to index"""
-        assert not self.is_scalar, 'Cannot index because it is scalar'
-        value = self.value[index]
-        if self.uncertainty is None:
-            uncertainty  = None
-        else:
-            uncertainty = self.uncertainty[index]
-        self.value,self.uncertainty = value,uncertainty
-
     def __str__(self):
-        if self.uncertainty is None:
-            return(str(self.value))
+        if self.has_uncertainty():
+            return(str(self.get_value())+' ± '+str(self.get_uncertainty()))
         else:
-            return(str(self.value)+' u '+str(self.uncertainty))
+            return(str(self.get_value()))
 
     def __iter__(self):
-        for val in self.value:
-            yield val
+        if self.has_uncertainty():
+            for value,uncertainty in zip(
+                    self.get_value(),
+                    self.get_uncertainty()):
+                yield value,uncertainty
+        else:
+            for value in self.get_value():
+                yield value
 
-    # def index(self,index):
-        # """Return a copy of self with indexed array data."""
-        # assert not self.is_scalar
-        # retval = copy(self)
-        # retval.value = self.value[index]
-        # if self.uncertainty is not None:
-            # retval.uncertainty = self.uncertainty[index]
-        # return(retval)
-
-    def _set_length(self,new_length):
-        assert not self.is_scalar
+    def _extend_length_if_necessary(self,new_length):
+        """Change size of internal array to be big enough for new
+        data."""
+        assert not self.is_scalar()
         old_length = self._length
         over_allocate_factor = 2
-        if new_length>len(self.value):
-            new_value = np.empty(int(new_length*over_allocate_factor),dtype=self.kind)
-            new_value[:old_length] = self._value[:old_length]
+        if new_length>len(self._value):
             self._value = np.concatenate((
                 self._value[:old_length],
-                np.empty(int(new_length*over_allocate_factor-old_length),dtype=self.kind
-                )))
-            if self.uncertainty is not None:
+                np.empty(int(new_length*over_allocate_factor-old_length),dtype=self.kind)))
+            if self.has_uncertainty():
                 self._uncertainty = np.concatenate((
                     self._uncertainty[:old_length],
-                    np.empty(int(new_length*over_allocate_factor-old_length),dtype=self.kind
-                    )))
+                    np.empty(int(new_length*over_allocate_factor-old_length),dtype=self.kind)))
         self._length = new_length
 
     def make_array(self,length):
-        assert self.is_scalar,'Already an array'
-        if self.uncertainty is not None:
-            self.uncertainty = np.full(length,self.uncertainty)
-        self.value = np.full(length,self.value)
+        """Turn current scalar data intor array data of the given
+        length."""
+        assert self.is_scalar(),'Already an array'
+        self.set(np.full(length,self._value),
+                 (np.full(length,self._uncertainty)
+                  if self.has_uncertainty() else None))
 
     def make_scalar(self):
-        if self._length is None:
-            return              # nothing to be done
-        assert np.unique(self.value)
-        value = self.value[0]
-        if self.uncertainty is not None:
-            assert np.unique(self.uncertainty)
-            uncertainty = self.uncertainty[0]
-        self.value = value
-        self.uncertainty = uncertainty
+        assert not self.is_scalar(),'Already scalar data.'
+        assert np.unique(self.get_value()),'Non-unique data, cannot make scalar.'
+        assert not self.has_uncertainty() or np.unique(self.get_uncertainty()),'Non-unique uncertainty, cannot make scalar.'
+        self.set(self.get_value()[0],
+                 (self.get_uncertainty()[0] if self.has_uncertainty() else None))
 
-    def asarray(self,length=None,return_uncertainty=False):
-        if self.is_scalar:
-            if return_uncertainty:
-                return(np.full(length,self.value))
-            else:
-                return(np.full(length,self.value),np.full(length,self.uncertainty))
+    def index(self,index):
+        """Set self to index"""
+        assert not self.is_scalar(), 'Cannot index scalar data.'
+        if self.has_uncertainty():
+            self.set(
+                self.get_value()[index],
+                self.get_uncertainty()[index])
         else:
-            assert length is None or length==len(self)
-            if return_uncertainty:
-                return(self.value,self.uncertainty)
+            self.set(self.get_value()[index])
+
+    def copy(self,index=None):
+        """Make a deep copy of self, possibly indexing array data."""
+        assert index is None or not self.is_scalar(), 'Cannot index scalar data.'
+        retval = Data(
+            key=self.key,
+            kind=self.kind,
+            description=self.description,
+            # default_differentiation_stepsize=self.default_differentiation_stepsize,
+            fmt=copy(self.fmt),
+        )
+        if self.has_uncertainty():
+            if index is None:
+                retval.set(self.get_value(),self.get_uncertainty())
             else:
-                return(self.value)
+                retval.set(self.get_value()[index],self.get_uncertainty()[index])
+        else:
+            if index is None:
+                retval.set(self.get_value())
+            else:
+                retval.set(self.get_value()[index])
+        return(retval)
 
     def append(self,value,uncertainty=None):
-        assert not self.is_scalar,'Cannot append to scalar'
-        if (self.uncertainty is None and uncertainty is not None):
+        assert not self.is_scalar(),'Cannot append to scalar'
+        if (not self.has_uncertainty() and uncertainty is not None):
             raise Exception('Existing value has uncertainty and appended value does not')
-        if (self.uncertainty is not None and uncertainty is None):
+        if (self.has_uncertainty() and uncertainty is None):
             raise Exception('Append value has uncertainty and existing value does not')
-        self._set_length(len(self)+1)
-        self.value[-1] = value
-        if uncertainty is not None:
-            self.uncertainty[-1] = uncertainty
+        new_length = len(self)+1
+        self._extend_length_if_necessary(new_length)
+        self._value[new_length-1] = value
+        if self.has_uncertainty():
+            self._uncertainty[new_length-1] = uncertainty
 
     def extend(self,value,uncertainty=None):
-        assert not self.is_scalar,'Cannot extend scalar'
-        if (self.uncertainty is None and uncertainty is not None):
+        assert not self.is_scalar(),'Cannot extend scalar'
+        if (not self.has_uncertainty() and uncertainty is not None):
             raise Exception('Existing value has uncertainty and appended value does not')
-        if (self.uncertainty is not None and uncertainty is None):
+        if (self.has_uncertainty() and uncertainty is None):
             raise Exception('Append value has uncertainty and existing value does not')
         old_length = len(self)
-        self._set_length(len(self)+len(value))
-        self.value[old_length:] = value
+        new_length = len(self)+len(value)
+        self._extend_length_if_necessary(new_length)
+        self._value[old_length:new_length] = value
         if uncertainty is not None:
-            self.uncertainty[old_length:] = uncertainty
+            self._uncertainty[old_length:new_length] = uncertainty
 
             
+
 class Dataset():
 
     """A collection of scalar or array values, possibly with uncertainties."""
@@ -230,28 +244,42 @@ class Dataset():
             ## derived classes might set this in class definition, so
             ## do not overwrite here
             self._prototypes = {}
-        # self._infer_functions = AutoDict({})
         self._inferences = AutoDict([])
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
-        for key,val in keys_vals.items():
-            self[key] = val
+        for key,val in self._get_keys_values_uncertainties(**keys_vals).items():
+            self.set(key,*val)
         self.verbose = True
 
     def __len__(self):
         assert self._length is not None,'Dataset has no length because all data is scalar'
         return(self._length)
 
+    def _get_keys_values_uncertainties(self,**keys_vals):
+        keys_values_uncertainties = {}
+        keys = list(keys_vals.keys())
+        while len(keys)>0:
+            key = keys[0]
+            if key[0] == 'd':
+                assert key[1:] in keys,f'Uncertainty {repr(key)} in data but {repr(key[1:])} is not.'
+                keys_values_uncertainties[key[1:]] = (keys_vals[key[1:]],keys_vals[key])
+                keys.remove(key)
+                keys.remove(key[1:])
+            elif 'd'+key in keys:
+                keys_values_uncertainties[key] = (keys_vals[key],keys_vals['d'+key])
+                keys.remove(key)
+                keys.remove('d'+key)
+            else:
+                keys_values_uncertainties[key] = (keys_vals[key],None)
+                keys.remove(key)
+        return(keys_values_uncertainties)
+
     def __setitem__(self,key,value):
-        if key[0]=='u':
-            key = key[1:]
-            self.set(key,self[key],value)
-        else:
-            self.set(key,value)
+        """Shortcut to set, cannot set uncertainty this way."""
+        self.set(key,value)
 
     def set(self,key,value,uncertainty=None,**data_kwargs):
         """Set a value and possibly its uncertainty."""
-        assert key[0]!='u', f'Keys beginning with "u" are reserved as uncertainties. Cannot set: {repr(key)}'
         ## unset anything inferred from this key now that it has been
         ## changed
         for inferred_key in self._inferences[key]:
@@ -268,12 +296,17 @@ class Dataset():
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
         self._data[key] = Data(key=key,value=value,uncertainty=uncertainty,**data_kwargs)
-        if not self._data[key].is_scalar:
-            if self._length == None:
+        if not self._data[key].is_scalar():
+            if self.is_scalar():
                 ## first array data, use this to define the length of self
                 self._length = len(self._data[key])
             else:
                 assert len(self._data[key])==len(self),'Length does not match existing data.'
+
+    def unset(self,key):
+        """Delete data.  Also clean up inferences."""
+        self.unset_inferences(key)
+        self._data.pop(key)
 
     def unset_inferences(self,key):
         """Delete any record of inferences to or from this key."""
@@ -284,28 +317,40 @@ class Dataset():
             self._inferred_from[inferred_key].remove(key)
             self._inferences[key].remove(inferred_key)
 
-    def unset(self,key):
-        """Delete data.  Also clean up inferences."""
-        self.unset_inferences(key)
-        self._data.pop(key)
-
     def get_value(self,key):
         if key not in self._data:
             self._infer(key)
-        return(self._data[key].value)
+        return(self._data[key].get_value())
 
     def get_uncertainty(self,key):
         if key not in self._data:
             self._infer(key)
-        return(self._data[key].uncertainty)
+        return(self._data[key].get_uncertainty())
 
     def has_uncertainty(self,key):
         if key not in self._data:
             self._infer(key)
-        if self._data[key].uncertainty is None:
-            return(False)
+        return(self._data[key].has_uncertainty())
+
+    def _is_uncertainty_key(self,key):
+        """Test if this key is a shortcut to an uncertainty of another
+        key that is currently set."""
+        if len(key)>1 and key[0]=='d':
+            
+            return(True)
         else:
-            return( True)
+            return(False)
+
+    def _get_uncertainty_key(self,key):
+        """Get the uncertainty shortcut key related to this key."""
+        assert not self._is_uncertainty_key(key)
+        return('d'+key)
+        
+    def _get_key_from_uncertainty_key(self,uncertainty_key):
+        """Get the key related to this uncertainty shortcut key."""
+        assert self._is_uncertainty_key(key)
+        return(key[1:])
+        
 
     def add_prototype(self,key,infer=None,**Data_kwargs):
         if infer is None:
@@ -319,34 +364,27 @@ class Dataset():
 
     def index(self,index):
         """Index all array data in place."""
-        for key in self:
-            if not self.is_scalar(key):
-                value = self.get_value(key)[index]
-                uncertainty = self.get_uncertainty(key)
-                if uncertainty is not None:
-                    uncertainty = uncertainty[index]
-                self._data[key].value = value
-                self._data[key].uncertainty = uncertainty
-                new_length = len(self._data[key])
-        self._length = new_length
+        assert not self.is_scalar()
+        for data in self._data.values():
+            if not data.is_scalar():
+                data.index(index)
+        self._length = len(data) # take length from last processed
 
     def copy(self,keys=None,index=None):
         """Get a copy of self with possible restriction to indices and
         keys."""
         if keys is None:
             keys = self.keys()
-        retval = self.__class__()
+        retval = self.__class__() # new version of self
         for key in keys:
-            value = self.get_value(key)
-            uncertainty = self.get_uncertainty(key)
-            if not self.is_scalar(key) and index is not None:
-                value = value[index]
-                if uncertainty is not None:
-                    uncertainty = uncertainty[index]
-            retval.set(key,value,uncertainty)
+            if self.is_scalar(key):
+                retval._data[key] = self._data[key]
+            else:
+                retval._data[key] = self._data[key].copy(index)
         return(retval)
 
     def match(self,**keys_vals):
+        """Return boolean array of data matching all key==val."""
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
             if np.ndim(val)==0:
@@ -399,7 +437,7 @@ class Dataset():
         of x. If list of strings return a copy of self restricted to
         that data. If an index, return an indexed copy of self."""
         if isinstance(arg,str):
-            if arg[0]=='u':
+            if arg[0]=='d':
                 return(self.get_uncertainty(arg[1:]))
             else:
                 return(self.get_value(arg))
@@ -493,7 +531,7 @@ class Dataset():
             keys = self.keys()
         header,columns = [],{}
         for key in keys:
-            if self._data[key].is_scalar:
+            if self.is_scalar(key):
                 if self.has_uncertainty(key):
                     header.append(f'# {key} = {repr(self.get_value(key))} ± {repr(self.get_uncertainty(key))}')
                 else:
@@ -501,7 +539,7 @@ class Dataset():
             else:
                 columns[key]  = self.get_value(key)
                 if self.get_uncertainty(key) is not None:
-                    columns['u'+key]  = self.get_uncertainty(key)
+                    columns[self.uncertainty_prefix+key]  = self.get_uncertainty(key)
         retval = '\n'.join(header)
         if len(columns)>0:
             retval += '\n'+tools.format_columns(columns,delimiter=delimiter)
@@ -525,11 +563,11 @@ class Dataset():
             np.savez(
                 filename,
                 **{key:self[key] for key in keys},
-                **{'u'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+                **{self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
             d = {key:self[key] for key in keys}
-            d.update({'u'+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+            d.update({self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
             tools.dict_to_hdf5(filename,d)
         else:
             ## text file
@@ -600,12 +638,9 @@ class Dataset():
         """Return boolean whether data for key is scalar or not. If key not
         provided return whether all data is scalara or not."""
         if key is None:
-            if self._length is None:
-                return(True)
-            else:
-                return(False)
+            return(self._length is None)
         else:
-            return(self._data[key].is_scalar)
+            return(self._data[key].is_scalar())
 
     def make_array(self,key):
         return(self._data[key].make_array(len(self)))
@@ -633,41 +668,34 @@ class Dataset():
 
     def concatenate(self,new_dataset):
         """Concatenate data from another Dataset object to this one."""
-        assert isinstance(new_dataset,Dataset)
-        ## get keys to copy, and check fro problems
-        all_keys = set(list(self.keys())+list(new_dataset.keys()))
-        for key in copy(all_keys):
-            if key not in self:
-                raise Exception(f"Key not in existing dataset: {repr(key)}")
-            if key not in new_dataset:
-                raise Exception(f"Key not in concatenating dataset: {repr(key)}")
-            if self.has_uncertainty(key) is not new_dataset.has_uncertainty(key):
-                raise Exception(f"Uncertainty must be both set or not set in existing and concatenating dataset for key: {repr(key)}")
-            if (self.is_scalar(key) and new_dataset.is_scalar(key) # both scalar
-                and self.get_value(key) == new_dataset.get_value(key)                  # values match
-                and tools.equal_or_none(
-                    self.get_uncertainty[key],
-                    new_dataset.get_uncertainty[key])): # uncertainties match
-                all_keys.remove(key)  # keep existing scalar value
-        if new_dataset.is_scalar() or len(new_dataset)==0:
-            ## nothing to add
+        ## no existing data, just copy fom new
+        if len(self.keys()) == 0:
+            self._data = deepcopy(new_dataset._data)
+            self._length = new_dataset._length
             return
-        elif self.is_scalar() or len(self)==0:
-            ## currently no data, just add the new stuff
-            for key in all_keys:
-                self[key] = new_dataset[key]
-                self._length = len(new_dataset)
-        else:
-            ## extend data key by key
-            for key in all_keys:
-                if self.is_scalar(key):
-                    self.make_array(key)
-                if new_dataset.is_scalar(key):
-                    new_dataset.make_array(key)
-                self._data[key].extend(
-                    new_dataset.get_value(key),
-                    new_dataset.get_uncertainty(key))
-            self._length += len(new_dataset)
+        ## get keys to copy, and check know to both
+        all_keys = set(list(self.keys())+list(new_dataset.keys()))
+        self.assert_known(*all_keys)
+        new_dataset.assert_known(*all_keys)
+        ## do not do anything for keys that are both scalar and equal
+        for key in copy(all_keys):
+            if (self.is_scalar(key) and new_dataset.is_scalar(key) 
+                and self.get_value(key) == new_dataset.get_value(key)                  # values match
+                and self.get_uncertainty(key) == new_dataset.get_uncertainty(key)): # uncertainties match
+                all_keys.remove(key)
+        if len(all_keys)==0:
+            return
+        ## extend data key by keyi
+        old_length = (1 if self.is_scalar() else len(self))
+        new_length = (1 if new_dataset.is_scalar() else len(new_dataset))
+        for key in all_keys:
+            if self.is_scalar(key):
+                self._data[key].make_array(old_length+new_length)
+            self._data[key]._extend_length_if_necessary(new_length+old_length)
+            self._data[key]._value[old_length:old_length+new_length] = new_dataset.get_value(key)
+            if self.has_uncertainty(key):
+                self._data[key]._uncertainty[old_length:old_length+new_length] = new_dataset.get_uncertainty(key)
+        self._length = old_length+new_length
 
     def plot(
             self,

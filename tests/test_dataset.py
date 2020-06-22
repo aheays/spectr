@@ -8,49 +8,66 @@ import numpy as np
 def test_data_construct():
     t = Data(value=1)
     assert t._value == 1
+    assert t.kind == 'i'
+    assert t.get_value() == 1
+    assert not t.has_uncertainty()
+    assert t.is_scalar()
     t = Data(value='dd')
-    assert t._value == 'dd'
+    assert t.kind == 'U'
+    assert t.get_value() == 'dd'
     t = Data(value=1.5,uncertainty=0.3)
-    assert t._value == 1.5
+    assert t.has_uncertainty()
+    assert t.kind == 'f'
+    assert t.get_value() == 1.5
     assert t._uncertainty == 0.3
+    assert t.get_uncertainty() == 0.3
     t = Data(value=[1.5,2.5],uncertainty=[0.3,0.2])
-    assert list(t._value) == [1.5,2.5]
-    assert abs(t._uncertainty[0]-0.3)<1e-5
-    assert abs(t._uncertainty[1]-0.2)<1e-5
+    assert not t.is_scalar()
+    assert list(t.get_value()) == [1.5,2.5]
+    assert abs(t.get_uncertainty()[0]-0.3)<1e-5
+    assert abs(t.get_uncertainty()[1]-0.2)<1e-5
     t = Data(value=1,kind=float)
-    assert type(t.value) == float
+    assert type(t.get_value()) == float
+
+def test_data_infer_f_from_presence_of_uncertainty():
+    t = Data(value=1,uncertainty=0.3) 
+    assert t.kind == 'f'
 
 def test_data_set_and_get_value_and_uncertainty():
-    t = Data()
-    t.value = 5
-    assert t.value == 5.
-    t.uncertainty = 0.1
-    assert t.uncertainty == 0.1
-    t.value = [2,34]
-    assert list(t.value) == [2.,34.]
-    t.uncertainty = 0.5
-    assert list(t.uncertainty) == [0.5,0.5]
-    t.uncertainty = [0.2,0.2]
-    assert list(t.uncertainty) == [0.2,0.2]
+    t = Data(kind=float)
+    t.set(5)
+    assert t.kind == 'f'
+    assert t.get_value() == 5.
+    assert t.is_scalar()
+    t.set(4,0.1)
+    assert t.get_value() == 4.0
+    assert t.get_uncertainty() == 0.1
+    t.set([2,34])
+    assert list(t.get_value()) == [2.,34.]
+    assert not t.is_scalar()
+    t.set([2,34],0.5)
+    assert list(t.get_uncertainty()) == [0.5,0.5]
+    t.set([2,34],[0.2,0.2])
+    assert list(t.get_uncertainty()) == [0.2,0.2]
 
 def test_data_index():
     t = Data(value=[1,2,3])
     t.index([True,True,False])
-    assert list(t.value) == [1,2]
+    assert list(t.get_value()) == [1,2]
     assert len(t) == 2
     t = Data(value=[1,2,3],uncertainty=[0.1,0.2,0.3])
     t.index([True,True,False])
-    assert list(t.value) == [1,2]
-    assert list(t.uncertainty) == [0.1,0.2]
+    assert list(t.get_value()) == [1,2]
+    assert list(t.get_uncertainty()) == [0.1,0.2]
 
 def test_data_append():
     t = Data(value=[2,34])
     t.append(5)
-    assert list(t.value) == [2,34,5]
+    assert list(t.get_value()) == [2,34,5]
     t = Data(value=[2.,34.],uncertainty=[0.2,0.3])
     t.append(5,0.5)
-    assert list(t.value) == [2.,34.,5.]
-    assert list(t.uncertainty) == [0.2,0.3,0.5]
+    assert list(t.get_value()) == [2.,34.,5.]
+    assert list(t.get_uncertainty()) == [0.2,0.3,0.5]
 
 def test_data_extend():
     t = Data(value=['a','b'])
@@ -58,19 +75,26 @@ def test_data_extend():
     assert list(t) == ['a','b','c','d']
     t = Data(value=[1.,2.],uncertainty=[0.1,0.1])
     t.extend([3,4],[1,2])
-    assert list(t.value) == [1.,2.,3.,4.,]
-    assert list(t.uncertainty) == [0.1,0.1,1.,2.]
+    assert list(t.get_value()) == [1.,2.,3.,4.,]
+    assert list(t.get_uncertainty()) == [0.1,0.1,1.,2.]
 
 def test_data_object():
     t = Data(value=[[1,2],None],kind=object)
-    assert list(t.value) == [[1,2],None]
+    assert list(t.get_value()) == [[1,2],None]
     t = Data(value=None,kind=object)
-    assert t.value is None
+    assert t.get_value() is None
     t = Data(value=[1,2,3],kind='S')
-    assert t.value == [1,2,3]
+    assert t.get_value() == [1,2,3]
     t = Data(value=['a',{},25],kind='O')
-    assert list(t.value) == ['a',{},25]
+    assert list(t.get_value()) == ['a',{},25]
 
+def test_deepcopy():
+    x = Data(value=[1,2,3])
+    y = x.copy()
+    assert list(y.get_value()) == [1,2,3]
+    y = x.copy([0,1])
+    assert list(y.get_value()) == [1,2]
+   
 ######################
 ## Test Dataset object ##
 ######################
@@ -101,7 +125,7 @@ def test_construct_with_data_initialisation():
     t = Dataset(x=['a','b'],y=5)
     assert t['y'] == 5
     assert list(t['x']) == ['a','b']
-    t = Dataset(x=[1.,2.],ux=[0.1,0.2])
+    t = Dataset(x=[1.,2.],dx=[0.1,0.2])
     assert list(t['x']) == [1.,2.]
     assert list(t.get_uncertainty('x')) == [0.1,0.2]
     
@@ -111,7 +135,7 @@ def test_setitem_getitem():
     assert t['x']==5
     t.set('y',5.,0.1)
     assert t['y']==5
-    assert t['uy']==0.1
+    assert t['dy']==0.1
 
 def test_dataset_prototypes():
     t = Dataset()
@@ -137,7 +161,7 @@ def test_dataset_len_is_scalar():
     assert not t.is_scalar()
     assert not t.is_scalar('x')
     assert t.is_scalar('y')
-    
+
 def test_dataset_index():
     t = Dataset(x=[1,2,3,4,5])
     t.index([0,1])
@@ -163,22 +187,31 @@ def test_dataset_construct_set_value():
     assert all(t['y'] == ['a','b'])
 
 def test_dataset_concatenate():
-    t = Dataset()
-    t.concatenate(Dataset())
+    t = Dataset(x=1)
+    t.concatenate(Dataset(x=1))
     assert t.is_scalar()
+    assert t['x'] == 1
     t = Dataset(x=1)
     t.concatenate(Dataset(x=2))
-    print( t['x'])
-    assert t['x'] == 1
-    assert t.is_scalar()
+    assert not t.is_scalar('x')
+    assert not t.is_scalar()
+    assert list(t['x']) == [1,2]
     t = Dataset(x=[1,2])
     t.concatenate(Dataset(x=3))
-    assert list(t['x']) == [1,2]
-    assert len(t) == 2
+    assert not t.is_scalar()
+    assert list(t['x']) == [1,2,3]
+    assert len(t) == 3
+    t = Dataset(x='a',y=[1,2],z=0.5)
+    t.concatenate(Dataset(x='a',y=3,z=0.6))
+    assert t['x'] == 'a'
+    assert list(t['y']) == [1,2,3]
+    assert not t.is_scalar()
+    assert all(np.abs(np.array(t['z'])-np.array([0.5,0.5,0.6]))<1e-5)
+    assert len(t) == 3
     t = Dataset(x=1)
     t.concatenate(Dataset(x=[2,3]))
-    assert list(t['x']) == [2,3]
-    assert len(t) == 2
+    assert list(t['x']) == [1,2,3]
+    assert len(t) == 3
     t = Dataset(x=[1])
     t.concatenate(Dataset(x=[2,3]))
     assert list(t['x']) == [1,2,3]
@@ -189,6 +222,10 @@ def test_dataset_concatenate():
     assert list(t['x']) == [1,2,3]
     assert list(t['y']) == ['a','a','b']
     assert len(t) == 3
+    t = Dataset()
+    t.concatenate(Dataset(x=5,y=[1,2]))
+    assert len(t) == 2
+    assert t['x'] == 5
 
 def test_dataset_extend():
     t = Dataset()
@@ -196,32 +233,30 @@ def test_dataset_extend():
     assert t.is_scalar()
     t = Dataset(x=1)
     t.extend(x=2)
-    print( t['x'])
-    assert t['x'] == 1
-    assert t.is_scalar()
+    assert list(t['x']) == [1,2]
     t = Dataset(x=[1,2])
     t.extend(x=3)
-    assert list(t['x']) == [1,2]
-    assert len(t) == 2
-    t = Dataset(x=1)
-    t.extend(x=[2,3])
-    assert list(t['x']) == [2,3]
-    assert len(t) == 2
-    t = Dataset(x=[1])
-    t.extend(x=[2,3])
-    assert list(t['x']) == [1,2,3]
     assert len(t) == 3
-    t = Dataset(x=[1],y='a')
+    assert list(t['x']) == [1,2,3]
+    t = Dataset(x=3)
+    t.extend(x=[1,2])
+    assert len(t) == 3
+    assert list(t['x']) == [3,1,2]
+    t = Dataset(x=[1,2])
+    t.extend(x=[2,3])
+    assert list(t['x']) == [1,2,2,3]
+    assert len(t) == 4
+    t = Dataset(x=[1,2],y='a')
     t.extend(x=[2,3],y=['a','b'])
-    assert list(t['x']) == [1,2,3]
-    assert list(t['y']) == ['a','a','b']
-    assert len(t) == 3
+    assert list(t['x']) == [1,2,2,3]
+    assert list(t['y']) == ['a','a','a','b']
+    assert len(t) == 4
 
 def test_dataset_append():
     t = Dataset(x=0)
     t.append(x=1)
-    assert list(t['x']) == [1]
-    assert len(t)==1
+    assert list(t['x']) == [0,1]
+    assert len(t)==2
     t = Dataset(x=[0])
     t.append(x=1)
     assert list(t['x']) == [0,1]
