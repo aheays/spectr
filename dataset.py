@@ -256,6 +256,7 @@ class Dataset():
         return(self._length)
 
     def _get_keys_values_uncertainties(self,**keys_vals):
+        """Match keys for value and uncertainties, e.g., 'x' and 'dx'."""
         keys_values_uncertainties = {}
         keys = list(keys_vals.keys())
         while len(keys)>0:
@@ -331,26 +332,6 @@ class Dataset():
         if key not in self._data:
             self._infer(key)
         return(self._data[key].has_uncertainty())
-
-    def _is_uncertainty_key(self,key):
-        """Test if this key is a shortcut to an uncertainty of another
-        key that is currently set."""
-        if len(key)>1 and key[0]=='d':
-            
-            return(True)
-        else:
-            return(False)
-
-    def _get_uncertainty_key(self,key):
-        """Get the uncertainty shortcut key related to this key."""
-        assert not self._is_uncertainty_key(key)
-        return('d'+key)
-        
-    def _get_key_from_uncertainty_key(self,uncertainty_key):
-        """Get the key related to this uncertainty shortcut key."""
-        assert self._is_uncertainty_key(key)
-        return(key[1:])
-        
 
     def add_prototype(self,key,infer=None,**Data_kwargs):
         if infer is None:
@@ -447,6 +428,7 @@ class Dataset():
             return(self.copy(index=arg))
 
     def _infer(self,key,already_attempted=None):
+        """Get data, or try and compute it."""
         if key in self:
             return
         if already_attempted is None:
@@ -548,7 +530,7 @@ class Dataset():
     def __str__(self):
         return(self.format(self.keys()))
 
-    def get_description(self):
+    def format_description(self):
         """Get a string listing data keys and descriptions."""
         return('\n'.join([
             f'# {data.key}: {data.description}'
@@ -646,6 +628,7 @@ class Dataset():
         return(self._data[key].make_array(len(self)))
 
     def make_scalar(self):
+        """Make array data that has a unique value scalar."""
         for key in self:
             self._data[key].make_scalar()
         if all([self._data[key].is_scalar for key in self]):
