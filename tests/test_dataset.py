@@ -285,12 +285,8 @@ def test_dataset_infer():
     t = Dataset(x=[1,2,3],y=2)
     t.add_infer_function('z',('x','y'),lambda x,y:x+y)
     assert list(t['z']) == [3,4,5]
-    t = Dataset()
-    t.set('x',1.,0.1)
-    t.set('y',2.,0.5)
-    t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
-    assert t['z'] == 3
-    assert t.get_uncertainty('z') == np.sqrt(0.1**2+0.5**2)
+
+def test_dataset_infer_autoremove_inferences():
     t = Dataset()
     t.set('x',1.,0.1)
     t.set('y',2.,0.5)
@@ -303,6 +299,23 @@ def test_dataset_infer():
     t['z'] = 5
     t.set('x',2.,0.2)
     assert 'z' in t
+
+def test_dataset_infer_with_uncertainties():
+    t = Dataset()
+    t.set('x',1.,0.1)
+    t.set('y',2.,0.5)
+    t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
+    assert t['z'] == 3
+    assert t.get_uncertainty('z') == np.sqrt(0.1**2+0.5**2)
+    
+    t = Dataset()
+    t.set('x',1.,0.1)
+    t.set('y',2.,0.5)
+    t.add_infer_function('z',('x','y'),lambda x,y:x+y)
+    assert t['z'] == 3
+    assert t.get_uncertainty('z') == np.sqrt(0.1**2+0.5**2)
+    
+    assert False
 
 def test_dataset_match_matches():
     t = Dataset(x=[1,2,2,3],y=4)

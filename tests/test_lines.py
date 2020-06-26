@@ -21,7 +21,7 @@ def test_infer_with_level_keys():
     assert t['ν'] == 50.
     t = Lines(ν=100,Eu=150)
     assert t['El'] == 50.
-    t = Lines(El=100,uEl=0.5,Eu=150,uEu=0.2)
+    t = Lines(El=100,dEl=0.5,Eu=150,dEu=0.2)
     assert t['ν'] == 50.
 
 def test_load_lines():

@@ -457,12 +457,23 @@ class Dataset():
                 ## Compute key. There is trivial case of no vector to
                 ## add to, and whether or not self is an argument.
                 value = value_function(*[self.get_value(key) for key in dependencies])
+
+                ## compute uncertainties by linearisation
+
+                ## find keys that are floats and have uncertainties
+                ## compute finite-difference of them
+                ## add into one uncertainty
+                ## use explicit functin as override for speed?
+                ## Use internal variable in Data for linearisation step size?
+
                 if uncertainty_function is not None:
                     uncertainty = uncertainty_function(
                         *[self.get_value(key) for key in dependencies],
                         *[self.get_uncertainty(key) for key in dependencies])
                 else:
                     uncertainty = None
+
+
                 self.set(key,value,uncertainty)
                 ## if we get this far without an InferException then
                 ## success!.  Record inference dependencies.
