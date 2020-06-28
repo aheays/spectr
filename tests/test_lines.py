@@ -5,7 +5,7 @@ def test_construct():
     t = Lines()
     assert t.name == 'Lines'
     assert t['class'] == 'Lines'
-    assert t['levels_class'] == Levels
+    assert t['levels_class'] == 'Levels'
 
 def test_assignment():
     t = Lines(name='ddd')

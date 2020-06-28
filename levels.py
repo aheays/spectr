@@ -27,7 +27,7 @@ class Levels(Dataset):
         themselves will populate data arrays."""
         Dataset.__init__(self)
         self.permit_nonprototyped_data = False
-        self['class'] = type(self).__name__
+        self['class'] = self.__class__.__name__
         self.name = (name if name is not None else self['class'])
         for key,val in keys_vals.items():
             self[key] = val

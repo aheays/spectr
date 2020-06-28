@@ -26,10 +26,10 @@ class Dataset():
         self._inferences = AutoDict([])
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
-        # for key,val in self._get_keys_values_uncertainties(**keys_vals).items():
+        self.uncertainty_prefix = 'σ' # a single letter to prefix uncertainty keys
+        self.verbose = True
         for key,val in keys_vals.items():
             self[key] = val
-        self.verbose = True
 
     def __len__(self):
         assert self._length is not None,'Dataset has no length because all data is scalar'
@@ -41,15 +41,15 @@ class Dataset():
         keys = list(keys_vals.keys())
         while len(keys)>0:
             key = keys[0]
-            if key[0] == 'd':
+            if key[0] == self.uncertainty_prefix:
                 assert key[1:] in keys,f'Uncertainty {repr(key)} in data but {repr(key[1:])} is not.'
                 keys_values_uncertainties[key[1:]] = (keys_vals[key[1:]],keys_vals[key])
                 keys.remove(key)
                 keys.remove(key[1:])
-            elif 'd'+key in keys:
-                keys_values_uncertainties[key] = (keys_vals[key],keys_vals['d'+key])
+            elif self.uncertainty_prefix+key in keys:
+                keys_values_uncertainties[key] = (keys_vals[key],keys_vals[self.uncertainty_prefix+key])
                 keys.remove(key)
-                keys.remove('d'+key)
+                keys.remove(self.uncertainty_prefix+key)
             else:
                 keys_values_uncertainties[key] = (keys_vals[key],None)
                 keys.remove(key)
@@ -57,7 +57,7 @@ class Dataset():
 
     def __setitem__(self,key,value):
         """Shortcut to set, cannot set uncertainty this way."""
-        if key[0]=='d':
+        if key[0]==self.uncertainty_prefix:
             self.set_uncertainty(key[1:],value)
         else:
             self.set_value(key,value)
@@ -136,74 +136,74 @@ class Dataset():
                 data.index(index)
                 self._length = len(data) # take length from last processed
 
-    # def copy(self,keys=None,index=None):
-        # """Get a copy of self with possible restriction to indices and
-        # keys."""
-        # if keys is None:
-            # keys = self.keys()
-        # retval = self.__class__() # new version of self
-        # for key in keys:
-            # if self.is_scalar(key):
-                # retval._data[key] = self._data[key]
-            # else:
-                # retval._data[key] = self._data[key].copy(index)
-        # return(retval)
+    def copy(self,keys=None,index=None):
+        """Get a copy of self with possible restriction to indices and
+        keys."""
+        if keys is None:
+            keys = self.keys()
+        retval = self.__class__() # new version of self
+        for key in keys:
+            if self.is_scalar(key) or index is None:
+                retval[key] = self[key]
+            else:
+                retval[key] = deepcopy(self[key][index])
+        return(retval)
 
-    # def match(self,**keys_vals):
-        # """Return boolean array of data matching all key==val."""
-        # i = np.full(len(self),True,dtype=bool)
-        # for key,val in keys_vals.items():
-            # if np.ndim(val)==0:
-                # if val is np.nan:
-                    # i &= np.isnan(self[key])
-                # else:
-                    # i &= (self[key]==val)
-            # else:
-                # i &= np.any([
-                    # (np.isnan(self[key]) if vali is np.nan else self[key]==vali)
-                            # for vali in val],axis=0)
-        # return(i)
+    def match(self,**keys_vals):
+        """Return boolean array of data matching all key==val."""
+        i = np.full(len(self),True,dtype=bool)
+        for key,val in keys_vals.items():
+            if np.ndim(val)==0:
+                if val is np.nan:
+                    i &= np.isnan(self[key])
+                else:
+                    i &= (self[key]==val)
+            else:
+                i &= np.any([
+                    (np.isnan(self[key]) if vali is np.nan else self[key]==vali)
+                            for vali in val],axis=0)
+        return(i)
 
-    # def matches(self,**keys_vals):
-        # """Returns a copy reduced to matching values."""
-        # return(self.copy(index=self.match(**keys_vals)))
+    def matches(self,**keys_vals):
+        """Returns a copy reduced to matching values."""
+        return(self.copy(index=self.match(**keys_vals)))
 
-    # def unique(self,key):
-        # """Return unique values of one key."""
-        # return(np.unique(self[key]))
+    def unique(self,key):
+        """Return unique values of one key."""
+        return(np.unique(self[key]))
 
-    # def unique_combinations(self,*keys):
-        # """Return a list of all unique combination of keys."""
-        # return(tools.unique_combinations(*[self[key] for key in keys]))
+    def unique_combinations(self,*keys):
+        """Return a list of all unique combination of keys."""
+        return(tools.unique_combinations(*[self[key] for key in keys]))
 
-    # def unique_dicts(self,*keys):
-        # """Return an iterator where each element is a unique set of keys as a
-        # dictionary."""
-        # retval = [{key:val for key,val in zip(keys,vals)} for vals in self.unique_combinations(*keys)]
-        # retval = sorted(retval, key=lambda t: [t[key] for key in keys])
-        # return(retval)
+    def unique_dicts(self,*keys):
+        """Return an iterator where each element is a unique set of keys as a
+        dictionary."""
+        retval = [{key:val for key,val in zip(keys,vals)} for vals in self.unique_combinations(*keys)]
+        retval = sorted(retval, key=lambda t: [t[key] for key in keys])
+        return(retval)
 
-    # def unique_dicts_match(self,*keys):
-        # """Return pairs where the first element is a dictionary of unique
-        # combinations of keys and the second is a boolean array matching this
-        # combination."""
-        # if len(keys)==0:
-            # return((({},ndarray([],dtype=bool)),))
-        # return([(d,self.match(**d)) for d in self.unique_dicts(*keys)])
-#  
-    # def unique_dicts_matches(self,*keys):
-        # """Return pairs where the first element is a dictionary of unique
-        # combinations of keys and the second is a copy of self reduced
-        # to matching values."""
-        # if len(keys)==0: return((({},self),)) # nothing to do
-        # return([(d,self.matches(**d)) for d in self.unique_dicts(*keys)])
+    def unique_dicts_match(self,*keys):
+        """Return pairs where the first element is a dictionary of unique
+        combinations of keys and the second is a boolean array matching this
+        combination."""
+        if len(keys)==0:
+            return((({},ndarray([],dtype=bool)),))
+        return([(d,self.match(**d)) for d in self.unique_dicts(*keys)])
+
+    def unique_dicts_matches(self,*keys):
+        """Return pairs where the first element is a dictionary of unique
+        combinations of keys and the second is a copy of self reduced
+        to matching values."""
+        if len(keys)==0: return((({},self),)) # nothing to do
+        return([(d,self.matches(**d)) for d in self.unique_dicts(*keys)])
 
     def __getitem__(self,arg):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
         that data. If an index, return an indexed copy of self."""
         if isinstance(arg,str):
-            if arg[0]=='d':
+            if arg[0]==self.uncertainty_prefix:
                 return(self.get_uncertainty(arg[1:]))
             else:
                 return(self.get_value(arg))
@@ -281,125 +281,125 @@ class Dataset():
         for key in keys:
             self[key]
 
-    # def sort(self,first_key,*more_keys):
-        # """Sort rows according to key or keys."""
-        # if self.is_scalar() or len(self)==0:
-            # return
-           #  
-        # i = np.argsort(self[first_key])
-        # for key in more_keys:
-            # i = i[np.argsort(self[key][i])]
-        # for key in self:
-            # if not self.is_scalar(key):
-                # self._data[key].index(i)
+    def sort(self,first_key,*more_keys):
+        """Sort rows according to key or keys."""
+        if self.is_scalar() or len(self)==0:
+            return
+            
+        i = np.argsort(self[first_key])
+        for key in more_keys:
+            i = i[np.argsort(self[key][i])]
+        for key in self:
+            if not self.is_scalar(key):
+                self._data[key].index(i)
 
-    # def format(self,keys=None,comment='# ',delimiter=' '):
-        # if keys is None:
-            # keys = self.keys()
-        # header,columns = [],{}
-        # for key in keys:
-            # if self.is_scalar(key):
-                # if self.has_uncertainty(key):
-                    # header.append(f'# {key} = {repr(self.get_value(key))} ± {repr(self.get_uncertainty(key))}')
-                # else:
-                    # header.append(f'# {key} = {repr(self.get_value(key))}')
-            # else:
-                # columns[key]  = self.get_value(key)
-                # if self.get_uncertainty(key) is not None:
-                    # columns[self.uncertainty_prefix+key]  = self.get_uncertainty(key)
-        # retval = '\n'.join(header)
-        # if len(columns)>0:
-            # retval += '\n'+tools.format_columns(columns,delimiter=delimiter)
-        # return(retval)
+    def format(self,keys=None,comment='# ',delimiter=' '):
+        if keys is None:
+            keys = self.keys()
+        header,columns = [],{}
+        for key in keys:
+            if self.is_scalar(key):
+                if self.has_uncertainty(key):
+                    header.append(f'# {key} = {repr(self.get_value(key))} ± {repr(self.get_uncertainty(key))}')
+                else:
+                    header.append(f'# {key} = {repr(self.get_value(key))}')
+            else:
+                columns[key]  = self.get_value(key)
+                if self.get_uncertainty(key) is not None:
+                    columns[self.uncertainty_prefix+key]  = self.get_uncertainty(key)
+        retval = '\n'.join(header)
+        if len(columns)>0:
+            retval += '\n'+tools.format_columns(columns,delimiter=delimiter)
+        return(retval)
 
-    # def __str__(self):
-        # return(self.format(self.keys()))
+    def __str__(self):
+        return(self.format(self.keys()))
 
-    # def format_description(self):
-        # """Get a string listing data keys and descriptions."""
-        # return('\n'.join([
-            # f'# {data.key}: {data.description}'
-            # for data in self._data.values()]))
-           #  
-    # def save(self,filename,keys=None,**format_kwargs,):
-        # """Save some or all data to a text file."""
-        # if keys is None:
-            # keys = self.keys()
-        # if re.match(r'.*\.npz',filename):
-            # ## numpy archive
-            # np.savez(
-                # filename,
-                # **{key:self[key] for key in keys},
-                # **{self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
-        # elif re.match(r'.*\.h5',filename):
-            # ## hdf5 file
-            # d = {key:self[key] for key in keys}
-            # d.update({self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
-            # tools.dict_to_hdf5(filename,d)
-        # else:
-            # ## text file
-            # if re.match(r'.*\.csv',filename):
-                # format_kwargs.setdefault('delimiter',', ')
-            # elif re.match(r'.*\.rs',filename):
-                # format_kwargs.setdefault('delimiter',' ␞ ')
-            # tools.string_to_file(filename,self.format(keys,**format_kwargs))
+    def format_description(self):
+        """Get a string listing data keys and descriptions."""
+        return('\n'.join([
+            f'# {data.key}: {data.description}'
+            for data in self._data.values()]))
 
-    # def load(self,filename,comment='#',delimiter=None):
-        # '''Load data from a text file in standard format generated by
-        # save_to_file.'''
-        # ## load common data in file header if a text file
-        # if re.match(r'.*\.(h5|hdf5)',filename):
-            # ## hdf5 archive
-            # data =  tools.hdf5_to_dict(filename)
-        # elif re.match(r'.*\.npz',filename):
-            # ## numpy npz archive.  get as scalar rather than
-            # ## zero-dimensional numpy array
-            # data = {}
-            # for key,val in np.load(filename).items():
-                # if val.ndim == 0:
-                    # val = val.item()
-                # data[key] = val
-        # else:
-            # ## text file
-            # if re.match(r'.*\.csv',filename):
-                # delimiter = ','
-            # elif re.match(r'.*\.rs',filename):
-                # delimiter = '␞'
-            # assert comment not in ['',' '], "Not implemented"
-            # filename = tools.expand_path(filename)
-            # data = {}
-            # ## load header
-            # with open(filename,'r') as fid:
-                # for line in fid:
-                    # ## test for end of header
-                    # if not re.match(r'^ *'+comment,line):
-                        # break
-                    # ## looking to match:  "# key = 'string'"
-                    # if r := re.match(r'^ *'+comment+f' *([^= ]+) *= *["\'](.+)["\'] *',line): 
-                        # data[r.group(1)] = r.group(2)
-                    # ## looking to match:  "# key = number"
-                    # elif r := re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line): 
-                        # data[r.group(1)] = tools.string_to_number_if_possible(r.group(2))
-            # ## load array data
-            # data.update(tools.txt_to_dict(filename, delimiter=delimiter, comment_regexp=comment,))
-        # ## Set data in self. Match up uncerainties with data if both
-        # ## are present.
-        # keys = list(data)
-        # while len(keys)>0:
-            # key = keys[0]
-            # if key[0] == 'u':
-                # tkey = key[1:]
-                # assert tkey in keys,f'Uncertainy {repr(key)} in data but {repr(tkey)} is not.'
-                # self.set(tkey,data[tkey],data[key])
-                # keys.remove(tkey)
-                # keys.remove(key)
-            # elif 'u'+key in keys:
-                # self.set(key,data[key],data['u'+key])
-                # keys.remove(key)
-                # keys.remove('u'+key)
-            # else:
-                # self.set(key,data[key])
-                # keys.remove(key)
+    def save(self,filename,keys=None,**format_kwargs,):
+        """Save some or all data to a text file."""
+        if keys is None:
+            keys = self.keys()
+        if re.match(r'.*\.npz',filename):
+            ## numpy archive
+            np.savez(
+                filename,
+                **{key:self[key] for key in keys},
+                **{self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+        elif re.match(r'.*\.h5',filename):
+            ## hdf5 file
+            d = {key:self[key] for key in keys}
+            d.update({self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+            tools.dict_to_hdf5(filename,d)
+        else:
+            ## text file
+            if re.match(r'.*\.csv',filename):
+                format_kwargs.setdefault('delimiter',', ')
+            elif re.match(r'.*\.rs',filename):
+                format_kwargs.setdefault('delimiter',' ␞ ')
+            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+
+    def load(self,filename,comment='#',delimiter=None):
+        '''Load data from a text file in standard format generated by
+        save_to_file.'''
+        ## load common data in file header if a text file
+        if re.match(r'.*\.(h5|hdf5)',filename):
+            ## hdf5 archive
+            data =  tools.hdf5_to_dict(filename)
+        elif re.match(r'.*\.npz',filename):
+            ## numpy npz archive.  get as scalar rather than
+            ## zero-dimensional numpy array
+            data = {}
+            for key,val in np.load(filename).items():
+                if val.ndim == 0:
+                    val = val.item()
+                data[key] = val
+        else:
+            ## text file
+            if re.match(r'.*\.csv',filename):
+                delimiter = ','
+            elif re.match(r'.*\.rs',filename):
+                delimiter = '␞'
+            assert comment not in ['',' '], "Not implemented"
+            filename = tools.expand_path(filename)
+            data = {}
+            ## load header
+            with open(filename,'r') as fid:
+                for line in fid:
+                    ## test for end of header
+                    if not re.match(r'^ *'+comment,line):
+                        break
+                    ## looking to match:  "# key = 'string'"
+                    if r := re.match(r'^ *'+comment+f' *([^= ]+) *= *["\'](.+)["\'] *',line): 
+                        data[r.group(1)] = r.group(2)
+                    ## looking to match:  "# key = number"
+                    elif r := re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line): 
+                        data[r.group(1)] = tools.string_to_number_if_possible(r.group(2))
+            ## load array data
+            data.update(tools.txt_to_dict(filename, delimiter=delimiter, comment_regexp=comment,))
+        ## Set data in self. Match up uncerainties with data if both
+        ## are present.
+        keys = list(data)
+        while len(keys)>0:
+            key = keys[0]
+            if key[0] == 'u':
+                tkey = key[1:]
+                assert tkey in keys,f'Uncertainy {repr(key)} in data but {repr(tkey)} is not.'
+                self.set(tkey,data[tkey],data[key])
+                keys.remove(tkey)
+                keys.remove(key)
+            elif 'u'+key in keys:
+                self.set(key,data[key],data['u'+key])
+                keys.remove(key)
+                keys.remove('u'+key)
+            else:
+                self[key] = data[key]
+                keys.remove(key)
 
     def is_scalar(self,key=None):
         """Return boolean whether data for key is scalar or not. If key not
@@ -497,116 +497,114 @@ class Dataset():
                 data._uncertainty[old_length:old_length+new_length] = new_dataset.get_uncertainty(key)
         self._length = old_length+new_length
 
-    # def plot(
-            # self,
-            # xkey,
-            # ykeys,
-            # zkeys=(),
-            # fig=None,           # otherwise automatic
-            # ax=None,            # otherwise automatic
-            # ynewaxes=True,
-            # znewaxes=False,
-            # legend=True,
-            # zlabel_format_function=None, # accept key=val pairs, defaults to printing them
-            # plot_errorbars=True, # if uncertainty available
-            # xscale='linear',     # 'log' or 'linear'
-            # yscale='linear',     # 'log' or 'linear'
-            # show=True,
-            # **plot_kwargs,      # e.g. color, linestyle, label etc
-    # ):
-        # """Plot a few standard values for looking at. If ax is set then all
-        # keys will be printed on that axes, otherwise new ones will be appended
-        # to figure."""
-        # from matplotlib import pyplot as plt
-        # from spectr import plotting
-        # if len(self)==0:
-            # return
-        # if ax is not None:
-            # ynewaxes,znewaxes = False,False
-            # fig = ax.figure
-        # if fig is None:
-            # fig = plt.gcf()
-            # fig.clf()
-        # if xkey is None:
-            # assert 'index' not in self.keys()
-            # self['index'] = np.arange(len(self),dtype=int)
-            # xkey = 'index'
-        # zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey] # remove xkey and ykeys from zkeys
-        # ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
-        # ymin = {}
-        # self.assert_known(xkey,*ykeys,*zkeys)
-        # for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
-            # ylabel = ykey
-            # for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
-                # z.sort(xkey)
-                # if zlabel_format_function is None:
-                    # zlabel = tools.dict_to_kwargs(dz)
-                # else:
-                    # zlabel = zlabel_format_function(**dz)
-                # if ynewaxes and znewaxes:
-                    # ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig)
-                    # color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
-                    # label = None
-                    # title = ylabel+' '+zlabel
-                # elif ynewaxes and not znewaxes:
-                    # ax = plotting.subplot(n=iy,fig=fig)
-                    # color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(0),plotting.newlinestyle(0)
-                    # label = (zlabel if len(zkeys)>0 else None) 
-                    # title = ylabel
-                # elif not ynewaxes and znewaxes:
-                    # ax = plotting.subplot(n=iz,fig=fig)
-                    # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
-                    # label = ylabel
-                    # title = zlabel
-                # elif not ynewaxes and not znewaxes:
-                    # ax = fig.gca()
-                    # color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iy),plotting.newlinestyle(iy)
-                    # # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
-                    # label = ylabel+' '+zlabel
-                    # title = None
-                # kwargs = copy(plot_kwargs)
-                # kwargs.setdefault('marker',marker)
-                # kwargs.setdefault('ls',linestyle)
-                # kwargs.setdefault('mew',1)
-                # kwargs.setdefault('markersize',7)
-                # kwargs.setdefault('color',color)
-                # kwargs.setdefault('mec',kwargs['color'])
-                # x = z[xkey]
-                # y = z.get_value(ykey)
-                # if label is not None:
-                    # kwargs.setdefault('label',label)
-                # if plot_errorbars and self.has_uncertainty(ykey):
-                    # ## plot errorbars
-                    # kwargs.setdefault('mfc','none')
-                    # dy = z.get_uncertainty(ykey)
-                    # ax.errorbar(x,y,dy,**kwargs)
-                    # ## plot zero/undefined uncertainty data as filled symbols
-                    # i = np.isnan(dy)|(dy==0)
-                    # if np.any(i):
-                        # kwargs['mfc'] = kwargs['color']
-                        # kwargs['fillstyle'] = 'full'
-                        # if 'ls' in kwargs:
-                            # kwargs['ls'] = ''
-                        # else:
-                            # kwargs['linestyle'] = ''
-                        # kwargs['label'] = None
-                        # ax.plot(z[xkey][i],z[ykey][i],**kwargs)
-                # else:
-                    # kwargs.setdefault('mfc',kwargs['color'])
-                    # kwargs.setdefault('fillstyle','full')
-                    # ax.plot(x,y,**kwargs)
-                # if title is not None: ax.set_title(title)
-                # if legend and 'label' in kwargs:
-                    # plotting.legend(fontsize='x-small')
-                # ax.set_xlabel(xkey)
-                # ax.grid(True,color='gray',zorder=-5)
-                # ax.set_yscale(yscale)
-                # ax.set_xscale(xscale)
-        # if show:
-            # plotting.show()
-        # return(fig)
-
-       #  
+    def plot(
+            self,
+            xkey,
+            ykeys,
+            zkeys=(),
+            fig=None,           # otherwise automatic
+            ax=None,            # otherwise automatic
+            ynewaxes=True,
+            znewaxes=False,
+            legend=True,
+            zlabel_format_function=None, # accept key=val pairs, defaults to printing them
+            plot_errorbars=True, # if uncertainty available
+            xscale='linear',     # 'log' or 'linear'
+            yscale='linear',     # 'log' or 'linear'
+            show=True,
+            **plot_kwargs,      # e.g. color, linestyle, label etc
+    ):
+        """Plot a few standard values for looking at. If ax is set then all
+        keys will be printed on that axes, otherwise new ones will be appended
+        to figure."""
+        from matplotlib import pyplot as plt
+        from spectr import plotting
+        if len(self)==0:
+            return
+        if ax is not None:
+            ynewaxes,znewaxes = False,False
+            fig = ax.figure
+        if fig is None:
+            fig = plt.gcf()
+            fig.clf()
+        if xkey is None:
+            assert 'index' not in self.keys()
+            self['index'] = np.arange(len(self),dtype=int)
+            xkey = 'index'
+        zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey] # remove xkey and ykeys from zkeys
+        ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
+        ymin = {}
+        self.assert_known(xkey,*ykeys,*zkeys)
+        for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
+            ylabel = ykey
+            for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
+                z.sort(xkey)
+                if zlabel_format_function is None:
+                    zlabel = tools.dict_to_kwargs(dz)
+                else:
+                    zlabel = zlabel_format_function(**dz)
+                if ynewaxes and znewaxes:
+                    ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig)
+                    color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
+                    label = None
+                    title = ylabel+' '+zlabel
+                elif ynewaxes and not znewaxes:
+                    ax = plotting.subplot(n=iy,fig=fig)
+                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(0),plotting.newlinestyle(0)
+                    label = (zlabel if len(zkeys)>0 else None) 
+                    title = ylabel
+                elif not ynewaxes and znewaxes:
+                    ax = plotting.subplot(n=iz,fig=fig)
+                    color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
+                    label = ylabel
+                    title = zlabel
+                elif not ynewaxes and not znewaxes:
+                    ax = fig.gca()
+                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iy),plotting.newlinestyle(iy)
+                    # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
+                    label = ylabel+' '+zlabel
+                    title = None
+                kwargs = copy(plot_kwargs)
+                kwargs.setdefault('marker',marker)
+                kwargs.setdefault('ls',linestyle)
+                kwargs.setdefault('mew',1)
+                kwargs.setdefault('markersize',7)
+                kwargs.setdefault('color',color)
+                kwargs.setdefault('mec',kwargs['color'])
+                x = z[xkey]
+                y = z.get_value(ykey)
+                if label is not None:
+                    kwargs.setdefault('label',label)
+                if plot_errorbars and self.has_uncertainty(ykey):
+                    ## plot errorbars
+                    kwargs.setdefault('mfc','none')
+                    dy = z.get_uncertainty(ykey)
+                    ax.errorbar(x,y,dy,**kwargs)
+                    ## plot zero/undefined uncertainty data as filled symbols
+                    i = np.isnan(dy)|(dy==0)
+                    if np.any(i):
+                        kwargs['mfc'] = kwargs['color']
+                        kwargs['fillstyle'] = 'full'
+                        if 'ls' in kwargs:
+                            kwargs['ls'] = ''
+                        else:
+                            kwargs['linestyle'] = ''
+                        kwargs['label'] = None
+                        ax.plot(z[xkey][i],z[ykey][i],**kwargs)
+                else:
+                    kwargs.setdefault('mfc',kwargs['color'])
+                    kwargs.setdefault('fillstyle','full')
+                    ax.plot(x,y,**kwargs)
+                if title is not None: ax.set_title(title)
+                if legend and 'label' in kwargs:
+                    plotting.legend(fontsize='x-small')
+                ax.set_xlabel(xkey)
+                ax.grid(True,color='gray',zorder=-5)
+                ax.set_yscale(yscale)
+                ax.set_xscale(xscale)
+        if show:
+            plotting.show()
+        return(fig)
 
 
 # # if __name__=='__main__':

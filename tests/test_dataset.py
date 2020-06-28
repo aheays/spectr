@@ -1,4 +1,4 @@
-from spectr.new_dataset import Dataset
+from spectr.dataset import Dataset
 import numpy as np
 
 def test_construct():
@@ -17,34 +17,39 @@ def test_construct_get_set_data():
     assert not t.is_scalar()
     assert t['y'] == 5
     assert list(t['x']) == ['a','b']
-    t = Dataset(x=[1.,2.],dx=[0.1,0.2])
+    t = Dataset(
+        x=[1.,2.],
+        σx=[0.1,0.2],
+    )
     assert not t.is_scalar()
     assert len(t)==2
     assert list(t['x']) == [1.,2.]
-    assert list(t['dx']) == [0.1,0.2]
+    assert list(t['σx']) == [0.1,0.2]
 
-# def test_set_get_value():
-    # t = Dataset()
-    # t.set('x',5.,0.1)
-    # assert t.get_value('x') == 5.
-    # assert t.get_uncertainty('x') == 0.1
-    # assert t['x'] == 5.
-    # t = Dataset()
-    # t['y'] = ['a','b']
-    # assert list(t['y']) == ['a','b']
-    # t = Dataset(y=['a','b'])
-    # assert list(t['y']) == ['a','b']
-    # t = Dataset()
-    # t.set('x',5,kind=float)
-    # assert isinstance(t['x'],float)
+def test_set_get_value():
+    t = Dataset()
+    t.set_value('x',5.)
+    t.set_uncertainty('x',0.1)
+    assert t.get_value('x') == 5.
+    assert t.get_uncertainty('x') == 0.1
+    assert t['x'] == 5.
+    t = Dataset()
+    t['y'] = ['a','b']
+    assert list(t['y']) == ['a','b']
+    t = Dataset(y=['a','b'])
+    assert list(t['y']) == ['a','b']
+    t = Dataset()
+    t.set_value('x',5,kind=float)
+    assert isinstance(t['x'],float)
 
-# def test_setitem_getitem():
-    # t = Dataset()
-    # t['x'] = 5
-    # assert t['x']==5
-    # t.set('y',5.,0.1)
-    # assert t['y']==5
-    # assert t['dy']==0.1
+def test_setitem_getitem():
+    t = Dataset()
+    t['x'] = 5
+    assert t['x']==5
+    t.set_value('y',5.)
+    t.set_uncertainty('y',0.1)
+    assert t['y']==5
+    assert t['σy']==0.1
 
 def test_prototypes():
     t = Dataset()
@@ -53,23 +58,23 @@ def test_prototypes():
     assert isinstance(t['x'],float)
     assert t._data['x'].description == "X is a thing."
 
-# def test_permit_nonprototyped_data():
-    # t = Dataset()
-    # t.permit_nonprototyped_data = True
-    # t.set('x',5)
-    # # t.permit_nonprototyped_data = False
-    # # t.set('y',5)
+def test_permit_nonprototyped_data():
+    t = Dataset()
+    t.permit_nonprototyped_data = True
+    t['x'] = 5
+    # t.permit_nonprototyped_data = False
+    # t['y'] = 5
 
-# def test_len_is_scalar():
-    # t = Dataset()
-    # t['y'] = ['a','b']
-    # assert len(t) == 2
-    # t = Dataset(y='a')
-    # assert t.is_scalar()
-    # t = Dataset(y='a',x=[1,2])
-    # assert not t.is_scalar()
-    # assert not t.is_scalar('x')
-    # assert t.is_scalar('y')
+def test_len_is_scalar():
+    t = Dataset()
+    t['y'] = ['a','b']
+    assert len(t) == 2
+    t = Dataset(y='a')
+    assert t.is_scalar()
+    t = Dataset(y='a',x=[1,2])
+    assert not t.is_scalar()
+    assert not t.is_scalar('x')
+    assert t.is_scalar('y')
 
 def test_index():
     t = Dataset(x=[1,2,3,4,5])
@@ -91,16 +96,18 @@ def test_make_scalar():
     t.make_scalar('y')
     assert np.isscalar(t['y'])
     
-# def test_get_copy():
-    # t = Dataset(x=[1,2,3],y=['a','b','c'])
-    # u = t.copy()
-    # assert list(u['x']) == [1,2,3]
-    # t = Dataset(x=[1,2,3],y=['a','b','c'])
-    # u = t.copy(('x',))
-    # assert 'y' not in u 
-    # t = Dataset(x=[1,2,3],y=['a','b','c'])
-    # u = t.copy(('x',),[False,False,True])
-    # assert list(u['x']) == [3]
+def test_get_copy():
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
+    u = t.copy()
+    print( t['x'])
+    print( u['x'])
+    assert list(u['x']) == [1,2,3]
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
+    u = t.copy(('x',))
+    assert 'y' not in u 
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
+    u = t.copy(('x',),[False,False,True])
+    assert list(u['x']) == [3]
 
 def test_concatenate():
     t = Dataset(x=1)
@@ -218,73 +225,74 @@ def test_infer_autoremove_inferences():
 
 def test_infer_with_uncertainties():
     t = Dataset()
-    t['x'],t['dx']= 1.,0.1
-    t['y'],t['dy'] = 2.,0.2
+    t['x'],t['σx']= 1.,0.1
+    t['y'],t['σy'] = 2.,0.2
     t.add_infer_function('z',('x','y'),lambda x,y:x+y)
     assert t['z'] == 3
-    assert abs(t['dz'] - np.sqrt(0.1**2+0.2**2))/t['dz'] < 1e-5
+    assert abs(t['σz'] - np.sqrt(0.1**2+0.2**2))/t['σz'] < 1e-5
     t = Dataset()
-    t['x'],t['dx']= 1.,0.1
+    t['x'],t['σx']= 1.,0.1
     t['y'] = 2.
     t.add_infer_function('z',('x','y'),lambda x,y:x+y)
     assert t['z'] == 3
-    assert abs(t['dz'] - np.sqrt(0.1**2))/t['dz'] < 1e-5
+    assert abs(t['σz'] - np.sqrt(0.1**2))/t['σz'] < 1e-5
     t = Dataset()
-    t['y'],t['dy'] = 2.,0.2
-    t['p'],t['dp'] = 3.,0.3
+    t['y'],t['σy'] = 2.,0.2
+    t['p'],t['σp'] = 3.,0.3
     t.add_infer_function('z',('y','p'),lambda y,p:y*p)
     assert t['z'] == 2*3
-    assert abs(t['dz'] - np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3 )/t['dz'] < 1e-5
+    assert abs(t['σz'] - np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3 )/t['σz'] < 1e-5
     t = Dataset()
-    t['x'],t['dx']= 1.,0.1
-    t['y'],t['dy'] = 2.,0.2
-    t['p'],t['dp'] = 3.,0.3
+    t['x'],t['σx']= 1.,0.1
+    t['y'],t['σy'] = 2.,0.2
+    t['p'],t['σp'] = 3.,0.3
     t.add_infer_function('z',('x','y','p'),lambda x,y,p:x+y*p)
     assert t['z'] == 1+2*3
-    assert abs(t['dz'] - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/t['dz'] < 1e-5
+    assert abs(t['σz'] - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/t['σz'] < 1e-5
 
-# def test_match_matches():
-    # t = Dataset(x=[1,2,2,3],y=4)
-    # assert list(t.match(x=2)) == [False ,True,True ,False]
-    # assert list(t.match(x=2,y=4))== [False ,True,True ,False]
-    # assert list(t.match(x=2,y=5))== [False ,False,False,False]
-    # assert list(t.match(x=[2,3],y=4))== [False ,True,True , True]
-    # t = Dataset(x=[1,2,2,3],y=4)
-    # u = t.matches(x=2)
-    # assert list(u['x']) == [2,2]
+def test_match_matches():
+    t = Dataset(x=[1,2,2,3],y=4)
+    assert list(t.match(x=2)) == [False ,True,True ,False]
+    assert list(t.match(x=2,y=4))== [False ,True,True ,False]
+    assert list(t.match(x=2,y=5))== [False ,False,False,False]
+    assert list(t.match(x=[2,3],y=4))== [False ,True,True , True]
+    t = Dataset(x=[1,2,2,3],y=4)
+    u = t.matches(x=2)
+    assert list(u['x']) == [2,2]
 
-# def test_unique_functions():
-    # t = Dataset(x=[1,2,2,2],y=['a','b','b','c'])
-    # assert list(t.unique('x')) == [1,2]
-    # assert set(t.unique_combinations('x','y')) == set([(1,'a'),(2,'b'),(2,'c')])
-    # u = t.unique_dicts('x','y')
-    # assert str(u) == "[{'x': 1, 'y': 'a'}, {'x': 2, 'y': 'b'}, {'x': 2, 'y': 'c'}]"
-    # u = t.unique_dicts_match('x','y')
-    # assert str(u) == "[({'x': 1, 'y': 'a'}, array([ True, False, False, False])), ({'x': 2, 'y': 'b'}, array([False,  True,  True, False])), ({'x': 2, 'y': 'c'}, array([False, False, False,  True]))]"
-    # u = t.unique_dicts_matches('x','y')
+def test_unique_functions():
+    t = Dataset(x=[1,2,2,2],y=['a','b','b','c'])
+    assert list(t.unique('x')) == [1,2]
+    assert set(t.unique_combinations('x','y')) == set([(1,'a'),(2,'b'),(2,'c')])
+    u = t.unique_dicts('x','y')
+    assert str(u) == "[{'x': 1, 'y': 'a'}, {'x': 2, 'y': 'b'}, {'x': 2, 'y': 'c'}]"
+    u = t.unique_dicts_match('x','y')
+    assert str(u) == "[({'x': 1, 'y': 'a'}, array([ True, False, False, False])), ({'x': 2, 'y': 'b'}, array([False,  True,  True, False])), ({'x': 2, 'y': 'c'}, array([False, False, False,  True]))]"
+    u = t.unique_dicts_matches('x','y')
 
-# def test_sort():
-    # t = Dataset(x=[1,3,2])
-    # t.sort('x')
-    # assert list(t['x']) == [1,2,3]
-    # t = Dataset(x=[2,1,3,4],y=[3,3,1,2],z=['3','3','2','1'])
-    # t.sort('x','y','z')
-    # assert list(t['x']) == [4,3,1,2]
-    # assert list(t['y']) == [2,1,3,3]
-    # assert list(t['z']) == ['1','2','3','3']
+def test_sort():
+    t = Dataset(x=[1,3,2])
+    t.sort('x')
+    assert list(t['x']) == [1,2,3]
+    t = Dataset(x=[2,1,3,4],y=[3,3,1,2],z=['3','3','2','1'])
+    t.sort('x','y','z')
+    assert list(t['x']) == [4,3,1,2]
+    assert list(t['y']) == [2,1,3,3]
+    assert list(t['z']) == ['1','2','3','3']
 
-# def test_plotting():
-    # t = Dataset()
-    # t.set('x',[1,2,3])
-    # t.set('y',[1,2,3],[0.1,0.2,0.3])
-    # t.set('z',[2,4,5])
-    # t.plot('x',('y','z'),show=False)
+def test_plotting():
+    t = Dataset()
+    t['x'] = [1,2,3]
+    t['y'] = [1,2,3]
+    t['δy'] = [0.1,0.2,0.3]
+    t['z'] = [2,4,5]
+    t.plot('x',('y','z'),show=False)
 
 # def test_load_save_to_file():
     # ## npz archive
     # t = Dataset()
-    # t.set('x',[1,2,3],)
-    # t.set('f',1.29)
+    # t['x'] = [1,2,3]
+    # t['f'] = 1.29
     # t.save('tmp/t0.npz')
     # u = Dataset()
     # u.load('tmp/t0.npz')
@@ -293,8 +301,8 @@ def test_infer_with_uncertainties():
     # assert u['f'] == t['f']
     # ## hdf5 archive
     # t = Dataset()
-    # t.set('x',[1,2,3],)
-    # t.set('f',1.29)
+    # t['x'] = [1,2,3]
+    # t['f'] = 1.29
     # t.save('tmp/t0.h5')
     # u = Dataset()
     # u.load('tmp/t0.h5')
@@ -303,9 +311,9 @@ def test_infer_with_uncertainties():
     # assert u['f'] == t['f']
     # ## text file
     # t = Dataset()
-    # t.set('x',[1,2,3],)
-    # t.set('z',['a','b','c'],)
-    # t.set('f',1.29)
+    # t['x'] = [1,2,3]
+    # t['z'] = ['a','b','c']
+    # t['f'] = 1.29
     # t.save('tmp/t0.txt')
     # u = Dataset()
     # u.load('tmp/t0.txt')
