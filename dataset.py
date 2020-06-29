@@ -308,6 +308,13 @@ class Dataset():
         for key in keys:
             self[key]
 
+    def is_known(self,*keys):
+        try:
+            self.assert_known(*keys)
+            return True 
+        except InferException:
+            return False
+
     def sort(self,first_key,*more_keys):
         """Sort rows according to key or keys."""
         if self.is_scalar() or len(self)==0:

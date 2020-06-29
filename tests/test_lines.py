@@ -1,5 +1,10 @@
+from pytest import approx
+import numpy as np
+
 from spectr.lines import Lines
 from spectr.levels import Levels
+
+show_plots =False
 
 def test_construct():
     t = Lines()
@@ -21,8 +26,9 @@ def test_infer_with_level_keys():
     assert t['ν'] == 50.
     t = Lines(ν=100,Eu=150)
     assert t['El'] == 50.
-    t = Lines(El=100,dEl=0.5,Eu=150,dEu=0.2)
+    t = Lines(El=100,σEl=0.5,Eu=150,σEu=0.2)
     assert t['ν'] == 50.
+    assert t['σν'] == approx(np.sqrt(0.5**2+0.2**2))
 
 def test_load_lines():
     t = Lines()
@@ -33,13 +39,17 @@ def test_load_lines():
 def test_calculate_plot_spectrum():
     t = Lines()
     t.load('data/test_lines')
+    print( t[:5])
+    print( t[:5])
     x,y = t.calculate_spectrum(xkey='ν',ykey='f')
     assert len(x)==10000
-    assert abs(sum(y)-0.00903753325337632)<1e-6
-    t.plot_spectrum(xkey='ν',ykey='f',show=False)
+    assert sum(y) == approx(0.00903753325337632)
+    t.plot_spectrum(xkey='ν',ykey='f',show=show_plots)
 
 def test_get_upper_lower_levels():
     t = Lines()
     t.load('data/test_lines')
-    t.get_levels()
-
+    assert t['levels_class'] == 'Levels'
+    u = t.get_levels('upper')
+    u = t.upper_levels
+    l = t.lower_levels

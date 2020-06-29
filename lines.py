@@ -8,6 +8,7 @@ from spectr.dataset import Dataset
 from spectr.levels import Levels
 from spectr import lineshapes
 from spectr import tools
+from spectr.data_prototypes import prototypes
 
 def expand_level_keys(level_class):
     retval = {}
@@ -20,25 +21,21 @@ def expand_level_keys(level_class):
 class Lines(Dataset):
     """For now rotational lines."""
 
-    _prototypes = {
-        'class':{'description':"What kind of data this is.",'kind':'str',},
-        'levels_class':{'description':"What kind of level this is a transition between.",'kind':'object','infer':{():lambda: Levels,}},
-        'description':{'kind':str,'description':"",},
-        'notes':{'description':"Notes regarding this line.", 'kind':str, },
-        'author':{'description':"Author of data or printed file", 'kind':str, },
-        'reference':{'description':"", 'kind':str, },
-        'date':{'description':"Date data collected or printed", 'kind':str, },
-        'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", dtype='8U', cast=str, fmt='<10s'),
-        'ν':dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>13.6f', infer={}),
-        'Γ':dict(description="Natural linewidth of transition (cm-1 FWHM)",kind=float,fmt='<10.5g',infer={('Γu','Γl'):lambda Γu,Γl: Γu+Γl},),
-        'ΓD':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={}),
-        'f':dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e',infer={}),
-
-    }
+    _prototypes = {key:prototypes[key] for key in (
+        'class', 'levels_class', 'description',
+        'notes', 'author', 'reference', 'date',
+        'branch',
+        'ν', 'Γ', 'ΓD', 
+        'f',
+    )}
     _prototypes.update(expand_level_keys(Levels))
+    _prototypes['levels_class']['infer'][()] = lambda: 'Levels'
     _prototypes['ν']['infer']['Eu','El'] = lambda Eu,El: Eu-El
     _prototypes['El']['infer']['Eu','ν'] = lambda Eu,ν: Eu-ν
-    _prototypes['Eu']['infer']['El','ν'] = lambda Eu,ν: El+ν
+    _prototypes['Eu']['infer']['El','ν'] = lambda El,ν: El+ν
+    _prototypes['Γ']['infer']['Γu','Γl'] = lambda Γu,Γl: Γu+Γl
+    _prototypes['Γl']['infer']['Γ','Γu'] = lambda Γ,Γu: Γ-Γu
+    _prototypes['Γu']['infer']['Γ','Γl'] = lambda Γ,Γl: Γ-Γl
 
     def __init__(
             self,
@@ -269,13 +266,16 @@ class Lines(Dataset):
             plt.show()
         return(ax)
 
-    def get_levels(self,upper_or_lower='u'):
+    def get_levels(self,upper_or_lower):
         """Get all data corresponding to upper level into self."""
-        levels = self['levels_class']()
-        assert upper_or_lower in ('u','l'),f'upper_or_lower must be "u" or "l", not {repr(upper_or_lower)}'
+        levels = eval(self['levels_class']+'()')
+        assert upper_or_lower in ('upper','lower'),f'upper_or_lower must be "upper" or "lower", not {repr(upper_or_lower)}'
         for key in self.keys():
-            if len(key)==1 or key[-1]!=upper_or_lower:
+            if len(key)==1 or key[-1]!=upper_or_lower[0]:
                 continue
             levels.set(key[:-1],self.get_value(key),self.get_uncertainty(key))
         return(levels)
+
+    upper_levels = property(lambda self: self.get_levels('upper'))
+    lower_levels = property(lambda self: self.get_levels('lower'))
 

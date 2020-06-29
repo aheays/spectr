@@ -2,6 +2,8 @@ from pprint import pprint
 import numpy as np
 from spectr.levels import *
 
+show_plots = False 
+
 def test_construct():
     t = Levels()
     assert t.name == 'Levels'
@@ -18,6 +20,7 @@ def test_assignment():
 # def test_str():
     # t = Levels(name='ddd',description='fff',notes=['a','b'])
     # print(t)
+    # assert False 
 
 def test_load():
     t = Levels()
@@ -25,13 +28,13 @@ def test_load():
     assert t['species'] == '14N2'
     assert list(t['J']) == [0,1,2,3,4]
 
-# def test_load_uncertainties():
-    # t = Levels()
-    # t.load('data/levels_14N2_with_uncertainties')
-    # assert t['species'] == '14N2'
-    # assert list(t['J']) == [0,1,2,3,4]
-    # assert np.max(np.abs(np.array(t['E'])-np.array([0.0000000,3.9791592,11.9373395,23.8742646,39.7895202])))<1e-3
-    # assert np.max(np.abs(np.array(t['dE'])-np.array(([0.1,0.1,0.2,0.2,0.1]))))<1e-3
+# # def test_load_uncertainties():
+    # # t = Levels()
+    # # t.load('data/levels_14N2_with_uncertainties')
+    # # assert t['species'] == '14N2'
+    # # assert list(t['J']) == [0,1,2,3,4]
+    # # assert np.max(np.abs(np.array(t['E'])-np.array([0.0000000,3.9791592,11.9373395,23.8742646,39.7895202])))<1e-3
+    # # assert np.max(np.abs(np.array(t['dE'])-np.array(([0.1,0.1,0.2,0.2,0.1]))))<1e-3
 
 def test_inheritance():
     t = Cinfv()
@@ -49,5 +52,5 @@ def test_load_complex_Cinfv():
 def test_plot():
     t = Cinfv()
     t.load('data/SO_rotational_levels')
-    t.plot('J','E',show=False)
+    t.plot('J','E',show=show_plots)
     
