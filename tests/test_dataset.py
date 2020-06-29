@@ -1,5 +1,9 @@
-from spectr.dataset import Dataset
+
+import pytest
 import numpy as np
+
+from spectr.dataset import Dataset
+from spectr.exceptions import InferException
 
 def test_construct():
     t = Dataset()
@@ -28,8 +32,7 @@ def test_construct_get_set_data():
 
 def test_set_get_value():
     t = Dataset()
-    t.set_value('x',5.)
-    t.set_uncertainty('x',0.1)
+    t.set('x',5.,0.1)
     assert t.get_value('x') == 5.
     assert t.get_uncertainty('x') == 0.1
     assert t['x'] == 5.
@@ -39,14 +42,14 @@ def test_set_get_value():
     t = Dataset(y=['a','b'])
     assert list(t['y']) == ['a','b']
     t = Dataset()
-    t.set_value('x',5,kind=float)
+    t.set('x',5,kind=float)
     assert isinstance(t['x'],float)
 
 def test_setitem_getitem():
     t = Dataset()
     t['x'] = 5
     assert t['x']==5
-    t.set_value('y',5.)
+    t.set('y',5.)
     t.set_uncertainty('y',0.1)
     assert t['y']==5
     assert t['σy']==0.1
@@ -62,8 +65,9 @@ def test_permit_nonprototyped_data():
     t = Dataset()
     t.permit_nonprototyped_data = True
     t['x'] = 5
-    # t.permit_nonprototyped_data = False
-    # t['y'] = 5
+    t.permit_nonprototyped_data = False
+    with pytest.raises(AssertionError):
+        t['y'] = 5
 
 def test_len_is_scalar():
     t = Dataset()
@@ -99,8 +103,6 @@ def test_make_scalar():
 def test_get_copy():
     t = Dataset(x=[1,2,3],y=['a','b','c'])
     u = t.copy()
-    print( t['x'])
-    print( u['x'])
     assert list(u['x']) == [1,2,3]
     t = Dataset(x=[1,2,3],y=['a','b','c'])
     u = t.copy(('x',))
@@ -207,7 +209,8 @@ def test_infer():
     assert t['w'] == 6
     t = Dataset(x=[1,2,3],y=2)
     t.add_infer_function('z',('x','y'),lambda x,y:x+y)
-    assert list(t['z']) == [3,4,5]
+    with pytest.raises(InferException):
+        t['w']
 
 def test_infer_autoremove_inferences():
     t = Dataset()
@@ -288,38 +291,52 @@ def test_plotting():
     t['z'] = [2,4,5]
     t.plot('x',('y','z'),show=False)
 
-# def test_load_save_to_file():
-    # ## npz archive
-    # t = Dataset()
-    # t['x'] = [1,2,3]
-    # t['f'] = 1.29
-    # t.save('tmp/t0.npz')
-    # u = Dataset()
-    # u.load('tmp/t0.npz')
-    # assert set(u.keys()) == {'x','f'}
-    # assert list(u['x']) == list(t['x'])
-    # assert u['f'] == t['f']
-    # ## hdf5 archive
-    # t = Dataset()
-    # t['x'] = [1,2,3]
-    # t['f'] = 1.29
-    # t.save('tmp/t0.h5')
-    # u = Dataset()
-    # u.load('tmp/t0.h5')
-    # assert set(u.keys()) == {'x','f'}
-    # assert list(u['x']) == list(t['x'])
-    # assert u['f'] == t['f']
-    # ## text file
-    # t = Dataset()
-    # t['x'] = [1,2,3]
-    # t['z'] = ['a','b','c']
-    # t['f'] = 1.29
-    # t.save('tmp/t0.txt')
-    # u = Dataset()
-    # u.load('tmp/t0.txt')
-    # assert set(u.keys()) == {'x','f','z'}
-    # assert list(u['x']) == list(t['x'])
-    # assert list(u['z']) == list(t['z'])
-    # assert u['f'] == t['f']
+def test_load_save_to_file():
+    ## npz archive
+    t = Dataset()
+    t['x'] = [1,2,3]
+    t['f'] = 1.29
+    t.save('tmp/t0.npz')
+    u = Dataset()
+    u.load('tmp/t0.npz')
+    assert set(u.keys()) == {'x','f'}
+    assert list(u['x']) == list(t['x'])
+    assert u['f'] == t['f']
+    ## hdf5 archive
+    t = Dataset()
+    t['x'] = [1,2,3]
+    t['f'] = 1.29
+    t['z'] = ['a','b','c']
+    t.save('tmp/t0.h5')
+    u = Dataset()
+    u.load('tmp/t0.h5')
+    assert set(u.keys()) == {'x','f','z'}
+    assert list(u['x']) == list(t['x'])
+    assert np.all(u['z'] == t['z'])
+    assert u['f'] == t['f']
+    ## text file
+    t = Dataset()
+    t['x'] = [1,2,3]
+    t['z'] = ['a','b','c']
+    t['f'] = 1.29
+    t.save('tmp/t0.txt')
+    u = Dataset()
+    u.load('tmp/t0.txt')
+    assert set(u.keys()) == {'x','f','z'}
+    assert list(u['x']) == list(t['x'])
+    assert list(u['z']) == list(t['z'])
+    assert u['f'] == t['f']
+    ## ␞-separated text file
+    t = Dataset()
+    t['x'] = [1,2,3]
+    t['z'] = ['a','b','c']
+    t['f'] = 1.29
+    t.save('tmp/t0.rs',delimiter='␞')
+    u = Dataset()
+    u.load('tmp/t0.rs',delimiter='␞')
+    assert set(u.keys()) == {'x','f','z'}
+    assert list(u['x']) == list(t['x'])
+    assert list(u['z']) == list(t['z'])
+    assert u['f'] == t['f']
 
 

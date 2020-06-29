@@ -1,9 +1,6 @@
-from spectr.data import Data
+import pytest
 import numpy as np
-
-#######################
-## Test Data object ##
-#######################
+from spectr.data import Data
 
 def test_construct():
     t = Data(value=[1,2])
@@ -12,6 +9,20 @@ def test_construct():
     assert list(t.value) == [1.5,2.5]
     assert list(t.uncertainty) == [0.3,0.2]
     assert len(t) == 2
+    t = Data(value=[1.5,2.5],uncertainty=1)
+    assert list(t.value) == [1.5,2.5]
+    assert list(t.uncertainty) == [1,1]
+    t = Data(value=[1,2],uncertainty=1)
+    assert list(t.value) == [1,2]
+    assert list(t.uncertainty) == [1,1]
+    with pytest.raises(ValueError):
+        t = Data(value=[1,2],uncertainty=[1,2,3])
+
+def test_has_uncertainty():
+    t = Data(value=[1.5,2.5],uncertainty=[0.3,0.2])
+    assert t.has_uncertainty()
+    t = Data(value=[1.5,2.5])
+    assert not t.has_uncertainty()
 
 def test_index():
     t = Data(value=[1.5,2.5],uncertainty=[0.3,0.2])
@@ -41,6 +52,8 @@ def test_extend():
 def test_object():
     t = Data(value=[[1,2],None],kind=object)
     assert list(t.value) == [[1,2],None]
+    t = Data(value=[{},np.array([1,2,3]),None],kind=object)
+    assert t.value[0] == {}
 
 # def test_deepcopy():
     # x = Data(value=[1,2,3])
@@ -49,3 +62,10 @@ def test_object():
     # y = x.copy([0,1])
     # assert list(y.get_value()) == [1,2]
 
+def test_str():
+    t = Data(value=[1,2,3])
+    assert str(t)=='1\n2\n3'
+    t = Data(value=[1,2,3],uncertainty=[0.1,5,6])
+    assert str(t)=='+1.00000000e+00 ± 0.1\n+2.00000000e+00 ± 5\n+3.00000000e+00 ± 6'
+    t = Data(value=['a','b','c'])
+    assert str(t)=='a\nb\nc'

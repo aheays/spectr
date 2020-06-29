@@ -1,5 +1,7 @@
-from spectr.datum import Datum
+import pytest
 import numpy as np
+
+from spectr.datum import Datum
 
 def test_construct():
     t = Datum(value=1)
@@ -24,3 +26,23 @@ def test_construct():
     assert t.value == [1,2,3]
     assert t.kind == 'O'
     assert not t.has_uncertainty()
+    with pytest.raises(ValueError):
+        t = Datum(value='a',kind=float)
+    with pytest.raises(AssertionError):
+        t = Datum(value='a',uncertainty=1.)
+
+def test_has_uncertainty():
+    t = Datum(value=1,uncertainty=1)
+    assert t.has_uncertainty()
+    t = Datum(value=1)
+    assert not t.has_uncertainty()
+
+def test_str():
+    t = Datum(value=1,uncertainty=0.1)
+    assert str(t)=='+1.00000000e+00 ± 0.1'
+    t = Datum(value=1,uncertainty=0.1,fmt='0.5f')
+    assert str(t)=='1.00000 ± 0.1'
+    t = Datum(value='a')
+    assert str(t)=='a'
+    t = Datum(value=1)
+    assert str(t)=='1'

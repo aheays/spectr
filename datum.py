@@ -15,9 +15,9 @@ class Datum:
 
     _kind_defaults = {
         'f': {'cast':float     ,'fmt'   :'+12.8e','description':'float'        ,'step':1e-8},
-        'i': {'cast':int       ,'fmt'   :'+8d'   ,'description':'int'          ,'step':None},
+        'i': {'cast':int       ,'fmt'   :'d'   ,'description':'int'          ,'step':None},
         'b': {'cast':bool      ,'fmt'   :'g'     ,'description':'bool'         ,'step':None},
-        'U': {'cast':str       ,'fmt'   :'<10s'  ,'description':'str'          ,'step':None},
+        'U': {'cast':str       ,'fmt'   :'s'  ,'description':'str'          ,'step':None},
         'O': {'cast':lambda x:x,'fmt'   :''      ,'description':'object'       ,'step':None},
     }
 
@@ -51,25 +51,25 @@ class Datum:
         self.value = value
         self.uncertainty = uncertainty
 
-    def set_value(self,value):
+    def _set_value(self,value):
         self._value = self.cast(value)
 
-    def get_value(self):
+    def _get_value(self):
         return(self._value)
 
-    value = property(get_value,set_value)
+    value = property(_get_value,_set_value)
 
-    def set_uncertainty(self,uncertainty):
+    def _set_uncertainty(self,uncertainty):
         if uncertainty is not None:
             assert self.kind == 'f'
             self._uncertainty = float(uncertainty)
         else:
             self._uncertainty = None
 
-    def get_uncertainty(self):
+    def _get_uncertainty(self):
         return(self._uncertainty)
 
-    uncertainty = property(get_uncertainty,set_uncertainty)
+    uncertainty = property(_get_uncertainty,_set_uncertainty)
 
     def has_uncertainty(self):
         return(self._uncertainty is not None)

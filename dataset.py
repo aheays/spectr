@@ -35,35 +35,57 @@ class Dataset():
         assert self._length is not None,'Dataset has no length because all data is scalar'
         return(self._length)
 
-    def _get_keys_values_uncertainties(self,**keys_vals):
-        """Match keys for value and uncertainties, e.g., 'x' and 'dx'."""
-        keys_values_uncertainties = {}
-        keys = list(keys_vals.keys())
-        while len(keys)>0:
-            key = keys[0]
-            if key[0] == self.uncertainty_prefix:
-                assert key[1:] in keys,f'Uncertainty {repr(key)} in data but {repr(key[1:])} is not.'
-                keys_values_uncertainties[key[1:]] = (keys_vals[key[1:]],keys_vals[key])
-                keys.remove(key)
-                keys.remove(key[1:])
-            elif self.uncertainty_prefix+key in keys:
-                keys_values_uncertainties[key] = (keys_vals[key],keys_vals[self.uncertainty_prefix+key])
-                keys.remove(key)
-                keys.remove(self.uncertainty_prefix+key)
-            else:
-                keys_values_uncertainties[key] = (keys_vals[key],None)
-                keys.remove(key)
-        return(keys_values_uncertainties)
+    # def _get_keys_values_uncertainties(self,**keys_vals):
+        # """Match keys for value and uncertainties, e.g., 'x' and 'dx'."""
+        # keys_values_uncertainties = {}
+        # keys = list(keys_vals.keys())
+        # while len(keys)>0:
+            # key = keys[0]
+            # if key[0] == self.uncertainty_prefix:
+                # assert key[1:] in keys,f'Uncertainty {repr(key)} in data but {repr(key[1:])} is not.'
+                # keys_values_uncertainties[key[1:]] = (keys_vals[key[1:]],keys_vals[key])
+                # keys.remove(key)
+                # keys.remove(key[1:])
+            # elif self.uncertainty_prefix+key in keys:
+                # keys_values_uncertainties[key] = (keys_vals[key],keys_vals[self.uncertainty_prefix+key])
+                # keys.remove(key)
+                # keys.remove(self.uncertainty_prefix+key)
+            # else:
+                # keys_values_uncertainties[key] = (keys_vals[key],None)
+                # keys.remove(key)
+        # return(keys_values_uncertainties)
 
     def __setitem__(self,key,value):
         """Shortcut to set, cannot set uncertainty this way."""
         if key[0]==self.uncertainty_prefix:
             self.set_uncertainty(key[1:],value)
         else:
-            self.set_value(key,value)
+            self.set(key,value)
 
-    def set_value(self,key,value,is_scalar=None,**data_kwargs):
-        """Set a value and possibly its uncertainty."""
+    # def set_value(self,key,value,is_scalar=None,**data_kwargs):
+    #     """Set a value and possibly its uncertainty."""
+    #     self.unset_inferences(key)
+    #     assert self.permit_nonprototyped_data or key in self._prototypes, f'New data is not in prototypes: {repr(key)}'
+    #     ## if not previously set then get perhaps get a prototype
+    #     if key not in self and key in self._prototypes:
+    #         for tkey,tval in self._prototypes[key].items():
+    #             if tkey == 'infer':
+    #                 continue # not a Data kwarg
+    #             data_kwargs.setdefault(tkey,copy(tval))
+    #     ## set the data
+    #     if is_scalar or np.isscalar(value):
+    #         self._data[key] = Datum(value=value,**data_kwargs)
+    #     else:
+    #         self._data[key] = Data(value=value,**data_kwargs)
+    #         if self.is_scalar():
+    #             ## first array data, use this to define the length of self
+    #             self._length = len(self._data[key])
+    #         else:
+    #             assert len(self._data[key])==len(self),f'Length of data {repr(key)} does not match existing data.'
+
+    def set(self,key,value,uncertainty=None,is_scalar=None,**data_kwargs):
+        """Set a value and possibly its uncertainty. Set is_scalar=True to set
+        a scalar Object type that is iterable."""
         self.unset_inferences(key)
         assert self.permit_nonprototyped_data or key in self._prototypes, f'New data is not in prototypes: {repr(key)}'
         ## if not previously set then get perhaps get a prototype
@@ -74,17 +96,19 @@ class Dataset():
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
         if is_scalar or np.isscalar(value):
-            self._data[key] = Datum(value=value,**data_kwargs)
+            data = Datum(value=value,uncertainty=uncertainty,**data_kwargs)
         else:
-            self._data[key] = Data(value=value,**data_kwargs)
+            data = Data(value=value,uncertainty=uncertainty,**data_kwargs)
             if self.is_scalar():
-                ## first array data, use this to define the length of self
-                self._length = len(self._data[key])
+                ## first array data in self, use this to define the
+                ## length of self
+                self._length = len(data)
             else:
-                assert len(self._data[key])==len(self),f'Length of data {repr(key)} does not match existing data.'
+                assert len(data)==len(self),f'Length of new data {repr(key)} is {len(data)} and does not match the length of existing data: {len(self)}.'
+        self._data[key] = data
 
     def set_uncertainty(self,key,uncertainty):
-        """Set a value and possibly its uncertainty."""
+        """Set a the uncertainty of an existing value."""
         self.unset_inferences(key)
         assert key in self,f'Value must exist before setting uncertainty: {repr(key)}'
         self._data[key].uncertainty  = uncertainty
@@ -112,7 +136,10 @@ class Dataset():
 
     def get_uncertainty(self,key):
         self.assert_known(key)
-        return(self._data[key].get_uncertainty())
+        if self.has_uncertainty(key):
+            return self._data[key].uncertainty
+        else:
+            return None
 
     def has_uncertainty(self,key):
         self.assert_known(key)
@@ -330,11 +357,13 @@ class Dataset():
             np.savez(
                 filename,
                 **{key:self[key] for key in keys},
-                **{self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+                **{self.uncertainty_prefix+key:self.get_uncertainty(key)
+                   for key in keys if self.has_uncertainty(key)})
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
             d = {key:self[key] for key in keys}
-            d.update({self.uncertainty_prefix+key:self.get_uncertainty(key) for key in keys if self.has_uncertainty(key)})
+            d.update({self.uncertainty_prefix+key:self.get_uncertainty(key)
+                      for key in keys if self.has_uncertainty(key)})
             tools.dict_to_hdf5(filename,d)
         else:
             ## text file

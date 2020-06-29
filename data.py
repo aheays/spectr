@@ -15,9 +15,9 @@ class Data:
 
     _kind_defaults = {
         'f': {'cast':lambda x:np.asarray(x,dtype=float)     ,'fmt'   :'+12.8e','description':'float'        ,'step':1e-8,},
-        'i': {'cast':lambda x:np.asarray(x,dtype=int)       ,'fmt'   :'+8d'   ,'description':'int'          ,'step':None,},
+        'i': {'cast':lambda x:np.asarray(x,dtype=int)       ,'fmt'   :'d'   ,'description':'int'          ,'step':None,},
         'b': {'cast':lambda x:np.asarray(x,dtype=bool)      ,'fmt'   :'g'     ,'description':'bool'         ,'step':None,},
-        'U': {'cast':lambda x:np.asarray(x,dtype=str)       ,'fmt'   :'<10s'  ,'description':'str'          ,'step':None,},
+        'U': {'cast':lambda x:np.asarray(x,dtype=str)       ,'fmt'   :'s'  ,'description':'str'          ,'step':None,},
         'O': {'cast':lambda x:np.asarray(x,dtype=object)    ,'fmt'   :''      ,'description':'object'       ,'step':None,},
     }
 
@@ -51,16 +51,16 @@ class Data:
         self.value = value
         self.uncertainty = uncertainty
 
-    def set_value(self,value):
+    def _set_value(self,value):
         self._value = self.cast(value)
         self._length = len(self._value)
 
-    def get_value(self):
+    def _get_value(self):
         return(self._value[:len(self)])
 
-    value = property(get_value,set_value)
+    value = property(_get_value,_set_value)
 
-    def set_uncertainty(self,uncertainty):
+    def _set_uncertainty(self,uncertainty):
         if uncertainty is not None:
             assert self.kind == 'f'
             self._uncertainty = np.empty(self._value.shape,dtype=float)
@@ -68,10 +68,10 @@ class Data:
         else:
             self._uncertainty = None
 
-    def get_uncertainty(self):
+    def _get_uncertainty(self):
         return(self._uncertainty[:len(self)])
 
-    uncertainty = property(get_uncertainty,set_uncertainty)
+    uncertainty = property(_get_uncertainty,_set_uncertainty)
 
     def has_uncertainty(self):
         return(self._uncertainty is not None)
@@ -92,7 +92,7 @@ class Data:
                     self.value,self.uncertainty):
                 yield value,uncertainty
         else:
-            for value in self.get_value():
+            for value in self.value:
                 yield value
 
     def _extend_length_if_necessary(self,new_length):
