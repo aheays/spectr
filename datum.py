@@ -108,3 +108,28 @@ class Datum:
                 # retval.set(self.get_value()[index])
         # return(retval)
 
+    def __neg__(self): return(-self.value)
+    def __float__(self): return(float(self.value))
+    def __pos__(self): return(+self.value)
+    def __abs__(self): return(abs(self.value))
+    def __add__(self,other): return(self.value+other)
+    def __radd__(self,other): return(self.value+other)
+    def __sub__(self,other): return(self.value-other)
+    def __rsub__(self,other): return(other-self.value)
+    def __truediv__(self,other): return(self.value/other)
+    def __rtruediv__(self,other): return(other/self.value)
+    def __mul__(self,other): return(self.value*other)
+    def __rmul__(self,other): return(other*self.value)
+    def __pow__(self,other): return(self.value**other)
+    def __rpow__(self,other): return(other**self.value)
+        
+
+
+
+
+
+
+
+
+
+
