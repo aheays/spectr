@@ -46,3 +46,21 @@ def test_str():
     assert str(t)=='a'
     t = Datum(value=1)
     assert str(t)=='1'
+
+def test_math_builtins():
+    t = Datum(value=5)
+    assert -t == -5
+    assert float(t) == 5.0
+    assert +t == 5
+    assert abs(t) == 5
+    assert t + 2 == 7
+    assert 2 + t == 7
+    assert t - 2 == 3
+    assert 2 - t == -3
+    assert t / 2 == 2.5
+    assert 10 / t == 2
+    assert t * 2 == 10
+    assert 10 * t == 50
+    assert t**2 == 25
+    assert 2**t == 32
+    

@@ -170,4 +170,3 @@ class Data:
             self._uncertainty[old_length:new_length] = uncertainty
 
             
-

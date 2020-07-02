@@ -69,3 +69,4 @@ def test_str():
     assert str(t)=='+1.00000000e+00 ± 0.1\n+2.00000000e+00 ± 5\n+3.00000000e+00 ± 6'
     t = Data(value=['a','b','c'])
     assert str(t)=='a\nb\nc'
+
