@@ -3598,7 +3598,7 @@ def string_to_file(
             # match = re.match(regexp,line)
             # if match: matches.append(match)
     # return(matches)
-   #  
+
 # def file_to_dict(filename,*args,**kwargs):
     # """Convert text file to dictionary.
     # \nKeys are taken from the first uncommented record, or the last
@@ -3633,35 +3633,36 @@ def string_to_file(
         # d = txt_to_dict(filename,*args,**kwargs)
     # return(d)
 
-# def org_table_to_dict(filename,table_name):
-    # """Load a table into a dicationary of arrays. table_name is used to
-    # find a #+NAME: tag."""
-    # with open(filename,'r') as fid:
-        # ## scan to beginning of table
-        # for line in fid:
-            # if re.match(r'^ *#\+NAME: *'+re.escape(table_name)+' *$',line):
-                # break
-        # else:
-            # raise Exception("Could not find table_name "+repr(table_name)+" in file "+repr(filename))
-        # ## skip other metadata
-        # for line in fid:
-            # if not re.match(r'^ *#',line): break
-        # ## load lines of table
-        # table_lines = []
-        # for line in fid:
-            # ## skip horizontal lines
-            # if re.match(r'^ *\|-',line): continue
-            # ## end of table
-            # if not re.match(r'^ *\|',line): break
-            # ## remove new line
-            # line = line[:-1]
-            # ## remove leading and pipe character
-            # line = re.sub(r'^ *\| *',r'',line)
-            # ## remove empty following fields
-            # line = re.sub(r'^[ |]*',r'',line[-1::-1])[-1::-1]
-            # table_lines.append(line.split('|'))
-        # ## turn into an array of dicts
-        # return(stream_to_dict(iter(table_lines)))
+def org_table_to_dict(filename,table_name=None):
+    """Load a table into a dicationary of arrays. table_name is used to
+    find a #+NAME: tag."""
+    with open(filename,'r') as fid:
+        if table_name is not None:
+            ## scan to beginning of table
+            for line in fid:
+                if re.match(r'^ *#\+NAME: *'+re.escape(table_name)+' *$',line):
+                    break
+            else:
+                raise Exception("Could not find table_name "+repr(table_name)+" in file "+repr(filename))
+        ## skip other metadata
+        for line in fid:
+            if not re.match(r'^ *#',line): break
+        ## load lines of table
+        table_lines = []
+        for line in fid:
+            ## skip horizontal lines
+            if re.match(r'^ *\|-',line): continue
+            ## end of table
+            if not re.match(r'^ *\|',line): break
+            ## remove new line
+            line = line[:-1]
+            ## remove leading and pipe character
+            line = re.sub(r'^ *\| *',r'',line)
+            ## remove empty following fields
+            line = re.sub(r'^[ |]*',r'',line[-1::-1])[-1::-1]
+            table_lines.append(line.split('|'))
+        ## turn into an array of dicts
+        return(stream_to_dict(iter(table_lines)))
 
 # def string_to_dict(string,**kwargs_txt_to_dict):
     # """Convert a table in string from into a dict. Keys taken from
@@ -4120,117 +4121,117 @@ def try_cast_to_numerical_array(x):
     # ## return
     # return data
 
-# def stream_to_dict(
-        # stream,
-        # split=None,             # a string to split rows on
-        # comment=None,           # a string to remove from beginnig of rows (regexp is comment+)
-        # table_name=None,
-        # conversions={},
-        # skip_rows=0,
-        # error_on_missing_data=False,
-        # types = None,           # a dictionary of data keys will cast them as this type
-        # cast_types=True,        # attempt to convert strings to numbers
-# ):
-    # r"""Read a stream (line-by-line iterator) into a dictionary. First
-    # line contains keys for columns. An attempt is made to cast as
-    # numeric data.\n\nsplit -- if not None, split line on this character
-    # comment -- remove from keys if not None
-    # table_name -- stop reading at end of <\table_name> or <\>
-    # conversions -- convert data belonging to keys of conversions by a function"""
-    # ## get keys first line must contain keys, split if requested, else already
-    # ## iterable, remove trailing new line if necessary
-    # def get_line():
-        # line = next(stream)
-        # ## split if split string given
-        # if split!=None:
-            # if line[-1]=='\n':
-                # line = line[:-1]
-            # line = line.split(split)
-        # ## else check if already split (i.e., in a list) or make a
-        # ## list with one element
-        # else:
-            # if np.isscalar(line):
-                # line = [line]
-        # ## blank lines -- skip (recurse)
-        # if len(line)==0:
-            # line = get_line()
-        # ## if a comment string is defined then skip this line
-        # ## (recurse) if it begins with a comment
-        # if comment!=None:
-            # if re.match(r'^ *'+re.escape(comment),line[0]): line = get_line()
-        # return line
-    # ## skip rows if requested
-    # for i in range(skip_rows): next(reader)
-    # ## if requested, scan through file until table found
-    # if table_name!=None:
-        # while True:
-            # try:
-                # line = get_line()
-                # if line==[]: continue   # blank line continue
-            # except StopIteration:
-                # raise Exception('table_name not found: '+repr(table_name))
-            # ## if table specified stop reading at the end of it and dont'
-            # ## store data before it
-            # except:
-                # raise               # an actual error
-            # if len(line)>0 and str(line[0]).strip()=='<'+table_name+'>':
-                # break # table found
-    # ## this line contains dict keys
-    # keys = get_line()           
-    # ## eliminate blank keys and those with leading/trailing space and
-    # ## comment char from keys
-    # if comment != None:
-        # keys = [re.sub(r'^ *'+comment+r' *',r'',key) for key in keys]
-    # keys = [key.strip() for key in keys] # remove trailing/leading white space around keys
-    # nonBlankKeys=[]
-    # nonBlankKeys = [i for i in range(len(keys)) if keys[i] not in ['','None']]
-    # keys = [keys[i] for i in nonBlankKeys]
-    # ## check no repeated keys
-    # assert len(keys)==len(np.unique(keys)),'repeated keys'
-    # ## initialise dictionary of lists
-    # data = dict()
-    # for key in keys: data[key] = []
-    # ## read line-by-line, collecting data
-    # while True:
-        # try:
-            # line = get_line()
-            # if line==[]: continue   # blank line conitinue
-        # except StopIteration: break # read until end of file
-        # except: raise               # an actual error
-        # ## if table specified stop reading at the end of it and dont'
-        # ## store data before it
-        # if table_name!=None:
-            # if '<\\'+table_name+'>'==str(line[0]): break
-            # if str(line[0]).strip() in ('<\\>','<\\'+table_name+'>',): break
-        # if len(line)==0 or (len(line)==1 and line[0]==''): continue # skip empty data
-        # ## if partially missing data pad with blanks or raise an error
-        # if len(line)<len(keys):
-            # if error_on_missing_data:
-                # raise Exception('Length data less than length keys: '+str(line))
-            # else:
-                # line.extend(['' for t in range(len(keys)-len(line))])
-        # line = np.take(line,nonBlankKeys)
-        # ## add data to lists - loop through each cell and try to cast
-        # ## it appropriately, if a conversions is explicitly given for
-        # ## each key, then use that instead
-        # for (key,cell) in zip(keys,line):
-            # if key in conversions:
-                # data[key].append(conversions[key](cell))
-            # else:
-                # cell = cell.strip() # remove end blanks
-                # ## data[key].append(str2num(cell,default_to_nan=False,blank_to_nan=True))
-                # if cell=="": cell = "nan" # replace empty string with "nan" to facilitate possible numerical convervsion
-                # data[key].append(cell)
-    # ## Convert lists to arrays of numbers or whatever. If type given
-    # ## in types use that, esle try to cast as int, on failure try
-    # ## float, on failure revert to str.
-    # if cast_types:
-        # for key in keys:
-            # if types is not None and key in types:
-                # data[key] = np.array(data[key],dtype=types[key])
-            # else:
-                # data[key] = try_cast_to_numerical_array(data[key])
-    # return data
+def stream_to_dict(
+        stream,
+        split=None,             # a string to split rows on
+        comment=None,           # a string to remove from beginnig of rows (regexp is comment+)
+        table_name=None,
+        conversions={},
+        skip_rows=0,
+        error_on_missing_data=False,
+        types = None,           # a dictionary of data keys will cast them as this type
+        cast_types=True,        # attempt to convert strings to numbers
+):
+    r"""Read a stream (line-by-line iterator) into a dictionary. First
+    line contains keys for columns. An attempt is made to cast as
+    numeric data.\n\nsplit -- if not None, split line on this character
+    comment -- remove from keys if not None
+    table_name -- stop reading at end of <\table_name> or <\>
+    conversions -- convert data belonging to keys of conversions by a function"""
+    ## get keys first line must contain keys, split if requested, else already
+    ## iterable, remove trailing new line if necessary
+    def get_line():
+        line = next(stream)
+        ## split if split string given
+        if split!=None:
+            if line[-1]=='\n':
+                line = line[:-1]
+            line = line.split(split)
+        ## else check if already split (i.e., in a list) or make a
+        ## list with one element
+        else:
+            if np.isscalar(line):
+                line = [line]
+        ## blank lines -- skip (recurse)
+        if len(line)==0:
+            line = get_line()
+        ## if a comment string is defined then skip this line
+        ## (recurse) if it begins with a comment
+        if comment!=None:
+            if re.match(r'^ *'+re.escape(comment),line[0]): line = get_line()
+        return line
+    ## skip rows if requested
+    for i in range(skip_rows): next(reader)
+    ## if requested, scan through file until table found
+    if table_name!=None:
+        while True:
+            try:
+                line = get_line()
+                if line==[]: continue   # blank line continue
+            except StopIteration:
+                raise Exception('table_name not found: '+repr(table_name))
+            ## if table specified stop reading at the end of it and dont'
+            ## store data before it
+            except:
+                raise               # an actual error
+            if len(line)>0 and str(line[0]).strip()=='<'+table_name+'>':
+                break # table found
+    ## this line contains dict keys
+    keys = get_line()           
+    ## eliminate blank keys and those with leading/trailing space and
+    ## comment char from keys
+    if comment != None:
+        keys = [re.sub(r'^ *'+comment+r' *',r'',key) for key in keys]
+    keys = [key.strip() for key in keys] # remove trailing/leading white space around keys
+    nonBlankKeys=[]
+    nonBlankKeys = [i for i in range(len(keys)) if keys[i] not in ['','None']]
+    keys = [keys[i] for i in nonBlankKeys]
+    ## check no repeated keys
+    assert len(keys)==len(np.unique(keys)),'repeated keys'
+    ## initialise dictionary of lists
+    data = dict()
+    for key in keys: data[key] = []
+    ## read line-by-line, collecting data
+    while True:
+        try:
+            line = get_line()
+            if line==[]: continue   # blank line conitinue
+        except StopIteration: break # read until end of file
+        except: raise               # an actual error
+        ## if table specified stop reading at the end of it and dont'
+        ## store data before it
+        if table_name!=None:
+            if '<\\'+table_name+'>'==str(line[0]): break
+            if str(line[0]).strip() in ('<\\>','<\\'+table_name+'>',): break
+        if len(line)==0 or (len(line)==1 and line[0]==''): continue # skip empty data
+        ## if partially missing data pad with blanks or raise an error
+        if len(line)<len(keys):
+            if error_on_missing_data:
+                raise Exception('Length data less than length keys: '+str(line))
+            else:
+                line.extend(['' for t in range(len(keys)-len(line))])
+        line = np.take(line,nonBlankKeys)
+        ## add data to lists - loop through each cell and try to cast
+        ## it appropriately, if a conversions is explicitly given for
+        ## each key, then use that instead
+        for (key,cell) in zip(keys,line):
+            if key in conversions:
+                data[key].append(conversions[key](cell))
+            else:
+                cell = cell.strip() # remove end blanks
+                ## data[key].append(str2num(cell,default_to_nan=False,blank_to_nan=True))
+                if cell=="": cell = "nan" # replace empty string with "nan" to facilitate possible numerical convervsion
+                data[key].append(cell)
+    ## Convert lists to arrays of numbers or whatever. If type given
+    ## in types use that, esle try to cast as int, on failure try
+    ## float, on failure revert to str.
+    if cast_types:
+        for key in keys:
+            if types is not None and key in types:
+                data[key] = np.array(data[key],dtype=types[key])
+            else:
+                data[key] = try_cast_to_numerical_array(data[key])
+    return data
 
 # def ead_structured_data_file(filename):
     # """Read a file containing tables and key-val pairs"""
