@@ -1,3 +1,5 @@
+import time
+
 import pytest
 import numpy as np
 
@@ -64,3 +66,11 @@ def test_math_builtins():
     assert t**2 == 25
     assert 2**t == 32
     
+def test_timestamp():
+    t0 = time.time()
+    d = Datum('x')
+    t1 = d.timestamp
+    assert t1>t0
+    d.value = 'j'
+    t2 = d.timestamp
+    assert t2>t1

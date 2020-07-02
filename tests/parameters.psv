@@ -1,0 +1,4 @@
+
+      value | uncertainty |        vary |        step |        note
+          5 |         nan |           0 |       0.001 |        note
+        0.1 |         nan |           1 |       1e-10 |            

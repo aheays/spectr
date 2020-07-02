@@ -1456,6 +1456,7 @@ def format_columns(
     ## compose formatted data columns
     comment_pad = ''.join([' ' for t in comment_string])
     records.extend([comment_pad+delimiter.join([f(field) for (f,field) in zip(fmt_functions,record)]) for record in zip(*data)])
+    t = record_separator.join(records)
     return(record_separator.join(records))
 
 # def print_columns(data,**kwargs):
@@ -3528,7 +3529,7 @@ def string_to_file(
     """Write string to file_name."""
     filename = expand_path(filename)
     if make_directory:
-        mkdir(dirname(filename)) 
+        mkdir(dirname(filename))
     with open(filename,mode=mode,encoding=encoding) as f: 
         f.write(string)
 # def str2range(string):

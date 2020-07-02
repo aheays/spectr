@@ -142,7 +142,7 @@ def voigt_spectrum(
             # p.join()
             # raise err
 
-        if my.isnumeric(use_multiprocessing):
+        if tools.isnumeric(use_multiprocessing):
             nparallel = int(use_multiprocessing)
         else:
             nparallel = min(multiprocessing.cpu_count()-1,multiprocessing_max_cpus)

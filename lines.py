@@ -4,7 +4,7 @@ from pprint import pprint
 
 import numpy as np
 
-from spectr.dataset import Dataset
+from spectr.dataset import DataSet
 from spectr.levels import Levels
 from spectr import lineshapes
 from spectr import tools
@@ -18,7 +18,7 @@ def expand_level_keys(level_class):
     return(retval)
 
 
-class Lines(Dataset):
+class Lines(DataSet):
     """For now rotational lines."""
 
     _prototypes = {key:prototypes[key] for key in (
@@ -42,7 +42,7 @@ class Lines(Dataset):
             name=None,
             **keys_vals,
     ):
-        Dataset.__init__(self)
+        DataSet.__init__(self)
         self.permit_nonprototyped_data = False
         self['class'] = type(self).__name__
         self.name = (name if name is not None else self['class'])

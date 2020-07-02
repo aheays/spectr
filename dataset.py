@@ -12,7 +12,7 @@ from spectr.tools import AutoDict
 from spectr.exceptions import InferException
 
 
-class Dataset():
+class DataSet():
 
     """A collection of scalar or array values, possibly with uncertainties."""
 
@@ -32,7 +32,7 @@ class Dataset():
             self[key] = val
 
     def __len__(self):
-        assert self._length is not None,'Dataset has no length because all data is scalar'
+        assert self._length is not None,'DataSet has no length because all data is scalar'
         return(self._length)
 
     # def _get_keys_values_uncertainties(self,**keys_vals):
@@ -511,7 +511,7 @@ class Dataset():
         self.concatenate(new_dataset)
 
     def concatenate(self,new_dataset):
-        """Concatenate data from another Dataset object to this one."""
+        """Concatenate data from another DataSet object to this one."""
         ## no existing data, just copy fom new
         if len(self.keys()) == 0:
             self._data = deepcopy(new_dataset._data)
@@ -651,34 +651,3 @@ class Dataset():
             plotting.show()
         return(fig)
 
-
-# # if __name__=='__main__':
-
-    # # t = Dataset(x=1,y=2)
-    # # t.add_infer_function('z',('x','y'),lambda x,y:x+y)
-    # # print( t._infer_functions)
-    # # assert t['z'] == 3
-    # # # t.add_infer_function('w',('y','z'),lambda y,z:y*z)
-    # # # assert t['w'] == 6
-    # # # t = Dataset(x=[1,2,3],y=2)
-    # # # t.add_infer_function('z',('x','y'),lambda x,y:x+y)
-    # # # assert list(t['z']) == [3,4,5]
-    # # # t = Dataset()
-    # # # t.set('x',1.,0.1)
-    # # # t.set('y',2.,0.5)
-    # # # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
-    # # # assert t['z'] == 3
-    # # # assert t.get_uncertainty('z') == np.sqrt(0.1**2+0.5**2)
-    # # # t = Dataset()
-    # # # t.set('x',1.,0.1)
-    # # # t.set('y',2.,0.5)
-    # # # t.add_infer_function('z',('x','y'),lambda x,y:x+y,lambda x,y,dx,dy:np.sqrt(dx**2+dy**2))
-    # # # t['z']
-    # # # assert 'z' in t
-    # # # t.set('x',2.,0.2)
-    # # # assert 'z' not in t
-    # # # t['z']
-    # # # print( t._data['z']._inferred_from)
-    # # # t['z'] = 5
-    # # # t.set('x',2.,0.2)
-    # # # assert 'z' in t

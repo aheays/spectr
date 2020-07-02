@@ -1,10 +1,10 @@
 import itertools
 from copy import deepcopy
 
-from spectr.dataset import Dataset
+from spectr.dataset import DataSet
 from spectr.data_prototypes import prototypes
 
-class Levels(Dataset):
+class Levels(DataSet):
     """A generic level."""
     
     _prototypes = {key:prototypes[key] for key in (
@@ -18,7 +18,7 @@ class Levels(Dataset):
         """Default_name is decoded to give default values. Kwargs can be
         scalar data, further default values of vector data, or if vectors
         themselves will populate data arrays."""
-        Dataset.__init__(self)
+        DataSet.__init__(self)
         self.permit_nonprototyped_data = False
         self['class'] = self.__class__.__name__
         self.name = (name if name is not None else self['class'])

@@ -1,13 +1,8 @@
-# import re
-# from copy import copy,deepcopy
-# from pprint import pprint
+import time
 
 import numpy as np
-# from numpy import nan
 
 from spectr import tools
-# from spectr.tools import AutoDict
-# from spectr.exceptions import InferException
 
 
 class Datum:
@@ -50,9 +45,12 @@ class Datum:
         self.units = units
         self.value = value
         self.uncertainty = uncertainty
+        self.description = (description if description is not None else '')
+        self.timestamp = time.time()
 
     def _set_value(self,value):
         self._value = self.cast(value)
+        self.timestamp = time.time()
 
     def _get_value(self):
         return(self._value)
@@ -112,6 +110,8 @@ class Datum:
     def __float__(self): return(float(self.value))
     def __pos__(self): return(+self.value)
     def __abs__(self): return(abs(self.value))
+    def __eq__(self,other): return(self.value == other)
+    def __req__(self,other): return(self.value == other)
     def __add__(self,other): return(self.value+other)
     def __radd__(self,other): return(self.value+other)
     def __sub__(self,other): return(self.value-other)
