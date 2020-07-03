@@ -1,6 +1,7 @@
 import time
 
 from spectr import optimise
+from spectr import tools
 
 def test_ParameterSet_instantiate():
     t = optimise.ParameterSet()
@@ -35,7 +36,11 @@ def test_ParameterSet_set_get():
     assert x.value == 5
     assert x.vary == False 
     assert x.step == 1e-3
-    print( x.description)
+    assert x.description == 'x description'
+    t['x'] = 6
+    assert x.value == 6
+    assert x.vary == False 
+    assert x.step == 1e-3
     assert x.description == 'x description'
 
 def test_ParameterSet_set_print():
@@ -77,3 +82,70 @@ def test_optimiser_get_print_parameter_array():
     d = t.get_parameter_array()
     print( d)
 
+def test_suboptimisers_get_parameters():
+    t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
+    u = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
+    t.add_suboptimiser(u)
+    assert len(u.get_parameters()) == 2
+    assert len(t.get_parameters()) == 4
+    u = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
+    t = optimise.Optimiser('t',u,x=1,y=(0.1,True,1e-5))
+    assert len(t.suboptimisers) == 1
+    assert len(t.get_parameters()) == 4
+
+def test_get_all_suboptimisers():
+    t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
+    u = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
+    v = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
+    t.add_suboptimiser(u)
+    u.add_suboptimiser(v)
+    assert len(t.suboptimisers) == 1
+    assert len(t.get_all_suboptimisers()) == 3
+    assert len(t.get_parameters()) == 6
+    t.add_suboptimiser(v)
+    assert len(t.get_all_suboptimisers()) == 3
+    assert len(t.get_parameters()) == 6
+
+def test_optimiser_construct():
+    t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
+    t.add_construct(lambda: [1,2,3])
+    assert len(t.construct_functions) == 1
+    assert list(t.construct()) == [1,2,3]
+    t = optimise.Optimiser()
+    x = t.add_parameter('x',0.1,False,1e-5)
+    t.add_construct(lambda: x-1)
+    assert list(t.construct()) == [-0.9]
+    x.value = 0.2
+    assert list(t.construct()) == [-0.8]
+
+def test_optimiser_has_changed():
+    t = optimise.Optimiser()
+    pt = t.add_parameter_set(x=1,y=(0.1,True,1e-5))
+    assert t.has_changed()
+    t.construct()
+    assert not t.has_changed()
+    t = optimise.Optimiser()
+    pt = t.add_parameter_set(x=1,y=(0.1,True,1e-5))
+    u = optimise.Optimiser()
+    pu = u.add_parameter_set(z=1,w=(0.1,True,1e-5))
+    t.add_suboptimiser(u)
+    assert t.has_changed()
+    assert u.has_changed()
+    t.construct()
+    assert not t.has_changed()
+    assert not u.has_changed()
+    pu['z'] = 5
+    assert t.has_changed()
+    assert u.has_changed()
+    t.construct()
+    pt['x'] = 2.5
+    assert t.has_changed()
+    assert not u.has_changed()
+
+def test_optimise():
+    t = optimise.Optimiser()
+    x = t.add_parameter('x',0.1, True,1e-5)
+    t.add_construct(lambda: x-1)
+    residual = t.optimise()
+    assert tools.rms(residual) < 1e-5
+    assert abs(x.value-1) < 1e-5

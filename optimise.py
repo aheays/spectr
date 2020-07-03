@@ -22,6 +22,7 @@ class Optimiser:
     ):
         """Suboptimisers can be other Optimiser that are also
         optimised with this one."""
+        assert isinstance(name,str),'Name must be a string.'
         self.name = name # for generating evaluable references to self
         self.residual_scale_factor = None # scale all resiudal by this amount -- useful when combining with other optimisers
         self.parameters = []           # Data objects
@@ -63,14 +64,14 @@ class Optimiser:
         # self.residual_scale_factor = factor
         # self.format_input_functions.append(f'{self.name}.set_residual_scale_factor({repr(factor)})')
 
-    # def add_suboptimiser(self,*suboptimisers,add_format_function=None):
-        # ## add only if not already there
-        # for t in suboptimisers:
-            # if t not in self.suboptimisers:
-                # self.suboptimisers.append(t)
-        # if add_format_function:
-            # self.format_input_functions.append(
-                # f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)})')
+    def add_suboptimiser(self,*suboptimisers,add_format_function=None):
+        ## add only if not already there
+        for t in suboptimisers:
+            if t not in self.suboptimisers:
+                self.suboptimisers.append(t)
+        if add_format_function:
+            self.format_input_functions.append(
+                f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)})')
 
     def add_parameter(self,description,value,vary=None,step=1e-8,):
         p = Datum(
@@ -108,34 +109,34 @@ class Optimiser:
         # name = [name_prefix+str(i) for i in range(len(p))]
         # return(self.add_parameter_set(note=note,**{namei:(pi,varyi,stepi) for (namei,pi,varyi,stepi) in zip(name,p,vary,step)},fmt=fmt))
 
-    # def add_construct(self,*construct_functions):
-        # """Add one or more functions that are called each iteration when the
-        # model is optimised. Optionally these may return an array that is added
-        # to the list of residuals."""
-        # self.construct_functions.extend(construct_functions)
+    def add_construct(self,*construct_functions):
+        """Add one or more functions that are called each iteration when the
+        model is optimised. Optionally these may return an array that is added
+        to the list of residuals."""
+        self.construct_functions.extend(construct_functions)
 
-    # def add_monitor(self,*monitor_functions):
-        # """Add one or more functions that are called when a new minimum
-        # is found in the optimisation. This might be useful for saving
-        # intermediate fits in case of failure or abortion."""
-        # self.monitor_functions.extend(monitor_functions)
-       #  
-    # def _recurse_optimisers(self,_already_recursed=None):
-        # """Return a list of all suboptimisers including self and without double
-        # counting. Ordered so suboptimisers always come first."""
-        # if _already_recursed is None:
-            # _already_recursed = [self] # first
-        # else:
-            # _already_recursed.append(self)
-        # retval = []
-        # for optimiser in self.suboptimisers:
-            # if optimiser in _already_recursed:
-                # continue
-            # else:
-                # _already_recursed.append(optimiser)
-                # retval.extend(optimiser._recurse_optimisers(_already_recursed))
-        # retval.append(self)     # put self last
-        # return(retval)
+    def add_monitor(self,*monitor_functions):
+        """Add one or more functions that are called when a new minimum
+        is found in the optimisation. This might be useful for saving
+        intermediate fits in case of failure or abortion."""
+        self.monitor_functions.extend(monitor_functions)
+        
+    def get_all_suboptimisers(self,_already_recursed=None):
+        """Return a list of all suboptimisers including self and without double
+        counting. Ordered so suboptimisers always come first."""
+        if _already_recursed is None:
+            _already_recursed = [self] # first
+        else:
+            _already_recursed.append(self)
+        retval = []
+        for optimiser in self.suboptimisers:
+            if optimiser in _already_recursed:
+                continue
+            else:
+                _already_recursed.append(optimiser)
+                retval.extend(optimiser.get_all_suboptimisers(_already_recursed))
+        retval.append(self)     # put self last
+        return(retval)
 
     def get_parameter_array(self):
         """Compose parameters into a Dynamic_Array"""
@@ -160,7 +161,7 @@ class Optimiser:
         # lines = []
         # lines.append('{:<20s} , {:<25s} , {:>16s} , {:<5s} , {:>6} , {:>7} , {:<s}'.format('optimiser','name','p','vary','step','dp','note'))
         # # def quoted(string): return('"'+string+'"')
-        # for optimiser in self._recurse_optimisers():
+        # for optimiser in self.get_all_suboptimisers():
             # t = '\n'.join([
                 # f'{optimiser.name:<20s} , {t.name:<25s} , {t.p:>+16.9e} , {repr(t.vary):<5} , {t.step:>6.0e} , {t.dp:>7.1e} , "{str(t.note)}"'
                 # for t in optimiser.parameters if (t.vary or not varied_parameters_only)])
@@ -175,7 +176,7 @@ class Optimiser:
         # lines = []
         # lines.append('from anh import *\n') # general import at beginning of formatted input
         # ## get input lines from all suboptimisers
-        # for optimiser in self._recurse_optimisers():
+        # for optimiser in self.get_all_suboptimisers():
             # for t in optimiser.format_input_functions:
                 # lines.append(t if isinstance(t,str) else t())
             # ## separate with newlines if a suboptimser has any input lines
@@ -202,11 +203,6 @@ class Optimiser:
             # make_header=True,
             # unique_values_in_header=True,
             # quote_strings=True))
-           #  
-    # def set_description(self,string):
-        # self.description = str(string)
-        # self.format_input_functions.append(
-            # lambda: f'{self.name}.set_description({repr(string)})')
 
     # def output_to_directory(
             # self,
@@ -217,31 +213,31 @@ class Optimiser:
         # ## new input line
         # self.format_input_functions.append(
             # lambda directory=directory: f'{self.name}.output_to_directory({repr(directory)})')
-        # directory = my.expand_path(directory)
-        # my.mkdir_if_necessary(directory,trash_existing_directory=trash_existing_directory)
+        # directory = tools.expand_path(directory)
+        # tools.mkdir_if_necessary(directory,trash_existing_directory=trash_existing_directory)
         # ## output self and all suboptimisers into a flat subdirectory
         # ## structure
         # used_subdirectories = []
-        # for optimiser in self._recurse_optimisers():
+        # for optimiser in self.get_all_suboptimisers():
             # subdirectory = directory+'/'+optimiser.name+'/'
-            # my.mkdir_if_necessary(subdirectory,trash_existing_directory=True)
+            # tools.mkdir_if_necessary(subdirectory,trash_existing_directory=True)
             # if subdirectory in used_subdirectories:
                 # raise Exception(f'Non-unique optimiser names producting subdirectory: {repr(subdirectory)}')
             # used_subdirectories.append(subdirectory)
-            # my.string_to_file(subdirectory+'/parameters.csv',optimiser.format_csv())
-            # my.string_to_file(subdirectory+'/input.py',optimiser.format_input())
+            # tools.string_to_file(subdirectory+'/parameters.csv',optimiser.format_csv())
+            # tools.string_to_file(subdirectory+'/input.py',optimiser.format_input())
             # if optimiser.residual is not None:
-                # my.array_to_file(subdirectory+'/residual' ,optimiser.residual,fmt='%+0.4e')
+                # tools.array_to_file(subdirectory+'/residual' ,optimiser.residual,fmt='%+0.4e')
             # else:
-                # my.array_to_file(subdirectory+'/residual' ,[])
+                # tools.array_to_file(subdirectory+'/residual' ,[])
             # if optimiser.description is not None:
-                # my.string_to_file(subdirectory+'/README' ,str(optimiser.description))
+                # tools.string_to_file(subdirectory+'/README' ,str(optimiser.description))
             # for f in optimiser.output_to_directory_functions:
                 # f(subdirectory)
         # ## symlink suboptimsers into subdirectories
-        # for optimiser in self._recurse_optimisers():
+        # for optimiser in self.get_all_suboptimisers():
             # for suboptimiser in optimiser.suboptimisers:
-                # my.mkdir_if_necessary(f'{directory}/{optimiser.name}/suboptimisers/')
+                # tools.mkdir_if_necessary(f'{directory}/{optimiser.name}/suboptimisers/')
                 # os.symlink(
                     # f'../../{suboptimiser.name}',
                     # f'{directory}/{optimiser.name}/suboptimisers/{suboptimiser.name}',
@@ -257,190 +253,195 @@ class Optimiser:
         # # ax.plot(self._optimisation_function(self.parameters),**plot_kwargs)
         # ax.plot(self.combined_residual,**plot_kwargs)
 
-    # def monitor(self):
-        # """Run all monitor functions."""
-        # for optimiser in self._recurse_optimisers():
-            # for f in optimiser.monitor_functions: f()
+    def monitor(self):
+        """Run monitor functions."""
+        for optimiser in self.get_all_suboptimisers():
+            for f in optimiser.monitor_functions:
+                f()
 
-    # def get_parameters(self):
-        # """Return alist of parameter objects in this optimiser and all
-        # suboptimisers."""
-        # retval = []
-        # for optimiser in self._recurse_optimisers():
-            # retval.extend(optimiser.parameters)
-        # retval = list(set(retval)) # pass through set to remove any duplicates
-        # return(retval)
+    def get_parameters(self):
+        """Return alist of parameter objects in this optimiser and all
+        suboptimisers."""
+        retval = []
+        unique_ids = []
+        for optimiser in self.get_all_suboptimisers():
+            for parameter in optimiser.parameters:
+                if id(parameter) not in unique_ids:
+                    retval.append(parameter)
+                    unique_ids.append(id(parameter))
+        return(retval)
 
-    # def has_changed(self):
-        # """Return True if parameters or suboptimiser parameters have changed
-        # since last model construction, or if residual is not computed
-        # (None)."""
+    def has_changed(self):
         # if self.residual is None:
             # return(True)
-        # # for p in self.parameters:
-        # #     if p.timestamp>self.timestamp:
-        # #         return(True)
-        # # for o in self.suboptimisers:
-        # #     if o.has_changed:
-        # #         return(True)
-        # for p in self.get_parameters():
-            # if p.timestamp>self.timestamp:
-                # return(True)
-        # return(False)
+        # for p in self.parameters:
+        #     if p.timestamp>self.timestamp:
+        #         return(True)
+        # for o in self.suboptimisers:
+        #     if o.has_changed:
+        #         return(True)
+        for p in self.get_parameters():
+            if p.timestamp>self.timestamp:
+                return(True)
+        return(False)
 
-    # def construct(
-            # self,
-            # recompute_all=False,
-            # verbose=False,
-    # ):
-        # """Run all construct functions and return collected residuals."""
-        # ## nothing to be done, return cached residual immediately
-        # if not self.has_changed() and not recompute_all:
-            # return(self.combined_residual) # includes own residual and for all suboptimisers
-        # ## collect residuals from suboptimisers and self
-        # combined_residual = []  # from self and suboptimisers
-        # for optimiser in self._recurse_optimisers():
-            # if optimiser.has_changed() or recompute_all:
-                # if verbose:
-                    # print(f'constructing optimiser: {optimiser.name}')
-                # optimiser.residual = []
-                # for f in optimiser.construct_functions:
-                    # t = f()                # run construction function, get residual if there is one
-                    # if t is None or len(t)==0:
-                        # continue                 # indicates no residual
-                    # optimiser.residual.append(t) # add residual to overall residual
-                # ## combine construct function residuals into one
-                # if optimiser.residual is not None and len(optimiser.residual)>0:
-                    # optimiser.residual = np.concatenate(optimiser.residual)
-                # ## optimiser.set_unchanged() #  to indicate that now it has been recomputed
-                # optimiser.timestamp = time.time()
-            # ## add resisudal to return value for optimisation, possibly rescaling it
-            # if optimiser.residual is not None:
-                # if optimiser.residual_scale_factor is not None:
-                    # combined_residual.append(optimiser.residual_scale_factor*np.array(optimiser.residual))
-                # else:
-                    # combined_residual.append(np.array(optimiser.residual))
-        # combined_residual = np.concatenate(combined_residual)
-        # self.combined_residual = combined_residual # this includes residuals from construct_functions combined with suboptimisers
-        # return(combined_residual)
+    def construct(
+            self,
+            recompute_all=False,
+            verbose=False,
+    ):
+        """Run all construct functions and return collected residuals."""
+        ## nothing to be done, return cached residual immediately
+        if not self.has_changed() and not recompute_all:
+            return(self.combined_residual) # includes own residual and for all suboptimisers
+        ## collect residuals from suboptimisers and self
+        combined_residual = []  # from self and suboptimisers
+        for optimiser in self.get_all_suboptimisers():
+            if optimiser.has_changed() or recompute_all:
+                if verbose:
+                    print(f'constructing optimiser: {optimiser.name}')
+                optimiser.residual = []
+                for f in optimiser.construct_functions:
+                    t = f()                # run construction function, get residual if there is one
+                    if t is None:
+                        continue
+                    if np.isscalar(t):
+                        t = [t]
+                    if len(t)==0:
+                        continue 
+                    optimiser.residual.append(t) # add residual to overall residual
+                ## combine construct function residuals into one
+                if optimiser.residual is not None and len(optimiser.residual)>0:
+                    optimiser.residual = np.concatenate(optimiser.residual)
+                ## optimiser.set_unchanged() #  to indicate that now it has been recomputed
+                optimiser.timestamp = time.time()
+            ## add resisudal to return value for optimisation, possibly rescaling it
+            if optimiser.residual is not None:
+                if optimiser.residual_scale_factor is not None:
+                    combined_residual.append(optimiser.residual_scale_factor*np.array(optimiser.residual))
+                else:
+                    combined_residual.append(np.array(optimiser.residual))
+        combined_residual = np.concatenate(combined_residual)
+        self.combined_residual = combined_residual # this includes residuals from construct_functions combined with suboptimisers
+        return(combined_residual)
 
-    # def _optimisation_function(self,p):
-        # """Internal function used by optimise routine. p is a list of varied
-        # parameters."""
-        # self._number_of_optimisation_function_calls += 1
-        # ## update parameters in internal model
-        # p = list(p)
-        # for t in self.get_parameters():
-            # if t.vary:
-                # t.p = p.pop(0)
-        # ## rebuild model and calculate residuals
-        # residuals = self.construct()
-        # ## monitor
-        # if residuals is not None and len(residuals)>0 and self.monitor_frequency!='never':
-            # rms = my.rms(residuals)
-            # assert not np.isinf(rms),'rms is inf'
-            # assert not np.isnan(rms),'rms is nan'
-            # if (self.monitor_frequency=='every iteration'
-                # or (self.monitor_frequency=='rms decrease' and rms<self._rms_minimum)):
-                # current_time = time.time()
-                # print(f'call: {self._number_of_optimisation_function_calls:<6d} time: {current_time-self._previous_time:<10.3g} RMS: {rms:<12.8e}')
-                # self.monitor()
-                # self._previous_time = current_time
-                # if rms<self._rms_minimum: self._rms_minimum = rms
-        # return(residuals)           
+    def _optimisation_function(self,p):
+        """Internal function used by optimise routine. p is a list of varied
+        parameters."""
+        self._number_of_optimisation_function_calls += 1
+        ## update parameters in internal model
+        p = list(p)
+        for t in self.get_parameters():
+            if t.vary:
+                t.value = p.pop(0)
+        ## rebuild model and calculate residuals
+        residuals = self.construct()
+        ## monitor
+        if residuals is not None and len(residuals)>0 and self.monitor_frequency!='never':
+            rms = tools.nanrms(residuals)
+            assert not np.isinf(rms),'rms is inf'
+            assert not np.isnan(rms),'rms is nan'
+            if (self.monitor_frequency=='every iteration'
+                or (self.monitor_frequency=='rms decrease' and rms<self._rms_minimum)):
+                current_time = time.time()
+                print(f'call: {self._number_of_optimisation_function_calls:<6d} time: {current_time-self._previous_time:<10.3g} RMS: {rms:<12.8e}')
+                self.monitor()
+                self._previous_time = current_time
+                if rms<self._rms_minimum: self._rms_minimum = rms
+        return(residuals)           
 
-    # def optimise(
-            # self,
-            # compute_final_uncertainty=False, # single Hessian computation with normlised suboptimiser residuals
-            # xtol=1e-14,
-            # rms_noise=None,
-            # monitor_frequency='every iteration', # 'rms decrease', 'never'
-            # verbose=True,
-            # normalise_suboptimiser_residuals=False,
-            # data_interpolation_factor=1.,
-    # ):
-        # """Optimise parameters."""
-        # def f(xtol=xtol,
-              # normalise_suboptimiser_residuals=normalise_suboptimiser_residuals):
-            # return(f'''{self.name}.optimise(
-            # xtol={repr(xtol)},
-            # compute_final_uncertainty={repr(compute_final_uncertainty)},
-            # rms_noise={repr(rms_noise)},
-            # monitor_frequency={repr(monitor_frequency)},
-            # verbose={repr(verbose)},
-            # data_interpolation_factor={repr(data_interpolation_factor)},
-            # normalise_suboptimiser_residuals={repr(normalise_suboptimiser_residuals)})''')
-        # self.format_input_functions.append(f)
-        # if compute_final_uncertainty:
-            # ## a hack to prevent iteratoin of leastsq, and just get
-            # ## the estimated error at the starting point
-            # xtol = 1e16
-        # if normalise_suboptimiser_residuals:
-            # ## normalise all suboptimiser residuals to one, only
-            # ## appropriate if model is finished -- common normalisation
-            # ## for all construct function outputs in each suboptimiser
-            # for suboptimiser in self._recurse_optimisers():
-                # self.construct()
-                # if suboptimiser.residual is not None and len(suboptimiser.residual)>0:
-                    # if suboptimiser.residual_scale_factor is None:
-                        # suboptimiser.residual_scale_factor = 1/my.rms(suboptimiser.residual)
-                    # else:
-                        # suboptimiser.residual_scale_factor /= my.rms(suboptimiser.residual)
-                    # suboptimiser.residual = None # mark undone
-        # ## info
-        # if self.verbose:
-            # print(f'{self.name}: optimising')
-        # self.monitor_frequency = monitor_frequency
-        # assert monitor_frequency in ('rms decrease','every iteration','never'),f"Valid monitor_frequency: {repr(('rms decrease','every iteration','never'))}"
-        # self._rms_minimum,self._previous_time = np.inf,time.time()
-        # self._number_of_optimisation_function_calls = 0
-        # ## get initial values and reset uncertainties
-        # p  = []
-        # for t in self.get_parameters():
-            # if t.vary:
-                # p.append(t.p)
-            # t.dp = np.nan
-        # if verbose:
-            # print('Number of varied parameters:',len(p))
-        # if len(p)>0:
-            # ## 2018-05-08 on one occasion I seemed to be getting
-            # ## returned p from leastsq which did not correspond to the
-            # ## best fit!!! So I did not update p from this output and
-            # ## retained what was set in construct()
-            # try:
-                # p,dp = my.leastsq(
-                    # self._optimisation_function,
-                    # p,
-                    # [t.step for t in self.get_parameters() if t.vary],
-                    # xtol=xtol,
-                    # rms_noise=rms_noise,
-                # )
-                # if self.verbose: print('Number of evaluations:',self._number_of_optimisation_function_calls)
-                # ## update parameters and uncertainties
-                # p,dp = list(p),list(dp)
-                # for t in self.get_parameters():
-                    # if t.vary:
-                        # t.p = p.pop(0)
-                        # t.dp = dp.pop(0)*np.sqrt(data_interpolation_factor) # not quite correct degneracy rescale for interpolation
-            # except KeyboardInterrupt:
-                # pass
-        # residual = self.construct(recompute_all=True) # run at least once, recompute_all to get uncertainties
-        # self.monitor() # run monitor functions after optimisation
-        # if verbose:
-            # print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
-            # for t in self._recurse_optimisers():
-                # print(f'  suboptimiser {t.name} RMS:',t.get_rms())
-        # return(residual) # returns residual array
+    def optimise(
+            self,
+            compute_final_uncertainty=False, # single Hessian computation with normlised suboptimiser residuals
+            xtol=1e-14,
+            rms_noise=None,
+            monitor_frequency='every iteration', # 'rms decrease', 'never'
+            verbose=True,
+            normalise_suboptimiser_residuals=False,
+            data_interpolation_factor=1.,
+    ):
+        """Optimise parameters."""
+        def f(xtol=xtol,
+              normalise_suboptimiser_residuals=normalise_suboptimiser_residuals):
+            return(f'''{self.name}.optimise(
+            xtol={repr(xtol)},
+            compute_final_uncertainty={repr(compute_final_uncertainty)},
+            rms_noise={repr(rms_noise)},
+            monitor_frequency={repr(monitor_frequency)},
+            verbose={repr(verbose)},
+            data_interpolation_factor={repr(data_interpolation_factor)},
+            normalise_suboptimiser_residuals={repr(normalise_suboptimiser_residuals)})''')
+        self.format_input_functions.append(f)
+        if compute_final_uncertainty:
+            ## a hack to prevent iteratoin of leastsq, and just get
+            ## the estimated error at the starting point
+            xtol = 1e16
+        if normalise_suboptimiser_residuals:
+            ## normalise all suboptimiser residuals to one, only
+            ## appropriate if model is finished -- common normalisation
+            ## for all construct function outputs in each suboptimiser
+            for suboptimiser in self.get_all_suboptimisers():
+                self.construct()
+                if suboptimiser.residual is not None and len(suboptimiser.residual)>0:
+                    if suboptimiser.residual_scale_factor is None:
+                        suboptimiser.residual_scale_factor = 1/tools.nanrms(suboptimiser.residual)
+                    else:
+                        suboptimiser.residual_scale_factor /= tools.nanrms(suboptimiser.residual)
+                    suboptimiser.residual = None # mark undone
+        ## info
+        if self.verbose:
+            print(f'{self.name}: optimising')
+        self.monitor_frequency = monitor_frequency
+        assert monitor_frequency in ('rms decrease','every iteration','never'),f"Valid monitor_frequency: {repr(('rms decrease','every iteration','never'))}"
+        self._rms_minimum,self._previous_time = np.inf,time.time()
+        self._number_of_optimisation_function_calls = 0
+        ## get initial values and reset uncertainties
+        p  = []
+        for t in self.get_parameters():
+            if t.vary:
+                p.append(t.value)
+            t.uncertainties = np.nan
+        if verbose:
+            print('Number of varied parameters:',len(p))
+        if len(p)>0:
+            ## 2018-05-08 on one occasion I seemed to be getting
+            ## returned p from leastsq which did not correspond to the
+            ## best fit!!! So I did not update p from this output and
+            ## retained what was set in construct()
+            try:
+                p,dp = tools.leastsq(
+                    self._optimisation_function,
+                    p,
+                    [t.step for t in self.get_parameters() if t.vary],
+                    xtol=xtol,
+                    rms_noise=rms_noise,
+                )
+                if self.verbose: print('Number of evaluations:',self._number_of_optimisation_function_calls)
+                ## update parameters and uncertainties
+                p,dp = list(p),list(dp)
+                for t in self.get_parameters():
+                    if t.vary:
+                        t.p = p.pop(0)
+                        t.dp = dp.pop(0)*np.sqrt(data_interpolation_factor) # not quite correct degneracy rescale for interpolation
+            except KeyboardInterrupt:
+                pass
+        residual = self.construct(recompute_all=True) # run at least once, recompute_all to get uncertainties
+        self.monitor() # run monitor functions after optimisation
+        if verbose:
+            print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
+            for t in self.get_all_suboptimisers():
+                print(f'  suboptimiser {t.name} RMS:',t.get_rms())
+        return(residual) # returns residual array
 
-    # def get_rms(self):
-        # """Compute root-mean-square error."""
-        # if self.residual is None or len(self.residual)==0:
-            # return(None)
-        # retval = np.sqrt(np.mean(np.array(self.residual)**2))
+    def get_rms(self):
+        """Compute root-mean-square error."""
+        if self.residual is None or len(self.residual)==0:
+            return(None)
+        retval = tools.rms(self.residual)
         # if self.residual_scale_factor is not None:
             # retval *= self.residual_scale_factor
-        # return(retval)
-   #  
+        return(retval)
+
     # def get_parameter(self,name):
         # """Returns parameter matching_name in this optimiser (not in
         # suboptimisers). Error if name does not exist or is not
@@ -489,15 +490,21 @@ class ParameterSet():
             args,               # (value,vary,step,description)
     ):
         args = tools.ensure_iterable(args)
-        self._data[key] = Datum(
-            description = (key
-                           + (' '+self.description if self.description is not None else '')
-                           + (' '+args[3] if len(args)>3 else '')),
-            value=args[0],
-            vary=(args[1] if len(args)>1 else None),
-            step=(args[2] if len(args)>2 else None),
-            kind=float,
-            uncertainty=np.nan,)
+        if key not in self._data:
+            ## add new data
+            self._data[key] = Datum(
+                description = (key
+                               + (' '+self.description if self.description is not None else '')
+                               + (' '+args[3] if len(args)>3 else '')),
+                value=args[0],
+                vary=(args[1] if len(args)>1 else None),
+                step=(args[2] if len(args)>2 else None),
+                kind=float,
+                uncertainty=np.nan,)
+        else:
+            ## update existing data
+            assert len(args)==1
+            self._data[key].value = args[0]
 
     def _get_timestamp(self):
         return(max(data.timestamp for data in self._data.values()))
