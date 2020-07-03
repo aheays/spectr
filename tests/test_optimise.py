@@ -149,3 +149,10 @@ def test_optimise():
     residual = t.optimise()
     assert tools.rms(residual) < 1e-5
     assert abs(x.value-1) < 1e-5
+
+def test_format_input():
+    t = optimise.Optimiser()
+    assert t.format_input() == "from spectr import *\n\no = Optimiser('o')"
+    t.print_input()
+    t.print_input('^from')
+    assert t.format_input('^from.*') == "from spectr import *\n"
