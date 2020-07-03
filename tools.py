@@ -3,6 +3,7 @@ import re
 import os
 from copy import copy
 
+import glob
 import numpy as np
 import h5py
 
@@ -302,10 +303,10 @@ def expand_path(path):
     # """"""
     # return(shutil.copytree(expand_path(src),expand_path(dest)))
 
-# def trash(filename):
-    # """Put file in the trash can. Silence on error. No filename expansion."""
-    # import shlex
-    # os.system('trash-put '+shlex.quote(filename)+' > /dev/null 2>&1')
+def trash(filename):
+    """Put file in the trash can. Silence on error. No filename expansion."""
+    import shlex
+    os.system('trash-put '+shlex.quote(filename)+' > /dev/null 2>&1')
 
 def mkdir(*directories,trash_existing_directory=False):
     """Create directory tree (or multiple) if it doesn't exist."""
@@ -1211,13 +1212,13 @@ def nanrms(x):
     return np.sqrt(np.nanmean(np.array(x)**2))
 
 
-# def randn(shape=None):
-    # """Return a unit standard deviation normally distributed random
-    # float, or array of given shape if provided."""
-    # if shape == None:
-        # return float(np.random.standard_normal((1)))
-    # else:
-        # return np.random.standard_normal(shape)
+def randn(shape=None):
+    """Return a unit standard deviation normally distributed random
+    float, or array of given shape if provided."""
+    if shape == None:
+        return float(np.random.standard_normal((1)))
+    else:
+        return np.random.standard_normal(shape)
 
 # def percentDifference(x,y):
     # """Calculate percent difference, i.e. (x-y)/mean(x,y)."""
@@ -1422,7 +1423,7 @@ def nanrms(x):
 
 def format_columns(
         data,                   # list or dict (for labels)
-        fmt='>10.5g',
+        fmt='>11.5g',
         labels=None,
         header=None,
         record_separator='\n',
@@ -1497,14 +1498,14 @@ def format_columns(
     # f = open(os.path.expanduser(filename),'w')
     # f.write(dict_array_to_str(d,**kwargs_for_dict_array_to_str))
     # f.close()
-   #  
-# def myglob(path='*',regexp=None):
-    # """Shortcut to glob.glob(os.path.expanduser(path)). Returns a list
-    # of matching paths. Also sed alphabetically. If re is provided filter names accordingly."""
-    # retval = sorted(glob.glob(os.path.expanduser(path)))
-    # if regexp is not None:
-        # retval = [t for t in retval if re.match(regexp,t)]
-    # return(retval)
+
+def myglob(path='*',regexp=None):
+    """Shortcut to glob.glob(os.path.expanduser(path)). Returns a list
+    of matching paths. Also sed alphabetically. If re is provided filter names accordingly."""
+    retval = sorted(glob.glob(os.path.expanduser(path)))
+    if regexp is not None:
+        retval = [t for t in retval if re.match(regexp,t)]
+    return(retval)
 
 # def glob_unique(path):
     # """Match glob and return as one file. If zero or more than one file
@@ -2424,10 +2425,10 @@ def unique_combinations(*args):
     # y = np.array(y,ndmin=1)
     # return np.argsort(x)[np.argsort(np.argsort(y))]
 
-# def isin(x,y):
-    # """Return arrays of booleans same size as x, True for all those
-    # elements that exist in y."""
-    # return np.array([i in y for i in x])
+def isin(x,y):
+    """Return arrays of booleans same size as x, True for all those
+    elements that exist in y."""
+    return np.array([i in y for i in x])
 
 # def find_overlap(x,y):
     # """Return boolean arrays (i,j) indicating (x,y) that cover an
@@ -3291,26 +3292,26 @@ def unique_combinations(*args):
         # output = np.loadtxt(tmpfile,**kwargs)
     # return output
 
-# def array_to_file(filename,*args,mkdir=False,**kwargs):
-    # """Use filename to decide whether to attempt to save as an hdf5 file
-    # or ascii data.\n\nKwargs:\n\n mkdir -- If True, create all leading
-    # directories if they don't exist. """
-    # filename = expand_path(filename)
-    # extension = os.path.splitext(filename)[1]
-    # if mkdir: mkdir(dirname(filename))
-    # if extension in ('.hdf5','.h5'):
-        # array_to_hdf5(filename,*args,**kwargs)
-    # elif extension=='.npy':
-        # np.save(filename,args,**kwargs)
-    # elif extension=='.npz':
-        # np.savez_compressed(filename,args,**kwargs)
-    # else:
-        # if not any(isin(('fmt','header',),kwargs)):     # can't use via hdf5 for formatting
-            # try:
-                # return Array_to_txt_via_hdf5(filename,*args,**kwargs)
-            # except:
-                # pass
-        # np.savetxt(filename, np.column_stack(args),**kwargs) # fall back
+def array_to_file(filename,*args,mkdir=False,**kwargs):
+    """Use filename to decide whether to attempt to save as an hdf5 file
+    or ascii data.\n\nKwargs:\n\n mkdir -- If True, create all leading
+    directories if they don't exist. """
+    filename = expand_path(filename)
+    extension = os.path.splitext(filename)[1]
+    if mkdir: mkdir(dirname(filename))
+    if extension in ('.hdf5','.h5'):
+        array_to_hdf5(filename,*args,**kwargs)
+    elif extension=='.npy':
+        np.save(filename,args,**kwargs)
+    elif extension=='.npz':
+        np.savez_compressed(filename,args,**kwargs)
+    else:
+        if not any(isin(('fmt','header',),kwargs)):     # can't use via hdf5 for formatting
+            try:
+                return Array_to_txt_via_hdf5(filename,*args,**kwargs)
+            except:
+                pass
+        np.savetxt(filename, np.column_stack(args),**kwargs) # fall back
 
 # def load_and_spline(filename,x,missing_data=0.):
     # """Load data file using file_to_array. Resplines the results to a
