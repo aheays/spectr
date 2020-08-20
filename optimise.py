@@ -68,16 +68,18 @@ class Optimiser:
     ## read only
     format_input_functions = property(lambda self:self._format_input_functions)
 
-    def add_suboptimiser(self,*suboptimisers,add_format_function=None):
+    def add_suboptimiser(self,*suboptimisers,add_format_function=False,):
+        """Add one or suboptimisers."""
         ## add only if not already there
         for t in suboptimisers:
             if t not in self._suboptimisers:
                 self._suboptimisers.append(t)
         if add_format_function:
             self.format_input_functions.append(
-                f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)})')
+                f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)},{repr(add_format_function)})')
 
     def add_parameter(self,description,value,vary=None,step=1e-8,):
+        """Add one parameter. Return a reference to it."""
         p = Datum(
             description=description,
             value=value,vary=vary,step=step,
@@ -90,6 +92,7 @@ class Optimiser:
             description=None, # added as a description to all parameters
             **keys_args,       # kwargs in the form name=p or name=(Parameter_args)
     ):
+        """Add multiple parameters. Return a ParameterSet."""
         p = ParameterSet(description=description)
         for key,args in keys_args.items():
             p[key] = args
@@ -153,8 +156,8 @@ class Optimiser:
         retval.append(self)     # put self last
         return(retval)
 
-    def get_parameter_array(self):
-        """Compose parameters into a Dynamic_Array"""
+    def get_parameter_dataset(self):
+        """Compose parameters into a DataSet"""
         data = DataSet()
         data.set('description',
                  [t.description for t in self.parameters],
@@ -218,7 +221,7 @@ class Optimiser:
         print(self.format_input(match_lines_regexp=match_lines_regexp))
 
     def __str__(self):
-        return(self.get_parameter_array().format())
+        return(self.get_parameter_dataset().format())
 
     def save_to_directory(
             self,
@@ -240,7 +243,7 @@ class Optimiser:
             if subdirectory in used_subdirectories:
                 raise Exception(f'Non-unique optimiser names producting subdirectory: {repr(subdirectory)}')
             used_subdirectories.append(subdirectory)
-            tools.string_to_file(subdirectory+'/parameters.psv',optimiser.get_parameter_array().format(delimiter=' | '))
+            tools.string_to_file(subdirectory+'/parameters.psv',optimiser.get_parameter_dataset().format(delimiter=' | '))
             tools.string_to_file(subdirectory+'/input.py',optimiser.format_input())
             if optimiser.residual is not None:
                 tools.array_to_file(subdirectory+'/residual' ,optimiser.residual,fmt='%+0.4e')
@@ -277,6 +280,7 @@ class Optimiser:
             plotting.legend(ax=ax)
 
     def plot(self,first_figure_number=1):
+        """Plot all plot functions in separate figures."""
         import matplotlib.pyplot as plt
         for suboptimiser in self._get_all_suboptimisers():
             for function in suboptimiser._plot_functions:
@@ -304,6 +308,8 @@ class Optimiser:
         return(retval)
 
     def has_changed(self):
+        """Whether any parameters have changed since this Optimiser was last
+        constructed."""
         # if self.residual is None:
             # return(True)
         # for p in self.parameters:
@@ -461,8 +467,10 @@ class Optimiser:
         self.monitor() # run monitor functions after optimisation
         if verbose:
             print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
-            for t in self._get_all_suboptimisers():
-                print(f'  suboptimiser {t.name} RMS:',t.get_rms())
+            for suboptimiser in self._get_all_suboptimisers():
+                if (suboptimiser.residual is not None
+                    and len(suboptimiser.residual)>0):
+                    print(f'suboptimiser {t.name} RMS:',tools.rms(suboptimiser.residual))
         return(residual) # returns residual array
 
     def get_rms(self):

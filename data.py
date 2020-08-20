@@ -52,7 +52,7 @@ class Data:
         self.uncertainty = uncertainty
 
     def _set_value(self,value):
-        self._value = self.cast(value)
+        self._value = self.cast(np.asarray(value))
         self._length = len(self._value)
 
     def _get_value(self):

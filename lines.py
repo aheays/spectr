@@ -5,38 +5,55 @@ from pprint import pprint
 import numpy as np
 
 from spectr.dataset import DataSet
-from spectr.levels import Levels
+from spectr.levels import *
 from spectr import lineshapes
 from spectr import tools
 from spectr.data_prototypes import prototypes
 
-def expand_level_keys(level_class):
+level_suffix = {'upper':'_u','lower':'_l'}
+
+def _expand_level_keys(level_class):
+    """Take level keys and make upper and lower level copys for a Lines
+    object."""
     retval = {}
     for key,val in level_class._prototypes.items():
-        retval[key+'u'] = copy(val)
-        retval[key+'l'] = copy(val)
+        retval[key+level_suffix['upper']] = copy(val)
+        retval[key+level_suffix['lower']] = copy(val)
     return(retval)
 
+def _get_key_without_level_suffix(upper_or_lower,key):
+    suffix = level_suffix[upper_or_lower]
+    if len(key) <= len(suffix):
+        return None
+    if key[-len(suffix):] != suffix:
+        return None
+    return key[:-len(suffix)]
 
 class Lines(DataSet):
     """For now rotational lines."""
 
     _prototypes = {key:prototypes[key] for key in (
-        'class', 'levels_class', 'description',
+        'species',
+        # 'class',
+        'levels_class', 'description',
         'notes', 'author', 'reference', 'date',
         'branch',
-        'ν', 'Γ', 'ΓD', 
-        'f',
+        'ΔJ',
+        'ν', 'Γ', 'ΓD', 'f','Ae',
+        'γair','nair','δair','γself',
     )}
-    _prototypes.update(expand_level_keys(Levels))
-    _prototypes['levels_class']['infer'][()] = lambda: 'Levels'
-    _prototypes['ν']['infer']['Eu','El'] = lambda Eu,El: Eu-El
-    _prototypes['El']['infer']['Eu','ν'] = lambda Eu,ν: Eu-ν
-    _prototypes['Eu']['infer']['El','ν'] = lambda El,ν: El+ν
-    _prototypes['Γ']['infer']['Γu','Γl'] = lambda Γu,Γl: Γu+Γl
-    _prototypes['Γl']['infer']['Γ','Γu'] = lambda Γ,Γu: Γ-Γu
-    _prototypes['Γu']['infer']['Γ','Γl'] = lambda Γ,Γl: Γ-Γl
 
+    _levels_class = Levels
+
+    _prototypes.update(_expand_level_keys(Levels))
+    _prototypes['ν']['infer']['E_u','E_l'] = lambda Eu,El: Eu-El
+    _prototypes['E_l']['infer']['E_u','ν'] = lambda Eu,ν: Eu-ν
+    _prototypes['E_u']['infer']['E_l','ν'] = lambda El,ν: El+ν
+    _prototypes['Γ']['infer']['Γ_u','Γ_l'] = lambda Γu,Γl: Γu+Γl
+    _prototypes['Γ_l']['infer']['Γ','Γ_u'] = lambda Γ,Γu: Γ-Γu
+    _prototypes['Γ_u']['infer']['Γ','Γ_l'] = lambda Γ,Γl: Γ-Γl
+
+    
     def __init__(
             self,
             name=None,
@@ -44,8 +61,9 @@ class Lines(DataSet):
     ):
         DataSet.__init__(self)
         self.permit_nonprototyped_data = False
-        self['class'] = type(self).__name__
-        self.name = (name if name is not None else self['class'])
+        # self['class'] = type(self).__name__
+        # self.name = (name if name is not None else self['class'])
+        self.name = (name if name is not None else type(self).__name__)
         for key,val in keys_vals.items():
             self[key] = val
 
@@ -165,14 +183,14 @@ class Lines(DataSet):
                             y.append(result)
                         number_of_processes_per_mass_temperature_combination = 6 # if there are multiple temperature/mass combinations there will more be more processes, with an associated memory danger
                         self.assert_known(xkey,ykey,'Γ')
-                        for d in self.unique_dicts('massl','TDopplerl'):
+                        for d in self.unique_dicts('mass_l','TDoppler_l'):
                             m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
                             ibeg,istep = 0,int(len(m)/number_of_processes_per_mass_temperature_combination)
                             while ibeg<len(m): # loop through lines in chunks, starting subprocesses
                                 iend = min(ibeg+istep,len(m))
                                 t = p.apply_async(lineshapes.voigt_spectrum_with_gaussian_doppler_width,
                                                   args=(x,m[xkey][ibeg:iend],m[ykey][ibeg:iend],m['Γ'][ibeg:iend],
-                                                        d['massl'],d['TDopplerl'], nfwhmL,nfwhmG,ymin),
+                                                        d['mass_l'],d['TDoppler_l'], nfwhmL,nfwhmG,ymin),
                                                   callback=handle_result)
                                 ibeg += istep
                         ## wait for all subprocesses with a tidy keyboard quit
@@ -187,11 +205,11 @@ class Lines(DataSet):
                     else:
                         ## no multiprocessing
                         y = np.zeros(x.shape)
-                        self.assert_known(ykey,xkey,'Γ','massl','TDopplerl')
-                        for d in self.unique_dicts('massl','TDopplerl'):
+                        self.assert_known(ykey,xkey,'Γ','mass_l','TDoppler_l')
+                        for d in self.unique_dicts('mass_l','TDoppler_l'):
                             m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
                             y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
-                                x,m[xkey],m[ykey],m['Γ'],d['massl'],d['TDopplerl'],
+                                x,m[xkey],m[ykey],m['Γ'],d['mass_l'],d['TDoppler_l'],
                                 nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
                 else:
                     raise Exception(f"voigt_method unknown: {repr(voigt_method)}")
@@ -267,15 +285,61 @@ class Lines(DataSet):
         return(ax)
 
     def get_levels(self,upper_or_lower):
-        """Get all data corresponding to upper level into self."""
-        levels = eval(self['levels_class']+'()')
+        """Get all data corresponding to 'upper' or 'lower' level in
+        self."""
+        levels = self._levels_class()
         assert upper_or_lower in ('upper','lower'),f'upper_or_lower must be "upper" or "lower", not {repr(upper_or_lower)}'
         for key in self.keys():
-            if len(key)==1 or key[-1]!=upper_or_lower[0]:
-                continue
-            levels.set(key[:-1],self.get_value(key),self.get_uncertainty(key))
+            if (level_key:=_get_key_without_level_suffix(upper_or_lower,key)) is not None:
+                levels.set(level_key,self.get_value(key),self.get_uncertainty(key))
         return(levels)
 
     upper_levels = property(lambda self: self.get_levels('upper'))
     lower_levels = property(lambda self: self.get_levels('lower'))
 
+class HeteronuclearDiatomicLines(Lines):
+
+    _prototypes = copy(Lines._prototypes)
+    _prototypes.update(_expand_level_keys(HeteronuclearDiatomicLevels))
+
+    def load_from_hitran(self,filename):
+        """Load HITRAN .data."""
+        from . import hitran
+        data = hitran.load_lines(filename)
+        species = np.unique(hitran.translate_codes_to_species(data['Mol']))
+        assert len(species)==1,'Cannot handle mixed species HITRAN linelist.'
+        species = species[0]
+        ## interpret into transition quantities common to all transitions
+        kw = {
+            'ν':data['ν'],
+            'Ae':data['A'],
+            'E'+level_suffix['lower']:data['E_l'],
+            'g'+level_suffix['upper']:data['g_u'],
+            'g'+level_suffix['lower']:data['g_l'],
+            'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+            'nair':data['nair'],
+            'δair':data['δair'],
+            'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+        }
+        ## get species
+        assert len(np.unique(data['Mol']))==1
+        try:
+            ## full isotopologue
+            kw['species'] = hitran.translate_codes_to_species(data['Mol'],data['Iso'])
+        except KeyError:
+            assert len(np.unique(data['Iso']))==1,'Cannot identify isotopologues and multiple are present.'
+            kw['species'] = hitran.translate_codes_to_species(data['Mol'])
+        ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
+        ## standin for diatomics
+        kw['v'+level_suffix['upper']] = data['V_u']
+        kw['v'+level_suffix['lower']] = data['V_l']
+        branches = {'P':-1,'Q':0,'R':+1}
+        ΔJ,J_l = [],[]
+        for Q_l in data['Q_l']:
+            branchi,Jli = Q_l.split()
+            ΔJ.append(branches[branchi])
+            J_l.append(Jli)
+        kw['ΔJ'] = np.array(ΔJ,dtype=int)
+        kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
+        self.extend(**kw)
+        

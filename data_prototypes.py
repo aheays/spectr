@@ -10,7 +10,7 @@ prototypes = {
     'species' :dict(description="Chemical species" ,kind=str ,infer={}) ,
     'E' :dict(description="Level energy (cm-1)" ,kind=float ,fmt='<14.7f' ,infer={}) ,
     'J' :dict(description="Total angular momentum quantum number excluding nuclear spin" , kind=float,infer={}) ,
-    'g' :dict(description="Level degeneracy including nuclear spin statistics" , kind=int ,infer={}) ,
+    'g' :dict(description="Level degeneracy including nuclear spin statistics" , kind=int , infer={}) ,
     'pm' :dict(description="Total inversion symmetry" ,kind=int ,infer={}) ,
     'Γ' :dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind=float, fmt='<10.5g', infer={('τ',):lambda τ: 5.309e-12/τ,}),
     'label' :dict(description="Label of electronic state", kind=str,infer={}),
@@ -34,10 +34,17 @@ prototypes = {
 
     ## transitions
     'levels_class':dict(description="What Dataset subclass of Levels this is a transition between",kind='object',infer={}),
-    'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", dtype='8U', cast=str, fmt='<10s'),
+    'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s'),
     'ν':dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>13.6f', infer={}),
     'ΓD':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={}),
     'f':dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e',infer={}),
+    'Ae':dict(description="Radiative decay rate (s-1)", kind=float, fmt='<10.5g', infer={('At','Ad'): lambda At,Ad: At-Ad,}),
+    'γair':dict(description="Pressure broadening coefficient in air (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
+    'δair':dict(description="Pressure shift coefficient in air (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
+    'nair':dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
+    'γself':dict(description="Pressure self-broadening coefficient (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
+    'ΔJ':dict(description="Jp-Jpp", kind=float, fmt='>+4g', infer={('Jp','Jpp'):lambda Jp,Jpp: Jp-Jpp,},),
 
-
+    
 }
+

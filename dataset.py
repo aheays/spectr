@@ -26,7 +26,7 @@ class DataSet():
         self._inferences = AutoDict([])
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
-        self.uncertainty_prefix = 'σ' # a single letter to prefix uncertainty keys
+        self.uncertainty_prefix = 'd_' # a single letter to prefix uncertainty keys
         self.verbose = True
         for key,val in keys_vals.items():
             self[key] = val
@@ -57,8 +57,8 @@ class DataSet():
 
     def __setitem__(self,key,value):
         """Shortcut to set, cannot set uncertainty this way."""
-        if key[0]==self.uncertainty_prefix:
-            self.set_uncertainty(key[1:],value)
+        if (value_key:=self._get_key_without_uncertainty(key)) is not None:
+            self.set_uncertainty(value_key,value)
         else:
             self.set(key,value)
 
@@ -230,8 +230,8 @@ class DataSet():
         of x. If list of strings return a copy of self restricted to
         that data. If an index, return an indexed copy of self."""
         if isinstance(arg,str):
-            if arg[0]==self.uncertainty_prefix:
-                return(self.get_uncertainty(arg[1:]))
+            if (value_key:=self._get_key_without_uncertainty(arg)) is not None:
+                return(self.get_uncertainty(value_key))
             else:
                 return(self.get_value(arg))
         elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
@@ -245,23 +245,26 @@ class DataSet():
             return
         if already_attempted is None:
             already_attempted = []
+        # print( key,already_attempted)
         if key in already_attempted:
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key) 
         ## Loop through possible methods of inferences.
-        if key not in self._prototypes or 'infer' not in self._prototypes[key]:
+        if (key not in self._prototypes
+            or 'infer' not in self._prototypes[key]
+            or len(self._prototypes[key]['infer'])==0):
                 raise InferException(f"No infer functions for: {repr(key)}")
         for dependencies,function in self._prototypes[key]['infer'].items():
-            ## sometimes dependencies end up as a string instead of a list of strings
             if isinstance(dependencies,str):
+                ## sometimes dependencies end up as a string instead of a list of strings
                 dependencies = (dependencies,)
             if self.verbose:
                 print(f'Attempting to infer {repr(key)} from {repr(dependencies)}')
             try:
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted)) # copy of already_attempted so it will not feed back here
-                    already_attempted.append(dependency) # in case it comes up again at this level
-                ## compute value
+                    # already_attempted.append(dependency) # in case it comes up again at this level
+                ## compute value if dependencies successfully inferred
                 self[key] = function(*[self[dependency] for dependency in dependencies])
                 ## compute uncertainties by linearisation
                 squared_contribution = []
@@ -285,9 +288,9 @@ class DataSet():
             ## some kind of InferException 
             except InferException as err:
                 continue      
-            ## complete failure to infer
-            else:
-                raise InferException(f"Could not infer key: {repr(key)}")
+        ## complete failure to infer
+        else:
+            raise InferException(f"Could not infer key: {repr(key)}")
 
     def __iter__(self):
         for key in self._data:
@@ -510,37 +513,88 @@ class DataSet():
             new_dataset[key] = new_keys_vals[key]
         self.concatenate(new_dataset)
 
+    # def concatenate(self,new_dataset):
+    #     """Concatenate data from another DataSet object to this one. All
+    #     existing data in current DataSet must be known to the new
+    #     DataSet, but the reverse is not enforced.  If the existing
+    #     DataSet is scalar then its existing data is not vectorised
+    #     before concatenation."""
+    #     ## no existing data, just copy fom new
+    #     if len(self.keys()) == 0:
+    #         self._data = deepcopy(new_dataset._data)
+    #         self._length = new_dataset._length
+    #         return
+    #     ## get keys to copy, and check know to both
+    #     all_keys = set(list(self.keys())+list(new_dataset.keys()))
+    #     self.assert_known(*all_keys)
+    #     for key in copy(all_keys):
+    #         if (self.is_scalar(key) and new_dataset.is_scalar(key) 
+    #             and self.get_value(key) == new_dataset.get_value(key)                  # values match
+    #             and self.get_uncertainty(key) == new_dataset.get_uncertainty(key)): # uncertainties match
+    #             all_keys.remove(key)
+    #     if len(all_keys)==0:
+    #         return
+    #     ## extend data key by key
+    #     old_length = (1 if self.is_scalar() else len(self))
+    #     new_length = (1 if new_dataset.is_scalar() else len(new_dataset))
+    #     for key in all_keys:
+    #         if self.is_scalar(key):
+    #             self.make_array(key)
+    #         data = self._data[key]
+    #         data._extend_length_if_necessary(new_length+old_length)
+    #         data._value[old_length:old_length+new_length] = new_dataset.get_value(key)
+    #         if data.has_uncertainty():
+    #             data._uncertainty[old_length:old_length+new_length] = new_dataset.get_uncertainty(key)
+    #     self._length = old_length+new_length
+
     def concatenate(self,new_dataset):
-        """Concatenate data from another DataSet object to this one."""
-        ## no existing data, just copy fom new
-        if len(self.keys()) == 0:
-            self._data = deepcopy(new_dataset._data)
-            self._length = new_dataset._length
+        """Concatenate data from another DataSet object to this one. All
+        existing data in current DataSet must be known to the new
+        DataSet, but the reverse is not enforced.  If the existing
+        DataSet is scalar then its existing data is not vectorised
+        before concatenation."""
+        if new_dataset.is_scalar():
+            ## only concatenate if vector data present
             return
-        ## get keys to copy, and check know to both
-        all_keys = set(list(self.keys())+list(new_dataset.keys()))
-        self.assert_known(*all_keys)
-        new_dataset.assert_known(*all_keys)
-        ## do not do anything for keys that are both scalar and equal
-        for key in copy(all_keys):
-            if (self.is_scalar(key) and new_dataset.is_scalar(key) 
-                and self.get_value(key) == new_dataset.get_value(key)                  # values match
-                and self.get_uncertainty(key) == new_dataset.get_uncertainty(key)): # uncertainties match
-                all_keys.remove(key)
-        if len(all_keys)==0:
+        if self.is_scalar():
+            ## just copy everything, keeping scalar data, but maybe
+            ## overwritten by new_dataset
+            for key in new_dataset:
+                self[key] = new_dataset[key]
             return
-        ## extend data key by key
-        old_length = (1 if self.is_scalar() else len(self))
-        new_length = (1 if new_dataset.is_scalar() else len(new_dataset))
-        for key in all_keys:
+        ## sort out scalar and  vector keys
+        for key in self:
             if self.is_scalar(key):
-                self.make_array(key)
-            data = self._data[key]
-            data._extend_length_if_necessary(new_length+old_length)
-            data._value[old_length:old_length+new_length] = new_dataset.get_value(key)
-            if data.has_uncertainty():
-                data._uncertainty[old_length:old_length+new_length] = new_dataset.get_uncertainty(key)
-        self._length = old_length+new_length
+                if key in new_dataset:
+                    if new_dataset.is_scalar(key):
+                        if new_dataset[key] == self[key]:
+                            ## matching scalar data in existing and new data -- UNCERTAINTIES!!!!
+                            continue
+                        else:
+                            ## non-matching data, make vector
+                            self.make_array(key)
+                            new_dataset.make_array(key)
+                    else:
+                        ## make all vector
+                        self.make_array(key)
+                else:
+                    ## keep existing scalar data as scalar since its not in new data
+                    continue
+            else:
+                assert new_dataset.is_known(key), f"Key missing in new_dataset: {repr(key)}"
+                if new_dataset.is_scalar(key):
+                    ## make new data vector
+                    new_dataset.make_array(key)
+                else:
+                    ## everything already vector
+                    pass
+            ## copy new_data to self
+            if self.is_scalar(key):
+                continue
+            self._data[key].extend(
+                new_dataset.get_value(key),
+                new_dataset.get_uncertainty(key),)
+        self._length = len(self) + len(new_dataset)
 
     def plot(
             self,
@@ -651,3 +705,10 @@ class DataSet():
             plotting.show()
         return(fig)
 
+    def _get_key_without_uncertainty(self,key):
+        if len(key) <= len(self.uncertainty_prefix):
+            return None
+        elif key[:len(self.uncertainty_prefix)] != self.uncertainty_prefix:
+            return None
+        else:
+            return key[len(self.uncertainty_prefix):]

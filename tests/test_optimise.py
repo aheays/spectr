@@ -81,9 +81,9 @@ def test_optimiser_add_parameter_set():
     t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
     assert len(t.parameters)==2
 
-def test_optimiser_get_print_parameter_array():
+def test_optimiser_get_print_parameter_dataset():
     t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
-    d = t.get_parameter_array()
+    d = t.get_parameter_dataset()
     print( d)
 
 def test_suboptimisers_get_parameters():
@@ -204,18 +204,3 @@ def test_save_to_directory():
     u.add_construct_function(lambda: tools.randn(30)*3)
     t.optimise()
     t.save_to_directory('tmp/test_save_to_directory')
-    # def f():
-        # plt.plot([1,2,5])
-        # plt.title('t')
-    # t.add_plot_function(f)
-    # def f():
-        # plt.plot([-3,-2,-1])
-    # t.add_plot_function(f)
-    # u = optimise.Optimiser('u')
-    # def f():
-        # plt.plot([10,20,30])
-    # t.add_plot_function(f)
-    # t.add_suboptimiser(u)
-    # t.plot()
-    # if show_plots:
-        # plt.show()

@@ -1,12 +1,22 @@
-
 import pytest
+from pytest import raises
 import numpy as np
 
-from spectr.dataset import DataSet
+from spectr.dataset import *
 from spectr.exceptions import InferException
 
 def test_construct():
     t = DataSet()
+
+def test_get_key_without_uncertainty():
+    t = DataSet()
+    assert t._get_key_without_uncertainty('d_ddd') == 'ddd'
+    assert t._get_key_without_uncertainty('dddd') is None
+    assert t._get_key_without_uncertainty('d_') is None
+    t = DataSet()
+    t.uncertainty_prefix = 'σ'
+    assert t._get_key_without_uncertainty('d_ddd') == None
+    assert t._get_key_without_uncertainty('σf') == 'f'
 
 def test_construct_get_set_data():
     t = DataSet()
@@ -23,12 +33,12 @@ def test_construct_get_set_data():
     assert list(t['x']) == ['a','b']
     t = DataSet(
         x=[1.,2.],
-        σx=[0.1,0.2],
+        d_x=[0.1,0.2],
     )
     assert not t.is_scalar()
     assert len(t)==2
     assert list(t['x']) == [1.,2.]
-    assert list(t['σx']) == [0.1,0.2]
+    assert list(t['d_x']) == [0.1,0.2]
 
 def test_set_get_value():
     t = DataSet()
@@ -52,7 +62,7 @@ def test_setitem_getitem():
     t.set('y',5.)
     t.set_uncertainty('y',0.1)
     assert t['y']==5
-    assert t['σy']==0.1
+    assert t['d_y']==0.1
 
 def test_prototypes():
     t = DataSet()
@@ -112,28 +122,30 @@ def test_get_copy():
     assert list(u['x']) == [3]
 
 def test_concatenate():
+    t = DataSet()
+    t.concatenate(DataSet())
+    assert t.is_scalar()
     t = DataSet(x=1)
     t.concatenate(DataSet(x=1))
     assert t.is_scalar()
     assert t['x'] == 1
     t = DataSet(x=1)
     t.concatenate(DataSet(x=2))
-    assert not t.is_scalar('x')
-    assert not t.is_scalar()
-    assert list(t['x']) == [1,2]
+    assert t.is_scalar('x')
+    assert t['x'] == 1
     t = DataSet(x=[1,2])
-    t.concatenate(DataSet(x=3))
+    t.concatenate(DataSet(x=[3]))
     assert not t.is_scalar()
     assert list(t['x']) == [1,2,3]
     assert len(t) == 3
     t = DataSet(x='a',y=[1,2],z=0.5)
-    t.concatenate(DataSet(x='a',y=3,z=0.6))
+    t.concatenate(DataSet(x='a',y=[3],z=0.6))
     assert t['x'] == 'a'
     assert list(t['y']) == [1,2,3]
     assert not t.is_scalar()
     assert all(np.abs(np.array(t['z'])-np.array([0.5,0.5,0.6]))<1e-5)
     assert len(t) == 3
-    t = DataSet(x=1)
+    t = DataSet(x=[1])
     t.concatenate(DataSet(x=[2,3]))
     assert list(t['x']) == [1,2,3]
     assert len(t) == 3
@@ -228,30 +240,30 @@ def test_infer_autoremove_inferences():
 
 def test_infer_with_uncertainties():
     t = DataSet()
-    t['x'],t['σx']= 1.,0.1
-    t['y'],t['σy'] = 2.,0.2
+    t['x'],t['d_x']= 1.,0.1
+    t['y'],t['d_y'] = 2.,0.2
     t.add_infer_function('z',('x','y'),lambda x,y:x+y)
     assert t['z'] == 3
-    assert abs(t['σz'] - np.sqrt(0.1**2+0.2**2))/t['σz'] < 1e-5
+    assert abs(t['d_z'] - np.sqrt(0.1**2+0.2**2))/t['d_z'] < 1e-5
     t = DataSet()
-    t['x'],t['σx']= 1.,0.1
+    t['x'],t['d_x']= 1.,0.1
     t['y'] = 2.
     t.add_infer_function('z',('x','y'),lambda x,y:x+y)
     assert t['z'] == 3
-    assert abs(t['σz'] - np.sqrt(0.1**2))/t['σz'] < 1e-5
+    assert abs(t['d_z'] - np.sqrt(0.1**2))/t['d_z'] < 1e-5
     t = DataSet()
-    t['y'],t['σy'] = 2.,0.2
-    t['p'],t['σp'] = 3.,0.3
+    t['y'],t['d_y'] = 2.,0.2
+    t['p'],t['d_p'] = 3.,0.3
     t.add_infer_function('z',('y','p'),lambda y,p:y*p)
     assert t['z'] == 2*3
-    assert abs(t['σz'] - np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3 )/t['σz'] < 1e-5
+    assert abs(t['d_z'] - np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3 )/t['d_z'] < 1e-5
     t = DataSet()
-    t['x'],t['σx']= 1.,0.1
-    t['y'],t['σy'] = 2.,0.2
-    t['p'],t['σp'] = 3.,0.3
+    t['x'],t['d_x']= 1.,0.1
+    t['y'],t['d_y'] = 2.,0.2
+    t['p'],t['d_p'] = 3.,0.3
     t.add_infer_function('z',('x','y','p'),lambda x,y,p:x+y*p)
     assert t['z'] == 1+2*3
-    assert abs(t['σz'] - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/t['σz'] < 1e-5
+    assert abs(t['d_z'] - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/t['d_z'] < 1e-5
 
 def test_match_matches():
     t = DataSet(x=[1,2,2,3],y=4)
