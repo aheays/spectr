@@ -5,6 +5,7 @@ from copy import copy,deepcopy
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
+from scipy import constants
 
 golden_ratio = 1.61803398874989
 
@@ -56,10 +57,7 @@ def presetRcParams(
         'legend.numpoints'     :1,
         'font.family'          :'serif',
         'text.usetex'          :False,
-        'text.latex.preamble'  :[
-            r'\usepackage{mhchem}',
-            r'\usepackage[np]{numprint}\npdecimalsign{\ensuremath{.}} \npthousandsep{\,} \npproductsign{\times} \npfourdigitnosep ',
-        ],
+        'text.latex.preamble'  : r'''\usepackage{mhchem}\usepackage[np]{numprint}\npdecimalsign{\ensuremath{.}} \npthousandsep{\,} \npproductsign{\times} \npfourdigitnosep''',
         'mathtext.fontset'     :'cm',
         'lines.markeredgewidth': 1,
         # 'axes.prop_cycle': cycler('color',linecolors_colorblind_safe),
@@ -85,11 +83,9 @@ def presetRcParams(
         'axes.formatter.useoffset'      : False,    # If True, the tick label formatter # will default to labeling ticks relative # to an offset when the data range is # small compared to the minimum absolute # value of the data.
         'axes.formatter.offset_threshold' : 4,     # When useoffset is True, the offset # will be used when it can remove # at least this number of significant # digits from tick labels.
         }
-
     presets['screen']=deepcopy(presets['base'])
     presets['screen'].update({
         'figure.figsize'     :(xscreen,yscreen),
-        # 'figure.figsize'     :(10,10),
         'figure.subplot.left':0.05,
         'figure.subplot.right':0.95,
         'figure.subplot.bottom':0.05,
@@ -97,7 +93,7 @@ def presetRcParams(
         'figure.subplot.wspace':0.2,
         'figure.subplot.hspace':0.2,
         'figure.autolayout'  : True, # reset tight_layout everytime figure is redrawn -- seems to cause problems with long title and label strings
-        # 'toolbar'  :'none' , # hides toolbar but also disables keyboard shortcuts
+        ## 'toolbar'  :'none' , # hides toolbar but also disables keyboard shortcuts
         'legend.handlelength':4,
         'text.usetex'        :False,
         'lines.linewidth'    : 1,
@@ -116,11 +112,10 @@ def presetRcParams(
         'path.simplify_threshold' :1, # how much to do so
         'agg.path.chunksize': 10000,  # antialisin speed up -- does not seem to do anything over path.simplify
     })
-
     presets['article_single_column']=deepcopy(presets['base'])
     presets['article_single_column'].update({
         'text.usetex'          :False,
-        'figure.figsize'       :(papersize['article_single_column_width'],papersize['article_single_column_width']/golden_ratio),
+        'figure.figsize'       :(papersize['article_single_column_width'],papersize['article_single_column_width']/constants.golden_ratio),
         # 'lines.linewidth'    : 0.5,
         'lines.linewidth'    : 1,
         'figure.subplot.left'  :0.15,
@@ -138,20 +133,17 @@ def presetRcParams(
         'font.size'            :10.,
         # 'axes.formatter.use_mathtext': True, # use math text for scientific notation . i.e,. not 1e-9
     })
-
     presets['articleSingleColumn'] = presets['article_single_column'] # deprecated
     presets['articleSingleColumnSmall']=deepcopy(presets['articleSingleColumn'])
     presets['articleSingleColumnSmall'].update({
             'figure.figsize':(3.,2.),
             })
-
     presets['article_single_column_one_third_page']=deepcopy(presets['article_single_column'])
     presets['article_single_column_one_third_page'].update({
             'figure.figsize':(papersize['article_single_column_width'],papersize['article_full_page_height']/3.),
             'figure.subplot.bottom':0.15,
             'figure.subplot.top'   :0.95,
             })
-
     presets['article_single_column_half_page']=deepcopy(presets['article_single_column'])
     presets['article_single_column_half_page'].update({
             'figure.figsize':(papersize['article_single_column_width'],papersize['article_full_page_height']/2.),
@@ -159,21 +151,18 @@ def presetRcParams(
             'figure.subplot.top'   :0.95,
             })
     presets['articleSingleColumnTwoSubfigures'] = presets['article_single_column_half_page'] # deprecated
-
     presets['article_single_column_two_thirds_page']=deepcopy(presets['article_single_column_half_page'])
     presets['article_single_column_two_thirds_page'].update({
             'figure.figsize':(papersize['article_single_column_width'],papersize['article_full_page_height']*2./3.),
             'figure.subplot.bottom':0.1,
             'figure.subplot.top'   :0.95,
             })
-
     presets['article_single_column_full_page']=deepcopy(presets['article_single_column'])
     presets['article_single_column_full_page'].update({
             'figure.figsize':(papersize['article_single_column_width'],papersize['article_full_page_height']),
             'figure.subplot.bottom':0.05,
             'figure.subplot.top'   :0.97,
             })
-
     presets['article_double_column']=deepcopy(presets['article_single_column'])
     presets['article_double_column'].update({
             'figure.figsize':(papersize['article_full_page_width'],papersize['article_single_column_width']),
@@ -181,7 +170,6 @@ def presetRcParams(
             'lines.linewidth'    : 0.5,
             'figure.subplot.bottom':0.14,})
     presets['articleDoubleColumn'] = presets['article_double_column']
-    
     presets['article_double_column_half_page']=deepcopy(presets['article_double_column'])
     presets['article_double_column_half_page'].update({
             'figure.figsize':(papersize['article_full_page_width'],papersize['article_full_page_height']/2.),
@@ -192,7 +180,6 @@ def presetRcParams(
             'figure.subplot.top':0.95,
             'figure.subplot.wspace':0.3,
             'figure.subplot.hspace':0.3,})
-
     presets['article_double_column_two_thirds_page']=deepcopy(presets['article_double_column'])
     presets['article_double_column_two_thirds_page'].update({
             'figure.figsize':(papersize['article_full_page_width'],papersize['article_full_page_height']*2./3.),
@@ -203,7 +190,6 @@ def presetRcParams(
             'figure.subplot.wspace':0.3,
             'figure.subplot.hspace':0.3,
             })
-
     presets['article_full_page']=deepcopy(presets['article_double_column'])
     presets['article_full_page'].update({
             'figure.figsize':(papersize['article_full_page_width'],papersize['article_full_page_height']),
@@ -213,7 +199,6 @@ def presetRcParams(
             'figure.subplot.hspace':0.15,
             'figure.subplot.left':0.1,
             })
-
     presets['article_full_page_landscape']=deepcopy(presets['article_full_page'])
     presets['article_full_page_landscape'].update({
             'figure.figsize':(papersize['article_full_page_height'],papersize['article_full_page_width']),
@@ -221,7 +206,6 @@ def presetRcParams(
             'figure.subplot.right'   :0.97,
             'figure.subplot.bottom':0.07,
             })
-
     presets['beamer_base']=deepcopy(presets['base'])
     presets['beamer_base'].update({
         'text.usetex'          :False,
@@ -232,7 +216,6 @@ def presetRcParams(
         'lines.linewidth'      :0.5,
         'lines.markersize'     :4,
     })
-
     ## good for a simgle image slide
     presets['beamer_large']=deepcopy(presets['base'])
     presets['beamer_large'].update({
@@ -247,18 +230,16 @@ def presetRcParams(
         'ytick.labelsize'      :8.,
         'ytick.labelsize'      :8.,
     })
-
     presets['beamer_large_twinx']=deepcopy(presets['beamer_large'])
     presets['beamer_large_twinx'].update({
         'figure.figsize'       :(4.5,2.5), # 5.0393701,3.7795276 beamer size
         'figure.subplot.left':0.15,
         'figure.subplot.right':0.85,
     })
-
     ## good for single imag ewith more text
     presets['beamer_medium']=deepcopy(presets['beamer_base'])
     presets['beamer_medium'].update({
-            'figure.figsize'       :(golden_ratio*1.8,1.8),
+            'figure.figsize'       :(constants.golden*1.8,1.8),
             'figure.subplot.left'  :0.18,
             'figure.subplot.right' :0.95,
             'figure.subplot.bottom':0.2,
@@ -266,11 +247,10 @@ def presetRcParams(
             'figure.subplot.wspace':0.20,
             'figure.subplot.hspace':0.37,
             })
-
     ## good to fill one quadrant
     presets['beamer_small']=deepcopy(presets['beamer_base'])
     presets['beamer_small'].update({
-        'figure.figsize'       :(2.25,2.25/golden_ratio),
+        'figure.figsize'       :(2.25,2.25/constants.golden),
         'figure.subplot.left'  :0.25,
         'figure.subplot.right' :0.95,
         'figure.subplot.bottom':0.25,
@@ -279,20 +259,17 @@ def presetRcParams(
         'figure.subplot.hspace':0.37,
         'axes.labelpad': 1,
     })
-
     ## maximise
     presets['beamer_entire_slide']=deepcopy(presets['beamer_large'])
     presets['beamer_entire_slide'].update({
         'figure.figsize'       :(5.0393701,3.7795276), 
     })
-
     ## fit more text beside
     presets['beamer_wide']=deepcopy(presets['beamer_large'])
     presets['beamer_wide'].update({
             'figure.figsize'       :(4.5,1.5),
             'figure.subplot.bottom':0.25,
             })
-
     ## fit more text beside
     presets['beamer_tall']=deepcopy(presets['beamer_large'])
     presets['beamer_tall'].update({
@@ -301,7 +278,6 @@ def presetRcParams(
             'figure.subplot.bottom':0.14,
             'figure.subplot.top':0.95,
             })
-
     ## good for two column
     presets['beamer_half_width']=deepcopy(presets['beamer_base'])
     presets['beamer_half_width'].update({
@@ -311,7 +287,6 @@ def presetRcParams(
             'figure.subplot.top':0.95,
             'figure.subplot.right':0.95,
             })
-
     presets['a4_portrait'] = deepcopy(presets['base'])
     presets['a4_portrait'].update({
             'text.usetex'          :False,
@@ -326,7 +301,6 @@ def presetRcParams(
             'legend.fontsize':'large',
             'font.size':10,
             })
-
     presets['a4_landscape'] = deepcopy(presets['a4_portrait'])
     presets['a4_landscape'].update({
             'figure.figsize':papersize['a4_landscape'],
@@ -337,9 +311,6 @@ def presetRcParams(
             'figure.subplot.wspace':0.2,
             'figure.subplot.hspace':0.2,
             })
-
-
-
     presets['letter_portrait'] = deepcopy(presets['a4_portrait'])
     presets['letter_portrait'].update({
             'figure.figsize':papersize['letter_portrait'],
@@ -350,7 +321,6 @@ def presetRcParams(
             'figure.subplot.wspace':0.2,
             'figure.subplot.hspace':0.2,
             })
-
     presets['letter_landscape'] = deepcopy(presets['a4_portrait'])
     presets['letter_landscape'].update({
             'figure.figsize':papersize['letter_landscape'],
@@ -361,7 +331,6 @@ def presetRcParams(
             'figure.subplot.wspace':0.2,
             'figure.subplot.hspace':0.2,
             })
-
     ## synonyms 
     presets['a4'] = presets['a4_portrait']
     presets['letter'] = presets['letter_portrait']
@@ -380,17 +349,6 @@ def presetRcParams(
                 break
         else:
             raise Exception(f"Could not interpret rcParam: {repr(key)}")
-    ## override paerasm defined as kwargs, shortcuts for common option
-    # if figsize    is not None: mpl.rcParams['figure.figsize']        = figsize
-    # if usetex     is not None: mpl.rcParams['text.usetex']           = usetex
-    # if left       is not None: mpl.rcParams['figure.subplot.left']   = left
-    # if right      is not None: mpl.rcParams['figure.subplot.right']  = right
-    # if bottom     is not None: mpl.rcParams['figure.subplot.bottom'] = bottom
-    # if top        is not None: mpl.rcParams['figure.subplot.top']    = top
-    # if wspace     is not None: mpl.rcParams['figure.subplot.wspace'] = wspace
-    # if hspace     is not None: mpl.rcParams['figure.subplot.hspace'] = hspace
-    # if linewidth  is not None: mpl.rcParams['lines.linewidth']       = linewidth
-    # if autolayout is not None: mpl.rcParams['figure.autolayout']     = autolayout
     ## create figure and axes objects
     if make_fig:
         fig = plt.figure()

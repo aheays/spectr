@@ -19,4 +19,10 @@ def test_AutoDict():
     t['y']['b'][1] = 5
     assert t['y']['b'] == {1:5}
 
+def test_vectorise_function():
+    @tools.vectorise
+    def f(x):
+        return x**2
+    assert list(f([1,2,2,3])) == [1,4,4,9]
+    
 

@@ -170,36 +170,36 @@ def voigt_spectrum(
         y = np.sum(y,axis=0)
     return(y)
 
-# def centroided_spectrum(
-        # x,                      # frequency scale (cm-1) -- ORDERED AND REGULAR!
-        # x0,                     # line centers (cm-1)
-        # S,                      # line strengths
-        # Smin=None,              # do not include lines weaker than this
-# ):
-    # """Convert some lines into a stick spectrum with each linestrength
-    # divided between the two nearest neighbour x-points.."""
-    # print('UNRELIABLE NEEDS WORK -- only implemented for regular grid')
-    # dx = (x[-1]-x[0])/len(x)
-    # if Smin is not None:
-        # i = np.abs(S)>Smin
-        # x0,S = x0[i],S[i]
-    # x = np.array(x,dtype=float)
-    # y = np.zeros(x.shape,dtype=float)
-    # ## get indices of output points above and below data
-    # i = np.argsort(x0)
-    # x0,S = x0[i],S[i]
-    # ib = np.searchsorted(x,x0)
-    # ia = ib-1
-    # ## add left and rigth divided strength to spectrum
-    # for iai,ibi,x0i,Si in zip(ia,ib,x0,S):
-        # if iai<=0 or ibi>=len(x):
-            # ## points outside x domain
-            # continue
-        # ## weights to above and below points -- COULD BE MODIFIED FOR IRREGULAR GRID
-        # ca = (x0i-x[iai])/(x[ibi]-x[iai])
-        # y[iai] += ca*Si/dx
-        # y[ibi] += (1.-ca)*Si/dx
-    # return(y)
+def centroided_spectrum(
+        x,                      # frequency scale (cm-1) -- ORDERED AND REGULAR!
+        x0,                     # line centers (cm-1)
+        S,                      # line strengths
+        Smin=None,              # do not include lines weaker than this
+):
+    """Convert some lines into a stick spectrum with each linestrength
+    divided between the two nearest neighbour x-points.."""
+    print('UNRELIABLE NEEDS WORK -- only implemented for regular grid')
+    dx = (x[-1]-x[0])/len(x)
+    if Smin is not None:
+        i = np.abs(S)>Smin
+        x0,S = x0[i],S[i]
+    x = np.array(x,dtype=float)
+    y = np.zeros(x.shape,dtype=float)
+    ## get indices of output points above and below data
+    i = np.argsort(x0)
+    x0,S = x0[i],S[i]
+    ib = np.searchsorted(x,x0)
+    ia = ib-1
+    ## add left and rigth divided strength to spectrum
+    for iai,ibi,x0i,Si in zip(ia,ib,x0,S):
+        if iai<=0 or ibi>=len(x):
+            ## points outside x domain
+            continue
+        ## weights to above and below points -- COULD BE MODIFIED FOR IRREGULAR GRID
+        ca = (x0i-x[iai])/(x[ibi]-x[iai])
+        y[iai] += ca*Si/dx
+        y[ibi] += (1.-ca)*Si/dx
+    return(y)
 
 # def voigt_spectrum_with_gaussian_doppler_width(
         # x,                      # frequency scale (cm-1)

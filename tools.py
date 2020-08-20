@@ -2,6 +2,7 @@ import functools
 import re
 import os
 from copy import copy
+import csv
 
 import glob
 import numpy as np
@@ -47,9 +48,31 @@ class AutoDict:
         for key,val in self._dict.items():
             yield key,val
 
-# #################################
-# ## decorators / function tools ##
-# #################################
+#################################
+## decorators / function tools ##
+#################################
+
+
+def vectorise_if_necessary(function,dtype=float):
+    def vectorised(*args):
+        ## check if scalar
+        length = None
+        for arg in args:
+            if np.iterable(arg):
+                assert length is None or len(arg)==length,'Nonconstant lengths.'
+                length = len(arg)
+                break
+            else:
+                ## all scalar, do scalar calc
+                return function(*args)
+        ## vectorise
+        args = [np.asarray(arg) if np.iterable(arg) else np.full(length,arg) for arg in args]
+        retval = np.empty(len(args[0]),dtype=dtype,)
+        for argsi in unique_combinations(*args):
+            i = np.all([args[j]==argsi[j] for j in range(len(args))],axis=0)
+            retval[i] = function(*argsi)
+        return(retval)
+    return vectorised
 
 # def frozendict_args(f):
     # """A decorator that aims to be like functools.lru_cache except it
@@ -719,10 +742,10 @@ def mkdir(*directories,trash_existing_directory=False):
     # most general type."""
     # return list(zip(*tuple(x)))
 
-# def file_to_array_unpack(*args,**kwargs):
-    # """Same as file_to_array but unpack data by default."""
-    # kwargs.setdefault('unpack',True)
-    # return(file_to_array(*args,**kwargs))
+def file_to_array_unpack(*args,**kwargs):
+    """Same as file_to_array but unpack data by default."""
+    kwargs.setdefault('unpack',True)
+    return(file_to_array(*args,**kwargs))
 
 # def txt_to_array_via_hdf5(path,**kwargs):
     # """Loads ASCII text to an array, converting to hdf5 on the way
@@ -843,15 +866,15 @@ def hdf5_to_dict(filename_or_hdf5_object):
     # return(retval)
     # # return({key:np.array(ra[key]) for key in ra.dtype.names})
 
-# def dict_to_recarray(d):
-    # """Convert a dictionary of identically sized arrays into a
-    # recarray. Names are dictionary keys. Add some dictionary-like
-    # methods to this particular instance of a recarray."""
-    # if len(d)==0:
-        # ra = np.recarray((0),float) # no data
-    # else:
-        # ra = np.rec.fromarrays([np.array(d[t]) for t in d], names=list(d.keys()),)
-    # return(ra)
+def dict_to_recarray(d):
+    """Convert a dictionary of identically sized arrays into a
+    recarray. Names are dictionary keys. Add some dictionary-like
+    methods to this particular instance of a recarray."""
+    if len(d)==0:
+        ra = np.recarray((0),float) # no data
+    else:
+        ra = np.rec.fromarrays([np.array(d[t]) for t in d], names=list(d.keys()),)
+    return(ra)
 
 # def make_recarray(**kwargs):
     # """kwargs are key=val pair defining arrays of equal length from
@@ -2296,6 +2319,7 @@ def unique_combinations(*args):
     args that are unique. Elements of args must be hashable."""
     return(set(zip(*args)))
 
+
 # def unique_array_combinations(*arrs,return_mask=False):
     # """All are iterables of the same length. Finds row-wise combinations of
     # args that are unique. Elements of args must be hashable."""
@@ -3605,39 +3629,39 @@ def string_to_file(
             # if match: matches.append(match)
     # return(matches)
 
-# def file_to_dict(filename,*args,**kwargs):
-    # """Convert text file to dictionary.
-    # \nKeys are taken from the first uncommented record, or the last
-    # commented record if labels_commented=True. Leading/trailing
-    # whitespace and leading commentStarts are stripped from keys.\n
-    # This requires that all elements be the same length. Header in hdf5
-    # files is removed."""
-    # filename = expand_path(filename)
-    # file_extension = os.path.splitext(filename)[1]
-    # if file_extension=='.npz':
-        # d = dict(**np.load(filename))
-        # ## avoid some problems later whereby 0D  arrays are not scalars
-        # for key,val in d.items():
-            # if val.ndim==0:
-                # d[key] = np.asscalar(val)
-    # elif file_extension in ('.hdf5','.h5'): # load as hdf5
-        # d = hdf5_to_dict(filename)
-        # if 'header' in d: d.pop('header') # special case header, not data 
-        # if 'README' in d: d.pop('README') # special case header, not data 
-    # elif file_extension in ('.ods','.csv','.CSV'): # load as spreadsheet, set # as comment char
-        # kwargs.setdefault('comment','#')
-        # d = sheet_to_dict(filename,*args,**kwargs)
-    # elif file_extension in ('.rs',): # my convention -- a ␞ separated file
-        # kwargs.setdefault('comment_regexp','#')
-        # kwargs.setdefault('delimiter','␞')
-        # d = txt_to_dict(filename,*args,**kwargs)
-    # elif rootname(filename) in ('README',): # load as org mode
-        # d = org_table_to_dict(filename,*args,**kwargs)
-    # elif os.path.isdir(filename): # load as directory
-        # d = Data_Directory(filename)
-    # else: # load as text
-        # d = txt_to_dict(filename,*args,**kwargs)
-    # return(d)
+def file_to_dict(filename,*args,**kwargs):
+    """Convert text file to dictionary.
+    \nKeys are taken from the first uncommented record, or the last
+    commented record if labels_commented=True. Leading/trailing
+    whitespace and leading commentStarts are stripped from keys.\n
+    This requires that all elements be the same length. Header in hdf5
+    files is removed."""
+    filename = expand_path(filename)
+    file_extension = os.path.splitext(filename)[1]
+    if file_extension=='.npz':
+        d = dict(**np.load(filename))
+        ## avoid some problems later whereby 0D  arrays are not scalars
+        for key,val in d.items():
+            if val.ndim==0:
+                d[key] = np.asscalar(val)
+    elif file_extension in ('.hdf5','.h5'): # load as hdf5
+        d = hdf5_to_dict(filename)
+        if 'header' in d: d.pop('header') # special case header, not data 
+        if 'README' in d: d.pop('README') # special case header, not data 
+    elif file_extension in ('.ods','.csv','.CSV'): # load as spreadsheet, set # as comment char
+        kwargs.setdefault('comment','#')
+        d = sheet_to_dict(filename,*args,**kwargs)
+    elif file_extension in ('.rs',): # my convention -- a ␞ separated file
+        kwargs.setdefault('comment_regexp','#')
+        kwargs.setdefault('delimiter','␞')
+        d = txt_to_dict(filename,*args,**kwargs)
+    elif rootname(filename) in ('README',): # load as org mode
+        d = org_table_to_dict(filename,*args,**kwargs)
+    elif os.path.isdir(filename): # load as directory
+        d = Data_Directory(filename)
+    else: # load as text
+        d = txt_to_dict(filename,*args,**kwargs)
+    return(d)
 
 def org_table_to_dict(filename,table_name=None):
     """Load a table into a dicationary of arrays. table_name is used to
@@ -3694,10 +3718,10 @@ def org_table_to_dict(filename,table_name=None):
     # # from data_structures import Dynamic_Recarray
     # # return(Dynamic_Recarray(**d))
 
-# def file_to_recarray(filename,*args,**kwargs):
-    # """Convert text file to record array, converts from dictionary
-    # returned by file_to_dict."""
-    # return(dict_to_recarray(file_to_dict(filename,*args,**kwargs)))
+def file_to_recarray(filename,*args,**kwargs):
+    """Convert text file to record array, converts from dictionary
+    returned by file_to_dict."""
+    return(dict_to_recarray(file_to_dict(filename,*args,**kwargs)))
 
 # def decompose_ufloat_array(x):
     # """Return arrays of nominal_values and std_devs of a ufloat array."""
@@ -4070,62 +4094,62 @@ def try_cast_to_numerical_array(x):
     # import pandas as pd
     # return(pd.DataFrame(sheet_to_dict(*args,**kwargs)))
 
-# def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
-    # """Converts csv or ods file, or list of lists to a dictionary.\n\nFor
-    # csv files, path can be open file object or path. For ods it must
-    # be a path\n\nKeys read from first row unless skiprows
-    # specified.\n\nIf tableName is supplied string then keys and data
-    # are read betweenen first column flags <tableName> and
-    # <\\tableName>. Other wise reads to end of file.\n\nConversions
-    # specify a dictionary of (key,function) pairs where function is
-    # used to convert the string from of each element of key, rather
-    # than str2num.\n\nFurther kwargs are passed to csv.reader if a csv
-    # file is used, or for ods files ignored.\n\nIf there is missing
-    # data the line might get ignored.  \nLeading/trailing white space
-    # and leading commentChar.\n\nSpecify ods/xls sheet with
-    # sheet_name=name.\n\nIf return_all_tables, return a dict of dicts,
-    # with keys given by all table names found in sheet. """
-    # ## deprecated kwargs
-    # if 'tableName' in kwargs:   kwargs['table_name'] = kwargs.pop('tableName')
-    # if 'commentChar' in kwargs: kwargs['comment'] = kwargs.pop('commentChar')
-    # ## open generator reader according to file extension
-    # fid = None
-    # if isinstance(path,list):
-        # reader = (line for line in path)
-    # ## some common path expansions
-    # elif isinstance(path,str) and (path[-4:]=='.csv' or path[-4:]=='.CSV'):
-        # fid=open(expand_path(path),'r')
-        # reader=csv.reader(
-            # fid,
-            # skipinitialspace=True,
-            # quotechar=(kwargs.pop('quotechar') if 'quotechar' in kwargs else '"'),)
-    # elif isinstance(path,str) and path[-4:]=='.ods':
-        # kwargs.setdefault('sheet_name',0)
-        # reader=odsReader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
-    # elif isinstance(path,file):
-        # reader=csv.reader(expand_path(path),)
-    # else:
-        # raise Exception("Failed to open "+repr(path))
-    # ## if skip_header is set this is the place to pop the first few recrods of the reader objects
-    # if skip_header is not None:
-        # for t in range(skip_header): next(reader)
-    # ## if requested return all tables. Fine all names and then call
-    # ## sheet2dict separately for all found tables.
-    # if return_all_tables:
-        # return_dict = dict()
-        # for line in reader:
-            # if len(line)==0: continue
-            # r = re.match(r'<([^\\][^>]*)>',line[0],)
-            # if r:
-                # table_name = r.groups()[0]
-                # return_dict[table_name] = sheet_to_dict(path,table_name=table_name,**kwargs)
-        # return return_dict
-    # ## load the data into a dict
-    # data = stream_to_dict(reader,**kwargs)
-    # ## close file if necessary
-    # if fid!=None: fid.close()
-    # ## return
-    # return data
+def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
+    """Converts csv or ods file, or list of lists to a dictionary.\n\nFor
+    csv files, path can be open file object or path. For ods it must
+    be a path\n\nKeys read from first row unless skiprows
+    specified.\n\nIf tableName is supplied string then keys and data
+    are read betweenen first column flags <tableName> and
+    <\\tableName>. Other wise reads to end of file.\n\nConversions
+    specify a dictionary of (key,function) pairs where function is
+    used to convert the string from of each element of key, rather
+    than str2num.\n\nFurther kwargs are passed to csv.reader if a csv
+    file is used, or for ods files ignored.\n\nIf there is missing
+    data the line might get ignored.  \nLeading/trailing white space
+    and leading commentChar.\n\nSpecify ods/xls sheet with
+    sheet_name=name.\n\nIf return_all_tables, return a dict of dicts,
+    with keys given by all table names found in sheet. """
+    ## deprecated kwargs
+    if 'tableName' in kwargs:   kwargs['table_name'] = kwargs.pop('tableName')
+    if 'commentChar' in kwargs: kwargs['comment'] = kwargs.pop('commentChar')
+    ## open generator reader according to file extension
+    fid = None
+    if isinstance(path,list):
+        reader = (line for line in path)
+    ## some common path expansions
+    elif isinstance(path,str) and (path[-4:]=='.csv' or path[-4:]=='.CSV'):
+        fid=open(expand_path(path),'r')
+        reader=csv.reader(
+            fid,
+            skipinitialspace=True,
+            quotechar=(kwargs.pop('quotechar') if 'quotechar' in kwargs else '"'),)
+    elif isinstance(path,str) and path[-4:]=='.ods':
+        kwargs.setdefault('sheet_name',0)
+        reader=odsReader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
+    elif isinstance(path,file):
+        reader=csv.reader(expand_path(path),)
+    else:
+        raise Exception("Failed to open "+repr(path))
+    ## if skip_header is set this is the place to pop the first few recrods of the reader objects
+    if skip_header is not None:
+        for t in range(skip_header): next(reader)
+    ## if requested return all tables. Fine all names and then call
+    ## sheet2dict separately for all found tables.
+    if return_all_tables:
+        return_dict = dict()
+        for line in reader:
+            if len(line)==0: continue
+            r = re.match(r'<([^\\][^>]*)>',line[0],)
+            if r:
+                table_name = r.groups()[0]
+                return_dict[table_name] = sheet_to_dict(path,table_name=table_name,**kwargs)
+        return return_dict
+    ## load the data into a dict
+    data = stream_to_dict(reader,**kwargs)
+    ## close file if necessary
+    if fid!=None: fid.close()
+    ## return
+    return data
 
 def stream_to_dict(
         stream,

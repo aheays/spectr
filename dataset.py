@@ -12,17 +12,17 @@ from spectr.tools import AutoDict
 from spectr.exceptions import InferException
 
 
-class DataSet():
+class Dataset():
 
     """A collection of scalar or array values, possibly with uncertainties."""
 
-    def __init__(self, **keys_vals):
+    def __init__(self,**keys_vals):
         self._data = dict()
         self._length = None
-        if not hasattr(self,'_prototypes'):
+        if not hasattr(self,'prototypes'):
             ## derived classes might set this in class definition, so
             ## do not overwrite here
-            self._prototypes = {}
+            self.prototypes = {}
         self._inferences = AutoDict([])
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
@@ -32,7 +32,7 @@ class DataSet():
             self[key] = val
 
     def __len__(self):
-        assert self._length is not None,'DataSet has no length because all data is scalar'
+        assert self._length is not None,'Dataset has no length because all data is scalar'
         return(self._length)
 
     # def _get_keys_values_uncertainties(self,**keys_vals):
@@ -65,10 +65,10 @@ class DataSet():
     # def set_value(self,key,value,is_scalar=None,**data_kwargs):
     #     """Set a value and possibly its uncertainty."""
     #     self.unset_inferences(key)
-    #     assert self.permit_nonprototyped_data or key in self._prototypes, f'New data is not in prototypes: {repr(key)}'
+    #     assert self.permit_nonprototyped_data or key in self.prototypes, f'New data is not in prototypes: {repr(key)}'
     #     ## if not previously set then get perhaps get a prototype
-    #     if key not in self and key in self._prototypes:
-    #         for tkey,tval in self._prototypes[key].items():
+    #     if key not in self and key in self.prototypes:
+    #         for tkey,tval in self.prototypes[key].items():
     #             if tkey == 'infer':
     #                 continue # not a Data kwarg
     #             data_kwargs.setdefault(tkey,copy(tval))
@@ -87,10 +87,10 @@ class DataSet():
         """Set a value and possibly its uncertainty. Set is_scalar=True to set
         a scalar Object type that is iterable."""
         self.unset_inferences(key)
-        assert self.permit_nonprototyped_data or key in self._prototypes, f'New data is not in prototypes: {repr(key)}'
+        assert self.permit_nonprototyped_data or key in self.prototypes, f'New data is not in prototypes: {repr(key)}'
         ## if not previously set then get perhaps get a prototype
-        if key not in self and key in self._prototypes:
-            for tkey,tval in self._prototypes[key].items():
+        if key not in self and key in self.prototypes:
+            for tkey,tval in self.prototypes[key].items():
                 if tkey == 'infer':
                     continue # not a Data kwarg
                 data_kwargs.setdefault(tkey,copy(tval))
@@ -129,10 +129,14 @@ class DataSet():
             self._inferences[key].remove(inferred_key)
             self.unset(inferred_key)
 
-    def get_value(self,key):
+    def get_value(self,key,ensure_vector=False):
         if key not in self._data:
             self._infer(key)
-        return(self._data[key].value)
+        if ensure_vector and self.is_scalar(key):
+            assert len(self) is not None
+            return np.full(len(self),self[key])
+        else:
+            return self._data[key].value
 
     def get_uncertainty(self,key):
         self.assert_known(key)
@@ -148,12 +152,12 @@ class DataSet():
     def add_prototype(self,key,infer=None,**data_kwargs):
         if infer is None:
             infer = {}
-        self._prototypes[key] = dict(infer=infer,**data_kwargs)
+        self.prototypes[key] = dict(infer=infer,**data_kwargs)
 
     def add_infer_function(self,key,dependencies,function):
-        if key not in self._prototypes:
+        if key not in self.prototypes:
             self.add_prototype(key)
-        self._prototypes[key]['infer'][dependencies] = function
+        self.prototypes[key]['infer'][dependencies] = function
 
     def index(self,index):
         """Index all array data in place."""
@@ -180,7 +184,13 @@ class DataSet():
         """Return boolean array of data matching all key==val."""
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
-            if np.ndim(val)==0:
+            ## if key has suffix 'min' or 'max' then match to range the match anything greater
+            ## or equal to this value
+            if len(key)>4 and key[-4:] == '_min':
+                i &= (self[key[:-4]] >= val)
+            elif len(key)>4 and key[-4:] == '_max':
+                i &= (self[key[:-4]] <= val)
+            elif np.ndim(val)==0:
                 if val is np.nan:
                     i &= np.isnan(self[key])
                 else:
@@ -194,7 +204,8 @@ class DataSet():
     def matches(self,**keys_vals):
         """Returns a copy reduced to matching values."""
         return(self.copy(index=self.match(**keys_vals)))
-
+    def limit_to_matches(self,**keys_vals):
+        self.index(self.match(**keys_vals))
     def unique(self,key):
         """Return unique values of one key."""
         return(np.unique(self[key]))
@@ -250,11 +261,11 @@ class DataSet():
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key) 
         ## Loop through possible methods of inferences.
-        if (key not in self._prototypes
-            or 'infer' not in self._prototypes[key]
-            or len(self._prototypes[key]['infer'])==0):
+        if (key not in self.prototypes
+            or 'infer' not in self.prototypes[key]
+            or len(self.prototypes[key]['infer'])==0):
                 raise InferException(f"No infer functions for: {repr(key)}")
-        for dependencies,function in self._prototypes[key]['infer'].items():
+        for dependencies,function in self.prototypes[key]['infer'].items():
             if isinstance(dependencies,str):
                 ## sometimes dependencies end up as a string instead of a list of strings
                 dependencies = (dependencies,)
@@ -389,7 +400,6 @@ class DataSet():
             comment='#',
             delimiter=None,
             table_name=None,
-            
     ):
         '''Load data from a text file in standard format generated by
         save_to_file.'''
@@ -457,10 +467,10 @@ class DataSet():
         else:
             return(isinstance(self._data[key],Datum))
 
-    def make_array(self,key=None):
+    def make_vector(self,key=None):
         if key is None:
             for key in self:
-                self.make_array(key)
+                self.make_vector(key)
             return
         data = self._data[key]
         if self.is_scalar():
@@ -513,45 +523,11 @@ class DataSet():
             new_dataset[key] = new_keys_vals[key]
         self.concatenate(new_dataset)
 
-    # def concatenate(self,new_dataset):
-    #     """Concatenate data from another DataSet object to this one. All
-    #     existing data in current DataSet must be known to the new
-    #     DataSet, but the reverse is not enforced.  If the existing
-    #     DataSet is scalar then its existing data is not vectorised
-    #     before concatenation."""
-    #     ## no existing data, just copy fom new
-    #     if len(self.keys()) == 0:
-    #         self._data = deepcopy(new_dataset._data)
-    #         self._length = new_dataset._length
-    #         return
-    #     ## get keys to copy, and check know to both
-    #     all_keys = set(list(self.keys())+list(new_dataset.keys()))
-    #     self.assert_known(*all_keys)
-    #     for key in copy(all_keys):
-    #         if (self.is_scalar(key) and new_dataset.is_scalar(key) 
-    #             and self.get_value(key) == new_dataset.get_value(key)                  # values match
-    #             and self.get_uncertainty(key) == new_dataset.get_uncertainty(key)): # uncertainties match
-    #             all_keys.remove(key)
-    #     if len(all_keys)==0:
-    #         return
-    #     ## extend data key by key
-    #     old_length = (1 if self.is_scalar() else len(self))
-    #     new_length = (1 if new_dataset.is_scalar() else len(new_dataset))
-    #     for key in all_keys:
-    #         if self.is_scalar(key):
-    #             self.make_array(key)
-    #         data = self._data[key]
-    #         data._extend_length_if_necessary(new_length+old_length)
-    #         data._value[old_length:old_length+new_length] = new_dataset.get_value(key)
-    #         if data.has_uncertainty():
-    #             data._uncertainty[old_length:old_length+new_length] = new_dataset.get_uncertainty(key)
-    #     self._length = old_length+new_length
-
     def concatenate(self,new_dataset):
-        """Concatenate data from another DataSet object to this one. All
-        existing data in current DataSet must be known to the new
-        DataSet, but the reverse is not enforced.  If the existing
-        DataSet is scalar then its existing data is not vectorised
+        """Concatenate data from another Dataset object to this one. All
+        existing data in current Dataset must be known to the new
+        Dataset, but the reverse is not enforced.  If the existing
+        Dataset is scalar then its existing data is not vectorised
         before concatenation."""
         if new_dataset.is_scalar():
             ## only concatenate if vector data present
@@ -572,11 +548,11 @@ class DataSet():
                             continue
                         else:
                             ## non-matching data, make vector
-                            self.make_array(key)
-                            new_dataset.make_array(key)
+                            self.make_vector(key)
+                            new_dataset.make_vector(key)
                     else:
                         ## make all vector
-                        self.make_array(key)
+                        self.make_vector(key)
                 else:
                     ## keep existing scalar data as scalar since its not in new data
                     continue
@@ -584,7 +560,7 @@ class DataSet():
                 assert new_dataset.is_known(key), f"Key missing in new_dataset: {repr(key)}"
                 if new_dataset.is_scalar(key):
                     ## make new data vector
-                    new_dataset.make_array(key)
+                    new_dataset.make_vector(key)
                 else:
                     ## everything already vector
                     pass
