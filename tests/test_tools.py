@@ -20,7 +20,7 @@ def test_AutoDict():
     assert t['y']['b'] == {1:5}
 
 def test_vectorise_function():
-    @tools.vectorise
+    @tools.vectorise_in_chunks
     def f(x):
         return x**2
     assert list(f([1,2,2,3])) == [1,4,4,9]

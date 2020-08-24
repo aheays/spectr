@@ -23,20 +23,20 @@ def test_load():
     assert list(t['J']) == [0,1,2,3,4]
 
 def test_inheritance():
-    t = levels.HeteronuclearDiatomic()
+    t = levels.DiatomicCinfv()
     t.load('data/levels_14N2')
     assert t['species'] == '14N2'
     assert list(t['J']) == [0,1,2,3,4]
     assert list(t['g']) == [1,3,5,7,9]
 
-def test_load_HeteronuclearDiatomic():
-    t = levels.HeteronuclearDiatomic()
+def test_load_DiatomicCinfv():
+    t = levels.DiatomicCinfv()
     t.load('data/SO_rotational_levels')
     assert t.unique('species') == ['32S16O']
     assert abs(np.sum(t['E'])-3383596.8)<1
 
 def test_plot():
-    t = levels.HeteronuclearDiatomic()
+    t = levels.DiatomicCinfv()
     t.load('data/SO_rotational_levels')
     t.plot('J','E',show=show_plots)
     

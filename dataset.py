@@ -13,291 +13,17 @@ from spectr.tools import AutoDict
 from spectr.exceptions import InferException
 
 
-class Datum:
-    """A scalar or array value, possibly with an uncertainty."""
 
-    _kind_defaults = {
-        'f': {'cast':float     ,'fmt'   :'+12.8e','description':'float'        ,'step':1e-8},
-        'i': {'cast':int       ,'fmt'   :'d'   ,'description':'int'          ,'step':None},
-        'b': {'cast':bool      ,'fmt'   :'g'     ,'description':'bool'         ,'step':None},
-        'U': {'cast':str       ,'fmt'   :'s'  ,'description':'str'          ,'step':None},
-        'O': {'cast':lambda x:x,'fmt'   :''      ,'description':'object'       ,'step':None},
-    }
+from . import optimise
+from .datum import Datum
+from .data import Data
 
-    def __init__(
-            self,
-            value,         # if it has an associated value stored in the type itself
-            uncertainty=None,         # if it has an associated value stored in the type itself
-            vary=None,
-            step=None,
-            kind=None,
-            cast=None,
-            description=None,   # long string
-            units=None,
-            fmt=None,
-    ):
-        if kind is not None:
-            self.kind = np.dtype(kind).kind
-        elif value is not None:
-            self.kind = np.dtype(type(value)).kind
-            if self.kind=='i' and uncertainty is not None:
-                self.kind = 'f'
-        else:
-            self.kind = 'f'
-        d = self._kind_defaults[self.kind]
-        self.description = (description if description is not None else d['description'])
-        self.fmt = (fmt if fmt is not None else d['fmt'])
-        self.cast = (cast if cast is not None else d['cast'])
-        self.step = (step if step is not None else d['step'])
-        self.vary = vary
-        self.units = units
-        self.value = value
-        self.uncertainty = uncertainty
-        self.description = (description if description is not None else '')
-        self.timestamp = time.time()
-
-    def _set_value(self,value):
-        self._value = self.cast(value)
-        self.timestamp = time.time()
-
-    def _get_value(self):
-        return(self._value)
-
-    value = property(_get_value,_set_value)
-
-    def _set_uncertainty(self,uncertainty):
-        if uncertainty is not None:
-            assert self.kind == 'f'
-            self._uncertainty = float(uncertainty)
-        else:
-            self._uncertainty = None
-
-    def _get_uncertainty(self):
-        return(self._uncertainty)
-
-    uncertainty = property(_get_uncertainty,_set_uncertainty)
-
-    def has_uncertainty(self):
-        return(self._uncertainty is not None)
-
-    def __str__(self):
-        if self.has_uncertainty():
-            return(format(self.value,self.fmt)+' ± '+format(self.uncertainty,'0.2g'))
-        else:
-            return(format(self.value,self.fmt))
-
-    # def make_data(self,length):
-        # """Turn current scalar data intor array data of the given
-        # length."""
-        # assert self.is_scalar(),'Already an array'
-        # self.set(np.full(length,self._value),
-                 # (np.full(length,self._uncertainty)
-                  # if self.has_uncertainty() else None))
-
-    # def deepcopy(self,index=None):
-        # retval = Datu(
-            # key=self.key,
-            # kind=self.kind,
-            # description=self.description,
-            # # default_differentiation_stepsize=self.default_differentiation_stepsize,
-            # fmt=copy(self.fmt),
-        # )
-        # if self.has_uncertainty():
-            # if index is None:
-                # retval.set(self.get_value(),self.get_uncertainty())
-            # else:
-                # retval.set(self.get_value()[index],self.get_uncertainty()[index])
-        # else:
-            # if index is None:
-                # retval.set(self.get_value())
-            # else:
-                # retval.set(self.get_value()[index])
-        # return(retval)
-
-    def __neg__(self): return(-self.value)
-    def __float__(self): return(float(self.value))
-    def __pos__(self): return(+self.value)
-    def __abs__(self): return(abs(self.value))
-    def __eq__(self,other): return(self.value == other)
-    def __req__(self,other): return(self.value == other)
-    def __add__(self,other): return(self.value+other)
-    def __radd__(self,other): return(self.value+other)
-    def __sub__(self,other): return(self.value-other)
-    def __rsub__(self,other): return(other-self.value)
-    def __truediv__(self,other): return(self.value/other)
-    def __rtruediv__(self,other): return(other/self.value)
-    def __mul__(self,other): return(self.value*other)
-    def __rmul__(self,other): return(other*self.value)
-    def __pow__(self,other): return(self.value**other)
-    def __rpow__(self,other): return(other**self.value)
-
-
-class Data:
-    """A scalar or array value, possibly with an uncertainty."""
-
-
-    _kind_defaults = {
-        'f': {'cast':lambda x:np.asarray(x,dtype=float)     ,'fmt'   :'+12.8e','description':'float'        ,'step':1e-8,},
-        'i': {'cast':lambda x:np.asarray(x,dtype=int)       ,'fmt'   :'d'   ,'description':'int'          ,'step':None,},
-        'b': {'cast':lambda x:np.asarray(x,dtype=bool)      ,'fmt'   :'g'     ,'description':'bool'         ,'step':None,},
-        'U': {'cast':lambda x:np.asarray(x,dtype=str)       ,'fmt'   :'s'  ,'description':'str'          ,'step':None,},
-        'O': {'cast':lambda x:np.asarray(x,dtype=object)    ,'fmt'   :''      ,'description':'object'       ,'step':None,},
-    }
-
-    def __init__(
-            self,
-            value,         # if it has an associated value stored in the type itself
-            uncertainty=None,         # if it has an associated value stored in the type itself
-            vary=None,
-            step=None,
-            kind=None,
-            cast=None,
-            description=None,   # long string
-            units=None,
-            fmt=None,
-    ):
-        if kind is not None:
-            self.kind = np.dtype(kind).kind
-        elif value is not None:
-            self.kind = np.dtype(type(value[0])).kind
-            if self.kind=='i' and uncertainty is not None:
-                self.kind = 'f'
-        else:
-            self.kind = 'f'
-        d = self._kind_defaults[self.kind]
-        self.description = (description if description is not None else d['description'])
-        self.fmt = (fmt if fmt is not None else d['fmt'])
-        self.cast = (cast if cast is not None else d['cast'])
-        self.step = (step if step is not None else d['step'])
-        self.vary = vary
-        self.units = units
-        self.value = value
-        self.uncertainty = uncertainty
-
-    def _set_value(self,value):
-        self._value = self.cast(np.asarray(value))
-        self._length = len(self._value)
-
-    def _get_value(self):
-        return(self._value[:len(self)])
-
-    value = property(_get_value,_set_value)
-
-    def _set_uncertainty(self,uncertainty):
-        if uncertainty is not None:
-            assert self.kind == 'f'
-            self._uncertainty = np.empty(self._value.shape,dtype=float)
-            self._uncertainty[:len(self)] = uncertainty
-        else:
-            self._uncertainty = None
-
-    def _get_uncertainty(self):
-        return(self._uncertainty[:len(self)])
-
-    uncertainty = property(_get_uncertainty,_set_uncertainty)
-
-    def has_uncertainty(self):
-        return(self._uncertainty is not None)
-
-    def __str__(self):
-        if self.has_uncertainty():
-            return('\n'.join([format(value,self.fmt)+' ± '+format(uncertainty,'0.2g')
-                              for value,uncertainty in zip(self.value,self.uncertainty)]))
-        else:
-            return('\n'.join([format(value,self.fmt) for value in self.value]))
-
-    def __len__(self):
-        return(self._length)
-
-    def __iter__(self):
-        if self.has_uncertainty():
-            for value,uncertainty in zip(
-                    self.value,self.uncertainty):
-                yield value,uncertainty
-        else:
-            for value in self.value:
-                yield value
-
-    def _extend_length_if_necessary(self,new_length):
-        """Change size of internal array to be big enough for new
-        data."""
-        old_length = self._length
-        over_allocate_factor = 2
-        if new_length>len(self._value):
-            self._value = np.concatenate((
-                self._value[:old_length],
-                np.empty(int(new_length*over_allocate_factor-old_length),dtype=self.kind)))
-            if self.has_uncertainty():
-                self._uncertainty = np.concatenate((
-                    self._uncertainty[:old_length],
-                    np.empty(int(new_length*over_allocate_factor-old_length),dtype=self.kind)))
-        self._length = new_length
-
-    # def make_scalar(self):
-        # assert not self.is_scalar(),'Already scalar data.'
-        # assert np.unique(self.get_value()),'Non-unique data, cannot make scalar.'
-        # assert not self.has_uncertainty() or np.unique(self.get_uncertainty()),'Non-unique uncertainty, cannot make scalar.'
-        # self.set(self.get_value()[0],
-                 # (self.get_uncertainty()[0] if self.has_uncertainty() else None))
-
-    def index(self,index):
-        """Set self to index"""
-        if self.has_uncertainty():
-            self.value,self.uncertainty = self.value[index],self.uncertainty[index]
-        else:
-            self.value = self.value[index]
-
-    # def copy(self,index=None):
-        # """Make a deep copy of self, possibly indexing array data."""
-        # assert index is None or not self.is_scalar(), 'Cannot index scalar data.'
-        # retval = Data(
-            # key=self.key,
-            # kind=self.kind,
-            # description=self.description,
-            # # default_differentiation_stepsize=self.default_differentiation_stepsize,
-            # fmt=copy(self.fmt),
-        # )
-        # if self.has_uncertainty():
-            # if index is None:
-                # retval.set(self.get_value(),self.get_uncertainty())
-            # else:
-                # retval.set(self.get_value()[index],self.get_uncertainty()[index])
-        # else:
-            # if index is None:
-                # retval.set(self.get_value())
-            # else:
-                # retval.set(self.get_value()[index])
-        # return(retval)
-
-    def append(self,value,uncertainty=None):
-        if (not self.has_uncertainty() and uncertainty is not None):
-            raise Exception('Existing data has uncertainty and appended data does not')
-        if (self.has_uncertainty() and uncertainty is None):
-            raise Exception('Appended data has uncertainty and existing data does not')
-        new_length = len(self)+1
-        self._extend_length_if_necessary(new_length)
-        self._value[new_length-1] = value
-        if self.has_uncertainty():
-            self._uncertainty[new_length-1] = uncertainty
-
-    def extend(self,value,uncertainty=None):
-        if (not self.has_uncertainty() and uncertainty is not None):
-            raise Exception('Existing data has uncertainty and extending data does not')
-        if (self.has_uncertainty() and uncertainty is None):
-            raise Exception('Extending data has uncertainty and existing data does not')
-        old_length = len(self)
-        new_length = len(self)+len(value)
-        self._extend_length_if_necessary(new_length)
-        self._value[old_length:new_length] = value
-        if uncertainty is not None:
-            self._uncertainty[old_length:new_length] = uncertainty
-
-            
-class Dataset():
+class Dataset(optimise.Optimiser):
 
     """A collection of scalar or array values, possibly with uncertainties."""
 
-    def __init__(self,**keys_vals):
+    def __init__(self,name='dataset',**keys_vals):
+        optimise.Optimiser.__init__(self,name=name)
         self._data = dict()
         self._length = None
         if not hasattr(self,'prototypes'):
@@ -308,7 +34,7 @@ class Dataset():
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
         self.uncertainty_prefix = 'd_' # a single letter to prefix uncertainty keys
-        self.verbose = True
+        self.verbose = False
         for key,val in keys_vals.items():
             self[key] = val
 
@@ -364,10 +90,16 @@ class Dataset():
     #         else:
     #             assert len(self._data[key])==len(self),f'Length of data {repr(key)} does not match existing data.'
 
-    def set(self,key,value,uncertainty=None,is_scalar=None,**data_kwargs):
+    def set(
+            self,
+            key,
+            value,
+            uncertainty=None,
+            is_scalar=None,
+            **data_kwargs,
+    ):
         """Set a value and possibly its uncertainty. Set is_scalar=True to set
         a scalar Object type that is iterable."""
-        self.unset_inferences(key)
         assert self.permit_nonprototyped_data or key in self.prototypes, f'New data is not in prototypes: {repr(key)}'
         ## if not previously set then get perhaps get a prototype
         if key not in self and key in self.prototypes:
@@ -387,6 +119,7 @@ class Dataset():
             else:
                 assert len(data)==len(self),f'Length of new data {repr(key)} is {len(data)} and does not match the length of existing data: {len(self)}.'
         self._data[key] = data
+        self.unset_inferences(key)
 
     def set_uncertainty(self,key,uncertainty):
         """Set a the uncertainty of an existing value."""
@@ -629,23 +362,34 @@ class Dataset():
             if not self.is_scalar(key):
                 self._data[key].index(i)
 
-    def format(self,keys=None,comment='',delimiter=' '):
+    def format(self,keys=None,comment='# ',delimiter=' '):
+        """Format data into a string representation."""
         if keys is None:
             keys = self.keys()
-        header,columns = [],{}
+        ## collect table data
+        header,columns = [],[]
         for key in keys:
             if self.is_scalar(key):
-                if self.has_uncertainty(key):
-                    header.append(f'{comment}{key} = {repr(self.get_value(key))} ± {repr(self.get_uncertainty(key))}')
-                else:
-                    header.append(f'{comment}{key} = {repr(self.get_value(key))}')
+                header.append(f'{comment}{key} = {str(self._data[key])}')
             else:
-                columns[key]  = self.get_value(key)
+                if len(self)==0:
+                    continue
+                ## two passes required on all data to align column
+                ## widths
+                vals = self._data[key].format_values()
+                tkey = (comment+key if len(columns)==0 else key)
+                width = str(max(len(tkey),np.max([len(t) for t in vals])))
+                columns.append([format(tkey,width)]+[format(t,width) for t in vals])
                 if self.get_uncertainty(key) is not None:
-                    columns[self.uncertainty_prefix+key]  = self.get_uncertainty(key)
-        retval = '\n'.join(header)
-        if len(columns)>0:
-            retval += '\n'+tools.format_columns(columns,delimiter=delimiter,comment_string=comment)
+                    vals = self._data[key].format_uncertainties()
+                    tkey = self.uncertainty_prefix + key
+                    width = str(max(len(tkey),np.max([len(t) for t in vals])))
+                    columns.append([format(tkey,width)]+[format(t,width) for t in vals])
+        retval = ''
+        if header != []:
+            retval = '\n'.join(header)+'\n'
+        if columns != []:
+            retval += '\n'.join([delimiter.join(t) for t in zip(*columns)])+'\n'
         return(retval)
 
     def __str__(self):
@@ -976,3 +720,29 @@ class Dataset():
             return None
         else:
             return key[len(self.uncertainty_prefix):]
+
+    def optimise_value(
+            self,
+            match=None,
+            **optimise_keys_vals
+    ):
+        parameters = self.add_parameter_set(**optimise_keys_vals)
+        cache = {'first':True,}
+        def f():
+            i = (None if match is None else self.match(**match))
+            ## set data
+            for key,p in parameters.items():
+                if i is None:
+                    ## all values
+                    if cache['first'] or self[key] != p.value:
+                        self.set(key,p.value,p.uncertainty)
+                else:
+                    ## some indexed values
+                    if cache['first'] or np.any(self[key][i] != p.value):
+                        value,uncertainty = self.get_value(key),self.get_uncertainty(key)
+                        value[i] = p.value
+                        uncertainty[i] = p.uncertainty
+                        self.set(key,value,uncertainty)
+            cache['first'] = False 
+        ## add to optimiser
+        self.add_construct_function(f)

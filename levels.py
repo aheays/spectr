@@ -48,14 +48,12 @@ class Base(Dataset):
         themselves will populate data arrays."""
         Dataset.__init__(self)
         self.permit_nonprototyped_data = False
-        # self['class'] = self.__class__.__name__
-        # self.name = (name if name is not None else self['class'])
         self.name = (name if name is not None else type(self).__name__)
         for key,val in keys_vals.items():
             self[key] = val
 
 
-class HeteronuclearDiatomic(Base):
+class DiatomicCinfv(Base):
     """A generic level."""
     
     prototypes = deepcopy(Base.prototypes)
@@ -77,7 +75,7 @@ class HeteronuclearDiatomic(Base):
 
     prototypes['g']['infer'] = {'J':lambda J:2*J+1,}
 
-class CS2(Base):
+class TriatomicDinfh(Base):
     """A generic level."""
     
     prototypes = deepcopy(Base.prototypes)

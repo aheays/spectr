@@ -4,7 +4,7 @@ from pprint import pprint
 
 import numpy as np
 
-
+# from . import *
 from .dataset import Dataset
 from . import tools
 from . import levels
@@ -59,7 +59,7 @@ class Base(Dataset):
         'reduced_mass':dict(description="Reduced mass (amu)", kind=float, fmt='<11.4f', infer={('species','database',): lambda species: _get_species_property(species,'reduced_mass')}),
         'levels_class':dict(description="What Dataset subclass of Levels this is a transition between",kind='object',infer={}),
         'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s'),
-        'ν':dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>13.6f', infer={}),
+        'ν':dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>0.6f', infer={}),
         'Γ' :dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind=float, fmt='<10.5g', infer={('γself','Pself'):lambda γ,Pself: γ*convert(Pself,'Pa','atm'),}),
         'ΓD':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={}),
         'f':dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e', infer={('Ae','ν','g_u','g_l'):lambda Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2,}),
@@ -77,7 +77,7 @@ class Base(Dataset):
         'Zsource':dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind=str, infer={('database',): lambda : 'database',}),
         'Z':dict(description="Partition function.", kind=float, fmt='<11.3e', infer={}),
         'ΓDoppler':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,}),
-        'Pself':dict(description="Pressure of self (Pa)", kind=float, fmt='0.2f', infer={}),
+        'Pself':dict(description="Pressure of self (Pa)", kind=float, fmt='0.5f', infer={}),
         'Nself':dict(description="Column density (cm2)",kind=float,fmt='<11.3e', infer={}),
 }
 
@@ -116,6 +116,7 @@ class Base(Dataset):
         Dataset.__init__(self)
         self.permit_nonprototyped_data = False
         self.name = (name if name is not None else type(self).__name__)
+        self._cache = {}
         for key,val in keys_vals.items():
             self[key] = val
 
@@ -380,10 +381,10 @@ class Base(Dataset):
     lower_levels = property(lambda self: self.get_levels('lower'))
 
 
-class HeteronuclearDiatomic(Base):
+class DiatomicCinfv(Base):
 
     prototypes = {}
-    prototypes.update(_expand_level_keys(levels.HeteronuclearDiatomic))
+    prototypes.update(_expand_level_keys(levels.DiatomicCinfv))
     prototypes.update(deepcopy(Base.prototypes)) 
 
     def load_from_hitran(self,filename):
@@ -428,8 +429,8 @@ class HeteronuclearDiatomic(Base):
         self.extend(**kw)
         
 
-class CS2(Base):
+class TriatomicDinfh(Base):
 
     prototypes = {}
-    prototypes.update(_expand_level_keys(levels.CS2))
+    prototypes.update(_expand_level_keys(levels.TriatomicDinfh))
     prototypes.update(deepcopy(Base.prototypes)) 

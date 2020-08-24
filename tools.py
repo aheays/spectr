@@ -1,12 +1,14 @@
 import functools
 import re
 import os
+import warnings
 from copy import copy
 import csv
 
 import glob
 import numpy as np
 import h5py
+
 
 
 class AutoDict:
@@ -53,12 +55,14 @@ class AutoDict:
 #################################
 
 
-def vectorise_if_necessary(function,dtype=float):
+def vectorise_in_chunks(function,dtype=float):
+    """Look for groups of common arguments and calculate them only once in
+    a vectorised version of the original function."""
     def vectorised(*args):
         ## check if scalar
         length = None
         for arg in args:
-            if np.iterable(arg):
+            if not np.isscalar(arg):
                 assert length is None or len(arg)==length,'Nonconstant lengths.'
                 length = len(arg)
                 break
@@ -773,28 +777,28 @@ def file_to_array_unpack(*args,**kwargs):
     # retval = hdf5_to_array(tmpfile.name,**kwargs)
     # return retval
 
-# def hdf5_to_array(filename,unpack=False,dataset=None,usecols=None):
-    # """Loads dataset dataset in hdf5 file into an array. If None then look
-    # for 'data', if its not there load first dataset. """
-    # import sys,h5py,os
-    # try:
-        # f = h5py.File(os.path.expanduser(filename),'r')
-    # except IOError:
-        # sys.stderr.write('Tried opening file: '+filename+'\n')
-        # raise
-    # if dataset is None:
-        # if 'data' in f:
-            # x = np.array(f['data']) # 'data'
-        # else:
-            # x = np.array(list(f.items())[0][1]) # first 
-    # else:
-        # x = np.array(f[dataset]) # dataset
-    # f.close()
-    # if usecols is not None:
-        # x = x[:,usecols]
-    # if unpack==True:
-        # x = x.transpose()
-    # return(x)
+def hdf5_to_array(filename,unpack=False,dataset=None,usecols=None):
+    """Loads dataset dataset in hdf5 file into an array. If None then look
+    for 'data', if its not there load first dataset. """
+    import sys,h5py,os
+    try:
+        f = h5py.File(os.path.expanduser(filename),'r')
+    except IOError:
+        sys.stderr.write('Tried opening file: '+filename+'\n')
+        raise
+    if dataset is None:
+        if 'data' in f:
+            x = np.array(f['data']) # 'data'
+        else:
+            x = np.array(list(f.items())[0][1]) # first 
+    else:
+        x = np.array(f[dataset]) # dataset
+    f.close()
+    if usecols is not None:
+        x = x[:,usecols]
+    if unpack==True:
+        x = x.transpose()
+    return(x)
 
 def hdf5_to_dict(filename_or_hdf5_object):
     """Load all elements in hdf5 into a dictionary. Groups define
@@ -996,6 +1000,28 @@ def dict_to_hdf5(
             data = np.array(data, dtype=h5py.string_dtype(encoding='utf-8'))
         f.create_dataset(key,data=data,**kwargs)
     f.close()
+
+def load_bruker_opus_data(filename,datablock=None):
+    """Load a binary Bruker Opus file, returning a specific datablock as well as all data in a
+    dictionary. Useful datablocks:
+    IgSm:  the single-channel sample interferogram
+    ScSm:  the single-channel sample spectrum
+    IgRf:  the reference (background) interferogram
+    ScRf:  the reference (background) spectrum
+    """
+    import brukeropusreader
+    d = brukeropusreader.read_file(expand_path(filename))
+    if datablock is None:
+        return(d)
+    assert f'{datablock}' in d, f'Cannot find datablock: {repr(datablock)}'
+    parameters = d[f'{datablock} Data Parameter']
+    x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
+    y = d[datablock][:parameters['NPT']] # for some reason the data in the datablock can be too long
+    return(x,y,parameters)
+
+def load_bruker_opus_spectrum(filename,datablock='ScSm'):
+    return(load_bruker_opus_data(filename,datablock))
+
 
 # def kwargs_to_directory(directory, **dict_to_directory_kwargs,):
     # dict_to_directory(directory,dict_to_directory_kwargs)
@@ -1210,8 +1236,8 @@ def leastsq(func,
             diff.append(np.max(np.abs(reference_residual-np.array(func(x1+xshift)))))
         diff = np.array(diff)
         ## warn about those that have no difference
-        j = find(diff==0)
-        warnings.warn('Parameter has no effect: parameter indices: '+str(j)+' with fitted values: '+str(x[j]))
+        for j in find(diff==0):
+            print(f'warning: Parameter has no effect: index={j}, value={float(x[j]+xshift)}')
     ## warn on error if requested
     if (not success) & print_error_mesg:
         warnings.warn("leastsq exit code: "+str(success)+mesg)
@@ -1467,7 +1493,8 @@ def format_columns(
         labels = data.keys()
         data = [data[key] for key in data]
     ## make formats a list as long as data
-    if isinstance(fmt,str): fmt = [fmt for t in data]
+    if isinstance(fmt,str):
+        fmt = [fmt for t in data]
     ## get string formatting for labels and failed formatting
     fmt_functions = []
     for f in fmt:
@@ -1884,19 +1911,19 @@ def ensure_iterable(x):
     # command = 'h5totxt -s " " {hdf5file:s} > {txtfile:s}'.format(hdf5file=tmpfile.name,txtfile=path)
     # (status,output)=subprocess.getstatusoutput(command)
     # assert status==0,"Conversion from hdf5 failed:\n"+output
-       #  
-# def array_to_hdf5(filename,*args,**kwargs):
-    # """Column stack arrays in args and save in an hdf5 file. In a
-    # single data set named 'data'. Overwrites existing files."""
-    # filename = expand_path(filename)
-    # kwargs.setdefault('compression',"gzip")
-    # kwargs.setdefault('compression_opts',9)
-    # if os.path.exists(filename):
-        # assert not os.path.isdir(filename),'Wont overwrite directory: '+filename
-        # os.unlink(filename)
-    # f = h5py.File(filename,'w')
-    # f.create_dataset('data',data=np.column_stack(args),**kwargs)
-    # f.close()
+
+def array_to_hdf5(filename,*args,**kwargs):
+    """Column stack arrays in args and save in an hdf5 file. In a
+    single data set named 'data'. Overwrites existing files."""
+    filename = expand_path(filename)
+    kwargs.setdefault('compression',"gzip")
+    kwargs.setdefault('compression_opts',9)
+    if os.path.exists(filename):
+        assert not os.path.isdir(filename),'Wont overwrite directory: '+filename
+        os.unlink(filename)
+    f = h5py.File(filename,'w')
+    f.create_dataset('data',data=np.column_stack(args),**kwargs)
+    f.close()
 
 # def savetxt(filename,*args,**kwargs):
     # """Column-stacks arrays given as *args and saves them to
@@ -2476,9 +2503,9 @@ def isin(x,y):
 
 # def argmaxabs(x): return(np.argmax(np.abs(x)))
 
-# def find(x):
-    # """Convert boolean array to array of True indices."""
-    # return(np.where(x)[0])
+def find(x):
+    """Convert boolean array to array of True indices."""
+    return(np.where(x)[0])
 
 # def findin(x,y):
     # """Find indices of x that appear in y, in the order they appear in
@@ -3354,68 +3381,72 @@ def array_to_file(filename,*args,mkdir=False,**kwargs):
     # y[~i] = missing_data
     # return y
 
-# def file_to_array(
-        # filename,
-        # xmin=None,xmax=None,
-        # sort=False,
-        # awkscript=None,
-        # unpack=False,
-        # filetype=None,
-        # **kwargs,               # passed to function depending on filetype
-# ):
-    # """Use filename to decide whether to attempt to load as an hdf5
-    # file or ascii data. xmin/xmax data ranges to load."""
-    # ## dealt with filename and type
-    # filename = expand_path(filename)
-    # extension = os.path.splitext(filename)[1]
-    # if filetype==None:
-        # if extension in ('.hdf5','.h5'):
-            # filetype='hdf5'
-        # elif extension in ('.npy','.npz'):
-            # filetype='numpy array'
-        # elif extension in ('.0','.1','.2','.3'):
-            # filetype='opus'
-        # else:
-            # filetype='text'
-    # ## default kwargs
-    # kwargs.setdefault('comments','#')
-    # kwargs.setdefault('encoding','utf8')
-    # kwargs.setdefault('delimiter',' ')
-    # ## load according to filetype
-    # if filetype=='hdf5':
-        # hdf5_kwargs = copy(kwargs)
-        # for key,key_hdf5 in (
-                # ('comments',None),
-                # ('delimiter',None),
-                # ('encoding',None),
-                # ('skip_header',None),
-        # ):
-            # if key_hdf5 is None:
-                # if key in hdf5_kwargs: hdf5_kwargs.pop(key)
-            # else:
-                # hdf5_kwargs[key_hdf5] = hdf5_kwargs.pop(key)
-        # d = hdf5_to_array(filename,**hdf5_kwargs)
-    # elif filetype=='numpy array':
-        # d = np.load(filename)
-    # elif filetype=='opus':
-        # import spectra
-        # x,y,header = spectra.lib_molecules.load_bruker_opus_spectrum(filename)
-        # d = np.column_stack((x,y))
-    # elif filetype=='text':
-        # np_kwargs = copy(kwargs)
-        # # np_kwargs.pop('encoding')
-        # if len(filename)>4 and filename[-4:] in ('.csv','.CSV'): np_kwargs['delimiter'] = ','
-        # if 'delimiter' in np_kwargs and np_kwargs['delimiter']==' ': np_kwargs.pop('delimiter')
-        # d = np.genfromtxt(filename,**np_kwargs)
-    # else:
-        # raise Exception(f'Unknown filetype: {repr(filetyep)}')
-    # ## post processing
-    # d = np.squeeze(d)
-    # if xmin is not None:  d = d[d[:,0]>=xmin]
-    # if xmax is not None:  d = d[d[:,0]<=xmax]
-    # if sort:              d = d[np.argsort(d[:,0])]
-    # if unpack:            d = d.transpose()
-    # return(d)
+def file_to_array(
+        filename,
+        xmin=None,xmax=None,
+        sort=False,
+        awkscript=None,
+        unpack=False,
+        filetype=None,
+        **kwargs,               # passed to function depending on filetype
+):
+    """Use filename to decide whether to attempt to load as an hdf5
+    file or ascii data. xmin/xmax data ranges to load."""
+    ## dealt with filename and type
+    filename = expand_path(filename)
+    extension = os.path.splitext(filename)[1]
+    if filetype==None:
+        if extension in ('.hdf5','.h5'):
+            filetype='hdf5'
+        elif extension in ('.npy','.npz'):
+            filetype='numpy array'
+        elif re.match(r'\.[0-9]+',extension):
+            filetype='opus'
+        else:
+            filetype='text'
+    ## default kwargs
+    kwargs.setdefault('comments','#')
+    kwargs.setdefault('encoding','utf8')
+    kwargs.setdefault('delimiter',' ')
+    ## load according to filetype
+    if filetype=='hdf5':
+        hdf5_kwargs = copy(kwargs)
+        for key,key_hdf5 in (
+                ('comments',None),
+                ('delimiter',None),
+                ('encoding',None),
+                ('skip_header',None),
+        ):
+            if key_hdf5 is None:
+                if key in hdf5_kwargs: hdf5_kwargs.pop(key)
+            else:
+                hdf5_kwargs[key_hdf5] = hdf5_kwargs.pop(key)
+        d = hdf5_to_array(filename,**hdf5_kwargs)
+    elif filetype=='numpy array':
+        d = np.load(filename)
+    elif filetype=='opus':
+        import spectra
+        x,y,header = load_bruker_opus_spectrum(filename)
+        d = np.column_stack((x,y))
+    elif filetype=='text':
+        np_kwargs = copy(kwargs)
+        # np_kwargs.pop('encoding')
+        if len(filename)>4 and filename[-4:] in ('.csv','.CSV'): np_kwargs['delimiter'] = ','
+        if 'delimiter' in np_kwargs and np_kwargs['delimiter']==' ': np_kwargs.pop('delimiter')
+        d = np.genfromtxt(filename,**np_kwargs)
+    else:
+        raise Exception(f'Unknown filetype: {repr(filetyep)}')
+    ## post processing
+    d = np.squeeze(d)
+    if xmin is not None:
+        d = d[d[:,0]>=xmin]
+    if xmax is not None:
+        d = d[d[:,0]<=xmax]
+    if sort:
+        d = d[np.argsort(d[:,0])]
+    if unpack:
+        d = d.transpose()
+    return(d)
 
 # def file_to_xml_tree(filename):
     # """Load an xml file using standard library 'xml'."""

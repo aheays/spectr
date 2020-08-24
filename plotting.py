@@ -3,7 +3,7 @@ from cycler import cycler
 from copy import copy,deepcopy
 
 import numpy as np
-import matplotlib as mpl
+import matplotlib
 from matplotlib import pyplot as plt
 from scipy import constants
 
@@ -43,7 +43,7 @@ def presetRcParams(
     ## try and get screen size
     try:
         xscreen,yscreen = get_screensize() # pts
-        xscreen,yscreen = xscreen/mpl.rcParams['figure.dpi'],yscreen/mpl.rcParams['figure.dpi'] # inches
+        xscreen,yscreen = xscreen/matplotlib.rcParams['figure.dpi'],yscreen/matplotlib.rcParams['figure.dpi'] # inches
     except:
         warnings.warn("could not get screensize")
         xscreen,yscreen = 5,5
@@ -340,14 +340,14 @@ def presetRcParams(
     presets['a4portrait'] = presets['a4_portrait']   # deprecated
     ## find key in presets to match the requested preset
     for key in presets[preset]:
-        mpl.rcParams[key] = presets[preset][key]
+        matplotlib.rcParams[key] = presets[preset][key]
     ## extra keys -- potentially with assuming prefixes in rcParams
     ## hierarchy until an existing key is found
     for key,val in params.items():
         for prefix in ('','figure.','figure.subplot.','axes.',
                         'lines.','font.','xtick.','ytick.',): 
-            if prefix+key in mpl.rcParams:
-                mpl.rcParams[prefix+key] = val
+            if prefix+key in matplotlib.rcParams:
+                matplotlib.rcParams[prefix+key] = val
                 break
         else:
             raise Exception(f"Could not interpret rcParam: {repr(key)}")
@@ -836,7 +836,7 @@ linecolors_print=(
 )
 
 # linecolors = mpl.rcParams['axes.color_cycle']
-linecolors = [f['color'] for f in mpl.rcParams['axes.prop_cycle']]
+linecolors = [f['color'] for f in matplotlib.rcParams['axes.prop_cycle']]
 
 def newcolor(index=None,reset=None,linecolors=None):
     """Retuns a color string, different to the last one, from the list
@@ -846,7 +846,7 @@ def newcolor(index=None,reset=None,linecolors=None):
     to this color. """
     global _newcolor_nextcolor
     if linecolors is None:
-        linecolors = [f['color'] for f in mpl.rcParams['axes.prop_cycle']]
+        linecolors = [f['color'] for f in matplotlib.rcParams['axes.prop_cycle']]
         # linecolors = [f for f in mpl.rcParams['axes.color_cycle']]
     if reset!=None or index in ['None','none','']:
         _newcolor_nextcolor=0
@@ -1022,7 +1022,7 @@ def subplot(
     fig.sca(ax)      # set to current axes
     ## set some other things if a quick figure
     if hasattr(fig,'_my_fig') and fig._my_fig is True:
-        ax.xaxis.set_major_formatter(mpl.ticker.FormatStrFormatter('%0.10g'))
+        ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%0.10g'))
         ax.grid(True)
     return(ax)
 
@@ -1269,7 +1269,7 @@ def legend(
                 handles.append(_reproduce_line(handle))
     ## add get input lines or kwargs
     for i,t in enumerate(plot_kwargs_or_lines):
-        if isinstance(t,matplotlib.lines.Line2D) or isinstance(t,mpl.container.ErrorbarContainer):
+        if isinstance(t,matplotlib.lines.Line2D) or isinstance(t,matplotlib.container.ErrorbarContainer):
             raise Exception("Does not currently work for some reason.")
             t = t[0]
             if t.get_label()!='_nolegend':
@@ -1301,7 +1301,7 @@ def legend(
     ## color the text
     if color_text:
         for text,handle in zip(leg.get_texts(),handles):
-            if isinstance(handle,mpl.container.ErrorbarContainer):
+            if isinstance(handle,matplotlib.container.ErrorbarContainer):
                 color = handle[0].get_color()
             else:
                 color = handle.get_color()
@@ -1375,8 +1375,8 @@ def suplegend(fig=None,lines=None,labels=None,
 
 def turnOffOffsetTicklabels(ax=None):
     if ax is None: ax = plt.gca()
-    ax.xaxis.set_major_formatter(mpl.ticker.ScalarFormatter(useOffset=False))
-    ax.yaxis.set_major_formatter(mpl.ticker.ScalarFormatter(useOffset=False))
+    ax.xaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter(useOffset=False))
     
 
 def noTickMarksOrLabels(axes=None,axis=None):
@@ -1510,7 +1510,7 @@ def arrow(x1y1,x2y2,
     arrow = ax.add_patch(
         matplotlib.patches.FancyArrowPatch(
             x1y1,x2y2,
-            transform=mpl.transforms.blended_transform_factory(xtransform,ytransform),
+            transform=matplotlib.transforms.blended_transform_factory(xtransform,ytransform),
             **arrowParams),)
     ## add label parallel to arrow
     # if label is not None:
@@ -1576,7 +1576,7 @@ def annotate_line(string=None,xpos='ymax',ypos='above',
         if re.match('_line[0-9]+',line.get_label()): return None
         string = line.get_label()
     ## a shift to make space around text
-    text_x_offset,text_y_offset = transform_points_into_axis_fraction(mpl.rcParams['font.size']/2,mpl.rcParams['font.size']/2)
+    text_x_offset,text_y_offset = transform_points_into_axis_fraction(matplotlib.rcParams['font.size']/2,matplotlib.rcParams['font.size']/2)
     xlim,ylim = ax.get_xlim(),ax.get_ylim()
     xdata,ydata = line.get_data()
     if len(xdata)==0: return    # no line
@@ -1678,7 +1678,7 @@ def ginput_spline_curve(x,y):
     xlim,ylim = ax.get_xlim(),ax.get_ylim()
     ## to break loop below on close figure window
     # def f(event): raise KeyboardInterrupt
-    # fig.canvas.mpl_connect('close_event',f)
+    # fig.canvas.matplotlib_connect('close_event',f)
     ## main loop selecting spline points
     xbg,ybg = np.array([],dtype=float),np.array([],dtype=float) 
     while True:
@@ -1735,7 +1735,7 @@ def annotate_vline(label,xpos,ax=None,color='black',fontsize='medium',
     axvline_kwargs.setdefault('alpha',alpha)
     axvline_kwargs.setdefault('zorder',zorder)
     line_object = ax.axvline(xpos,color=color,**axvline_kwargs)
-    transform = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+    transform = matplotlib.transforms.blended_transform_factory(ax.transData, ax.transAxes)
     ## align labels to top or bottom
     ## the label
     if annotate_kwargs is None: annotate_kwargs = {}

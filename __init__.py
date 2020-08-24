@@ -1,5 +1,23 @@
-# from . import hitran
-# from . import plotting
-# from . import database
+## standard library
+from copy import copy,deepcopy
 
-# import numpy as np
+## nonstandard library
+import numpy as np
+from matplotlib import pyplot as plt
+
+## this package
+from . import tools
+from . import plotting
+from . import datum
+from . import data
+from . import optimise
+from . import database
+from . import levels
+from . import lines
+from . import hitran
+
+# from .spectrum import *
+# from .tools import *
+# from .plotting import *
+# from .optimise import *
+
