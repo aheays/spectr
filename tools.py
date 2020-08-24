@@ -68,6 +68,11 @@ def vectorise_if_necessary(function,dtype=float):
         ## vectorise
         args = [np.asarray(arg) if np.iterable(arg) else np.full(length,arg) for arg in args]
         retval = np.empty(len(args[0]),dtype=dtype,)
+        # if len(args)==1:
+            # for argsi in np.unique(args[0]):
+                # i = args[0]==argsi
+                # retval[i] = function(argsi)
+        # else:
         for argsi in unique_combinations(*args):
             i = np.all([args[j]==argsi[j] for j in range(len(args))],axis=0)
             retval[i] = function(*argsi)
@@ -184,7 +189,9 @@ def dict_to_kwargs(d,keys=None):
     # return [ll for (ll,bb) in zip(l,b) if bb]
 
 def isiterable(x):
-    """Test if x is iterable, true for strings."""
+    """Test if x is iterable, False for strings."""
+    if isinstance(x,str): 
+        return False
     try:
         iter(x)
     except TypeError:
@@ -595,12 +602,12 @@ def mkdir(*directories,trash_existing_directory=False):
     # except ValueError:
         # return format(x,'>'+str(width))
 
-# def format_string_or_general_numeric(x):
-    # """Return a string which is the input formatted 'g' if it is numeric or else is str representation."""
-    # try:
-        # return format(x,'g')
-    # except ValueError:
-        # return(str(x))
+def format_string_or_general_numeric(x):
+    """Return a string which is the input formatted 'g' if it is numeric or else is str representation."""
+    try:
+        return format(x,'g')
+    except ValueError:
+        return(str(x))
 
 # def format_as_disjoint_ranges(x,separation=1,fmt='g'):
     # """Identify ranges and gaps in ranges and print as e.g, 1-5,10,12-13,20"""
@@ -3287,9 +3294,9 @@ def isin(x,y):
     # test would."""
     # return type(a) in [int,np.int64]
 
-# def isnumeric(a):
-    # """Test if constant numeric value."""
-    # return type(a) in [int,np.int64,float,np.float64]
+def isnumeric(a):
+    """Test if constant numeric value."""
+    return type(a) in [int,np.int64,float,np.float64]
 
 # def iseven(x):
     # """Test if argument is an even number."""

@@ -1,8 +1,11 @@
 import functools
 import numpy as np
 from . import tools
+from .exceptions import MissingDataException
 
 ## module data and caches
+from .species import get_species
+
 data_directory = '~/data/reference_data/' # root directory where data is stored in various ways
 global _level_data
 global _boltzmann_population_cache
@@ -98,9 +101,12 @@ def get_species_property(species,prop):
         return(retval)
 
 ## deprecate this in favour of get_species_property?
+
+# @functools.lru_cache
+@tools.vectorise_if_necessary
 def get_mass(species):
-    raise Exception('use get_species_property(species,prop):')
-    return(float(get_species_data(species)['mass']))
+    t = get_species(species)
+    return(t.mass)
 
 ## deprecate this in favour of get_species_property?
 def get_reduced_mass(species):

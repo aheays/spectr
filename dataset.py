@@ -307,6 +307,13 @@ class Dataset():
         for key in self._data:
             yield key
 
+    def rows(self):
+        d = {key:self[key] for key in self if self.is_scalar(key)}
+        vector_keys = [key for key in self if not self.is_scalar(key)]
+        for i in range(len(self)):
+            d.update({key:self[key][i] for key in vector_keys})
+            yield d
+            
     def keys(self):
         return(list(self._data.keys()))
 

@@ -52,7 +52,10 @@ class Base(Dataset):
         'reference' :dict(description="Published reference" ,kind=str ,infer={}) ,
         'date' :dict(description="Date data collected or printed" ,kind=str ,infer={}) ,
         'species' :dict(description="Chemical species" ,kind=str ,infer={}) ,
-        'mass':dict(description="Mass (amu)",kind=float, fmt='<11.4f', infer={('species',): lambda species: database.get_species_property(species,'mass')}),
+        'mass':dict(description="Mass (amu)",kind=float, fmt='<11.4f', infer={
+            # ('species',): lambda species: database.get_species_property(species,'mass')},
+            ('species',): lambda species: database.get_mass(species)},
+                    ),
         'reduced_mass':dict(description="Reduced mass (amu)", kind=float, fmt='<11.4f', infer={('species','database',): lambda species: _get_species_property(species,'reduced_mass')}),
         'levels_class':dict(description="What Dataset subclass of Levels this is a transition between",kind='object',infer={}),
         'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s'),
@@ -76,8 +79,6 @@ class Base(Dataset):
         'ΓDoppler':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,}),
         'Pself':dict(description="Pressure of self (Pa)", kind=float, fmt='0.2f', infer={}),
         'Nself':dict(description="Column density (cm2)",kind=float,fmt='<11.3e', infer={}),
-
-
 }
 
     prototypes.update(deepcopy(_expand_level_keys(levels.Base)))
@@ -95,6 +96,7 @@ class Base(Dataset):
     prototypes['Nself_l']['infer']['Nself'] = lambda Nself: Nself
     prototypes['species_l']['infer']['species'] = lambda species: species
     prototypes['species_u']['infer']['species'] = lambda species: species
+    prototypes['ΔJ']['infer']['J_u','J_l'] = lambda J_u,J_l: J_u-J_l
 
     ## partition function
     def _f5(Zsource,species,Tex):
@@ -425,3 +427,9 @@ class HeteronuclearDiatomic(Base):
         kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
         self.extend(**kw)
         
+
+class CS2(Base):
+
+    prototypes = {}
+    prototypes.update(_expand_level_keys(levels.CS2))
+    prototypes.update(deepcopy(Base.prototypes)) 

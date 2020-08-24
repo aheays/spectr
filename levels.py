@@ -77,4 +77,16 @@ class HeteronuclearDiatomic(Base):
 
     prototypes['g']['infer'] = {'J':lambda J:2*J+1,}
 
+class CS2(Base):
+    """A generic level."""
+    
+    prototypes = deepcopy(Base.prototypes)
+    prototypes.update({
+        'label' :dict(description="Label of electronic state", kind=str,infer={}),
+        'ν1':dict(description='Vibrational quantum number symmetric stretching' ,kind=int,fmt='<3d',infer={}),
+        'ν2':dict(description='Vibrational quantum number bending' ,kind=int,fmt='<3d',infer={}),
+        'ν3':dict(description='Vibrational quantum number asymmetric stretching' ,kind=int,fmt='<3d',infer={}),
+        'l':dict(description='Quantum number' ,kind=str,fmt='<3',infer={}),
+        })
+
 

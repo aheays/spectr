@@ -7,6 +7,8 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from scipy import constants
 
+from . import tools
+
 golden_ratio = 1.61803398874989
 
 ## standard papersize for figures - in inches
@@ -460,7 +462,7 @@ def extra_interaction(fig=None,lines_picker=5):
         ## set all lines to requested picker values
         if lines_picker is not None:
             for line in axes.lines:
-                line.set_picker(lines_picker)
+                line.set_pickradius(lines_picker)
         ## set this as selected axes
         fig.my_extra_interaction['axes'] = axes
     ## some data stored in figure to facilitate actions below
@@ -2064,3 +2066,184 @@ def savefig(path,fig=None,**kwargs):
     # kwargs.setdefault('transparent',True)
     fig.savefig(tmp.name,**kwargs)
     shutil.copyfile(tmp.name,path)
+
+def annotate_spectrum(
+        x,                      # list of x position to mark
+        labels=[],              # labels for each x
+        ylevel=0,               # absolute ydata
+        length=0.02,            # fraction of yaxis
+        hoffset=0.,
+        labelpad=None,
+        plotkwargs=None,        # affect drawn lines
+        textkwargs=None,        # affect label and name text
+        ax=None,
+        name=None,              # printed name
+        namepos='right',
+        namepad=None,
+        namesize=None,
+        labelsize=None,
+        clip= True,
+        label_replacements={},  # substitute keys with values in labels
+        color='black'           # colour of everything
+):
+    """Put simple rotational series labels at list of x. Length
+    of ticks and horizontal/vertical offset of labels from ticks is
+    specified. Optional text and plot arguments are passed on."""
+    ## process args
+    if plotkwargs==None: plotkwargs={}
+    textkwargs = copy(textkwargs)
+    plotkwargs = copy(plotkwargs)
+    ## eliminate nan, x
+    x = np.array(x)
+    i = np.isnan(x)
+    x = x[~i]
+    if len(labels)>0: labels = np.array(labels)[~i]
+    plotkwargs.setdefault('color',color)
+    plotkwargs.setdefault('linewidth',1.)
+    plotkwargs.setdefault('clip_on',clip)
+    plotkwargs.setdefault('label','_nolegend_')
+    if textkwargs==None: textkwargs={}
+    textkwargs.setdefault('annotation_clip',clip)
+    textkwargs.setdefault('color',color)
+    if ax==None: ax = plt.gca()
+    (xlim,ylim,) = (ax.get_xlim(),ax.get_ylim(),) # save limits so not changed by this function
+    if namepad==None:
+        namepad = 0.5*np.abs(length)*(xlim[1]-xlim[0])
+    length = length*(ylim[1]-ylim[0]) # convert length fraction into absolute scale
+    if labelpad==None:
+        labelpad = -0.4*length
+    ## dwim text alignment
+    textkwargs.setdefault('horizontalalignment','center')
+    if np.sign(length)<0:   textkwargs.setdefault('verticalalignment','bottom')
+    else:                   textkwargs.setdefault('verticalalignment','top')
+    ## draw back bone
+    ax.plot([min(x),max(x)],[ylevel,ylevel],**plotkwargs)
+    ## draw lines in Jpp,energy lists and annotate labels
+    labelkwargs = copy(textkwargs)
+    if labelsize is not None: labelkwargs['fontsize'] = labelsize
+    labelkwargs['horizontalalignment'] = 'center'
+    if labelpad>0:
+        labelkwargs['verticalalignment'] = 'bottom'
+    else:
+        labelkwargs['verticalalignment'] = 'top'
+    for (i,e) in enumerate(x):
+        ax.plot([e,e],[ylevel,ylevel+length],**plotkwargs)
+        if len(labels)>i:
+            # label = format(labels[i])
+            label = tools.format_string_or_general_numeric(labels[i])
+            if label in list(label_replacements.keys()): label = label_replacements[label]
+            ax.annotate(label,[e+hoffset,ylevel+labelpad],**labelkwargs)
+    ## if necessary annotate name
+    if name != None:
+        namekwargs = copy(textkwargs)
+        if namesize is not None:
+            namekwargs['fontsize'] = namesize # possibly override textkwargs
+        name_pad_left,name_pad_right = '',''
+        if namepos=='float':
+            tline,tlabel = tools.annotate_hline(str(name),ylevel,ax=ax,linewidth=0,va='center',
+                                                 color=namekwargs['color'],fontsize=namekwargs['fontsize'],)
+            ## tlabel.set_backgroundcolor('white')
+            tlabel.set_bbox({'facecolor':'white', 'alpha':0.8, 'pad':0})
+            tlabel.set_color(color)
+            # tlabel.set_alpha(0.8)
+        else:
+            if tools.isiterable(namepos): # must be shift coordinates
+                if np.abs(x[0]-x.min())<np.abs(x[0]-x.max()):
+                    namekwargs['horizontalalignment'] = 'left'
+                else:
+                    namekwargs['horizontalalignment'] = 'right'
+                if namepos[1]<0:
+                    namekwargs['verticalalignment'] = 'top'
+                elif namepos[1]==0:
+                    namekwargs['verticalalignment'] = 'center'
+                elif namepos[1]>0:
+                    namekwargs['verticalalignment'] = 'bottom'
+                name_xpos,name_ypos = (x[0]+namepos[0],ylevel+namepos[1])
+            elif namepos=='right':
+                namekwargs['horizontalalignment'] = 'left'
+                namekwargs['verticalalignment'] = 'center'
+                if np.max(x)<xlim[1]: # plot to right of rightmost energy
+                    name_xpos,name_ypos = (np.max(x)+namepad,ylevel)
+                    name_pad_left = '   '
+                else: # plot inside right margin
+                    name_xpos,name_ypos = (xlim[1]+namepad,ylevel)
+                    name_pad_left = ' '
+            elif namepos=='left':
+                namekwargs['horizontalalignment'] = 'right'
+                namekwargs['verticalalignment'] = 'center'
+                if np.min(x)>xlim[0]:
+                    name_xpos,name_ypos = (np.min(x)-namepad,ylevel)
+                    name_pad_right = '   '
+                else:
+                    name_xpos,name_ypos = (xlim[0]-namepad,ylevel)
+                    name_pad_right = ' '
+            elif namepos in ('above','top'):
+                namekwargs['horizontalalignment'] = 'center'
+                namekwargs['verticalalignment'] = 'bottom'
+                name_xpos,name_ypos = (0.5*(np.max(x)+np.min(x)),ylevel+namepad)
+            ax.annotate(name_pad_left+str(name)+name_pad_right,(name_xpos,name_ypos),**namekwargs)
+    ## revert limits
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    
+
+def annotate_spectrum_by_branch(
+        lines,             # Lines object
+        ybeg = 1,               # y position of first coord
+        ystep = 0.1, # separation between branch annotations in data coords
+        zkeys = ('branch',), # how to divide up into separate annotations
+        xkey = 'ν',
+        label_key='J_l', # what quantum number to give as a rotational label
+        # match_name_re=None,   # only annotate these branches
+        match_qn=None,        # only annotate matching qn
+        qn_not_to_label=(), # e.g., [{'Σ':-1,'Jpp':[0,2],}] would not label these, requries label_translate_function is None
+        color_by = 'zkeys', # or one or a list of quantum numbers, e.g., 'ΔJ'
+        name_function = None, # a function to modify automatically generated branch names
+        label_function = None, # a function to modify automatically generated rotational level labels
+        **kwargs_annotate_spectrum # pass directly to annotate_spectrum
+):
+    """Annotate spectrum with separate lines and names found in a
+    Lines object."""
+    zkeys = tools.ensure_iterable(zkeys)
+    retval = []
+    ## prepare color key
+    if color_by=='zkeys':
+        color_by = zkeys
+    color_dict = {tqn:newcolor(it) for it,tqn in enumerate(lines.unique_combinations(*zkeys))}
+    # lines = deepcopy(lines)
+    iz = 0
+    for qn,zlines in lines.unique_dicts_matches(*zkeys):
+        if match_qn is not None:
+            zlines.limit_to_matches(**match_qn)
+        if len(zlines)==0: continue
+        ## get annotation name
+        if name_function is None:
+            # name = encode_lines(**qn)
+            name = str(qn)
+        else:
+            name = name_function(qn)
+        # if match_name_re is not None and not re.match(match_name_re,name):
+            # continue
+        ## update kwargs for this annotation
+        kwargs = copy(kwargs_annotate_spectrum)
+        kwargs.setdefault('name',name)
+        kwargs.setdefault('color',color_dict[tuple(qn.values())])
+        if label_function is not None:
+            labels = [label_function(t) for t in zlines.iter_dict(*tools.ensure_iterable(label_key))]
+        elif label_key is None:
+            labels = ['' for t in zlines]
+        elif np.isscalar(label_key):
+            if tools.isnumeric(lines[label_key][0]):
+                labels = [format(t[label_key],'g') for t in zlines.rows()]
+            else:
+                labels = [format(t[label_key]) for t in zlines.rows()]
+        else:
+            labels = [repr(t) for t in zlines[label_key]]
+        ## remove some labels
+        for keys_vals in qn_not_to_label :
+            for ii in tools.find(zlines.match(**keys_vals)):
+                labels[ii] = ''
+        ## make annotation
+        retval.append(annotate_spectrum(zlines[xkey],labels=labels,ylevel=ybeg+iz*ystep,**kwargs))
+        iz += 1
+    return(retval)
