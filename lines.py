@@ -5,7 +5,7 @@ from pprint import pprint
 import numpy as np
 
 # from . import *
-from .dataset import Dataset
+# from .dataset import Dataset
 from . import tools
 from . import levels
 from . import lineshapes
@@ -40,7 +40,7 @@ def _get_key_without_level_suffix(upper_or_lower,key):
         return None
     return key[:-len(suffix)]
 
-class Base(Dataset):
+class Base(levels._BaseLinesLevels):
     """For now rotational lines."""
 
     _levels_class = levels.Base
@@ -108,19 +108,6 @@ class Base(Dataset):
     prototypes['Z']['infer']['Zsource','species','Tex'] = _f5
     prototypes['Z_l']['infer']['Z'] = lambda Z:Z
     prototypes['Z_u']['infer']['Z'] = lambda Z:Z
-
-
-    def __init__(
-            self,
-            name=None,
-            **keys_vals,
-    ):
-        Dataset.__init__(self)
-        self.permit_nonprototyped_data = False
-        self.name = (name if name is not None else type(self).__name__)
-        self._cache = {}
-        for key,val in keys_vals.items():
-            self[key] = val
 
     def plot_spectrum(
             self,

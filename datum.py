@@ -5,19 +5,21 @@ class Datum:
     """A scalar or array value, possibly with an uncertainty."""
 
     _kind_defaults = {
-        'f': {'cast':float     ,'fmt'   :'+12.8e','description':'float'        ,'step':1e-8},
-        'i': {'cast':int       ,'fmt'   :'d'   ,'description':'int'          ,'step':None},
-        'b': {'cast':bool      ,'fmt'   :'g'     ,'description':'bool'         ,'step':None},
-        'U': {'cast':str       ,'fmt'   :'s'  ,'description':'str'          ,'step':None},
-        'O': {'cast':lambda x:x,'fmt'   :''      ,'description':'object'       ,'step':None},
+
+        'f': {'cast':float     ,'fmt'   :'+12.8e','description':'float' },
+        'i': {'cast':int       ,'fmt'   :'d'     ,'description':'int'   },
+        'b': {'cast':bool      ,'fmt'   :''      ,'description':'bool'  },
+        'U': {'cast':str       ,'fmt'   :'s'     ,'description':'str'   },
+        'O': {'cast':lambda x:x,'fmt'   :''      ,'description':'object'},
+
     }
 
     def __init__(
             self,
             value,         # if it has an associated value stored in the type itself
             uncertainty=None,         # if it has an associated value stored in the type itself
-            vary=None,
-            step=None,
+            # vary=None,
+            # step=None,
             kind=None,
             cast=None,
             description=None,   # long string
@@ -36,8 +38,8 @@ class Datum:
         self.description = (description if description is not None else d['description'])
         self.fmt = (fmt if fmt is not None else d['fmt'])
         self.cast = (cast if cast is not None else d['cast'])
-        self.step = (step if step is not None else d['step'])
-        self.vary = vary
+        # self.step = (step if step is not None else d['step'])
+        # self.vary = vary
         self.units = units
         self.value = value
         self.uncertainty = uncertainty
@@ -73,34 +75,6 @@ class Datum:
             return(format(self.value,self.fmt)+' ± '+format(self.uncertainty,'0.2g'))
         else:
             return(format(self.value,self.fmt))
-
-    # def make_data(self,length):
-        # """Turn current scalar data intor array data of the given
-        # length."""
-        # assert self.is_scalar(),'Already an array'
-        # self.set(np.full(length,self._value),
-                 # (np.full(length,self._uncertainty)
-                  # if self.has_uncertainty() else None))
-
-    # def deepcopy(self,index=None):
-        # retval = Datu(
-            # key=self.key,
-            # kind=self.kind,
-            # description=self.description,
-            # # default_differentiation_stepsize=self.default_differentiation_stepsize,
-            # fmt=copy(self.fmt),
-        # )
-        # if self.has_uncertainty():
-            # if index is None:
-                # retval.set(self.get_value(),self.get_uncertainty())
-            # else:
-                # retval.set(self.get_value()[index],self.get_uncertainty()[index])
-        # else:
-            # if index is None:
-                # retval.set(self.get_value())
-            # else:
-                # retval.set(self.get_value()[index])
-        # return(retval)
 
     def __neg__(self): return(-self.value)
     def __float__(self): return(float(self.value))

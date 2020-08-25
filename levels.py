@@ -8,7 +8,26 @@ from .conversions import convert
 # from .data_prototypes import prototypes
 
 
-class Base(Dataset):
+class _BaseLinesLevels(Dataset):
+    """Init for Lines and Levels"""
+    
+    def __init__(self,name=None,**keys_vals,):
+        """Default_name is decoded to give default values. Kwargs can be
+        scalar data, further default values of vector data, or if vectors
+        themselves will populate data arrays."""
+        if name is None:
+            name = type(self).__name__
+            name = name[0].lower()+name[1:]
+        Dataset.__init__(self,name=name)
+        self.permit_nonprototyped_data = False
+        self._cache = {}
+        for key,val in keys_vals.items():
+            self[key] = val
+
+        self.pop_format_input_function()
+        self.add_format_input_function(lambda:f'{self.name} = {type(self).__name__}()')
+
+class Base(_BaseLinesLevels):
 
     prototypes = {
         # 'class' :dict(description="Dataset subclass" ,kind='str' ,infer={}) ,
@@ -41,16 +60,6 @@ class Base(Dataset):
         if Zsource!='HITRAN':
             raise InferException(f'Partition source not "HITRAN".')
         return hitran.get_partition_function(species,Tex)
-
-    def __init__(self,name=None,**keys_vals,):
-        """Default_name is decoded to give default values. Kwargs can be
-        scalar data, further default values of vector data, or if vectors
-        themselves will populate data arrays."""
-        Dataset.__init__(self)
-        self.permit_nonprototyped_data = False
-        self.name = (name if name is not None else type(self).__name__)
-        for key,val in keys_vals.items():
-            self[key] = val
 
 
 class DiatomicCinfv(Base):

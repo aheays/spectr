@@ -10,60 +10,23 @@ from . import tools
 
 
 
-class Spectrum(optimise.Optimiser):
-
-    def __init__(self,name='spectrum',verbose=None,model_residual_weighting=None): 
-        self.name = name        # object string -- warning this is evaluated as a variable name!!!
-        self.xexp = None                             # x-data of spectrum to fit
-        self.yexp = None                             # y-data of spectrum to fit
-        self.xmod = None                             # x-data of spectrum to fit
-        self.ymod = None                             # y-data of spectrum to fit
-        self.model_residual = None                      # array of residual fit
-        self.model_residual_weighting = model_residual_weighting            # weighting pointwise in xexp
-        self.model_interpolate_factor = None
-        self.verbose = bool(verbose)
-        ## initialise an optimiser for the experimental spectrum
-        self.experiment = optimise.Optimiser(f'{self.name}_experiment',do_format_input=False)
-        def f():
-            self.xexp,self.yexp = None,None
-        self.experiment.add_construct_function(f)
-        ## initialise an optimiser for the model spectrum
-        self.model = optimise.Optimiser(f'{self.name}_model',do_format_input=False)
-        self.model.add_suboptimiser(self.experiment)
-        def f():
-            assert self.xmod is not None
-            self.ymod = np.zeros(self.xmod.shape)
-        self.model.add_construct_function(f)
-        ## residual optimiser
-        optimise.Optimiser.__init__(self,self.name,do_format_input=False)
-        self.do_format_input = True 
-        self.add_suboptimiser(self.model,self.experiment)
-        self.add_construct_function(self.construct_residual)
-        def format_input_function():
-            retval = f'{self.name} = Spectrum(name={repr(self.name)}'
-            if verbose is not None:
-                retval += f',verbose={repr(self.verbose)}'
-            if model_residual_weighting is not None:
-                retval += f',model_residual_weighting={repr(self.model_residual_weighting)}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(format_input_function)
-        self.add_save_to_directory_function(self.output_data_to_directory)
-        self._figure = None
-        self.verbose = verbose
+class Experiment(optimise.Optimiser):
+    
+    def __init__(
+            self,
+            name='experiment',
+            filename=None,
+            xbeg=None,xend=None,
+    ):
+        optimise.Optimiser.__init__(self,name)
+        self.x = None
+        self.y = None
         self.experimental_parameters = {} # a dictionary containing any additional known experimental parameters
-        self._cache = {}
+        if filename is not None:
+            self.set_spectrum_from_file(filename,xbeg,xend)
+        self.add_save_to_directory_function(lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
 
-    def __len__(self):
-        """Number of datapoints in the spectrum."""
-        if self.xexp is not None:
-            return(len(self.xexp))
-        elif self.xmod is not None:
-            return(len(self.xmod))
-        else:
-            raise Exception("No experimental or model spectrum to define length.")
-
-    def set_experimental_spectrum(self,x,y,xbeg=None,xend=None):
+    def set_spectrum(self,x,y,xbeg=None,xend=None):
         """Set x and y as the experimental spectrum. With various safety
         checks. Not optimisable, no format_input_function."""
         x,y = np.array(x),np.array(y)
@@ -88,24 +51,23 @@ class Spectrum(optimise.Optimiser):
         assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
         ## add to self
         def f():
-            self.xexp,self.yexp = copy(x),copy(y) # make copy -- more memory but survive other changes
-            self.xmod = copy(self.xexp)
-        self.experiment.add_construct_function(f)
+            self.x,self.y = copy(x),copy(y) # make copy -- more memory but survive other changes
+        self.add_construct_function(f)
         if self.verbose:
             print('experimental_parameters:')
             pprint(self.experimental_parameters)
 
-    def set_experimental_spectrum_from_file(self,filename,xbeg=None,xend=None,**file_to_array_kwargs):
+    def set_spectrum_from_file(self,filename,xbeg=None,xend=None,**file_to_array_kwargs):
         """Load a spectrum to fit from an x,y file."""
-        self.add_format_input_function(self.name+f'.set_experimental_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(file_to_array_kwargs)})')
+        self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(file_to_array_kwargs)})')
         x,y = tools.file_to_array_unpack(filename,**file_to_array_kwargs)
         self.experimental_parameters['filename'] = filename
-        self.set_experimental_spectrum(x,y,xbeg,xend)
+        self.set_spectrum(x,y,xbeg,xend)
 
-    def set_experimental_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
+    def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
         x,y,d = tools.load_bruker_opus_spectrum(filename)
-        self.add_format_input_function(self.name+f'.set_experimental_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
+        self.add_format_input_function(self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
         self.experimental_parameters['filename'] = filename
         if 'Fourier Transformation' in d:
             self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
@@ -113,340 +75,10 @@ class Spectrum(optimise.Optimiser):
                 self.experimental_parameters['apodisation_function'] = 'Blackman-Harris 3-term'
             else:
                 warnings.warn(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
-        self.set_experimental_spectrum(x,y,xbeg,xend)
+        self.set_spectrum(x,y,xbeg,xend)
 
-    def scale_xexp(self,scale=(1,True,1e-8)):
-        """Rescale experimental spectrum x-grid."""
-        scale = self.experiment.add_parameter('scale_xexp',*scale)
-        self.add_format_input_function(lambda: f"{self.name}.scale_xexp({p.format_input()})")
-        def construct_function():
-            self.xexp *= float(scale)
-        self.experiment.add_construct_function(construct_function)
-
-    def interpolate_experimental_spectrum(self,dx):
-        """Interpolate experimental spectrum to a grid of width dx, may change
-        position of xend."""
-        self.add_format_input_function(self.name+f'.interpolate_spectrum({repr(dx)})')
-        def f():
-            xnew = np.arange(self.xexp[0],self.xexp[-1],dx)
-            ynew = tools.spline(self.xexp,self.yexp,xnew)
-            if self.verbose:
-                print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.xexp[0])},{repr(self.xexp[-1])},{self.xexp[1]-self.xexp[0]})")
-            self.xexp,self.yexp = xnew,ynew
-        self.experiment.add_construct_function(f)
-
-    def interpolate_model_spectrum(self,dx):
-        """When calculating model set to dx grid (or less to achieve
-        overlap with experimental points."""
-        self.add_format_input_function(f'{self.name}.interpolate_model_spectrum({dx})')
-        def f():
-            xstep = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1)
-            self.model_interpolate_factor = int(np.ceil(xstep/dx))
-            self.xmod = np.linspace(self.xexp[0],self.xexp[-1],1+(len(self.xexp)-1)*self.model_interpolate_factor)
-            self.ymod = np.zeros(self.xmod.shape,dtype=float) # delete current ymod!!
-        self.model.add_construct_function(f)
-
-    def add_absorption_cross_section_from_file(
-            self,
-            name,               # for new input line
-            filename,           # the data filename, loaded with file_to_dict if xkey/ykey given else file_to_array
-            column_density=1e16,              # to compute optical depth
-            xshift=None, yshift=None,             # shiftt the data
-            xscale=None, yscale=None, # scale the data
-            xbeg=None, xend=None, # limits to add
-            xkey=None, ykey=None, # in case file is indexable by keys
-            xtransform=None,      # modify x data with this function
-            resample_interval=None, # resample for some reason
-            **file_to_dict_or_array_kwargs,
-    ):
-        """Load a cross section from a file. Interpolate this to experimental
-        grid. Add absorption according to given column density, which
-        can be optimised."""
-        ## add adjustable parameters for optimisation
-        p = self.model.add_parameter_set(
-            note=f'add_absorption_cross_section_from_file name={name} file={filename}',
-            column_density=column_density, xshift=xshift,
-            yshift=yshift, xscale=xscale, yscale=yscale,
-            step_scale_default={'column_density':0.01, 'xshift':1e-3, 'yshift':1e-3,
-                                'xscale':1e-8, 'yscale':1e-3,})
-        ## new input line
-        def f(xbeg=xbeg,xend=xend):
-            retval = f'{self.name}.add_absorption_cross_section_from_file({repr(name)},{repr(filename)}'
-            if xbeg is not None:
-                retval += f',xbeg={repr(xbeg)}'
-            if xend is not None:
-                retval += f',xend={repr(xend)}'
-            if xkey is not None:
-                retval += f',xkey={repr(xkey)}'
-            if ykey is not None:
-                retval += f',ykey={repr(ykey)}'
-            if xtransform is not None:
-                retval += f',xtransform={repr(xtransform)}'
-            if len(p)>0:
-                retval += f',{p.format_input()}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(f)
-        if xkey is None and ykey is None:
-            xin,σin = tools.file_to_array_unpack(filename,**file_to_dict_or_array_kwargs)
-        elif xkey is not None and ykey is not None:
-            t = tools.file_to_dict(filename,**file_to_dict_or_array_kwargs)
-            xin,σin = t[xkey],t[ykey]
-        else:
-            raise Exception('Forbidden case.')
-        if xtransform is not None:
-            xin = getattr(my,xtransform)(xin)
-        ## resample if requested to remove noise
-        if resample_interval is not None:
-            xt = np.arange(xin[0],xin[-1],resample_interval)
-            xin,σin = xt,lib_molecules.resample_data(xin,σin,xt)
-        ## set range if specified
-        if xbeg is not None:
-            i = xin>=xbeg
-            xin,σin = xin[i],σin[i]
-        if xend is not None:
-            i = xin<=xend
-            xin,σin = xin[i],σin[i]
-        ## add to model
-        cache = {}
-        def f():
-            if len(xin)==0:
-                return # nothing to add
-            ## compute transmission if necessary
-            if 'transmission' not in cache or p.timestamp>self.timestamp:
-                cache['transmission'] = np.exp(
-                    -p['column_density']
-                    *tools.spline(
-                        xin*(p['xscale'] if xscale is not None else 1) - (p['xshift'] if xshift is not None else 0),
-                        σin*(p['yscale'] if yscale is not None else 1) + (p['yshift'] if yshift is not None else 0),
-                        self.xmod))
-                for key in p.keys():
-                    cache[key]  = p[key]
-            self.ymod *= cache['transmission'] # add to model
-        self.model.add_construct_function(f)
-    add_cross_section_from_file = add_absorption_cross_section_from_file # deprecated name
-
-    def add_absorption_cross_section(
-            self,
-            cross_section_object,
-            column_density=1e16,
-            # xshift=None,
-            # xscale=None,
-            # xbeg=None,
-            # xend=None,
-    ):
-        """Load a cross section from a file. Interpolate this to experimental
-        grid. Add absorption according to given column density, which
-        can be optimised."""
-        p = self.model.add_parameter_set(
-            note=f'add_absorption_cross_section {cross_section_object.name} in {self.name}',
-            column_density=column_density,# xshift=xshift, xscale=xscale,
-            step_scale_default={'column_density':0.01, 'xshift':1e-3, 'xscale':1e-8,})
-        def f():
-            retval = f'{self.name}.add_absorption_cross_section({cross_section_object.name}'
-            # if xbeg is not None:
-                # retval += f',xbeg={xbeg}'
-            # if xend is not None:
-                # retval += f',xend={xend}'
-            if len(p)>0:
-                retval += f',{p.format_input()}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(f)
-        self.experiment.add_suboptimisers(cross_section_object)
-        cache = {}
-        def f():
-            ## update if necessary
-            if ('transmission' not in cache 
-                or (p.timestamp>self.timestamp)
-                or (cross_section_object.timestamp>self.timestamp)):
-                # cache['transmission'] = np.full(self.xmod.shape,1.0)
-                # i = np.full(self.xmod.shape,
-                # if xbeg is not None:
-                    # i &= self.xmod>=xbeg
-                # if xend is not None:
-                    # i &= self.xmod<=xend
-                # cache['i'] = i
-                cache['transmission'] = np.exp(-p['column_density']*cross_section_object.σ(self.xmod))
-                for key in p.keys():
-                    cache[key] = p[key]
-            ## add to model
-            self.ymod *= cache['transmission']
-            # self.optical_depths[cross_section_object.name] = cache['τ']
-        self.model.add_construct_function(f)
-    add_cross_section = add_absorption_cross_section # deprecated name
-
-    def add_absorption_lines(
-            self,
-            lines,
-            nfwhmL=20,
-            nfwhmG=100,
-            τmin=None,
-            gaussian_method=None,
-            voigt_method=None,
-            use_multiprocessing=None,
-            use_cache= None,
-            **optimise_keys_vals):
-        name = f'add_absorption_lines {lines.name} to {self.name}'
-        self.model.add_suboptimiser(lines,add_format_function=False)
-        parameter_set = self.model.add_parameter_set(**optimise_keys_vals,description=name)
-        ## update lines data and recompute optical depth if
-        ## necessary
-        cache = {}
-        def f():
-            ## first call -- no good, xmod not set yet
-            if self.xmod is None:
-                return
-            if len(lines)==0:
-                ## no lines
-                return
-            ## recompute spectrum if is necessary for somem reason
-            if (cache == {}    # currently no spectrum computed
-                or self.timestamp < lines.timestamp # lines has changed
-                or self.timestamp < parameter_set.timestamp # optimise_keys_vals has changed
-                or not (len(cache['xmod']) == len(self.xmod)) # experimental domain has changed
-                or not np.all( cache['xmod'] == self.xmod )): # experimental domain has changed
-                ## update optimise_keys_vals that have changed
-                for key,val in parameter_set.items():
-                    if (cache=={} or lines[key][0]!=val): # has been changed elsewhere, or the parameter has changed, or first use
-                        lines[key] = val
-                x,y = lines.calculate_spectrum(
-                    x=self.xmod,
-                    ykey='τpa',
-                    nfwhmG=(nfwhmG if nfwhmG is not None else 10),
-                    nfwhmL=(nfwhmL if nfwhmL is not None else 100),
-                    ymin=τmin,
-                    ΓG='ΓDoppler',
-                    ΓL='Γ',
-                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
-                    gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
-                    voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
-                    # use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else 4),
-                    use_cache=(use_cache if use_cache is not None else True),
-                )
-                cache['xmod'] = copy(self.xmod)
-                cache['absorbance'] = np.exp(-y)
-            ## absorb
-            self.ymod *= cache['absorbance']
-        self.model.add_construct_function(f)
-        ## new input line
-        def f():
-            retval = [f'{self.name}.add_absorption_lines({lines.name}']
-            if len(parameter_set)>0:
-                ## retval.append('\n    '+parameter_set.format_input(multiline=True))
-                retval.append(parameter_set.format_input(multiline=False))
-            if nfwhmL is not None:
-                retval.append(f'nfwhmL={repr(nfwhmL)}')
-            if nfwhmG is not None:
-                retval.append(f'nfwhmG={repr(nfwhmG)}')
-            if τmin is not None:
-                retval.append(f'τmin={repr(τmin)}')
-            if use_multiprocessing is not None:
-                retval.append(f'use_multiprocessing={repr(use_multiprocessing)}')
-            if use_cache is not None:
-                retval.append(f'use_cache={repr(use_cache)}')
-            if voigt_method is not None:
-                retval.append(f'voigt_method={repr(voigt_method)}')
-            if gaussian_method is not None:
-                retval.append(f'gaussian_method={repr(gaussian_method)}')
-            retval.append(')')
-            return(','.join(retval))
-        self.add_format_input_function(f)
-
-    def add_emission_lines(
-            self,
-            lines,
-            nfwhmL=None,
-            nfwhmG=None,
-            Imin=None,
-            gaussian_method=None,
-            voigt_method=None,
-            use_multiprocessing=None,
-            use_cache=None,
-            **optimise_keys_vals):
-        self.model.add_suboptimiser(lines) # to model rebuilt when transition changed
-        # self.transitions.append(transition)   
-        name = f'add_emission_lines {lines.name} to {self.name}'
-        # assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
-        # self.emission_intensities[name] = None
-        p = self.model.add_parameter_set(**optimise_keys_vals,note=name)
-        cache = {}
-        def construct_function():
-            ## first call -- no good, xmod not set yet
-            if self.xexp is None:
-                # self.emission_intensities[name] = None
-                return
-            ## recompute spectrum
-            if (cache =={}
-                # or self.emission_intensities[name] is None # currently no spectrum computed
-                or self.timestamp<lines.timestamp # transition has changed
-                or self.timestamp<p.timestamp     # optimise_keys_vals has changed
-                or not (len(cache['xexp']) == len(self.xexp)) # experimental domain has changed
-                or not np.all( cache['xexp'] == self.xexp )): # experimental domain has changed
-                ## update optimise_keys_vals that have changed
-                for key,val in p.items():
-                    if (not lines.is_set(key)
-                        or np.any(lines[key]!=val)):
-                        lines[key] = val
-                ## that actual computation
-                x,y = lines.calculate_spectrum(
-                    x=self.xmod,
-                    ykey='I',
-                    nfwhmG=(nfwhmG if nfwhmG is not None else 10),
-                    nfwhmL=(nfwhmL if nfwhmL is not None else 100),
-                    ymin=Imin,
-                    ΓG='ΓDoppler',
-                    ΓL='Γ',
-                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
-                    gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
-                    voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
-                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    use_cache=(use_cache if use_cache is not None else True),
-                )
-                cache['xexp'] = copy(self.xexp)
-                cache['intensity'] = y
-            ## add emission intensity to the overall model
-            self.ymod += cache['intensity']
-        self.model.add_construct_function(construct_function)
-        ## new input line
-        def f():
-            retval = f'{self.name}.add_emission_lines({lines.name}'
-            if nfwhmL is not None: retval += f',nfwhmL={repr(nfwhmL)}'
-            if nfwhmG is not None: retval += f',nfwhmG={repr(nfwhmG)}'
-            if Imin is not None: retval += f',Imin={repr(Imin)}'
-            if use_multiprocessing is not None: retval += f',use_multiprocessing={repr(use_multiprocessing)}'
-            if use_cache is not None: retval += f',use_cache={repr(use_cache)}'
-            if voigt_method is not None: retval += f',voigt_method={repr(voigt_method)}'
-            if gaussian_method is not None: retval += f',gaussian_method={repr(gaussian_method)}'
-            if len(p)>0: retval += f',{p.format_input()}'
-            return(retval+')')
-        self.add_format_input_function(f)
-        
-    def construct_experiment(self):
-        """Load, calibrate, and preprocess experimental before fitting any
-        model."""
-        self.experiment.construct()
-        return(self.xexp,self.yexp)
-
-    def construct_model(self,x):
-        """Construct a model spectrum."""
-        self.xmod = np.asarray(x,dtype=float)
-        self.model.construct()
-        return(self.xmod,self.ymod)
-
-    def construct_residual(self):
-        ## residual calculation
-        if self.model_interpolate_factor is None:
-            self.model_residual = self.yexp - self.ymod
-        else:
-            self.model_residual = self.yexp - self.ymod[::self.model_interpolate_factor]
-        ## weight residual pointwise
-        if self.model_residual_weighting is not None:
-            self.model_residual *= self.model_residual_weighting
-        return(self.model_residual)
     
-    def load_SOLEIL_spectrum_from_file(
+    def set_spectrum_from_SOLEIL_file(
             self,
             filename,
             xbeg=None,
@@ -457,7 +89,7 @@ class Spectrum(optimise.Optimiser):
         x,y,header = load_SOLEIL_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
         self.experimental_parameters.update(header)
-        p = self.experiment.add_parameter_set('load_SOLEIL_spectrum_from_file',xscale=xscale,step_default={'xscale':1e-8},)
+        p = self.add_parameter_set('load_SOLEIL_spectrum_from_file',xscale=xscale,step_default={'xscale':1e-8},)
         def f():
             retval = f'{self.name}.load_SOLEIL_spectrum_from_file({repr(filename)}'
             if xbeg is not None:
@@ -470,17 +102,17 @@ class Spectrum(optimise.Optimiser):
             return(retval)
         self.add_format_input_function(f)
         ## Limit xbeg/xend to fall within limits of actual data. If
-        ## there is no data then self.xexp and self.yexp are None
+        ## there is no data then self.x and self.y are None
         if xbeg is None:
             xbeg = x.min()
         if xend is None:
             xend = x.max()
         if xbeg>x.max() or xend<x.min():
-            self.xexp = self.yexp = None
+            self.x = self.y = None
             warnings.warn(f"SOLEIL spectrum has no data in x-range: {repr(filename)}")
             return
         xbeg,xend = max(xbeg,x.min()),min(xend,x.max())
-        self.set_experimental_spectrum(x,y,xbeg=xbeg,xend=xend)
+        self.set_spectrum(x,y,xbeg=xbeg,xend=xend)
         if xscale is not None:
             i = (x>xbeg-10.)&(x<xend+10.)
             x,y = x[i],y[i]
@@ -490,8 +122,31 @@ class Spectrum(optimise.Optimiser):
                     and (yscaled[0] is None
                          or p.timestamp>self.timestamp)):
                     yscaled[0] = tools.spline(x*p['xscale'],y,x)
-                    self.set_experimental_spectrum(x,yscaled[0],xbeg=xbeg,xend=xend)
-            self.experiment.add_construct_function(f)
+                    self.set_spectrum(x,yscaled[0],xbeg=xbeg,xend=xend)
+            self.add_construct_function(f)
+
+    def scalex(self,scale=(1,True,1e-8)):
+        """Rescale experimental spectrum x-grid."""
+        scale = self.add_parameter('scalex',*scale)
+        self.add_format_input_function(lambda: f"{self.name}.scalex({p.format_input()})")
+        def construct_function():
+            self.x *= float(scale)
+        self.add_construct_function(construct_function)
+
+    def interpolate_experimental_spectrum(self,dx):
+        """Interpolate experimental spectrum to a grid of width dx, may change
+        position of xend."""
+        self.add_format_input_function(self.name+f'.interpolate_spectrum({repr(dx)})')
+        def f():
+            xnew = np.arange(self.x[0],self.x[-1],dx)
+            ynew = tools.spline(self.x,self.y,xnew)
+            if self.verbose:
+                print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.x[0])},{repr(self.x[-1])},{self.x[1]-self.x[0]})")
+            self.x,self.y = xnew,ynew
+        self.add_construct_function(f)
+
+    def __len__(self):
+        return len(self.x)
 
     def fit_noise(
             self,
@@ -553,7 +208,361 @@ class Spectrum(optimise.Optimiser):
             ax = tools.subplot(fig=fig)
             tools.plot_hist_with_fitted_gaussian(r,ax=ax)
             ax.set_title(f'noise distribution\n{self.name}')
+
+class Model(optimise.Optimiser):
+
+    def __init__(
+            self,
+            experiment=None,
+            name=None,
+            residual_weighting=None,
+            verbose=None,
+    ):
+        self.experiment = experiment
+        if name is None:
+            if self.experiment is None:
+                name = 'model'
+            else:
+                name = f'model_of_{experiment.name}'
+        self.x = None
+        self.y = None
+        self.residual = None                      # array of residual fit
+        self.residual_weighting = residual_weighting            # weighting pointwise in xexp
+        self.interpolate_factor = None
+        optimise.Optimiser.__init__(self,name)
+        self.pop_format_input_function()
+        if self.experiment is not None:
+            self.add_suboptimiser(self.experiment)
+        def f():
+            assert self.experiment is not None or self.x is not None,'Unknown x'
+            if self.x is None:
+                self.x = self.experiment.x
+            else:
+                self.x = np.asarray(self.x,dtype=float)
+            self.y = np.zeros(self.x.shape,dtype=float)
+        self.add_construct_function(f)
+        def format_input_function():
+            retval = f'{self.name} = Spectrum(name={repr(self.name)}'
+            if verbose is not None:
+                retval += f',verbose={repr(self.verbose)}'
+            if residual_weighting is not None:
+                retval += f',residual_weighting={repr(self.residual_weighting)}'
+            retval += ')'
+            return(retval)
+        self.add_format_input_function(format_input_function)
+        self.add_save_to_directory_function(self.output_data_to_directory)
+        self._figure = None
+
+    def get_spectrum(self,x=None):
+        """Construct a model spectrum at x."""
+        self.x = x
+        self.construct(recompute_all=True)
+        return self.y
+
+    def get_residual(self):
+        def f():
+            ## residual calculation
+            if self.interpolate_factor is None:
+                residual = self.experiment.y - self.y
+            else:
+                residual = self.experiment.y - self.y[::self.interpolate_factor]
+            ## weight residual pointwise
+            if self.residual_weighting is not None:
+                residual *= self.residual_weighting
+            return(residual)
+        self.add_construct_function(f)
         
+    def __len__(self):
+        return len(self.x)
+
+    def interpolate(self,dx):
+        """When calculating model set to dx grid (or less to achieve
+        overlap with experimental points."""
+        self.add_format_input_function(f'{self.name}.interpolate({dx})')
+        def f():
+            xstep = (self.experiment.x[-1]-self.experiment.x[0])/(len(self.experiment.x)-1)
+            self.interpolate_factor = int(np.ceil(xstep/dx))
+            self.x = np.linspace(self.experiment.x[0],self.experiment.x[-1],1+(len(self.experiment.x)-1)*self.interpolate_factor)
+            self.y = np.zeros(self.x.shape,dtype=float) # delete current y!!
+        self.add_construct_function(f)
+
+    def add_absorption_cross_section_from_file(
+            self,
+            name,               # for new input line
+            filename,           # the data filename, loaded with file_to_dict if xkey/ykey given else file_to_array
+            column_density=1e16,              # to compute optical depth
+            xshift=None, yshift=None,             # shiftt the data
+            xscale=None, yscale=None, # scale the data
+            xbeg=None, xend=None, # limits to add
+            xkey=None, ykey=None, # in case file is indexable by keys
+            xtransform=None,      # modify x data with this function
+            resample_interval=None, # resample for some reason
+            **file_to_dict_or_array_kwargs,
+    ):
+        """Load a cross section from a file. Interpolate this to experimental
+        grid. Add absorption according to given column density, which
+        can be optimised."""
+        ## add adjustable parameters for optimisation
+        p = self.add_parameter_set(
+            note=f'add_absorption_cross_section_from_file name={name} file={filename}',
+            column_density=column_density, xshift=xshift,
+            yshift=yshift, xscale=xscale, yscale=yscale,
+            step_scale_default={'column_density':0.01, 'xshift':1e-3, 'yshift':1e-3,
+                                'xscale':1e-8, 'yscale':1e-3,})
+        ## new input line
+        def f(xbeg=xbeg,xend=xend):
+            retval = f'{self.name}.add_absorption_cross_section_from_file({repr(name)},{repr(filename)}'
+            if xbeg is not None:
+                retval += f',xbeg={repr(xbeg)}'
+            if xend is not None:
+                retval += f',xend={repr(xend)}'
+            if xkey is not None:
+                retval += f',xkey={repr(xkey)}'
+            if ykey is not None:
+                retval += f',ykey={repr(ykey)}'
+            if xtransform is not None:
+                retval += f',xtransform={repr(xtransform)}'
+            if len(p)>0:
+                retval += f',{p.format_input()}'
+            retval += ')'
+            return(retval)
+        self.add_format_input_function(f)
+        if xkey is None and ykey is None:
+            xin,σin = tools.file_to_array_unpack(filename,**file_to_dict_or_array_kwargs)
+        elif xkey is not None and ykey is not None:
+            t = tools.file_to_dict(filename,**file_to_dict_or_array_kwargs)
+            xin,σin = t[xkey],t[ykey]
+        else:
+            raise Exception('Forbidden case.')
+        if xtransform is not None:
+            xin = getattr(my,xtransform)(xin)
+        ## resample if requested to remove noise
+        if resample_interval is not None:
+            xt = np.arange(xin[0],xin[-1],resample_interval)
+            xin,σin = xt,lib_molecules.resample_data(xin,σin,xt)
+        ## set range if specified
+        if xbeg is not None:
+            i = xin>=xbeg
+            xin,σin = xin[i],σin[i]
+        if xend is not None:
+            i = xin<=xend
+            xin,σin = xin[i],σin[i]
+        ## add to model
+        cache = {}
+        def f():
+            if len(xin)==0:
+                return # nothing to add
+            ## compute transmission if necessary
+            if 'transmission' not in cache or p.timestamp>self.timestamp:
+                cache['transmission'] = np.exp(
+                    -p['column_density']
+                    *tools.spline(
+                        xin*(p['xscale'] if xscale is not None else 1) - (p['xshift'] if xshift is not None else 0),
+                        σin*(p['yscale'] if yscale is not None else 1) + (p['yshift'] if yshift is not None else 0),
+                        self.x))
+                for key in p.keys():
+                    cache[key]  = p[key]
+            self.y *= cache['transmission'] # add to model
+        self.add_construct_function(f)
+
+    def add_absorption_cross_section(
+            self,
+            cross_section_object,
+            column_density=1e16,
+            # xshift=None,
+            # xscale=None,
+            # xbeg=None,
+            # xend=None,
+    ):
+        """Load a cross section from a file. Interpolate this to experimental
+        grid. Add absorption according to given column density, which
+        can be optimised."""
+        p = self.add_parameter_set(
+            note=f'add_absorption_cross_section {cross_section_object.name} in {self.name}',
+            column_density=column_density,# xshift=xshift, xscale=xscale,
+            step_scale_default={'column_density':0.01, 'xshift':1e-3, 'xscale':1e-8,})
+        def f():
+            retval = f'{self.name}.add_absorption_cross_section({cross_section_object.name}'
+            # if xbeg is not None:
+                # retval += f',xbeg={xbeg}'
+            # if xend is not None:
+                # retval += f',xend={xend}'
+            if len(p)>0:
+                retval += f',{p.format_input()}'
+            retval += ')'
+            return(retval)
+        self.add_format_input_function(f)
+        self.add_suboptimisers(cross_section_object)
+        cache = {}
+        def f():
+            ## update if necessary
+            if ('transmission' not in cache 
+                or (p.timestamp>self.timestamp)
+                or (cross_section_object.timestamp>self.timestamp)):
+                # cache['transmission'] = np.full(self.x.shape,1.0)
+                # i = np.full(self.x.shape,
+                # if xbeg is not None:
+                    # i &= self.x>=xbeg
+                # if xend is not None:
+                    # i &= self.x<=xend
+                # cache['i'] = i
+                cache['transmission'] = np.exp(-p['column_density']*cross_section_object.σ(self.x))
+                for key in p.keys():
+                    cache[key] = p[key]
+            ## add to model
+            self.y *= cache['transmission']
+            # self.optical_depths[cross_section_object.name] = cache['τ']
+        self.add_construct_function(f)
+    add_cross_section = add_absorption_cross_section # deprecated name
+
+    def add_absorption_lines(
+            self,
+            lines,
+            nfwhmL=20,
+            nfwhmG=100,
+            τmin=None,
+            gaussian_method=None,
+            voigt_method=None,
+            use_multiprocessing=None,
+            use_cache= None,
+            **optimise_keys_vals):
+        name = f'add_absorption_lines {lines.name} to {self.name}'
+        self.add_suboptimiser(lines,add_format_function=False)
+        parameter_set = self.add_parameter_set(**optimise_keys_vals,description=name)
+        ## update lines data and recompute optical depth if
+        ## necessary
+        cache = {}
+        def f():
+            ## first call -- no good, x not set yet
+            if self.x is None:
+                return
+            if len(lines)==0:
+                ## no lines
+                return
+            ## recompute spectrum if is necessary for somem reason
+            if (cache == {}    # currently no spectrum computed
+                or self.timestamp < lines.timestamp # lines has changed
+                or self.timestamp < parameter_set.timestamp # optimise_keys_vals has changed
+                or not (len(cache['x']) == len(self.x)) # experimental domain has changed
+                or not np.all( cache['x'] == self.x )): # experimental domain has changed
+                ## update optimise_keys_vals that have changed
+                for key,val in parameter_set.items():
+                    if (cache=={} or lines[key][0]!=val): # has been changed elsewhere, or the parameter has changed, or first use
+                        lines[key] = val
+                x,y = lines.calculate_spectrum(
+                    x=self.x,
+                    ykey='τpa',
+                    nfwhmG=(nfwhmG if nfwhmG is not None else 10),
+                    nfwhmL=(nfwhmL if nfwhmL is not None else 100),
+                    ymin=τmin,
+                    ΓG='ΓDoppler',
+                    ΓL='Γ',
+                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
+                    gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
+                    voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
+                    # use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
+                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else 4),
+                    use_cache=(use_cache if use_cache is not None else True),
+                )
+                cache['x'] = copy(self.x)
+                cache['absorbance'] = np.exp(-y)
+            ## absorb
+            self.y *= cache['absorbance']
+        self.add_construct_function(f)
+        ## new input line
+        def f():
+            retval = [f'{self.name}.add_absorption_lines({lines.name}']
+            if len(parameter_set)>0:
+                ## retval.append('\n    '+parameter_set.format_input(multiline=True))
+                retval.append(parameter_set.format_input(multiline=False))
+            if nfwhmL is not None:
+                retval.append(f'nfwhmL={repr(nfwhmL)}')
+            if nfwhmG is not None:
+                retval.append(f'nfwhmG={repr(nfwhmG)}')
+            if τmin is not None:
+                retval.append(f'τmin={repr(τmin)}')
+            if use_multiprocessing is not None:
+                retval.append(f'use_multiprocessing={repr(use_multiprocessing)}')
+            if use_cache is not None:
+                retval.append(f'use_cache={repr(use_cache)}')
+            if voigt_method is not None:
+                retval.append(f'voigt_method={repr(voigt_method)}')
+            if gaussian_method is not None:
+                retval.append(f'gaussian_method={repr(gaussian_method)}')
+            retval.append(')')
+            return(','.join(retval))
+        self.add_format_input_function(f)
+
+    def add_emission_lines(
+            self,
+            lines,
+            nfwhmL=None,
+            nfwhmG=None,
+            Imin=None,
+            gaussian_method=None,
+            voigt_method=None,
+            use_multiprocessing=None,
+            use_cache=None,
+            **optimise_keys_vals):
+        self.add_suboptimiser(lines) # to model rebuilt when transition changed
+        # self.transitions.append(transition)   
+        name = f'add_emission_lines {lines.name} to {self.name}'
+        # assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
+        # self.emission_intensities[name] = None
+        p = self.add_parameter_set(**optimise_keys_vals,note=name)
+        cache = {}
+        def construct_function():
+            ## first call -- no good, x not set yet
+            if self.experiment.x is None:
+                # self.emission_intensities[name] = None
+                return
+            ## recompute spectrum
+            if (cache =={}
+                # or self.emission_intensities[name] is None # currently no spectrum computed
+                or self.timestamp<lines.timestamp # transition has changed
+                or self.timestamp<p.timestamp     # optimise_keys_vals has changed
+                or not (len(cache['experiment.x']) == len(self.experiment.x)) # experimental domain has changed
+                or not np.all( cache['experiment.x'] == self.experiment.x )): # experimental domain has changed
+                ## update optimise_keys_vals that have changed
+                for key,val in p.items():
+                    if (not lines.is_set(key)
+                        or np.any(lines[key]!=val)):
+                        lines[key] = val
+                ## that actual computation
+                x,y = lines.calculate_spectrum(
+                    x=self.x,
+                    ykey='I',
+                    nfwhmG=(nfwhmG if nfwhmG is not None else 10),
+                    nfwhmL=(nfwhmL if nfwhmL is not None else 100),
+                    ymin=Imin,
+                    ΓG='ΓDoppler',
+                    ΓL='Γ',
+                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
+                    gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
+                    voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
+                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
+                    use_cache=(use_cache if use_cache is not None else True),
+                )
+                cache['experiment.x'] = copy(self.experiment.x)
+                cache['intensity'] = y
+            ## add emission intensity to the overall model
+            self.y += cache['intensity']
+        self.add_construct_function(construct_function)
+        ## new input line
+        def f():
+            retval = f'{self.name}.add_emission_lines({lines.name}'
+            if nfwhmL is not None: retval += f',nfwhmL={repr(nfwhmL)}'
+            if nfwhmG is not None: retval += f',nfwhmG={repr(nfwhmG)}'
+            if Imin is not None: retval += f',Imin={repr(Imin)}'
+            if use_multiprocessing is not None: retval += f',use_multiprocessing={repr(use_multiprocessing)}'
+            if use_cache is not None: retval += f',use_cache={repr(use_cache)}'
+            if voigt_method is not None: retval += f',voigt_method={repr(voigt_method)}'
+            if gaussian_method is not None: retval += f',gaussian_method={repr(gaussian_method)}'
+            if len(p)>0: retval += f',{p.format_input()}'
+            return(retval+')')
+        self.add_format_input_function(f)
+        
+
     def set_residual_weighting(self,weighting,xbeg=None,xend=None):
         """Set the weighting or residual between xbeg and xend to a
         constant."""
@@ -567,15 +576,15 @@ class Spectrum(optimise.Optimiser):
         self.add_format_input_function(f)
         def f():
             if xbeg is None and xend is None:
-                self.model_residual_weighting = np.full(self.xexp.shape,weighting,dtype=float)
+                self.residual_weighting = np.full(self.experiment.x.shape,weighting,dtype=float)
             else:
-                if self.model_residual_weighting is None:
-                    self.model_residual_weighting = np.ones(self.xexp.shape,dtype=float)
-                self.model_residual_weighting[
-                    (self.xexp>=(xbeg if xbeg is not None else -np.inf))
-                    &(self.xexp<=(xend if xend is not None else np.inf))
+                if self.residual_weighting is None:
+                    self.residual_weighting = np.ones(self.experiment.x.shape,dtype=float)
+                self.residual_weighting[
+                    (self.experiment.x>=(xbeg if xbeg is not None else -np.inf))
+                    &(self.experiment.x<=(xend if xend is not None else np.inf))
                 ] = weighting
-        self.model.add_construct_function(f)
+        self.add_construct_function(f)
 
     def set_residual_weighting_over_range(self,xbeg,xend,weighting):
         """Set the weighting or residual between xbeg and xend to a
@@ -600,9 +609,9 @@ class Spectrum(optimise.Optimiser):
         self.add_format_input_function('# '+self.name+f'.autodetect_lines(filename={repr(filename)},τ={τ},Γ={Γ},vν={repr(vν)},vτ={repr(vτ)},vΓ={repr(vΓ)},τscale={repr(τscale)},xmin={repr(xmin)},ymin={repr(ymin)},'+tools.dict_to_kwargs(qn)+')')
         ## get something to find lines in
         if filename is None:
-            x = copy(self.xexp)
-            if self.model_residual is not None: y = copy(self.model_residual) # get from residual
-            else:    y = copy(self.yexp-self.yexp.mean()) # get from data after removing mean / background
+            x = copy(self.experiment.x)
+            if self.residual is not None: y = copy(self.residual) # get from residual
+            else:    y = copy(self.experiment.y-self.experiment.y.mean()) # get from data after removing mean / background
         else:
             x,y = tools.file_to_array_unpack(filename) # else get from a specified data file
         y = np.abs(y)      # to fit both emission and absorption lines
@@ -655,20 +664,20 @@ class Spectrum(optimise.Optimiser):
         
     def scale_by_constant(self,scale=1.0):
         """Scale model by a constant value."""
-        scale = self.model.add_parameter('scale',scale)
+        scale = self.add_parameter('scale',scale)
         self.add_format_input_function(lambda: f"{self.name}.scale_by_constant(ν={repr(scale)})")
         def f():
-            self.ymod *= scale.p
-        self.model.add_construct_function(f)
+            self.y *= scale.p
+        self.add_construct_function(f)
 
     def scale_by_spline(self,ν=50,amplitudes=1,vary=True,step=0.0001,order=3):
         """Scale by a spline defined function."""
         if np.isscalar(ν):
-            ν = np.arange(self.xexp[0]-ν,self.xexp[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
+            ν = np.arange(self.experiment.x[0]-ν,self.experiment.x[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
         if np.isscalar(amplitudes):
             amplitudes = amplitudes*np.ones(len(ν)) # default amplitudes to list of hge same length
         ν,amplitudes = np.array(ν),np.array(amplitudes)
-        p = self.model.add_parameter_list(f'scale_by_spline',amplitudes,vary,step) # add to optimsier
+        p = self.add_parameter_list(f'scale_by_spline',amplitudes,vary,step) # add to optimsier
         def format_input_function():
             retval = f"{self.name}.scale_by_spline("
             retval += f"vary={repr(vary)}"
@@ -679,9 +688,9 @@ class Spectrum(optimise.Optimiser):
             return(retval+')')
         self.add_format_input_function(format_input_function)
         def f():
-            i = (self.xmod>=np.min(ν))&(self.xmod<=np.max(ν))
-            self.ymod[i] = self.ymod[i]*scipy.interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.xmod[i])
-        self.model.add_construct_function(f) # multiply spline during construct
+            i = (self.x>=np.min(ν))&(self.x<=np.max(ν))
+            self.y[i] = self.y[i]*scipy.interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.x[i])
+        self.add_construct_function(f) # multiply spline during construct
 
     def modulate_by_spline(
             self,
@@ -698,9 +707,9 @@ class Spectrum(optimise.Optimiser):
         """Modulate by 1 + sinusoid."""
         ## if scalar then use as stepsize of a regular grid
         if ν is None:
-            ν = np.linspace(self.xexp[0],self.xexp[-1],10)
+            ν = np.linspace(self.experiment.x[0],self.experiment.x[-1],10)
         elif np.isscalar(ν):
-            ν = np.arange(self.xexp[0]-ν/2,self.xexp[-1]+ν/2+1,ν)
+            ν = np.arange(self.experiment.x[0]-ν/2,self.experiment.x[-1]+ν/2+1,ν)
         else:
             ν = np.array(ν)
         ## if no amplitude given default to 1%
@@ -716,9 +725,9 @@ class Spectrum(optimise.Optimiser):
             phase = np.zeros(ν.shape,dtype=float)
             for i in range(len(ν)-1):
                 νbeg,νend = ν[i],ν[i+1]
-                j = tools.inrange(self.xexp,νbeg,νend)
+                j = tools.inrange(self.experiment.x,νbeg,νend)
                 tf,tF,r = tools.power_spectrum(
-                    self.xexp[j],self.yexp[j],
+                    self.experiment.x[j],self.experiment.y[j],
                     fit_peaks=True,
                     xbeg=fbeg,xend=fend)
                 f0 = r['f0'][np.argmax(r['S'])]
@@ -729,9 +738,9 @@ class Spectrum(optimise.Optimiser):
                     ax.set_xlabel('ν')
                     ax.set_ylabel('f')
         elif np.isscalar(phase):
-            phase = 2*constants.pi*(ν-self.xexp[0])/phase
-        amplitude = self.model.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
-        phase = self.model.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
+            phase = 2*constants.pi*(ν-self.experiment.x[0])/phase
+        amplitude = self.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
+        phase = self.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
         def format_input_function():
             retval = f"{self.name}.modulate_by_spline("
             retval += f"vary_amplitude={repr(vary_amplitude)}"
@@ -744,64 +753,64 @@ class Spectrum(optimise.Optimiser):
             return(retval+')')
         self.add_format_input_function(format_input_function)
         def f():
-            self.ymod *= 1. + tools.spline(ν,amplitude.plist,self.xmod)*np.sin(tools.spline(ν,phase.plist,self.xmod))
-        self.model.add_construct_function(f)
+            self.y *= 1. + tools.spline(ν,amplitude.plist,self.x)*np.sin(tools.spline(ν,phase.plist,self.x))
+        self.add_construct_function(f)
 
     def add_intensity(self,intensity=1):
         """Shift by a spline defined function."""
-        intensity = self.model.add_parameter('intensity',*tools.ensure_iterable(intensity))
-        self.add_format_input_function(lambda: f"{self.name}.add_intensity(intensity={repr(intensity)}")
+        intensity = self.add_parameter('intensity',*tools.ensure_iterable(intensity))
+        self.add_format_input_function(lambda: f"{self.name}.add_intensity(intensity={str(intensity)})")
         def f():
-            self.ymod += float(intensity)
-        self.model.add_construct_function(f)
+            self.y += float(intensity)
+        self.add_construct_function(f)
 
     def add_intensity_spline(self,x=50,y=0,vary=True,step=None,order=3):
         """Shift by a spline defined function."""
         if np.isscalar(x):
             self.construct_experiment()
-            x = np.arange(self.xexp[0]-x,self.xexp[-1]+x*1.01,x) # default to a list of x with spacing given by x
+            x = np.arange(self.experiment.x[0]-x,self.experiment.x[-1]+x*1.01,x) # default to a list of x with spacing given by x
         if np.isscalar(y):
             y = y*np.ones(len(x)) # default y to list of hge same length
         if step is None:
-            if self.yexp is not None:
-                step = self.yexp.max()*1e-3
+            if self.experiment.y is not None:
+                step = self.experiment.y.max()*1e-3
             else:
                 step = 1e-3
         x,y = np.array(x),np.array(y)
-        p = self.model.add_parameter_list('add_intensity_spline_',y,vary,step) # add to optimsier
+        p = self.add_parameter_list('add_intensity_spline_',y,vary,step) # add to optimsier
         self.add_format_input_function(lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
         def f():
-            i = (self.xmod>=np.min(x))&(self.xmod<=np.max(x))
-            self.ymod[i] += tools.spline(x,p.parameter_values(),self.xmod[i],order=order)
+            i = (self.x>=np.min(x))&(self.x<=np.max(x))
+            self.y[i] += tools.spline(x,p.parameter_values(),self.x[i],order=order)
         self.add_format_input_function(
             lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
-        self.model.add_construct_function(f) # multiply spline during construct
+        self.add_construct_function(f) # multiply spline during construct
 
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
-        # p = self.model.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
+        # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
         # self.add_format_input_function(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
         # x,y = tools.file_to_array_unpack(filename)
-        # scale = tools.spline(x,y,self.xexp)
-        # def f(): self.ymod *= scale*p['scale_factor']
-        # self.model.add_construct_function(f)
+        # scale = tools.spline(x,y,self.experiment.x)
+        # def f(): self.y *= scale*p['scale_factor']
+        # self.add_construct_function(f)
 
     def shift_by_constant(self,shift=0.):
         """Shift by a constant amount."""
-        shift = self.model.add_parameter('shift_by_constant',*tools.ensure_iterable(shift)) # add to optimsier
+        shift = self.add_parameter('shift_by_constant',*tools.ensure_iterable(shift)) # add to optimsier
         self.add_format_input_function(lambda: f"{self.name}.shift_by_constant({repr(shift)})")
         def f():
-            self.ymod += shift.p
-        self.model.add_construct_function(f) # multiply spline during construct
+            self.y += shift.p
+        self.add_construct_function(f) # multiply spline during construct
 
     def convolve_with_gaussian(self,width,fwhms_to_include=100):
         """Convolve with gaussian."""
-        p = self.model.add_parameter_set('convolve_with_gaussian',width=width)
+        p = self.add_parameter_set('convolve_with_gaussian',width=width)
         self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_input()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
-            x,y = self.xmod,self.ymod
+            x,y = self.x,self.y
             width = np.abs(p['width'])
-            if self.verbose and width<3*np.diff(self.xexp).min(): warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            if self.verbose and width<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1)
             padding = np.arange(dx,fwhms_to_include*width+dx,dx)
@@ -813,18 +822,18 @@ class Spectrum(optimise.Optimiser):
             yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/width**2) # peak normalised gaussian
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.model.add_construct_function(f)
+            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        self.add_construct_function(f)
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
         """Convolve with lorentzian."""
-        p = self.model.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
+        p = self.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
         self.add_format_input_function(lambda: f'{self.name}.convolve_with_lorentzian({p.format_input()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
-            x,y = self.xmod,self.ymod
+            x,y = self.x,self.y
             width = np.abs(p['width'])
-            if self.verbose and width<3*np.diff(self.xexp).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            if self.verbose and width<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1)
             padding = np.arange(dx,fwhms_to_include*width+dx,dx)
@@ -836,20 +845,20 @@ class Spectrum(optimise.Optimiser):
             yconv = lineshapes.lorentzian(xconv,xconv.mean(),1.,width)
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.model.add_construct_function(f)
+            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        self.add_construct_function(f)
 
     def convolve_with_sinc(self,width=None,fwhms_to_include=100):
         """Convolve with sinc function, width is FWHM."""
         ## check if there is a risk that subsampling will ruin the convolution
-        p = self.model.add_parameter_set('convolve_with_sinc',width=width)
+        p = self.add_parameter_set('convolve_with_sinc',width=width)
         if 'sinc_FWHM' in self.experimental_parameters: # get auto width and make sure consistent with what is given
             if width is None: width = self.experimental_parameters['sinc_FWHM']
             if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
         self.add_format_input_function(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
-        if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        if self.verbose and p['width']<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         def f():
-            x,y = self.xmod,self.ymod
+            x,y = self.x,self.y
             width = np.abs(p['width'])
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
@@ -862,8 +871,8 @@ class Spectrum(optimise.Optimiser):
             yconv = np.sinc((xconv-xconv.mean())/width*1.2)*1.2/width # unit integral normalised sinc
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.model.add_construct_function(f)
+            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        self.add_construct_function(f)
 
     def convolve_with_instrument_function(
             self,
@@ -877,7 +886,7 @@ class Spectrum(optimise.Optimiser):
     ):
         """Convolve with sinc function, width is FWHM."""
         ## check if there is a risk that subsampling will ruin the convolution
-        p = self.model.add_parameter_set(
+        p = self.add_parameter_set(
             'convolve_with_instrument_function',
             sinc_fwhm=sinc_fwhm,
             gaussian_fwhm=gaussian_fwhm,
@@ -907,10 +916,10 @@ class Spectrum(optimise.Optimiser):
             retval += ')'
             return(retval)
         self.add_format_input_function(f)
-        # if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        # if self.verbose and p['width']<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         instrument_function_cache = dict(y=None,width=None,) # for persistence between optimsiation function calls
         def f():
-            dx = (self.xmod[-1]-self.xmod[0])/(len(self.xmod)-1) # ASSUMES EVEN SPACED GRID
+            dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
             ## get cached instrument function or recompute
             # if instrument_function_cache['y'] is None or p.has_changed():
             if instrument_function_cache['y'] is None or p.timestamp>self.timestamp:
@@ -959,10 +968,10 @@ class Spectrum(optimise.Optimiser):
                 instrument_function_cache['y'] = y
             ## convolve model with instrument function
             padding = np.arange(dx,instrument_function_cache['width']+dx, dx)
-            xpad = np.concatenate((self.xmod[0]-padding[-1::-1],self.xmod,self.xmod[-1]+padding))
-            ypad = np.concatenate((np.full(padding.shape,self.ymod[0]),self.ymod,np.full(padding.shape,self.ymod[-1])))
-            self.ymod = scipy.signal.convolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.xmod)]
-        self.model.add_construct_function(f)
+            xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
+            ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
+            self.y = scipy.signal.convolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+        self.add_construct_function(f)
 
     def apodise(
             self,
@@ -986,12 +995,12 @@ class Spectrum(optimise.Optimiser):
         cache = {'interpolation_factor':interpolation_factor,}
         def f():
             if cache['interpolation_factor'] is None:
-                interpolation_factor = (self.model_interpolate_factor if self.model_interpolate_factor else 1)
+                interpolation_factor = (self.interpolate_factor if self.interpolate_factor else 1)
                 if 'interpolation_factor' in self.experimental_parameters:
                     interpolation_factor *= self.experimental_parameters['interpolation_factor']
             else:
                 interpolation_factor = cache['interpolation_factor']
-            ft = scipy.fft.dct(self.ymod) # get Fourier transform
+            ft = scipy.fft.dct(self.y) # get Fourier transform
             n = np.linspace(0,interpolation_factor,len(ft),dtype=float)
             if apodisation_function == 'boxcar':
                 w = np.ones(lpad.shape); w[abs(lpad)>L/2]  = 0 # boxcar
@@ -1023,8 +1032,8 @@ class Spectrum(optimise.Optimiser):
             else:
                 raise Exception(f'Unknown apodisation_function: {repr(apodisation_function)}')
             w[n>1] = 0          # zero-padded region contributes nothing
-            self.ymod = scipy.fft.idct(ft*w) # new apodised spetrum
-        self.model.add_construct_function(f)
+            self.y = scipy.fft.idct(ft*w) # new apodised spetrum
+        self.add_construct_function(f)
         # self.construct_functions.append(f)
         self.add_format_input_function(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
 
@@ -1038,7 +1047,7 @@ class Spectrum(optimise.Optimiser):
         # self.add_format_input_function(lambda: f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow})')
         warned_already = False
         def f():
-            x,y = self.xmod,self.ymod
+            x,y = self.x,self.y
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
             padding = np.arange(dx,2*(terms-1)+1+dx,dx)
@@ -1049,7 +1058,7 @@ class Spectrum(optimise.Optimiser):
                 and not warned_already):
                 warnings.warn("interpolation_factor not found in experimental_parameters, assuming it is 1")
                 warned_already = True 
-            interpolation_factor = (self.model_interpolate_factor if self.model_interpolate_factor else 1)
+            interpolation_factor = (self.interpolate_factor if self.interpolate_factor else 1)
             if 'interpolation_factor' in self.experimental_parameters:
                 interpolation_factor *= self.experimental_parameters['interpolation_factor']
             assert interpolation_factor%1 == 0,'Blackman-Harris convolution only valid for integer interpolation_factor (current: {interpolation_factor{)'
@@ -1060,8 +1069,8 @@ class Spectrum(optimise.Optimiser):
                 yconv[interpolation_factor] = yconv[-interpolation_factor-1] = 0.49755 # harris1978
                 yconv[0] = yconv[-1] = 0.07922 # harris1978
             yconv /= yconv.sum()                    # normalised
-            self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.model.add_construct_function(f)
+            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        self.add_construct_function(f)
 
     def convolve_with_signum(
             self,
@@ -1071,7 +1080,7 @@ class Spectrum(optimise.Optimiser):
             xend=None,
     ):
         """Convolve with signum function generating asymmetry. δ(x-x0) + amplitude/(x-x0)."""
-        amplitude = self.model.add_parameter('amplitude',*tools.ensure_iterable(amplitude),note='convolve_with_signum')
+        amplitude = self.add_parameter('amplitude',*tools.ensure_iterable(amplitude),note='convolve_with_signum')
         def f():
             retval =  f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow}'
             if xbeg is not None:
@@ -1081,9 +1090,9 @@ class Spectrum(optimise.Optimiser):
             return(retval+')')
         self.add_format_input_function(f)
         def f():
-            i = ((self.xmod>=(xbeg if xbeg is not None else -np.inf))
-                 &(self.xmod<=(xend if xend is not None else np.inf)))
-            x,y = self.xmod[i],self.ymod[i]
+            i = ((self.x>=(xbeg if xbeg is not None else -np.inf))
+                 &(self.x<=(xend if xend is not None else np.inf)))
+            x,y = self.x[i],self.y[i]
             if len(x)==0:
                 return
             ## get padded spectrum to minimise edge effects
@@ -1097,8 +1106,8 @@ class Spectrum(optimise.Optimiser):
             yconv = amplitude.p/xconv/len(xconv)               # signum function
             yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
             yconv /= yconv.sum()                    # normalised
-            self.ymod[i] = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.model.add_construct_function(f)
+            self.y[i] = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        self.add_construct_function(f)
 
     def convolve_with_SOLEIL_instrument_function(
             self,
@@ -1116,7 +1125,7 @@ class Spectrum(optimise.Optimiser):
             sinc_fwhm = (self.experimental_parameters['sinc_FWHM'],None,1e-3)
         if gaussian_fwhm is None:
             gaussian_fwhm = (0.1,None,1e-3)
-        p = self.model.add_parameter_set(
+        p = self.add_parameter_set(
             'convolve_with_instrument_function',
             sinc_fwhm=sinc_fwhm,
             gaussian_fwhm=gaussian_fwhm,
@@ -1138,9 +1147,9 @@ class Spectrum(optimise.Optimiser):
         ## generate instrument function and broaden
         cache = dict(y=None,width=None,) # for persistence between optimisation function calls
         def f():
-            dx = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1) # ASSUMES EVEN SPACED GRID
-            assert (abs((self.xexp[-1]-self.xexp[-2])-(self.xexp[1]-self.xexp[0]))
-                    <((self.xexp[1]-self.xexp[0])/1e5)),'Experimental x-domain must be regular.' # poor test of grid regularity
+            dx = (self.experiment.x[-1]-self.experiment.x[0])/(len(self.experiment.x)-1) # ASSUMES EVEN SPACED GRID
+            assert (abs((self.experiment.x[-1]-self.experiment.x[-2])-(self.experiment.x[1]-self.experiment.x[0]))
+                    <((self.experiment.x[1]-self.experiment.x[0])/1e5)),'Experimental x-domain must be regular.' # poor test of grid regularity
             ## get cached instrument function or recompute
             # if cache['y'] is None or p.has_changed():
             if cache['y'] is None or p.timestamp>self.timestamp:
@@ -1191,10 +1200,10 @@ class Spectrum(optimise.Optimiser):
                 cache['y'] = y
             ## convolve model with instrument function
             padding = np.arange(dx,cache['width']+dx, dx)
-            xpad = np.concatenate((self.xmod[0]-padding[-1::-1],self.xmod,self.xmod[-1]+padding))
-            ypad = np.concatenate((np.full(padding.shape,self.ymod[0]),self.ymod,np.full(padding.shape,self.ymod[-1])))
-            self.ymod = scipy.signal.convolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.xmod)]
-        self.model.add_construct_function(f)
+            xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
+            ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
+            self.y = scipy.signal.convolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+        self.add_construct_function(f)
 
     def add_SOLEIL_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
         """Adds two copies of SOLEIL spectrum onto the model (after
@@ -1206,7 +1215,7 @@ class Spectrum(optimise.Optimiser):
         filename = self.experimental_parameters['filename']
         x,y,header = load_SOLEIL_spectrum_from_file(filename)
         yshifted ={'left':None,'right':None}
-        p = self.model.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
+        p = self.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
                                    magnitude=magnitude,shift=shift,
                                    step_default={'magnitude':1e-3,'shift':1e-3},)
         previous_shift = [p['shift']]
@@ -1216,25 +1225,25 @@ class Spectrum(optimise.Optimiser):
             ## spectrum if shift has not changed
             ## positive for this shift
             if yshifted['left'] is None or p['shift']!=previous_shift[0]:
-                i = tools.inrange(self.xmod,x-p['shift'])
-                j = tools.inrange(x+p['shift'],self.xmod)
-                dy = tools.spline(x[j]+p['shift'],y[j],self.xmod[i])
+                i = tools.inrange(self.x,x-p['shift'])
+                j = tools.inrange(x+p['shift'],self.x)
+                dy = tools.spline(x[j]+p['shift'],y[j],self.x[i])
                 yshifted['left'] = (i,dy)
             else:
                 i,dy = yshifted['left']
-            self.ymod[i] += dy*p['magnitude']
+            self.y[i] += dy*p['magnitude']
             ## -shift from right -- use cached value of splined
             ## shifted spectrum if shift has not changed, magnitude is
             ## negative for this shift
             if yshifted['right'] is None or p['shift']!=previous_shift[0]:
-                i = tools.inrange(self.xmod,x+p['shift'])
-                j = tools.inrange(x-p['shift'],self.xmod)
-                dy = tools.spline(x[j]-p['shift'],y[j],self.xmod[i])
+                i = tools.inrange(self.x,x+p['shift'])
+                j = tools.inrange(x-p['shift'],self.x)
+                dy = tools.spline(x[j]-p['shift'],y[j],self.x[i])
                 yshifted['right'] = (i,dy)
             else:
                 i,dy = yshifted['right']
-            self.ymod[i] += dy*p['magnitude']*-1
-        self.model.add_construct_function(f)
+            self.y[i] += dy*p['magnitude']*-1
+        self.add_construct_function(f)
         
     def plot(
             self,
@@ -1306,27 +1315,27 @@ class Spectrum(optimise.Optimiser):
         ymin,ymax = np.inf,-np.inf
         xmin,xmax = np.inf,-np.inf
         ## plot intensity and residual
-        if plot_experiment and self.yexp is not None:
-            # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
-            ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
-            xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            ax.plot(self.xexp,self.yexp,color=plotting.newcolor(0), label='Experimental spectrum') # plot experimental spectrum
-        if plot_model and self.ymod is not None:
+        if plot_experiment and self.experiment.y is not None:
+            # ymin,ymax = min(ymin,self.experiment.y.min()),max(ymax,self.experiment.y.max())
+            ymin,ymax = -0.1*self.experiment.y.max(),self.experiment.y.max()*1.1
+            xmin,xmax = min(xmin,self.experiment.x.min()),max(xmax,self.experiment.x.max())
+            ax.plot(self.experiment.x,self.experiment.y,color=plotting.newcolor(0), label='Experimental spectrum') # plot experimental spectrum
+        if plot_model and self.y is not None:
             if invert_model:
-                self.ymod *= -1
-            ymin,ymax = min(ymin,self.ymod.min(),-0.1*self.ymod.max()),max(ymax,self.ymod.max()*1.1)
-            xmin,xmax = min(xmin,self.xmod.min()),max(xmax,self.xmod.max())
-            ax.plot(self.xmod,self.ymod,color=plotting.newcolor(1), label='Model spectrum') # plot model spectrum
+                self.y *= -1
+            ymin,ymax = min(ymin,self.y.min(),-0.1*self.y.max()),max(ymax,self.y.max()*1.1)
+            xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
+            ax.plot(self.x,self.y,color=plotting.newcolor(1), label='Model spectrum') # plot model spectrum
             if invert_model:
-                self.ymod *= -1
-        if plot_residual and self.model_residual is not None:
-            ymin,ymax = min(ymin,self.model_residual.min()+shift_residual),max(ymax,self.model_residual.max()+shift_residual)
-            xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            ax.plot(self.xexp,self.model_residual+shift_residual,color=plotting.newcolor(2),zorder=-1,label='Exp-Mod residual error',) # plot fit residual
+                self.y *= -1
+        if plot_residual and self.residual is not None:
+            ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
+            xmin,xmax = min(xmin,self.experiment.x.min()),max(xmax,self.experiment.x.max())
+            ax.plot(self.experiment.x,self.residual+shift_residual,color=plotting.newcolor(2),zorder=-1,label='Exp-Mod residual error',) # plot fit residual
         ## plot optical depth of model and individual lines (approx)
         # if plot_optical_depth:
             # yscale = (ymax-ymin)/self.optical_depths['total'].max()
-            # ax.plot(self.xmod,ymin-self.optical_depths['total']*yscale,color=plotting.newcolor(3),label='τ',zorder=5) # plot optical depth of model
+            # ax.plot(self.x,ymin-self.optical_depths['total']*yscale,color=plotting.newcolor(3),label='τ',zorder=5) # plot optical depth of model
             # ymin -= ymax
         ## annotate rotational series
         if plot_labels:
@@ -1337,7 +1346,7 @@ class Spectrum(optimise.Optimiser):
                     continue
                 i = transition.match(**limit_to_qn)
                 ## limit to ν-range and sufficiently strong lines
-                i &= (transition['ν']>self.xexp[0])&(transition['ν']<self.xexp[-1])
+                i &= (transition['ν']>self.experiment.x[0])&(transition['ν']<self.experiment.x[-1])
                 if minimum_τ_to_label is not None:
                     i &= transition['τ']>minimum_τ_to_label
                 if minimum_I_to_label is not None:
@@ -1382,7 +1391,7 @@ class Spectrum(optimise.Optimiser):
                 ax.plot(x,y,ls='',marker='o',color='red',markersize=6)
                 ax.annotate(line['name'],(x,1.1*y),ha='center',va='top',color='gray',fontsize='x-small',rotation=90,zorder=-5)
         ## finalise plot
-        if plot_title and 'filename' in self.experimental_parameters:
+        if plot_title and 'filename' in self.experiment.experimental_parameters:
             if title == 'auto': title = tools.basename(self.experimental_parameters['filename'])
             t = ax.set_title(title,fontsize='x-small')
             t.set_in_layout(False)
@@ -1411,12 +1420,10 @@ class Spectrum(optimise.Optimiser):
         """Save various files from this optimsiation to a directory."""
         tools.mkdir(directory)
         ## model data
-        if self.xexp is not None and self.yexp is not None:
-            tools.array_to_file(directory+'/experimental_spectrum.h5',self.xexp,self.yexp)
-        if self.xmod is not None and self.ymod is not None:
-            tools.array_to_file(directory+'/model_spectrum.h5',self.xmod,self.ymod)
-        if output_model_residual and self.xexp is not None and self.model_residual is not None:
-            tools.array_to_file(directory+'/model_residual.h5', self.xexp,self.model_residual)
+        if self.x is not None and self.y is not None:
+            tools.array_to_file(directory+'/spectrum.h5',self.x,self.y)
+        # if output_residual and self.residual is not None:
+            # tools.array_to_file(directory+'/residual.h5', self.experiment.x,self.residual)
         if self._figure is not None:
             self._figure.savefig(directory+'/figure.png',dpi=300) # save figure
         ## save transition linelists
@@ -1424,69 +1431,62 @@ class Spectrum(optimise.Optimiser):
             tools.mkdir_if_necessary(directory+'/transitions')
             for transition in self.absorption_transitions:
                 transition.save_to_file(directory+'/transitions/'+transition.name+'.h5')
-        ## save optical deptth spectrum
-        # if output_individual_optical_depths:
-            # tools.mkdir_if_necessary(directory+'/optical_depths')
-            # for key,τ in self.optical_depths.items():
-                # if τ is not None and self.xmod is not None:
-                    # name = (tools.rootname(key) if isinstance(key,str) else key.name) # key is either a string or Transition object
-                    # tools.array_to_file(f'{directory}/optical_depths/{name}.h5', self.xmod,τ)
 
-    def load_from_directory(self,directory):
-        """Load internal data from a previous "output_to_directory" model."""
-        self.experimental_parameters['filename'] = directory
-        directory = tools.expand_path(directory)
-        assert os.path.exists(directory) and os.path.isdir(directory),f'Directory does not exist or is not a directory: {repr(directory)}'
-        for filename in (
-                directory+'/experimental_spectrum', # text file
-                directory+'/experimental_spectrum.gz', # in case compressed
-                directory+'/experimental_spectrum.h5', # in case compressed
-                directory+'/exp',                      # deprecated
-        ):
-            if os.path.exists(filename):
-                self.xexp,self.yexp = tools.file_to_array_unpack(filename)
-                break
-        for filename in (
-                directory+'/model_spectrum',
-                directory+'/model_spectrum.gz', 
-                directory+'/model_spectrum.h5', 
-                directory+'/mod',
-        ):
-            if os.path.exists(filename):
-                self.xmod,self.ymod = tools.file_to_array_unpack(filename)
-                break
-        for filename in (
-                directory+'/model_residual',
-                directory+'/model_residual.gz',
-                directory+'/model_residual.h5',
-                directory+'/residual',
-        ):
-            if os.path.exists(filename):
-                # t,self.model_residual = tools.file_to_array_unpack(filename)
-                t = tools.file_to_array(filename)
-                if t.ndim==1:
-                    self.model_residual = t
-                elif t.ndim==2:
-                    self.model_residual = t[:,1]
-                break
+    # def load_from_directory(self,directory):
+        # """Load internal data from a previous "output_to_directory" model."""
+        # self.experimental_parameters['filename'] = directory
+        # directory = tools.expand_path(directory)
+        # assert os.path.exists(directory) and os.path.isdir(directory),f'Directory does not exist or is not a directory: {repr(directory)}'
         # for filename in (
-                # directory+'/optical_depth',
-                # directory+'/optical_depth.gz',
-                # directory+'/optical_depth.h5',
+                # directory+'/experimental_spectrum', # text file
+                # directory+'/experimental_spectrum.gz', # in case compressed
+                # directory+'/experimental_spectrum.h5', # in case compressed
+                # directory+'/exp',                      # deprecated
         # ):
             # if os.path.exists(filename):
-                # t,self.optical_depths['total'] = t
+                # self.experiment.x,self.experiment.y = tools.file_to_array_unpack(filename)
                 # break
-        # for filename in tools.myglob(directory+'/optical_depths/*'):
-            # self.optical_depths[tools.basename(filename)] = tools.file_to_array_unpack(filename)[1]
-        # for filename in tools.myglob(directory+'/transitions/*'):
-            # self.transitions.append(load_transition(
-                # filename,
-                # Name=tools.basename(filename),
-                # decode_names=False,
-                # permit_new_keys=True,
-                # # error_on_unknown_key=False, # fault tolerant
-            # ))
+        # for filename in (
+                # directory+'/model_spectrum',
+                # directory+'/model_spectrum.gz', 
+                # directory+'/model_spectrum.h5', 
+                # directory+'/mod',
+        # ):
+            # if os.path.exists(filename):
+                # self.x,self.y = tools.file_to_array_unpack(filename)
+                # break
+        # for filename in (
+                # directory+'/model_residual',
+                # directory+'/model_residual.gz',
+                # directory+'/model_residual.h5',
+                # directory+'/residual',
+        # ):
+            # if os.path.exists(filename):
+                # # t,self.residual = tools.file_to_array_unpack(filename)
+                # t = tools.file_to_array(filename)
+                # if t.ndim==1:
+                    # self.residual = t
+                # elif t.ndim==2:
+                    # self.residual = t[:,1]
+                # break
+        # # for filename in (
+                # # directory+'/optical_depth',
+                # # directory+'/optical_depth.gz',
+                # # directory+'/optical_depth.h5',
+        # # ):
+            # # if os.path.exists(filename):
+                # # t,self.optical_depths['total'] = t
+                # # break
+        # # for filename in tools.myglob(directory+'/optical_depths/*'):
+            # # self.optical_depths[tools.basename(filename)] = tools.file_to_array_unpack(filename)[1]
+        # # for filename in tools.myglob(directory+'/transitions/*'):
+            # # self.transitions.append(load_transition(
+                # # filename,
+                # # Name=tools.basename(filename),
+                # # decode_names=False,
+                # # permit_new_keys=True,
+                # # # error_on_unknown_key=False, # fault tolerant
+            # # ))
 
     def show(self):
         """Show plots."""

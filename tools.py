@@ -343,7 +343,7 @@ def trash(filename):
     import shlex
     os.system('trash-put '+shlex.quote(filename)+' > /dev/null 2>&1')
 
-def mkdir(*directories,trash_existing_directory=False):
+def mkdir(*directories,trash_existing=False):
     """Create directory tree (or multiple) if it doesn't exist."""
     ## if multiple loop through them
     if len(directories)>1:
@@ -353,7 +353,7 @@ def mkdir(*directories,trash_existing_directory=False):
     ## if single then do it
     directory = expand_path(directories[0])
     if os.path.isdir(directory):
-        if trash_existing_directory: # deletes contents--keeps directory
+        if trash_existing: # deletes contents--keeps directory
             for t in myglob(f'{directory}/*'):
                 trash(t)
         return

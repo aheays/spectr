@@ -28,6 +28,8 @@ class Dataset(optimise.Optimiser):
             load_from_filename=None,
             **keys_vals):
         optimise.Optimiser.__init__(self,name=name)
+        self.pop_format_input_function()
+        self.add_format_input_function(lambda: 'not implemented')
         self._data = dict()
         self._length = None
         if not hasattr(self,'prototypes'):
@@ -304,11 +306,12 @@ class Dataset(optimise.Optimiser):
                 parameters = [self[t] for t in dependencies]
                 for i,dependency in enumerate(dependencies):
                     if self.has_uncertainty(dependency):
-                        data = self._data[dependency]
                         dparameters = copy(parameters)
-                        dparameters[i] += data.step
+                        diffstep = self[dependency]*1e-10
+                        dparameters[i] += diffstep
                         dvalue = value - function(*dparameters)
-                        squared_contribution.append((data.uncertainty*dvalue/data.step)**2)
+                        data = self._data[dependency]
+                        squared_contribution.append((data.uncertainty*dvalue/diffstep)**2)
                 if len(squared_contribution)>0:
                     self.set_uncertainty(key,np.sqrt(sum(squared_contribution)))
                 ## if we get this far without an InferException then
@@ -521,8 +524,6 @@ class Dataset(optimise.Optimiser):
             self._data[key] = Data(
                 value=value,
                 uncertainty=data.uncertainty,
-                vary=data.vary,
-                step=data.step,
                 kind=data.kind,
                 description=data.description,
                 units=data.units)
@@ -541,8 +542,6 @@ class Dataset(optimise.Optimiser):
             self._data[key] = Datum(
                 value=data.value[0],
                 uncertainty=(data.uncertainty[0] if data.has_uncertainty() else None),
-                vary=data.vary,
-                step=data.step,
                 kind=data.kind,
                 description=data.description,
                 units=data.units)

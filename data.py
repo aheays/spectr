@@ -6,19 +6,17 @@ class Data:
 
 
     _kind_defaults = {
-        'f': {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt'   :'+12.8e','description':'float' ,'step':1e-8,},
-        'i': {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt'   :'d'     ,'description':'int'   ,'step':None,},
-        'b': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt'   :'g'     ,'description':'bool'  ,'step':None,},
-        'U': {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt'   :'s'     ,'description':'str'   ,'step':None,},
-        'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','step':None,},
+        'f': {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt'   :'+12.8e','description':'float' ,},
+        'i': {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt'   :'d'     ,'description':'int'   ,},
+        'b': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt'   :''      ,'description':'bool'  ,},
+        'U': {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt'   :'s'     ,'description':'str'   ,},
+        'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object',},
     }
 
     def __init__(
             self,
             value,         # if it has an associated value stored in the type itself
             uncertainty=None,         # if it has an associated value stored in the type itself
-            vary=None,
-            step=None,
             kind=None,
             cast=None,
             description=None,   # long string
@@ -37,8 +35,6 @@ class Data:
         self.description = (description if description is not None else d['description'])
         self.fmt = (fmt if fmt is not None else d['fmt'])
         self.cast = (cast if cast is not None else d['cast'])
-        self.step = (step if step is not None else d['step'])
-        self.vary = vary
         self.units = units
         self.value = value
         self.uncertainty = uncertainty
