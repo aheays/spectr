@@ -12,8 +12,8 @@ class _BaseLinesLevels(Dataset):
     """Init for Lines and Levels"""
     
     def __init__(self,name=None,**keys_vals,):
-        """Default_name is decoded to give default values. Kwargs can be
-        scalar data, further default values of vector data, or if vectors
+        """Default_name is decoded to give default values. Kwargs ca be
+        scalar data, further default values of vector data, or if vetors
         themselves will populate data arrays."""
         if name is None:
             name = type(self).__name__
@@ -23,9 +23,8 @@ class _BaseLinesLevels(Dataset):
         self._cache = {}
         for key,val in keys_vals.items():
             self[key] = val
-
         self.pop_format_input_function()
-        self.add_format_input_function(lambda:f'{self.name} = {type(self).__name__}()')
+        self.automatic_format_input_function(limit_to_args=('name',))
 
 class Base(_BaseLinesLevels):
 

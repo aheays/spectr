@@ -3,6 +3,7 @@ from copy import copy,deepcopy
 
 ## nonstandard library
 import numpy as np
+from numpy import nan
 from matplotlib import pyplot as plt
 
 ## this package
@@ -17,6 +18,8 @@ from . import lines
 from . import hitran
 from . import database
 from . import spectrum
+
+from .dataset import Dataset
 
 # from .spectrum import *
 # from .tools import *

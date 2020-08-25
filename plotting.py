@@ -1951,35 +1951,51 @@ def set_tick_spacing(
             ((beg+minor_spacing*0.9999)//minor_spacing)*minor_spacing,
             end, minor_spacing),minor=True)
 
-def show(fmt='x',fig=None):
-    """ Show current plot in some customised way. Also adds a red line as
-    border.
-    Inputs:
-    fmt - How to show, png: save as /tmp/tmp.png
-                       eps: save as /tmp/tmp.eps
-                       x:   run plt.show()
-    fig - figure object, default to to gcf().
-    """
-    if fig == None:
-        fig = plt.gcf()
-    # fig.patches.append(plt.Rectangle((0.,0.),1.,1.,edgecolor='red',
-                                     # facecolor='none',linewidth=0.5,
-                                     # transform=fig.transFigure, figure=fig))
-    if fmt=='eps':
-        fig.savefig('/tmp/tmp.eps')
-    elif fmt=='png':
-        fig.savefig('/tmp/tmp.png')
-    elif fmt=='x':
-        try:
-            __IPYTHON__
-        except NameError:
-            for figure_number in plt.get_fignums():
-                extra_interaction(fig=plt.figure(figure_number))    
-            plt.show()
-    else:
-        raise Exception('fmt ``'+str(fmt)+"'' unknown.")
 
-show_if_noninteractive = show
+def show(*figs):
+    """ Show current plot in a customised way."""
+    ## do nothing if in an ipython shell
+    for n in plt.get_fignums():
+        fig = plt.figure(n)
+        if len(figs)>0 and fig not in figs:
+            continue
+        extra_interaction(fig=fig)
+    try:
+        __IPYTHON__
+        return
+    except NameError:
+        plt.show()
+
+
+# def show(fmt='x',fig=None):
+    # """ Show current plot in some customised way. Also adds a red line as
+    # border.
+    # Inputs:
+    # fmt - How to show, png: save as /tmp/tmp.png
+                       # eps: save as /tmp/tmp.eps
+                       # x:   run plt.show()
+    # fig - figure object, default to to gcf().
+    # """
+    # if fig == None:
+        # fig = plt.gcf()
+    # # fig.patches.append(plt.Rectangle((0.,0.),1.,1.,edgecolor='red',
+                                     # # facecolor='none',linewidth=0.5,
+                                     # # transform=fig.transFigure, figure=fig))
+    # if fmt=='eps':
+        # fig.savefig('/tmp/tmp.eps')
+    # elif fmt=='png':
+        # fig.savefig('/tmp/tmp.png')
+    # elif fmt=='x':
+        # try:
+            # __IPYTHON__
+        # except NameError:
+            # for figure_number in plt.get_fignums():
+                # extra_interaction(fig=plt.figure(figure_number))    
+            # plt.show()
+    # else:
+        # raise Exception('fmt ``'+str(fmt)+"'' unknown.")
+
+# show_if_noninteractive = show
 
 def qplot(xydata,**kwargs):
     """Issue a plot command and then output to file."""

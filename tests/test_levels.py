@@ -6,7 +6,7 @@ show_plots = False
 
 def test_construct():
     t = levels.Base()
-    assert t.name == 'Base'
+    assert t.name == 'base'
     assert len(t.prototypes)>0 
 
 def test_assignment():

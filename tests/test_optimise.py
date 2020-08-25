@@ -35,21 +35,16 @@ def test_ParameterSet_set_get():
     x = t['x']
     assert x == 5
     assert t['y'] == 0.1
-    t = optimise.ParameterSet(x=(5,False,1e-3,'description'),y=(0.1,True,1e-10))
-    x = t['x']
-    assert x.value == 5
-    assert x.vary == False 
-    assert x.step == 1e-3
-    assert x.description == 'x description'
     t['x'] = 6
     assert x.value == 6
     assert x.vary == False 
-    assert x.step == 1e-3
-    assert x.description == 'x description'
+    assert x.step == 0.0005
 
 def test_ParameterSet_set_print():
-    t = optimise.ParameterSet(x=(5,False,1e-3,'description'),y=(0.1,True,1e-10))
-    print(t)
+    t = optimise.ParameterSet(x=(5,False,1e-3),y=(0.1,True,1e-10))
+    print( str(t))
+    print( repr(t))
+    assert t.format_as_kwargs() == 'x=(5,False,0.001,nan),y=(0.1,True,1e-10,nan)'
 
 def test_ParameterSet_set_save():
     t = optimise.ParameterSet(x=(5,False,1e-3,'description'),y=(0.1,True,1e-10))

@@ -1,4 +1,6 @@
+import inspect,re
 from copy import copy
+from pprint import pprint
 
 from matplotlib import pyplot as plt
 import scipy.signal
@@ -7,8 +9,6 @@ import numpy as np
 from . import optimise
 from . import plotting
 from . import tools
-
-
 
 class Experiment(optimise.Optimiser):
     
@@ -19,6 +19,14 @@ class Experiment(optimise.Optimiser):
             xbeg=None,xend=None,
     ):
         optimise.Optimiser.__init__(self,name)
+        self.pop_format_input_function()
+        self.automatic_format_input_function()
+        # def f():
+            # retval = f'{self.name} = spectrum.Experiment({repr(self.name)}'
+            # if filename is not None:
+                # retval += f',filename={repr(filename)}'
+            # return retval+')'
+        # self.add_format_input_function(f)
         self.x = None
         self.y = None
         self.experimental_parameters = {} # a dictionary containing any additional known experimental parameters
@@ -67,7 +75,7 @@ class Experiment(optimise.Optimiser):
     def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
         x,y,d = tools.load_bruker_opus_spectrum(filename)
-        self.add_format_input_function(self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
+        self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
         self.experimental_parameters['filename'] = filename
         if 'Fourier Transformation' in d:
             self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
@@ -125,18 +133,18 @@ class Experiment(optimise.Optimiser):
                     self.set_spectrum(x,yscaled[0],xbeg=xbeg,xend=xend)
             self.add_construct_function(f)
 
-    def scalex(self,scale=(1,True,1e-8)):
+    def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
-        scale = self.add_parameter('scalex',*scale)
-        self.add_format_input_function(lambda: f"{self.name}.scalex({p.format_input()})")
+        scale = self.add_parameter('scalex',scale)
+        self.add_format_input_function(lambda: f"{self.name}.scalex({scale.format_as_arg()})")
         def construct_function():
             self.x *= float(scale)
         self.add_construct_function(construct_function)
 
-    def interpolate_experimental_spectrum(self,dx):
+    def interpolate(self,dx):
         """Interpolate experimental spectrum to a grid of width dx, may change
         position of xend."""
-        self.add_format_input_function(self.name+f'.interpolate_spectrum({repr(dx)})')
+        self.add_format_input_function(lambda:self.name+f'.interpolate({repr(dx)})')
         def f():
             xnew = np.arange(self.x[0],self.x[-1],dx)
             ynew = tools.spline(self.x,self.y,xnew)
@@ -213,10 +221,11 @@ class Model(optimise.Optimiser):
 
     def __init__(
             self,
-            experiment=None,
             name=None,
+            experiment=None,
             residual_weighting=None,
             verbose=None,
+            xbeg=None,xend=None,
     ):
         self.experiment = experiment
         if name is None:
@@ -231,25 +240,25 @@ class Model(optimise.Optimiser):
         self.interpolate_factor = None
         optimise.Optimiser.__init__(self,name)
         self.pop_format_input_function()
+        self.automatic_format_input_function()
         if self.experiment is not None:
             self.add_suboptimiser(self.experiment)
         def f():
             assert self.experiment is not None or self.x is not None,'Unknown x'
             if self.x is None:
-                self.x = self.experiment.x
+                self.xexp = self.experiment.x
+                self.yexp = self.experiment.y
+                if xbeg is not None:
+                    i = self.xexp>=xbeg
+                    self.xexp,self.yexp = self.xexp[i],self.yexp[i]
+                if xend is not None:
+                    i = self.xexp<=xend
+                    self.xexp,self.yexp = self.xexp[i],self.yexp[i]
+                self.x = self.xexp
             else:
                 self.x = np.asarray(self.x,dtype=float)
             self.y = np.zeros(self.x.shape,dtype=float)
         self.add_construct_function(f)
-        def format_input_function():
-            retval = f'{self.name} = Spectrum(name={repr(self.name)}'
-            if verbose is not None:
-                retval += f',verbose={repr(self.verbose)}'
-            if residual_weighting is not None:
-                retval += f',residual_weighting={repr(self.residual_weighting)}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(format_input_function)
         self.add_save_to_directory_function(self.output_data_to_directory)
         self._figure = None
 
@@ -263,9 +272,9 @@ class Model(optimise.Optimiser):
         def f():
             ## residual calculation
             if self.interpolate_factor is None:
-                residual = self.experiment.y - self.y
+                residual = self.yexp - self.y
             else:
-                residual = self.experiment.y - self.y[::self.interpolate_factor]
+                residual = self.yexp - self.y[::self.interpolate_factor]
             ## weight residual pointwise
             if self.residual_weighting is not None:
                 residual *= self.residual_weighting
@@ -278,11 +287,11 @@ class Model(optimise.Optimiser):
     def interpolate(self,dx):
         """When calculating model set to dx grid (or less to achieve
         overlap with experimental points."""
-        self.add_format_input_function(f'{self.name}.interpolate({dx})')
+        self.add_format_input_function(lambda:f'{self.name}.interpolate({dx})')
         def f():
-            xstep = (self.experiment.x[-1]-self.experiment.x[0])/(len(self.experiment.x)-1)
+            xstep = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1)
             self.interpolate_factor = int(np.ceil(xstep/dx))
-            self.x = np.linspace(self.experiment.x[0],self.experiment.x[-1],1+(len(self.experiment.x)-1)*self.interpolate_factor)
+            self.x = np.linspace(self.xexp[0],self.xexp[-1],1+(len(self.xexp)-1)*self.interpolate_factor)
             self.y = np.zeros(self.x.shape,dtype=float) # delete current y!!
         self.add_construct_function(f)
 
@@ -513,7 +522,7 @@ class Model(optimise.Optimiser):
         cache = {}
         def construct_function():
             ## first call -- no good, x not set yet
-            if self.experiment.x is None:
+            if self.xexp is None:
                 # self.emission_intensities[name] = None
                 return
             ## recompute spectrum
@@ -521,8 +530,8 @@ class Model(optimise.Optimiser):
                 # or self.emission_intensities[name] is None # currently no spectrum computed
                 or self.timestamp<lines.timestamp # transition has changed
                 or self.timestamp<p.timestamp     # optimise_keys_vals has changed
-                or not (len(cache['experiment.x']) == len(self.experiment.x)) # experimental domain has changed
-                or not np.all( cache['experiment.x'] == self.experiment.x )): # experimental domain has changed
+                or not (len(cache['experiment.x']) == len(self.xexp)) # experimental domain has changed
+                or not np.all( cache['experiment.x'] == self.xexp )): # experimental domain has changed
                 ## update optimise_keys_vals that have changed
                 for key,val in p.items():
                     if (not lines.is_set(key)
@@ -543,7 +552,7 @@ class Model(optimise.Optimiser):
                     use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                     use_cache=(use_cache if use_cache is not None else True),
                 )
-                cache['experiment.x'] = copy(self.experiment.x)
+                cache['experiment.x'] = copy(self.xexp)
                 cache['intensity'] = y
             ## add emission intensity to the overall model
             self.y += cache['intensity']
@@ -576,13 +585,13 @@ class Model(optimise.Optimiser):
         self.add_format_input_function(f)
         def f():
             if xbeg is None and xend is None:
-                self.residual_weighting = np.full(self.experiment.x.shape,weighting,dtype=float)
+                self.residual_weighting = np.full(self.xexp.shape,weighting,dtype=float)
             else:
                 if self.residual_weighting is None:
-                    self.residual_weighting = np.ones(self.experiment.x.shape,dtype=float)
+                    self.residual_weighting = np.ones(self.xexp.shape,dtype=float)
                 self.residual_weighting[
-                    (self.experiment.x>=(xbeg if xbeg is not None else -np.inf))
-                    &(self.experiment.x<=(xend if xend is not None else np.inf))
+                    (self.xexp>=(xbeg if xbeg is not None else -np.inf))
+                    &(self.xexp<=(xend if xend is not None else np.inf))
                 ] = weighting
         self.add_construct_function(f)
 
@@ -609,9 +618,9 @@ class Model(optimise.Optimiser):
         self.add_format_input_function('# '+self.name+f'.autodetect_lines(filename={repr(filename)},τ={τ},Γ={Γ},vν={repr(vν)},vτ={repr(vτ)},vΓ={repr(vΓ)},τscale={repr(τscale)},xmin={repr(xmin)},ymin={repr(ymin)},'+tools.dict_to_kwargs(qn)+')')
         ## get something to find lines in
         if filename is None:
-            x = copy(self.experiment.x)
+            x = copy(self.xexp)
             if self.residual is not None: y = copy(self.residual) # get from residual
-            else:    y = copy(self.experiment.y-self.experiment.y.mean()) # get from data after removing mean / background
+            else:    y = copy(self.yexp-self.yexp.mean()) # get from data after removing mean / background
         else:
             x,y = tools.file_to_array_unpack(filename) # else get from a specified data file
         y = np.abs(y)      # to fit both emission and absorption lines
@@ -673,7 +682,7 @@ class Model(optimise.Optimiser):
     def scale_by_spline(self,ν=50,amplitudes=1,vary=True,step=0.0001,order=3):
         """Scale by a spline defined function."""
         if np.isscalar(ν):
-            ν = np.arange(self.experiment.x[0]-ν,self.experiment.x[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
+            ν = np.arange(self.xexp[0]-ν,self.xexp[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
         if np.isscalar(amplitudes):
             amplitudes = amplitudes*np.ones(len(ν)) # default amplitudes to list of hge same length
         ν,amplitudes = np.array(ν),np.array(amplitudes)
@@ -707,9 +716,9 @@ class Model(optimise.Optimiser):
         """Modulate by 1 + sinusoid."""
         ## if scalar then use as stepsize of a regular grid
         if ν is None:
-            ν = np.linspace(self.experiment.x[0],self.experiment.x[-1],10)
+            ν = np.linspace(self.xexp[0],self.xexp[-1],10)
         elif np.isscalar(ν):
-            ν = np.arange(self.experiment.x[0]-ν/2,self.experiment.x[-1]+ν/2+1,ν)
+            ν = np.arange(self.xexp[0]-ν/2,self.xexp[-1]+ν/2+1,ν)
         else:
             ν = np.array(ν)
         ## if no amplitude given default to 1%
@@ -725,9 +734,9 @@ class Model(optimise.Optimiser):
             phase = np.zeros(ν.shape,dtype=float)
             for i in range(len(ν)-1):
                 νbeg,νend = ν[i],ν[i+1]
-                j = tools.inrange(self.experiment.x,νbeg,νend)
+                j = tools.inrange(self.xexp,νbeg,νend)
                 tf,tF,r = tools.power_spectrum(
-                    self.experiment.x[j],self.experiment.y[j],
+                    self.xexp[j],self.yexp[j],
                     fit_peaks=True,
                     xbeg=fbeg,xend=fend)
                 f0 = r['f0'][np.argmax(r['S'])]
@@ -738,7 +747,7 @@ class Model(optimise.Optimiser):
                     ax.set_xlabel('ν')
                     ax.set_ylabel('f')
         elif np.isscalar(phase):
-            phase = 2*constants.pi*(ν-self.experiment.x[0])/phase
+            phase = 2*constants.pi*(ν-self.xexp[0])/phase
         amplitude = self.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
         phase = self.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
         def format_input_function():
@@ -767,7 +776,7 @@ class Model(optimise.Optimiser):
     def add_intensity_spline(self,x=50,y=0,vary=True,step=None,order=3):
         """Shift by a spline defined function."""
         if np.isscalar(x):
-            self.construct_experiment()
+            self.experiment.construct()
             x = np.arange(self.experiment.x[0]-x,self.experiment.x[-1]+x*1.01,x) # default to a list of x with spacing given by x
         if np.isscalar(y):
             y = y*np.ones(len(x)) # default y to list of hge same length
@@ -778,19 +787,18 @@ class Model(optimise.Optimiser):
                 step = 1e-3
         x,y = np.array(x),np.array(y)
         p = self.add_parameter_list('add_intensity_spline_',y,vary,step) # add to optimsier
-        self.add_format_input_function(lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
+        self.add_format_input_function(
+            lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.parameter_values())},step={repr(step)},order={repr(order)})") # new input line
         def f():
             i = (self.x>=np.min(x))&(self.x<=np.max(x))
             self.y[i] += tools.spline(x,p.parameter_values(),self.x[i],order=order)
-        self.add_format_input_function(
-            lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
         self.add_construct_function(f) # multiply spline during construct
 
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
         # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
         # self.add_format_input_function(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
         # x,y = tools.file_to_array_unpack(filename)
-        # scale = tools.spline(x,y,self.experiment.x)
+        # scale = tools.spline(x,y,self.xexp)
         # def f(): self.y *= scale*p['scale_factor']
         # self.add_construct_function(f)
 
@@ -805,12 +813,12 @@ class Model(optimise.Optimiser):
     def convolve_with_gaussian(self,width,fwhms_to_include=100):
         """Convolve with gaussian."""
         p = self.add_parameter_set('convolve_with_gaussian',width=width)
-        self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_input()})')
+        self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_as_kwargs()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
             x,y = self.x,self.y
             width = np.abs(p['width'])
-            if self.verbose and width<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            if self.verbose and width<3*np.diff(self.xexp).min(): warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1)
             padding = np.arange(dx,fwhms_to_include*width+dx,dx)
@@ -833,7 +841,7 @@ class Model(optimise.Optimiser):
         def f():
             x,y = self.x,self.y
             width = np.abs(p['width'])
-            if self.verbose and width<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            if self.verbose and width<3*np.diff(self.xexp).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1)
             padding = np.arange(dx,fwhms_to_include*width+dx,dx)
@@ -856,7 +864,7 @@ class Model(optimise.Optimiser):
             if width is None: width = self.experimental_parameters['sinc_FWHM']
             if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
         self.add_format_input_function(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
-        if self.verbose and p['width']<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         def f():
             x,y = self.x,self.y
             width = np.abs(p['width'])
@@ -916,7 +924,7 @@ class Model(optimise.Optimiser):
             retval += ')'
             return(retval)
         self.add_format_input_function(f)
-        # if self.verbose and p['width']<3*np.diff(self.experiment.x).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        # if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         instrument_function_cache = dict(y=None,width=None,) # for persistence between optimsiation function calls
         def f():
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
@@ -1147,9 +1155,9 @@ class Model(optimise.Optimiser):
         ## generate instrument function and broaden
         cache = dict(y=None,width=None,) # for persistence between optimisation function calls
         def f():
-            dx = (self.experiment.x[-1]-self.experiment.x[0])/(len(self.experiment.x)-1) # ASSUMES EVEN SPACED GRID
-            assert (abs((self.experiment.x[-1]-self.experiment.x[-2])-(self.experiment.x[1]-self.experiment.x[0]))
-                    <((self.experiment.x[1]-self.experiment.x[0])/1e5)),'Experimental x-domain must be regular.' # poor test of grid regularity
+            dx = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1) # ASSUMES EVEN SPACED GRID
+            assert (abs((self.xexp[-1]-self.xexp[-2])-(self.xexp[1]-self.xexp[0]))
+                    <((self.xexp[1]-self.xexp[0])/1e5)),'Experimental x-domain must be regular.' # poor test of grid regularity
             ## get cached instrument function or recompute
             # if cache['y'] is None or p.has_changed():
             if cache['y'] is None or p.timestamp>self.timestamp:
@@ -1247,7 +1255,7 @@ class Model(optimise.Optimiser):
         
     def plot(
             self,
-            figure_number=None,
+            fig=None,
             ax=None,
             plot_optical_depth=False,
             plot_experiment= True,
@@ -1273,10 +1281,10 @@ class Model(optimise.Optimiser):
             shift_residual=0.,
             xlabel=None,ylabel=None,
             invert_model=False,
+            show=True,
             **limit_to_qn,
     ):
         """Plot experimental and model spectra."""
-        self.add_format_input_function(lambda: f'{self.name}.plot_spectrum(figure_number={repr(figure_number)},label_key={repr(label_key)},plot_labels={repr(plot_labels)},plot_optical_depth={repr(plot_optical_depth)},plot_experiment={repr(plot_experiment)},plot_model={repr(plot_model)},plot_residual={repr(plot_residual)})')
         ## make a figure
         plotting.presetRcParams('a4landscape')
         # tools.presetRcParams('screen')
@@ -1304,22 +1312,25 @@ class Model(optimise.Optimiser):
             else:               ystr = f'{y:0.18f}'
             return(f'x={xstr:<25s} y={ystr:<25s}')
         ## get axes if not specified
-        if figure_number is None: figure_number = plt.gcf().number
-        if ax is None:
-            fig = plt.figure(figure_number)
+        if ax is not None:
+            fig = ax.figure
+        else:
+            if fig is None:
+                fig = plt.gcf()
+            elif isinstance(fig,int):
+                fig = plt.figure(fig)
             fig.clf()
             ax = fig.gca()
             ax.format_coord = format_coord
-        else:
-            fig = ax.figure
+        self.add_format_input_function(lambda: f'{self.name}.plot_spectrum(fig={repr(fig.number)},label_key={repr(label_key)},plot_labels={repr(plot_labels)},plot_optical_depth={repr(plot_optical_depth)},plot_experiment={repr(plot_experiment)},plot_model={repr(plot_model)},plot_residual={repr(plot_residual)})')
         ymin,ymax = np.inf,-np.inf
         xmin,xmax = np.inf,-np.inf
         ## plot intensity and residual
-        if plot_experiment and self.experiment.y is not None:
-            # ymin,ymax = min(ymin,self.experiment.y.min()),max(ymax,self.experiment.y.max())
-            ymin,ymax = -0.1*self.experiment.y.max(),self.experiment.y.max()*1.1
-            xmin,xmax = min(xmin,self.experiment.x.min()),max(xmax,self.experiment.x.max())
-            ax.plot(self.experiment.x,self.experiment.y,color=plotting.newcolor(0), label='Experimental spectrum') # plot experimental spectrum
+        if plot_experiment and self.yexp is not None:
+            # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
+            ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
+            xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
+            ax.plot(self.xexp,self.yexp,color=plotting.newcolor(0), label='Experimental spectrum') # plot experimental spectrum
         if plot_model and self.y is not None:
             if invert_model:
                 self.y *= -1
@@ -1330,8 +1341,8 @@ class Model(optimise.Optimiser):
                 self.y *= -1
         if plot_residual and self.residual is not None:
             ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
-            xmin,xmax = min(xmin,self.experiment.x.min()),max(xmax,self.experiment.x.max())
-            ax.plot(self.experiment.x,self.residual+shift_residual,color=plotting.newcolor(2),zorder=-1,label='Exp-Mod residual error',) # plot fit residual
+            xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
+            ax.plot(self.xexp,self.residual+shift_residual,color=plotting.newcolor(2),zorder=-1,label='Exp-Mod residual error',) # plot fit residual
         ## plot optical depth of model and individual lines (approx)
         # if plot_optical_depth:
             # yscale = (ymax-ymin)/self.optical_depths['total'].max()
@@ -1346,7 +1357,7 @@ class Model(optimise.Optimiser):
                     continue
                 i = transition.match(**limit_to_qn)
                 ## limit to ν-range and sufficiently strong lines
-                i &= (transition['ν']>self.experiment.x[0])&(transition['ν']<self.experiment.x[-1])
+                i &= (transition['ν']>self.xexp[0])&(transition['ν']<self.xexp[-1])
                 if minimum_τ_to_label is not None:
                     i &= transition['τ']>minimum_τ_to_label
                 if minimum_I_to_label is not None:
@@ -1392,7 +1403,7 @@ class Model(optimise.Optimiser):
                 ax.annotate(line['name'],(x,1.1*y),ha='center',va='top',color='gray',fontsize='x-small',rotation=90,zorder=-5)
         ## finalise plot
         if plot_title and 'filename' in self.experiment.experimental_parameters:
-            if title == 'auto': title = tools.basename(self.experimental_parameters['filename'])
+            if title == 'auto': title = tools.basename(self.experiment.experimental_parameters['filename'])
             t = ax.set_title(title,fontsize='x-small')
             t.set_in_layout(False)
         if plot_legend:
@@ -1408,6 +1419,8 @@ class Model(optimise.Optimiser):
         if ylabel is not None:
             ax.set_ylabel(ylabel)
         self._figure = fig
+        if show:
+            plotting.show(fig)
         return(fig)
 
     def output_data_to_directory(
@@ -1423,7 +1436,7 @@ class Model(optimise.Optimiser):
         if self.x is not None and self.y is not None:
             tools.array_to_file(directory+'/spectrum.h5',self.x,self.y)
         # if output_residual and self.residual is not None:
-            # tools.array_to_file(directory+'/residual.h5', self.experiment.x,self.residual)
+            # tools.array_to_file(directory+'/residual.h5', self.xexp,self.residual)
         if self._figure is not None:
             self._figure.savefig(directory+'/figure.png',dpi=300) # save figure
         ## save transition linelists
@@ -1444,7 +1457,7 @@ class Model(optimise.Optimiser):
                 # directory+'/exp',                      # deprecated
         # ):
             # if os.path.exists(filename):
-                # self.experiment.x,self.experiment.y = tools.file_to_array_unpack(filename)
+                # self.xexp,self.yexp = tools.file_to_array_unpack(filename)
                 # break
         # for filename in (
                 # directory+'/model_spectrum',
@@ -1488,10 +1501,10 @@ class Model(optimise.Optimiser):
                 # # # error_on_unknown_key=False, # fault tolerant
             # # ))
 
-    def show(self):
-        """Show plots."""
-        self.add_format_input_function(f'{self.name}.show()')
-        plt.show()
+    # def show(self):
+        # """Show plots."""
+        # self.add_format_input_function(f'{self.name}.show()')
+        # plt.show()
 
 
 def load_spectrum(filename,**kwargs):

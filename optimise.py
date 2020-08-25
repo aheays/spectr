@@ -1,4 +1,5 @@
 import time
+import inspect
 import re
 import os
 
@@ -60,6 +61,11 @@ class Optimiser:
             return(retval)
         self.add_format_input_function(f)
 
+    def __repr__(self):
+        """No attempt to represent this data but its name may be used in place
+        of it."""
+        return self.name
+
     def add_format_input_function(self,*functions):
         """Add a new format input function."""
         for function in functions:
@@ -69,6 +75,24 @@ class Optimiser:
         """Delete last format input function added."""
         key = list(self._format_input_functions.keys())[-1]
         self._format_input_functions.pop(key)
+
+    def automatic_format_input_function(self,limit_to_args=None):
+        """Try to figure one out from any non None variables. Could
+            easily fail."""
+        caller_locals = inspect.currentframe().f_back.f_locals
+        ## get e.g., spectrum.Model, keeping only last submodule name
+        class_name =  caller_locals['self'].__class__.__name__
+        submodule_name = re.sub('.*\.','', caller_locals['self'].__class__.__module__)
+        def f():
+            args = []
+            for key,val in caller_locals.items():
+                if ((key == 'self')
+                    or (val is None)
+                    or (limit_to_args is not None and key not in limit_to_args)):
+                    continue
+                args.append(f'{key}={repr(val)}')
+            return f'{caller_locals["name"]} = {submodule_name}.{class_name}('+','.join(args)+')'
+        self.add_format_input_function(f)
 
     def add_suboptimiser(self,*suboptimisers,add_format_function=False,):
         """Add one or suboptimisers."""
@@ -80,12 +104,25 @@ class Optimiser:
             self.format_input_functions.append(
                 f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)},{repr(add_format_function)})')
 
-    def add_parameter(self,description,value,vary=None,step=1e-8,):
-        """Add one parameter. Return a reference to it."""
-        p = Parameter(description=description,
-                      value=value,vary=vary,step=step,)
+    # def add_parameter(self,description,value,vary=None,step=1e-8,uncertainty=None):
+    #     """Add one parameter. Return a reference to it."""
+    #     p = Parameter(description=description, value=value,vary=vary,step=step,)
+    #     self.parameters.append(p)
+    #     return p
+
+    def add_parameter(self,description,*args):
+        """Add one parameter. Return a reference to it. Args are as in
+        Parameter.x"""
+        if len(args)==1 and tools.isiterable(args[0]):
+            p = Parameter(description,*args[0])
+        elif len(args)==1 and not tools.isiterable(args[0]):
+            p = Parameter(description,args[0])
+        elif len(args)>1:
+            p = Parameter(description,*args)
+        else:
+            raise Exception('Could not intepret args')
         self.parameters.append(p)
-        return(p)
+        return p
 
     def add_parameter_set(
             self,
@@ -94,10 +131,10 @@ class Optimiser:
     ):
         """Add multiple parameters. Return a ParameterSet."""
         p = ParameterSet(description=description)
-        for key,args in keys_args.items():
-            p[key] = args
+        for key,arg in keys_args.items():
+            p[key] = arg
         self.parameters.extend(p.values())
-        return(p)
+        return p
 
     def add_parameter_list(
             self,name_prefix='',p=[],vary=False,
@@ -524,7 +561,7 @@ class Optimiser:
 
 class Parameter(Datum):
 
-    def __init__(self,description='parameter',value=1,vary=False,step=None,fmt=None):
+    def __init__(self,description='parameter',value=1,vary=None,step=None,uncertainy=None,fmt=None):
         if fmt is None:
             fmt = '0.12g'
         Datum.__init__(
@@ -542,12 +579,15 @@ class Parameter(Datum):
                 step = abs(value)*1e-4
         self.step = float(step)
 
-    def __str__(self):
-        return ('(' +format(self.value,self.fmt)
-                +','+repr(self.vary)
-                +','+format(self.step,'0.2g')
-                +','+format(self.uncertainty,'0.2g')
-                +')')
+    def format_as_arg(self):
+        if self.vary is None:
+            return format(self.value,self.fmt)
+        else:
+            return ('(' +format(self.value,self.fmt)
+                    +','+repr(self.vary)
+                    +','+format(self.step,'0.2g')
+                    +','+format(self.uncertainty,'0.2g')
+                    +')')
     
 class ParameterSet():
 
@@ -558,30 +598,26 @@ class ParameterSet():
         self.description = description
         for key,args in keys_args.items():
             self[key] = args
+        self._init_timestamp = time.time()
 
-    def __setitem__(
-            self,
-            key,
-            args,               # (value,vary,step,description)
-    ):
-        args = tools.ensure_iterable(args)
+    def __setitem__(self,key,parameter_or_value):
+        """Assign Parameter to new key or set value to existing
+        key:parameter."""
         if key not in self._data:
-            ## add new data
-            self._data[key] = Parameter(
-                description = (key
-                               + (' '+self.description if self.description is not None else '')
-                               + (' '+args[3] if len(args)>3 else '')),
-                value=args[0],
-                vary=(args[1] if len(args)>1 else None),
-                step=(args[2] if len(args)>2 else None),
-            )
+            if isinstance(parameter_or_value,Parameter):
+                self._data[key] = parameter_or_value
+            else:
+                self._data[key] = Parameter(
+                    key,
+                    *tools.ensure_iterable(parameter_or_value))
         else:
-            ## update existing data
-            assert len(args)==1
-            self._data[key].value = args[0]
+            self._data[key].value = parameter_or_value # a value
 
     def _get_timestamp(self):
-        return(max(data.timestamp for data in self._data.values()))
+        if len(self)==0:
+            return self._init_timestamp
+        else:
+            return max(data.timestamp for data in self._data.values())
 
     timestamp = property(_get_timestamp)
 
@@ -615,6 +651,19 @@ class ParameterSet():
                     'vary':[self[key].vary for key in self],
                     'step':[format(self[key].step,'0.2g') for key in self],
                 }, delimiter=' | ',fmt='>11.5g',comment_string=''))
+
+    def format_as_kwargs(self):
+        """Each parameter separated by a comma."""
+        kwargs = []
+        for name,p in self._data.items():
+            if isinstance(p,Parameter):
+                kwargs.append(f'{name}={p.format_as_arg()}')
+            elif isinstance(p,Optimiser):
+                kwargs.append(f'{name}={p.name}')
+            else:
+                raise Exception(f'Cannot handle: {name} = {repr(p)}')
+        separator = (',\n    ' if len(kwargs)>3 else ',')
+        return separator.join(kwargs)
 
     def save(self,filename='parameters.psv'):
         tools.string_to_file(filename,str(self))

@@ -750,5 +750,11 @@ class Dataset(optimise.Optimiser):
                         uncertainty[i] = p.uncertainty
                         self.set(key,value,uncertainty)
             cache['first'] = False 
-        ## add to optimiser
         self.add_construct_function(f)
+        def f():
+            retval = f'{self.name}.optimise_value('
+            retval += parameters.format_as_kwargs()
+            if match is not None:
+                retval =  ',match='+tools.dict_to_kwargs(match)
+            return retval + ')'
+        self.add_format_input_function(f)

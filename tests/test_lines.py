@@ -8,10 +8,8 @@ show_plots =False
 
 def test_construct():
     t = lines.Base()
-    assert t.name == 'Base'
+    assert t.name == 'base'
     assert t._levels_class == levels.Base
-
-test_construct()
 
 def test_assignment():
     t = lines.Base(name='ddd')

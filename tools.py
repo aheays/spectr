@@ -146,7 +146,8 @@ def vectorise_in_chunks(function,dtype=float):
 
 def dict_to_kwargs(d,keys=None):
     """Expand a dict into evaluable kwargs. Default to all keys."""
-    if keys is None: keys = d.keys() # default to all keys
+    if keys is None:
+        keys = d.keys() # default to all keys
     return(','.join([key+'='+repr(d[key]) for key in keys]))
 
 # ############################
