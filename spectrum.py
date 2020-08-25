@@ -8,6 +8,8 @@ from . import optimise
 from . import plotting
 from . import tools
 
+
+
 class Spectrum(optimise.Optimiser):
 
     def __init__(self,name='spectrum',verbose=None,model_residual_weighting=None): 
@@ -21,21 +23,20 @@ class Spectrum(optimise.Optimiser):
         self.model_interpolate_factor = None
         self.verbose = bool(verbose)
         ## initialise an optimiser for the experimental spectrum
-        self.experiment = optimise.Optimiser(f'{self.name}_experiment')
-        self.experiment.ignore_format_input_functions = True 
+        self.experiment = optimise.Optimiser(f'{self.name}_experiment',do_format_input=False)
         def f():
             self.xexp,self.yexp = None,None
         self.experiment.add_construct_function(f)
         ## initialise an optimiser for the model spectrum
-        self.model = optimise.Optimiser(f'{self.name}_model')
-        self.model.ignore_format_input_functions = True
+        self.model = optimise.Optimiser(f'{self.name}_model',do_format_input=False)
         self.model.add_suboptimiser(self.experiment)
         def f():
             assert self.xmod is not None
             self.ymod = np.zeros(self.xmod.shape)
         self.model.add_construct_function(f)
         ## residual optimiser
-        optimise.Optimiser.__init__(self,self.name)
+        optimise.Optimiser.__init__(self,self.name,do_format_input=False)
+        self.do_format_input = True 
         self.add_suboptimiser(self.model,self.experiment)
         self.add_construct_function(self.construct_residual)
         def format_input_function():
