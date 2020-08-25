@@ -77,8 +77,10 @@ class Base(Dataset):
         'Zsource':dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind=str, infer={('database',): lambda : 'database',}),
         'Z':dict(description="Partition function.", kind=float, fmt='<11.3e', infer={}),
         'ΓDoppler':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,}),
+        'L':dict(description="Optical path length (m)", kind=float, fmt='0.5f', infer={}),
         'Pself':dict(description="Pressure of self (Pa)", kind=float, fmt='0.5f', infer={}),
-        'Nself':dict(description="Column density (cm2)",kind=float,fmt='<11.3e', infer={}),
+        'Nself':dict(description="Column density (cm-2)",kind=float,fmt='<11.3e', infer={
+            ('Pself','L','Teq'): lambda Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,}),
 }
 
     prototypes.update(deepcopy(_expand_level_keys(levels.Base)))

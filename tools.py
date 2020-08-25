@@ -3,8 +3,9 @@ import re
 import os
 import warnings
 from copy import copy
-import csv
 
+from scipy import interpolate
+import csv
 import glob
 import numpy as np
 import h5py
@@ -169,7 +170,7 @@ def dict_to_kwargs(d,keys=None):
     # import datetime
     # t = datetime.datetime.now()
     # return('-'.join([str(t.year),format(t.month,'02d'),format(t.day,'02d')]))
-   #  
+
 # def dump(o,f):
     # """Like pickle.dump except that f can string filename."""
     # if type(f)==str:
@@ -594,7 +595,7 @@ def mkdir(*directories,trash_existing_directory=False):
     # ## recomprise
     # s = greater+sep+lesser
     # return(s)
-   #  
+
 # def format_fixed_width(x,sigfigs,width=None):
     # """Creates a exponential form floating point number with given
     # significant figures and total width. If this fails then return a
@@ -1081,7 +1082,7 @@ def load_bruker_opus_spectrum(filename,datablock='ScSm'):
 
 # class Data_Directory:
     # """Data is stored in a directory and accessed by key."""
-   #  
+
 
     # def __init__(self,directory_path):
         # self.root = expand_path(re.sub(r'(.*[^/])/*',r'\1',directory_path))
@@ -1237,7 +1238,7 @@ def leastsq(func,
         diff = np.array(diff)
         ## warn about those that have no difference
         for j in find(diff==0):
-            print(f'warning: Parameter has no effect: index={j}, value={float(x[j]+xshift)}')
+            print(f'warning: Parameter has no effect: index={j}, value={float(x[j]+xshift[j])}')
     ## warn on error if requested
     if (not success) & print_error_mesg:
         warnings.warn("leastsq exit code: "+str(success)+mesg)
@@ -1339,7 +1340,7 @@ def randn(shape=None):
 # def sum_in_quadrature(*args):
     # """returns sqrt(sum(args**2))"""
     # return(np.sqrt(sum([np.square(t) for t in args])))
-   #  
+
 # def triangle_sum(x,axis=None):
     # """Return sqrt of sum of squares.
 
@@ -1381,7 +1382,7 @@ def randn(shape=None):
             # dictionary[key] = val
         # else:
             # raise Exception("Updating key not in dictionary: "+repr(key))
-       #  
+
 # def safeUpdate(a,b):
     # """Update dictionary a from dictionary b. If any keys in b not
     # found in a an error is raised. Update of a done in place."""
@@ -1389,7 +1390,7 @@ def randn(shape=None):
     # if not all(i):
         # raise Exception('Bad keys: '+ str([key for (key,ii) in zip(list(b.keys()),i) if not ii]))
     # a.update(b)
-   #  
+
 # def safe_update_attr(a,b):
     # """Update attributes of a from dictionary b. If any keys in b not
     # found in a an error is raised. Update of a done in place."""
@@ -1407,7 +1408,7 @@ def randn(shape=None):
     # for key in d:
         # dnew[key] = d[key][i]
     # return dnew
-       #  
+
 # def match_array_to_regexp(array,regexp,strip=True):
     # """Match an array of strings to a regular expression and return a
     # boolean array. If strip=True strip whitespace from strings."""
@@ -1420,7 +1421,7 @@ def randn(shape=None):
 # def pause(message="Press any key to continue..."):
     # """Wait for use to press enter. Not usable outsdie linux."""
     # input(message)
-   #  
+
 # def getClipboard():
     # """Get a string from clipboard."""
     # status,output = subprocess.getstatusoutput("xsel --output --clipboard")
@@ -1442,7 +1443,7 @@ def randn(shape=None):
             # setClipboard(format(x,fmt))
     # else:
         # setClipboard(array_to_string(x,fmt=fmt))
-   #  
+
 # def pa():
     # """Get string from clipboard. If possible convert to an array."""
     # x = getClipboard()
@@ -1461,7 +1462,7 @@ def randn(shape=None):
 # def printfmt(*args,fmt='8g'):
     # """Print all args with the same format."""
     # print(' '.join([format(arg,fmt) for arg in args]))
-   #  
+
 # def printcols(*args,fmt='15',labels=None):
     # """Print args in with fixed column width. Labels are column
     # titles."""
@@ -1529,7 +1530,7 @@ def format_columns(
         # print(dict_array_to_str(data,**kwargs))
     # else:
         # print(format_columns(data,**kwargs))
-   #  
+
 # def dict_array_to_str(d,keys=None,fmts=None,**kwargs_for_make_table):
     # """Return a string listing the contents of a dictionary made up of
     # arrays of the same length. If no keys specified, print all keys."""
@@ -1540,15 +1541,15 @@ def format_columns(
         # fmts = [fmts for key in keys]
     # columns = [Value_Array(name=key,val=d[key],fmt=fmt) for (key,fmt) in zip(keys,fmts)]
     # return make_table(columns,**kwargs_for_make_table)
-   #  
+
 # def recarray_to_str(d,*args,**kwargs):
     # kwargs.setdefault('headers',d.dtype.names)
     # return(tabulate(d,*args,**kwargs))
-       #  
+
 # def recarray_to_file(filename,recarray,*args,**kwargs):
     # """Output a recarray to a text file."""
     # return(string_to_file(filename,recarray_to_string(recarray,*args,**kwargs)))
-       #  
+
 # def dict_array_to_file(filename,d,**kwargs_for_dict_array_to_str):
     # """Write dictionary of arrays to a file."""
     # kwargs_for_dict_array_to_str.setdefault('print_description',False)
@@ -1600,14 +1601,14 @@ def myglob(path='*',regexp=None):
     # t = os.path.splitext(path)
     # if t[1]=='': return(None)
     # return(t[1][1:])
-   #  
-# def basename(path):
-    # """Remove all leading directories. If the path is a directory strip
-    # final '/'."""
-    # if path[-1]=='/':
-        # return(basename(path[:-1]))
-    # else:
-        # return(os.path.basename(path))
+
+def basename(path):
+    """Remove all leading directories. If the path is a directory strip
+    final '/'."""
+    if path[-1]=='/':
+        return(basename(path[:-1]))
+    else:
+        return(os.path.basename(path))
 
 def dirname(path):
     """Return full directory prefix."""
@@ -1771,36 +1772,36 @@ def ensure_iterable(x):
         # if shape(x)[1]==1: return np.flipud(x)
     # raise Exception("Could not flip array, shape is wrong probably.")
 
-# def spline(
-        # xi,yi,x,s=0,order=3,
-        # check_bounds=True,
-        # set_out_of_bounds_to_zero=True,
-        # sort_data=True,
-        # ignore_nan_data=False,
-# ):
-    # """Evaluate spline interpolation of (xi,yi) at x. Optional argument s
-    # is spline tension. Order is degree of spline. Silently defaults to 2 or 1
-    # if only 3 or 2 data points given.
-    # """
-    # order = min(order,len(xi)-1)
-    # xi,yi,x = np.array(xi,ndmin=1),np.array(yi,ndmin=1),np.array(x,ndmin=1)
-    # if ignore_nan_data:
-        # i = np.isnan(xi)|np.isnan(yi)
-        # if any(i):
-            # xi,yi = xi[~i],yi[~i]
-    # if sort_data:
-        # i = np.argsort(xi)
-        # xi,yi = xi[i],yi[i]
-    # if set_out_of_bounds_to_zero:
-        # i = (x>=xi[0])&(x<=xi[-1])
-        # y = np.zeros(x.shape)
-        # if any(i):
-            # y[i] = spline(xi,yi,x[i],s=s,order=order,set_out_of_bounds_to_zero=False,sort_data=False)
-        # return(y)
-    # if check_bounds:
-        # assert x[0]>=xi[0],'Splined lower limit outside data range: '+str(x[0])+' < '+str(xi[0])
-        # assert x[-1]<=xi[-1],'Splined upper limit outside data range: '+format(x[-1],'0.10g')+' > '+format(xi[-1],'0.10g')
-    # return interpolate.UnivariateSpline(xi,yi,k=order,s=s)(x)
+def spline(
+        xi,yi,x,s=0,order=3,
+        check_bounds=True,
+        set_out_of_bounds_to_zero=True,
+        sort_data=True,
+        ignore_nan_data=False,
+):
+    """Evaluate spline interpolation of (xi,yi) at x. Optional argument s
+    is spline tension. Order is degree of spline. Silently defaults to 2 or 1
+    if only 3 or 2 data points given.
+    """
+    order = min(order,len(xi)-1)
+    xi,yi,x = np.array(xi,ndmin=1),np.array(yi,ndmin=1),np.array(x,ndmin=1)
+    if ignore_nan_data:
+        i = np.isnan(xi)|np.isnan(yi)
+        if any(i):
+            xi,yi = xi[~i],yi[~i]
+    if sort_data:
+        i = np.argsort(xi)
+        xi,yi = xi[i],yi[i]
+    if set_out_of_bounds_to_zero:
+        i = (x>=xi[0])&(x<=xi[-1])
+        y = np.zeros(x.shape)
+        if any(i):
+            y[i] = spline(xi,yi,x[i],s=s,order=order,set_out_of_bounds_to_zero=False,sort_data=False)
+        return(y)
+    if check_bounds:
+        assert x[0]>=xi[0],'Splined lower limit outside data range: '+str(x[0])+' < '+str(xi[0])
+        assert x[-1]<=xi[-1],'Splined upper limit outside data range: '+format(x[-1],'0.10g')+' > '+format(xi[-1],'0.10g')
+    return interpolate.UnivariateSpline(xi,yi,k=order,s=s)(x)
 
 # def splinef(xi,yi,s=0,order=3,sort_data=True):
     # """Return spline function for points (xi,yi). Will return order
@@ -1811,7 +1812,7 @@ def ensure_iterable(x):
         # i = np.argsort(xi)
         # xi,yi = xi[i],yi[i]
     # return interpolate.UnivariateSpline(xi,yi,k=order,s=s)
-   #  
+
 # def spline_with_smooth_ends(xi,yi,x):
     # """Evaluate spline defined by xi,yi at x. The first and last
     # intevals defined by xi are replaced with a 5th order polynomial
@@ -2369,7 +2370,7 @@ def unique_combinations(*args):
     # arg. Must be same length of course.  Optional key-word argument
     # outputType=type will cast outputs into type. Otherwise tuples are
     # returned regardless of the input types."""
-   #  
+
     # outputs = list(zip(*(sorted(zip(*args),key=lambda x:x[0]))))
     # if 'outputType' in kwargs:
         # outputs = (kwargs['outputType'](output) for output in outputs)
@@ -2421,7 +2422,7 @@ def unique_combinations(*args):
     # for key in dicts[0]:
         # retval[key] = [t[key] for t in dicts]
     # return(retval)
-   #  
+
 # def common(x,y,use_hash=False):
     # """Return indices of common elements in x and y listed in the order
     # they appear in x. Raises exception if repeating multiple matches
@@ -2463,13 +2464,13 @@ def unique_combinations(*args):
         # i = np.argsort(ix)
         # ix,iy = ix[i],iy[i]
         # return(ix,iy)
-   #  
+
 
 # def get_common(x,y):
     # """Return common subsets of x and y."""
     # i,j = common(x,y)
     # return(x[i],y[i])
-   #  
+
 # def sort_to_match(x,y):
     # """Return a copy of x sorted into the smae dissaray as y. That is
     # the same reordering will sort both y and the return value."""
@@ -3007,7 +3008,7 @@ def find(x):
     # ## convolve with gaussian
     # ybin = convolve_with_gaussian(xbin,ybin,gaussian_FWHM)
     # return(xbin,ybin)
-       #  
+
 # def convolve_with_sinc(x,y,fwhm,fwhms_to_include=10,):
     # """Convolve function y(x) with a sinc of FWHM fwhm. Truncate
     # convolution after a certain number of fwhms. x must be on a
@@ -4036,7 +4037,7 @@ def try_cast_to_numerical_array(x):
     # a dictionary with all keys and values given by strings.
 
     # Header indicated by comment character '#'.
-   #  
+
     # All quotes are stripped.
 
     # Wildly unfinished.
@@ -4399,7 +4400,7 @@ def stream_to_dict(
         # # data = np.array2DPadded(data)
     # # else:
     # data = np.array(data)
-       #  
+
     # ## close file if necessary
     # f.close()
     # ## return
@@ -4443,7 +4444,7 @@ def stream_to_dict(
         # filename,
         # xydpi_xyvalue0 = None,  # ((xdpi,ydpi),(xvalue,yvalue)) for fixing axes
         # xydpi_xyvalue1 = None,  # 2nd point for fixing axes
-       #  
+
 # ):
     # """Get all segments in a postscript file. That is, an 'm' command
     # followed by an 'l' command. Could find points if 'm' without an 'l' or

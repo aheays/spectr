@@ -3,6 +3,7 @@
 # import numpy as np
 # from copy imoprt
 from matplotlib import pyplot as plt
+import scipy.signal
 
 from .dataset import *
 from . import optimise
@@ -39,6 +40,7 @@ class Spectrum(optimise.Optimiser):
         ## residual optimiser
         optimise.Optimiser.__init__(self,self.name)
         self.add_suboptimiser(self._mod,self._exp)
+        self.add_construct_function(self.construct_residual)
         def format_input_function():
             retval = f'{self.name} = Spectrum(name={repr(self.name)}'
             if verbose is not None:
@@ -48,7 +50,6 @@ class Spectrum(optimise.Optimiser):
             retval += ')'
             return(retval)
         self.add_format_input_function(format_input_function)
-        self.add_construct_function(self.construct_residual)
         self.add_save_to_directory_function(self.output_data_to_directory)
         self._figure = None
         self.verbose = verbose
@@ -119,23 +120,23 @@ class Spectrum(optimise.Optimiser):
 
     def set_experimental_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
-        x,y,d = lib_molecules.load_bruker_opus_spectrum(filename)
-        self.format_input_functions.append(self.name+f'.set_experimental_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
+        x,y,d = tools.load_bruker_opus_spectrum(filename)
+        self.add_format_input_function(self.name+f'.set_experimental_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
         self.experimental_parameters['filename'] = filename
-        d = lib_molecules.load_bruker_opus_data(filename)
-        self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
-        if d['Fourier Transformation']['APF'] == 'B3':
-            self.experimental_parameters['apodisation_function'] = 'Blackman-Harris 3-term'
-        else:
-            warnings.warn(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
+        if 'Fourier Transformation' in d:
+            self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
+            if d['Fourier Transformation']['APF'] == 'B3':
+                self.experimental_parameters['apodisation_function'] = 'Blackman-Harris 3-term'
+            else:
+                warnings.warn(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
         self.set_experimental_spectrum(x,y,xbeg,xend)
 
     def scale_xexp(self,scale=(1,True,1e-8)):
         """Rescale experimental spectrum x-grid."""
-        p = self.add_parameter_set(scale=scale,note='scale_xexp')
-        self.format_input_functions.append(lambda: f"{self.name}.scale_xexp({p.format_input()})")
+        scale = self._exp.add_parameter('scale_xexp',*scale)
+        self.add_format_input_function(lambda: f"{self.name}.scale_xexp({p.format_input()})")
         def construct_function():
-            self.xexp *= p['scale']
+            self.xexp *= float(scale)
         self._exp.add_construct_function(construct_function)
         
     def set_jh_inst_spectrum_from_file(self,filename_or_scan_index,xbeg=None,xend=None):
@@ -166,12 +167,13 @@ class Spectrum(optimise.Optimiser):
     def interpolate_model_spectrum(self,dx):
         """When calculating model set to dx grid (or less to achieve
         overlap with experimental points."""
-        self.format_input_functions.append(f'{self.name}.interpolate_model_spectrum({dx})')
+        self.add_format_input_function(f'{self.name}.interpolate_model_spectrum({dx})')
         def f():
             xstep = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1)
             self.model_interpolate_factor = int(np.ceil(xstep/dx))
             self.xmod = np.linspace(self.xexp[0],self.xexp[-1],1+(len(self.xexp)-1)*self.model_interpolate_factor)
-        self._exp.add_construct_function(f)
+            self.ymod = np.zeros(self.xmod.shape,dtype=float) # delete current ymod!!
+        self._mod.add_construct_function(f)
 
     def add_absorption_cross_section_from_file(
             self,
@@ -566,24 +568,6 @@ class Spectrum(optimise.Optimiser):
         return(self.xmod,self.ymod)
 
     def construct_residual(self):
-        self._exp.construct()
-        self._mod.construct()
-        ## construct experiment
-        # self.construct_experiment()
-        # # assert self.xexp is not None,'No experimental spectrum.'
-        # if self.xexp is None:
-            # return
-        # ## construct model, on a temporary interpolated grid if necessary
-        # if self.model_interpolate_factor!=1:
-            # x = np.linspace(self.xexp[0],self.xexp[-1],1+(len(self.xexp)-1)*self.model_interpolate_factor)
-        # else:
-            # x = copy(self.xexp)
-        # self.construct_model()
-
-        # if self.model_interpolate_factor!=1:
-            # self.xmod = self.xmod[::self.model_interpolate_factor]
-            # self.ymod = self.ymod[::self.model_interpolate_factor]
-        ## calculate residual and undo model interpolation for
         ## residual calculation
         if self.model_interpolate_factor is None:
             self.model_residual = self.yexp - self.ymod
@@ -1019,11 +1003,13 @@ class Spectrum(optimise.Optimiser):
             else:
                 step = 1e-3
         x,y = np.array(x),np.array(y)
-        p = self.add_parameter_list('shift_by_spline',y,vary,step) # add to optimsier
-        self.format_input_functions.append(lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
+        p = self._mod.add_parameter_list('add_intensity_spline_',y,vary,step) # add to optimsier
+        self.add_format_input_function(lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
         def f():
             i = (self.xmod>=np.min(x))&(self.xmod<=np.max(x))
-            self.ymod[i] += tools.spline(x,p.plist,self.xmod[i],order=order)
+            self.ymod[i] += tools.spline(x,p.parameter_values(),self.xmod[i],order=order)
+        self.add_format_input_function(
+            lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
         self._mod.add_construct_function(f) # multiply spline during construct
 
     shift_by_spline = add_intensity_spline # deprecated
@@ -1056,8 +1042,8 @@ class Spectrum(optimise.Optimiser):
 
     def convolve_with_gaussian(self,width,fwhms_to_include=100):
         """Convolve with gaussian."""
-        p = self.add_parameter_set('convolve_with_gaussian',width=width,step_default={'width':0.01})
-        self.format_input_functions.append(lambda: f'{self.name}.convolve_with_gaussian({p.format_input()})')
+        p = self._mod.add_parameter_set('convolve_with_gaussian',width=width)
+        self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_input()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
             x,y = self.xmod,self.ymod

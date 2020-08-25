@@ -1,5 +1,7 @@
 import functools
 import numpy as np
+from scipy import constants
+
 from . import tools
 from .exceptions import MissingDataException
 

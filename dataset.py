@@ -22,7 +22,11 @@ class Dataset(optimise.Optimiser):
 
     """A collection of scalar or array values, possibly with uncertainties."""
 
-    def __init__(self,name='dataset',**keys_vals):
+    def __init__(
+            self,
+            name='dataset',
+            load_from_filename=None,
+            **keys_vals):
         optimise.Optimiser.__init__(self,name=name)
         self._data = dict()
         self._length = None
@@ -37,7 +41,10 @@ class Dataset(optimise.Optimiser):
         self.verbose = False
         for key,val in keys_vals.items():
             self[key] = val
+        if load_from_filename is not None:
+            self.load(load_from_filename)
 
+            
     def __len__(self):
         assert self._length is not None,'Dataset has no length because all data is scalar'
         return(self._length)

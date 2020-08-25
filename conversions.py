@@ -56,6 +56,7 @@ canonical_factors = {
     'Pa'      :  (1.        ,  'pressure'),
     'kPa'     :  (1e-3      ,  'pressure'),
     'bar'     :  (1e-5      ,  'pressure'),
+    'mbar'    :  (1e-2      ,  'pressure'),
     'atm'     :  (1./101325.,  'pressure'),
     'Torr'    :  (1/133.322 ,  'pressure'),
     'dyn.cm-2':  (1e5*1e-4  ,  'pressure'),

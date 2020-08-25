@@ -101,22 +101,21 @@ class Optimiser:
         self.parameters.extend(p.values())
         return(p)
 
-    # def add_parameter_list(self,name_prefix='',p=[],vary=False,step=None,note=None,fmt=None):
-        # """Add a variable length list of parameters. vary and step can
-        # either be constants, be the same length as p, or be a function
-        # of the parameter order. name is a list of defaults to enumerate."""
-        # ## expand inputs into lists of the same length
-        # if vary is None or np.isscalar(vary):
-            # vary = [vary for t in p]
-        # elif type(vary)==types.FunctionType:
-            # vary = [bool(vary(i)) for i in range(len(p))]
-        # if np.isscalar(step) or step is None:
-            # step = [step for t in p]
-        # elif type(step)==types.FunctionType:
-            # step = [float(step(i)) for i in range(len(p))]
-        # assert len(p)==len(vary) and len(p)==len(step)
-        # name = [name_prefix+str(i) for i in range(len(p))]
-        # return(self.add_parameter_set(note=note,**{namei:(pi,varyi,stepi) for (namei,pi,varyi,stepi) in zip(name,p,vary,step)},fmt=fmt))
+    def add_parameter_list(
+            self,name_prefix='',p=[],vary=False,
+            step=None,description=None):
+        """Add a variable length list of parameters. vary and step can
+        either be constants, be the same length as p, or be a function
+        of the parameter order. name is a list of defaults to enumerate."""
+        if vary is None or np.isscalar(vary):
+            vary = [vary for t in p]
+        if np.isscalar(step) or step is None:
+            step = [step for t in p]
+        name = [name_prefix+str(i) for i in range(len(p))]
+        return self.add_parameter_set(
+            description=description,
+            **{namei:(pi,varyi,stepi) for (namei,pi,varyi,stepi)
+               in zip(name,p,vary,step)})
 
     def add_construct_function(self,*functions):
         """Add one or more functions that are called each iteration when the
@@ -521,6 +520,7 @@ class Optimiser:
            #  
 
 
+
 class ParameterSet():
 
     """A collection of scalar or array values, possibly with uncertainties."""
@@ -573,6 +573,9 @@ class ParameterSet():
 
     def items(self):
         return(self._data.items())
+
+    def parameter_values(self):
+        return([t.value for t in self._data.values()])
 
     def __str__(self):
         return(
