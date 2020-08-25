@@ -1,15 +1,12 @@
-# from . import *
-# from scipy import signal
-# import numpy as np
-# from copy imoprt
+from copy import copy
+
 from matplotlib import pyplot as plt
 import scipy.signal
+import numpy as np
 
-from .dataset import *
 from . import optimise
 from . import plotting
 from . import tools
-# from . import optimise,plotting
 
 class Spectrum(optimise.Optimiser):
 
@@ -24,22 +21,22 @@ class Spectrum(optimise.Optimiser):
         self.model_interpolate_factor = None
         self.verbose = bool(verbose)
         ## initialise an optimiser for the experimental spectrum
-        self._exp = optimise.Optimiser(f'{self.name}_exp')
-        self._exp.ignore_format_input_functions = True 
+        self.experiment = optimise.Optimiser(f'{self.name}_experiment')
+        self.experiment.ignore_format_input_functions = True 
         def f():
             self.xexp,self.yexp = None,None
-        self._exp.add_construct_function(f)
+        self.experiment.add_construct_function(f)
         ## initialise an optimiser for the model spectrum
-        self._mod = optimise.Optimiser(f'{self.name}_mod')
-        self._mod.ignore_format_input_functions = True
-        self._mod.add_suboptimiser(self._exp)
+        self.model = optimise.Optimiser(f'{self.name}_model')
+        self.model.ignore_format_input_functions = True
+        self.model.add_suboptimiser(self.experiment)
         def f():
             assert self.xmod is not None
             self.ymod = np.zeros(self.xmod.shape)
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
         ## residual optimiser
         optimise.Optimiser.__init__(self,self.name)
-        self.add_suboptimiser(self._mod,self._exp)
+        self.add_suboptimiser(self.model,self.experiment)
         self.add_construct_function(self.construct_residual)
         def format_input_function():
             retval = f'{self.name} = Spectrum(name={repr(self.name)}'
@@ -57,6 +54,7 @@ class Spectrum(optimise.Optimiser):
         self._cache = {}
 
     def __len__(self):
+        """Number of datapoints in the spectrum."""
         if self.xexp is not None:
             return(len(self.xexp))
         elif self.xmod is not None:
@@ -91,7 +89,7 @@ class Spectrum(optimise.Optimiser):
         def f():
             self.xexp,self.yexp = copy(x),copy(y) # make copy -- more memory but survive other changes
             self.xmod = copy(self.xexp)
-        self._exp.add_construct_function(f)
+        self.experiment.add_construct_function(f)
         if self.verbose:
             print('experimental_parameters:')
             pprint(self.experimental_parameters)
@@ -118,11 +116,11 @@ class Spectrum(optimise.Optimiser):
 
     def scale_xexp(self,scale=(1,True,1e-8)):
         """Rescale experimental spectrum x-grid."""
-        scale = self._exp.add_parameter('scale_xexp',*scale)
+        scale = self.experiment.add_parameter('scale_xexp',*scale)
         self.add_format_input_function(lambda: f"{self.name}.scale_xexp({p.format_input()})")
         def construct_function():
             self.xexp *= float(scale)
-        self._exp.add_construct_function(construct_function)
+        self.experiment.add_construct_function(construct_function)
 
     def interpolate_experimental_spectrum(self,dx):
         """Interpolate experimental spectrum to a grid of width dx, may change
@@ -134,7 +132,7 @@ class Spectrum(optimise.Optimiser):
             if self.verbose:
                 print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.xexp[0])},{repr(self.xexp[-1])},{self.xexp[1]-self.xexp[0]})")
             self.xexp,self.yexp = xnew,ynew
-        self._exp.add_construct_function(f)
+        self.experiment.add_construct_function(f)
 
     def interpolate_model_spectrum(self,dx):
         """When calculating model set to dx grid (or less to achieve
@@ -145,7 +143,7 @@ class Spectrum(optimise.Optimiser):
             self.model_interpolate_factor = int(np.ceil(xstep/dx))
             self.xmod = np.linspace(self.xexp[0],self.xexp[-1],1+(len(self.xexp)-1)*self.model_interpolate_factor)
             self.ymod = np.zeros(self.xmod.shape,dtype=float) # delete current ymod!!
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def add_absorption_cross_section_from_file(
             self,
@@ -164,7 +162,7 @@ class Spectrum(optimise.Optimiser):
         grid. Add absorption according to given column density, which
         can be optimised."""
         ## add adjustable parameters for optimisation
-        p = self._mod.add_parameter_set(
+        p = self.model.add_parameter_set(
             note=f'add_absorption_cross_section_from_file name={name} file={filename}',
             column_density=column_density, xshift=xshift,
             yshift=yshift, xscale=xscale, yscale=yscale,
@@ -224,7 +222,7 @@ class Spectrum(optimise.Optimiser):
                 for key in p.keys():
                     cache[key]  = p[key]
             self.ymod *= cache['transmission'] # add to model
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
     add_cross_section_from_file = add_absorption_cross_section_from_file # deprecated name
 
     def add_absorption_cross_section(
@@ -239,7 +237,7 @@ class Spectrum(optimise.Optimiser):
         """Load a cross section from a file. Interpolate this to experimental
         grid. Add absorption according to given column density, which
         can be optimised."""
-        p = self._mod.add_parameter_set(
+        p = self.model.add_parameter_set(
             note=f'add_absorption_cross_section {cross_section_object.name} in {self.name}',
             column_density=column_density,# xshift=xshift, xscale=xscale,
             step_scale_default={'column_density':0.01, 'xshift':1e-3, 'xscale':1e-8,})
@@ -254,7 +252,7 @@ class Spectrum(optimise.Optimiser):
             retval += ')'
             return(retval)
         self.add_format_input_function(f)
-        self._exp.add_suboptimisers(cross_section_object)
+        self.experiment.add_suboptimisers(cross_section_object)
         cache = {}
         def f():
             ## update if necessary
@@ -274,7 +272,7 @@ class Spectrum(optimise.Optimiser):
             ## add to model
             self.ymod *= cache['transmission']
             # self.optical_depths[cross_section_object.name] = cache['τ']
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
     add_cross_section = add_absorption_cross_section # deprecated name
 
     def add_absorption_lines(
@@ -288,13 +286,9 @@ class Spectrum(optimise.Optimiser):
             use_multiprocessing=None,
             use_cache= None,
             **optimise_keys_vals):
-        ## update optimsied things -- e.g., temperaturepp or
-        ## column_densitypp
         name = f'add_absorption_lines {lines.name} to {self.name}'
-        # assert name not in self.optical_depths,f'Non-unique name in optical_depths: {repr(name)}'
-        # self.lines.append(lines)
-        self._mod.add_suboptimiser(lines,add_format_function=False)
-        parameter_set = self._mod.add_parameter_set(**optimise_keys_vals,description=name)
+        self.model.add_suboptimiser(lines,add_format_function=False)
+        parameter_set = self.model.add_parameter_set(**optimise_keys_vals,description=name)
         ## update lines data and recompute optical depth if
         ## necessary
         cache = {}
@@ -334,7 +328,7 @@ class Spectrum(optimise.Optimiser):
                 cache['absorbance'] = np.exp(-y)
             ## absorb
             self.ymod *= cache['absorbance']
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
         ## new input line
         def f():
             retval = [f'{self.name}.add_absorption_lines({lines.name}']
@@ -370,12 +364,12 @@ class Spectrum(optimise.Optimiser):
             use_multiprocessing=None,
             use_cache=None,
             **optimise_keys_vals):
-        self._mod.add_suboptimiser(lines) # to model rebuilt when transition changed
+        self.model.add_suboptimiser(lines) # to model rebuilt when transition changed
         # self.transitions.append(transition)   
         name = f'add_emission_lines {lines.name} to {self.name}'
         # assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
         # self.emission_intensities[name] = None
-        p = self._mod.add_parameter_set(**optimise_keys_vals,note=name)
+        p = self.model.add_parameter_set(**optimise_keys_vals,note=name)
         cache = {}
         def construct_function():
             ## first call -- no good, xmod not set yet
@@ -413,7 +407,7 @@ class Spectrum(optimise.Optimiser):
                 cache['intensity'] = y
             ## add emission intensity to the overall model
             self.ymod += cache['intensity']
-        self._mod.add_construct_function(construct_function)
+        self.model.add_construct_function(construct_function)
         ## new input line
         def f():
             retval = f'{self.name}.add_emission_lines({lines.name}'
@@ -431,13 +425,13 @@ class Spectrum(optimise.Optimiser):
     def construct_experiment(self):
         """Load, calibrate, and preprocess experimental before fitting any
         model."""
-        self._exp.construct()
+        self.experiment.construct()
         return(self.xexp,self.yexp)
 
     def construct_model(self,x):
         """Construct a model spectrum."""
         self.xmod = np.asarray(x,dtype=float)
-        self._mod.construct()
+        self.model.construct()
         return(self.xmod,self.ymod)
 
     def construct_residual(self):
@@ -462,7 +456,7 @@ class Spectrum(optimise.Optimiser):
         x,y,header = load_SOLEIL_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
         self.experimental_parameters.update(header)
-        p = self._exp.add_parameter_set('load_SOLEIL_spectrum_from_file',xscale=xscale,step_default={'xscale':1e-8},)
+        p = self.experiment.add_parameter_set('load_SOLEIL_spectrum_from_file',xscale=xscale,step_default={'xscale':1e-8},)
         def f():
             retval = f'{self.name}.load_SOLEIL_spectrum_from_file({repr(filename)}'
             if xbeg is not None:
@@ -496,7 +490,7 @@ class Spectrum(optimise.Optimiser):
                          or p.timestamp>self.timestamp)):
                     yscaled[0] = tools.spline(x*p['xscale'],y,x)
                     self.set_experimental_spectrum(x,yscaled[0],xbeg=xbeg,xend=xend)
-            self._exp.add_construct_function(f)
+            self.experiment.add_construct_function(f)
 
     def fit_noise(
             self,
@@ -580,7 +574,7 @@ class Spectrum(optimise.Optimiser):
                     (self.xexp>=(xbeg if xbeg is not None else -np.inf))
                     &(self.xexp<=(xend if xend is not None else np.inf))
                 ] = weighting
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def set_residual_weighting_over_range(self,xbeg,xend,weighting):
         """Set the weighting or residual between xbeg and xend to a
@@ -660,11 +654,11 @@ class Spectrum(optimise.Optimiser):
         
     def scale_by_constant(self,scale=1.0):
         """Scale model by a constant value."""
-        scale = self._mod.add_parameter('scale',scale)
+        scale = self.model.add_parameter('scale',scale)
         self.add_format_input_function(lambda: f"{self.name}.scale_by_constant(ν={repr(scale)})")
         def f():
             self.ymod *= scale.p
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def scale_by_spline(self,ν=50,amplitudes=1,vary=True,step=0.0001,order=3):
         """Scale by a spline defined function."""
@@ -673,7 +667,7 @@ class Spectrum(optimise.Optimiser):
         if np.isscalar(amplitudes):
             amplitudes = amplitudes*np.ones(len(ν)) # default amplitudes to list of hge same length
         ν,amplitudes = np.array(ν),np.array(amplitudes)
-        p = self._mod.add_parameter_list(f'scale_by_spline',amplitudes,vary,step) # add to optimsier
+        p = self.model.add_parameter_list(f'scale_by_spline',amplitudes,vary,step) # add to optimsier
         def format_input_function():
             retval = f"{self.name}.scale_by_spline("
             retval += f"vary={repr(vary)}"
@@ -686,7 +680,7 @@ class Spectrum(optimise.Optimiser):
         def f():
             i = (self.xmod>=np.min(ν))&(self.xmod<=np.max(ν))
             self.ymod[i] = self.ymod[i]*scipy.interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.xmod[i])
-        self._mod.add_construct_function(f) # multiply spline during construct
+        self.model.add_construct_function(f) # multiply spline during construct
 
     def modulate_by_spline(
             self,
@@ -735,8 +729,8 @@ class Spectrum(optimise.Optimiser):
                     ax.set_ylabel('f')
         elif np.isscalar(phase):
             phase = 2*constants.pi*(ν-self.xexp[0])/phase
-        amplitude = self._mod.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
-        phase = self._mod.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
+        amplitude = self.model.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
+        phase = self.model.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
         def format_input_function():
             retval = f"{self.name}.modulate_by_spline("
             retval += f"vary_amplitude={repr(vary_amplitude)}"
@@ -750,15 +744,15 @@ class Spectrum(optimise.Optimiser):
         self.add_format_input_function(format_input_function)
         def f():
             self.ymod *= 1. + tools.spline(ν,amplitude.plist,self.xmod)*np.sin(tools.spline(ν,phase.plist,self.xmod))
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def add_intensity(self,intensity=1):
         """Shift by a spline defined function."""
-        intensity = self._mod.add_parameter('intensity',*tools.ensure_iterable(intensity))
+        intensity = self.model.add_parameter('intensity',*tools.ensure_iterable(intensity))
         self.add_format_input_function(lambda: f"{self.name}.add_intensity(intensity={repr(intensity)}")
         def f():
             self.ymod += float(intensity)
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def add_intensity_spline(self,x=50,y=0,vary=True,step=None,order=3):
         """Shift by a spline defined function."""
@@ -773,34 +767,34 @@ class Spectrum(optimise.Optimiser):
             else:
                 step = 1e-3
         x,y = np.array(x),np.array(y)
-        p = self._mod.add_parameter_list('add_intensity_spline_',y,vary,step) # add to optimsier
+        p = self.model.add_parameter_list('add_intensity_spline_',y,vary,step) # add to optimsier
         self.add_format_input_function(lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
         def f():
             i = (self.xmod>=np.min(x))&(self.xmod<=np.max(x))
             self.ymod[i] += tools.spline(x,p.parameter_values(),self.xmod[i],order=order)
         self.add_format_input_function(
             lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
-        self._mod.add_construct_function(f) # multiply spline during construct
+        self.model.add_construct_function(f) # multiply spline during construct
 
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
-        # p = self._mod.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
+        # p = self.model.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
         # self.add_format_input_function(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
         # x,y = tools.file_to_array_unpack(filename)
         # scale = tools.spline(x,y,self.xexp)
         # def f(): self.ymod *= scale*p['scale_factor']
-        # self._mod.add_construct_function(f)
+        # self.model.add_construct_function(f)
 
     def shift_by_constant(self,shift=0.):
         """Shift by a constant amount."""
-        shift = self._mod.add_parameter('shift_by_constant',*tools.ensure_iterable(shift)) # add to optimsier
+        shift = self.model.add_parameter('shift_by_constant',*tools.ensure_iterable(shift)) # add to optimsier
         self.add_format_input_function(lambda: f"{self.name}.shift_by_constant({repr(shift)})")
         def f():
             self.ymod += shift.p
-        self._mod.add_construct_function(f) # multiply spline during construct
+        self.model.add_construct_function(f) # multiply spline during construct
 
     def convolve_with_gaussian(self,width,fwhms_to_include=100):
         """Convolve with gaussian."""
-        p = self._mod.add_parameter_set('convolve_with_gaussian',width=width)
+        p = self.model.add_parameter_set('convolve_with_gaussian',width=width)
         self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_input()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
@@ -819,11 +813,11 @@ class Spectrum(optimise.Optimiser):
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
             self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
         """Convolve with lorentzian."""
-        p = self._mod.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
+        p = self.model.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
         self.add_format_input_function(lambda: f'{self.name}.convolve_with_lorentzian({p.format_input()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
@@ -842,12 +836,12 @@ class Spectrum(optimise.Optimiser):
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
             self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def convolve_with_sinc(self,width=None,fwhms_to_include=100):
         """Convolve with sinc function, width is FWHM."""
         ## check if there is a risk that subsampling will ruin the convolution
-        p = self._mod.add_parameter_set('convolve_with_sinc',width=width)
+        p = self.model.add_parameter_set('convolve_with_sinc',width=width)
         if 'sinc_FWHM' in self.experimental_parameters: # get auto width and make sure consistent with what is given
             if width is None: width = self.experimental_parameters['sinc_FWHM']
             if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
@@ -868,7 +862,7 @@ class Spectrum(optimise.Optimiser):
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
             self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def convolve_with_instrument_function(
             self,
@@ -882,7 +876,7 @@ class Spectrum(optimise.Optimiser):
     ):
         """Convolve with sinc function, width is FWHM."""
         ## check if there is a risk that subsampling will ruin the convolution
-        p = self._mod.add_parameter_set(
+        p = self.model.add_parameter_set(
             'convolve_with_instrument_function',
             sinc_fwhm=sinc_fwhm,
             gaussian_fwhm=gaussian_fwhm,
@@ -967,7 +961,7 @@ class Spectrum(optimise.Optimiser):
             xpad = np.concatenate((self.xmod[0]-padding[-1::-1],self.xmod,self.xmod[-1]+padding))
             ypad = np.concatenate((np.full(padding.shape,self.ymod[0]),self.ymod,np.full(padding.shape,self.ymod[-1])))
             self.ymod = scipy.signal.convolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.xmod)]
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def apodise(
             self,
@@ -1029,7 +1023,7 @@ class Spectrum(optimise.Optimiser):
                 raise Exception(f'Unknown apodisation_function: {repr(apodisation_function)}')
             w[n>1] = 0          # zero-padded region contributes nothing
             self.ymod = scipy.fft.idct(ft*w) # new apodised spetrum
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
         # self.construct_functions.append(f)
         self.add_format_input_function(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
 
@@ -1066,7 +1060,7 @@ class Spectrum(optimise.Optimiser):
                 yconv[0] = yconv[-1] = 0.07922 # harris1978
             yconv /= yconv.sum()                    # normalised
             self.ymod = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def convolve_with_signum(
             self,
@@ -1076,7 +1070,7 @@ class Spectrum(optimise.Optimiser):
             xend=None,
     ):
         """Convolve with signum function generating asymmetry. δ(x-x0) + amplitude/(x-x0)."""
-        amplitude = self._mod.add_parameter('amplitude',*tools.ensure_iterable(amplitude),note='convolve_with_signum')
+        amplitude = self.model.add_parameter('amplitude',*tools.ensure_iterable(amplitude),note='convolve_with_signum')
         def f():
             retval =  f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow}'
             if xbeg is not None:
@@ -1103,7 +1097,7 @@ class Spectrum(optimise.Optimiser):
             yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
             yconv /= yconv.sum()                    # normalised
             self.ymod[i] = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def convolve_with_SOLEIL_instrument_function(
             self,
@@ -1121,7 +1115,7 @@ class Spectrum(optimise.Optimiser):
             sinc_fwhm = (self.experimental_parameters['sinc_FWHM'],None,1e-3)
         if gaussian_fwhm is None:
             gaussian_fwhm = (0.1,None,1e-3)
-        p = self._mod.add_parameter_set(
+        p = self.model.add_parameter_set(
             'convolve_with_instrument_function',
             sinc_fwhm=sinc_fwhm,
             gaussian_fwhm=gaussian_fwhm,
@@ -1199,7 +1193,7 @@ class Spectrum(optimise.Optimiser):
             xpad = np.concatenate((self.xmod[0]-padding[-1::-1],self.xmod,self.xmod[-1]+padding))
             ypad = np.concatenate((np.full(padding.shape,self.ymod[0]),self.ymod,np.full(padding.shape,self.ymod[-1])))
             self.ymod = scipy.signal.convolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.xmod)]
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
 
     def add_SOLEIL_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
         """Adds two copies of SOLEIL spectrum onto the model (after
@@ -1211,7 +1205,7 @@ class Spectrum(optimise.Optimiser):
         filename = self.experimental_parameters['filename']
         x,y,header = load_SOLEIL_spectrum_from_file(filename)
         yshifted ={'left':None,'right':None}
-        p = self._mod.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
+        p = self.model.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
                                    magnitude=magnitude,shift=shift,
                                    step_default={'magnitude':1e-3,'shift':1e-3},)
         previous_shift = [p['shift']]
@@ -1239,7 +1233,7 @@ class Spectrum(optimise.Optimiser):
             else:
                 i,dy = yshifted['right']
             self.ymod[i] += dy*p['magnitude']*-1
-        self._mod.add_construct_function(f)
+        self.model.add_construct_function(f)
         
     def plot(
             self,
@@ -1414,7 +1408,7 @@ class Spectrum(optimise.Optimiser):
             output_individual_optical_depths=False,
     ):
         """Save various files from this optimsiation to a directory."""
-        tools.mkdir_if_necessary(directory)
+        tools.mkdir(directory)
         ## model data
         if self.xexp is not None and self.yexp is not None:
             tools.array_to_file(directory+'/experimental_spectrum.h5',self.xexp,self.yexp)
