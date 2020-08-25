@@ -96,24 +96,9 @@ class Spectrum(optimise.Optimiser):
             print('experimental_parameters:')
             pprint(self.experimental_parameters)
 
-    def set_experimental_spectrum_from_object(
-            self,
-            spectrum_object,
-            xbeg=None,xend=None,
-    ):
-        """Load a spectrum to fit from an x,y file."""
-        self.format_input_functions.append(self.name+f'.set_experimental_spectrum_from_object(experimental_spectrum.name,xbeg={xbeg:g},xend={xend:g})')
-        self.suboptimisers.append(spectrum_object)
-        i = tools.inrange(spectrum_object.x,xbeg,xend) # constant length
-        def f():
-            self.set_experimental_spectrum(
-                spectrum_object.x[i],
-                spectrum_object.y[i])
-        f()
-
     def set_experimental_spectrum_from_file(self,filename,xbeg=None,xend=None,**file_to_array_kwargs):
         """Load a spectrum to fit from an x,y file."""
-        self.format_input_functions.append(self.name+f'.set_experimental_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(file_to_array_kwargs)})')
+        self.add_format_input_function(self.name+f'.set_experimental_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(file_to_array_kwargs)})')
         x,y = tools.file_to_array_unpack(filename,**file_to_array_kwargs)
         self.experimental_parameters['filename'] = filename
         self.set_experimental_spectrum(x,y,xbeg,xend)
@@ -138,31 +123,18 @@ class Spectrum(optimise.Optimiser):
         def construct_function():
             self.xexp *= float(scale)
         self._exp.add_construct_function(construct_function)
-        
-    def set_jh_inst_spectrum_from_file(self,filename_or_scan_index,xbeg=None,xend=None):
-        """Load spectrum from the Jaroslav Heyrovský institute, or by index in summary_of_scans -- probably out of date."""
-        if isinstance(filename_or_scan_index,str):
-            self.set_experimental_spectrum_from_file(filename_or_scan_index,xbeg,xend) 
-            self.format_input_functions.pop(-1) # since defined here
-            self.format_input_functions.append(lambda: f'{self.name}.set_jh_inst_spectrum_from_file({repr(filename_or_scan_index)},xbeg={repr(xbeg)},xend={repr(xend)})')
-        elif isinstance(filename_or_scan_index,int):
-            if 'jh_inst_summary_of_scans' not in self._cache:
-                self._cache['jh_inst_summary_of_scans'] = Dynamic_Recarray(load_from_filename='~/exp/jh-inst/PALS_HR_FTIR/scans/summary_of_scans.rs')
-            decoded_filename_or_scan_index = '/home/heays/exp/jh-inst/PALS_HR_FTIR/scans/'+self._cache['jh_inst_summary_of_scans'].get_unique_value('filename',index=filename_or_scan_index)
-            self.set_experimental_spectrum_from_file(decoded_filename_or_scan_index,xbeg,xend) 
-            self.format_input_functions.pop(-1) # since defined here
-            self.format_input_functions.append(lambda: f'{self.name}.set_jh_inst_spectrum_from_file({repr(filename_or_scan_index)},xbeg={repr(xbeg)},xend={repr(xend)}) # decoded filename: {decoded_filename_or_scan_index}')
-        else:
-            raise Exception
 
-    def interpolate_spectrum(self,dx):
+    def interpolate_experimental_spectrum(self,dx):
         """Interpolate experimental spectrum to a grid of width dx, may change
         position of xend."""
-        self.format_input_functions.append(self.name+f'.interpolate_spectrum({repr(dx)})')
-        xnew = np.arange(self.xexp[0],self.xexp[-1],dx)
-        ynew = tools.spline(self.xexp,self.yexp,xnew)
-        if self.verbose: print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.xexp[0])},{repr(self.xexp[-1])},{self.xexp[1]-self.xexp[0]})")
-        self.xexp,self.yexp = xnew,ynew
+        self.add_format_input_function(self.name+f'.interpolate_spectrum({repr(dx)})')
+        def f():
+            xnew = np.arange(self.xexp[0],self.xexp[-1],dx)
+            ynew = tools.spline(self.xexp,self.yexp,xnew)
+            if self.verbose:
+                print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.xexp[0])},{repr(self.xexp[-1])},{self.xexp[1]-self.xexp[0]})")
+            self.xexp,self.yexp = xnew,ynew
+        self._exp.add_construct_function(f)
 
     def interpolate_model_spectrum(self,dx):
         """When calculating model set to dx grid (or less to achieve
@@ -192,7 +164,7 @@ class Spectrum(optimise.Optimiser):
         grid. Add absorption according to given column density, which
         can be optimised."""
         ## add adjustable parameters for optimisation
-        p = self.add_parameter_set(
+        p = self._mod.add_parameter_set(
             note=f'add_absorption_cross_section_from_file name={name} file={filename}',
             column_density=column_density, xshift=xshift,
             yshift=yshift, xscale=xscale, yscale=yscale,
@@ -215,7 +187,7 @@ class Spectrum(optimise.Optimiser):
                 retval += f',{p.format_input()}'
             retval += ')'
             return(retval)
-        self.format_input_functions.append(f)
+        self.add_format_input_function(f)
         if xkey is None and ykey is None:
             xin,σin = tools.file_to_array_unpack(filename,**file_to_dict_or_array_kwargs)
         elif xkey is not None and ykey is not None:
@@ -267,7 +239,7 @@ class Spectrum(optimise.Optimiser):
         """Load a cross section from a file. Interpolate this to experimental
         grid. Add absorption according to given column density, which
         can be optimised."""
-        p = self.add_parameter_set(
+        p = self._mod.add_parameter_set(
             note=f'add_absorption_cross_section {cross_section_object.name} in {self.name}',
             column_density=column_density,# xshift=xshift, xscale=xscale,
             step_scale_default={'column_density':0.01, 'xshift':1e-3, 'xscale':1e-8,})
@@ -281,8 +253,8 @@ class Spectrum(optimise.Optimiser):
                 retval += f',{p.format_input()}'
             retval += ')'
             return(retval)
-        self.format_input_functions.append(f)
-        self.suboptimisers.append(cross_section_object)
+        self.add_format_input_function(f)
+        self._exp.add_suboptimisers(cross_section_object)
         cache = {}
         def f():
             ## update if necessary
@@ -304,105 +276,6 @@ class Spectrum(optimise.Optimiser):
             # self.optical_depths[cross_section_object.name] = cache['τ']
         self._mod.add_construct_function(f)
     add_cross_section = add_absorption_cross_section # deprecated name
-
-    def add_transition_from_file(
-            self,
-            filename, # must be a "transitions format" file
-            vν=False, # vary frequency
-            vf=False, # vary fvalue
-            vΓ=False,
-            νshift=0.,  # shift uniformly -- WARNING conflicts with vν
-            fscale=1.,  # scale uniformly -- WARNING conflicts with vf
-            **file_to_transition_kwargs,
-    ):
-        """Add all lines in a transition file."""
-        p = self.add_parameter_set('add_transition_from_file',νshift=νshift,fscale=fscale,step_scale_default=1e-2)
-        self.format_input_functions.append(lambda: f'{self.name}.add_transition_from_file({repr(filename)},vν={repr(vν)},vf={repr(vf)},vΓ={repr(vΓ)},{repr(p)},{tools.dict_to_kwargs(file_to_transition_kwargs)})')
-        ## load transition
-        transition = spectra.file_to_transition( 
-            filename,
-            temperaturepp=300., # default value
-            column_densitypp=1., # default value
-            dν=np.nan, df=np.nan, dΓ=np.nan, # ensure set
-            **file_to_transition_kwargs
-        )
-        self.ftransition.append(transition) #  add to self
-        j = slice(len(self.ftransition)-len(transition),len(self.ftransition)) # indices in transition of this new data
-        ## deal with uniform shift and scale parameters
-        p.νcache,p.fcache = copy(transition['ν']),copy(transition['f'])
-        p.νshift_cache,p.fscale_cache = np.nan,np.nan
-        def f():
-            if p.νshift_cache!=p['νshift'] or p.fscale_cache!=p['fscale']:
-                p.νshift_cache,p.fscale_cache = p['νshift'],p['fscale']
-                self.ftransition['ν'][j] = p.νcache-p['νshift']
-                self.ftransition['f'][j] = p.fcache*np.abs(p['fscale'])
-        self._mod.add_construct_function(f)        
-        ## add varied parameters to optimiser, get functions to update on optimisation
-        i = (transition['ν'][j]>=self.xexp[0])&(transition['ν'][j]<=self.xexp[-1]) # in range for useful variation
-        if vν:
-            p = self.add_parameter_list(filename,transition['ν'][j][i],vν,step=0.01)
-            def f(p=p): self.ftransition['ν'][j][i],self.ftransition['dν'][j][i] = p.plist,p.dplist
-            self._mod.add_construct_function(f)
-        if vf:
-            p = self.add_parameter_list(filename,transition['f'][i],vf,step=transition['f'][i]*1e-2)
-            def f(p=p): self.ftransition['f'][j][i],self.ftransition['df'][j][i] = np.abs(p.plist),p.dplist
-            self._mod.add_construct_function(f)
-        if vΓ:
-            p = self.add_parameter_list(filename,transition['Γ'][j][i],vΓ,step=0.01)
-            def f(p=p): self.ftransition['Γ'][j][i],self.ftransition['dΓ'][j][i] = np.abs(p.plist),p.dplist
-            self._mod.add_construct_function(f)
-
-    def add_transition(self,transition,name=None,**optimise_keys_vals):
-        """Add all lines in a transition file. These are copied locally and
-        then whatever is in optimise_keys_vals is applied each iteration, and
-        then possibly optimised themselves. I.e., temperaturepp or
-        column_densitypp. DEPRECATED, used add_absorption_transition"""
-        warnings.warn('add_transition deprecated. Used add_absorption_transition or add_emission_transition')
-        ## make local_transition depedent on the data in transition and any optimsied keys_vals
-        if name is None:
-            name =  f'{transition.name}_in_{self.name}'
-        if transition['level_transition_type'] == 'Rotational_Transition':
-            local_transition = Rotational_Transition(
-                Name=name,
-                partition_source=transition['partition_source'],
-                # partition_sourcepp=transition['partition_sourcepp'],
-                # partition_sourcep=transition['partition_sourcep'],
-            )
-        elif transition['level_transition_type'] == 'Atomic_Transition':
-            local_transition = Atomic_Transition(Name=name)
-        else:
-            raise Exception("Do not know how to add transition of level_transition_type {repr(transition['level_transition_type'])}")
-        local_transition.format_input_functions = [] # do not reproduce an input line for this
-        ## add optimisable things
-        p = local_transition.add_parameter_set(f'add_transition {transition.name} to {self.name}',**optimise_keys_vals) # optimise these with initial values
-        local_transition.suboptimisers.append(transition)
-        ## update local transition data from parent transition and
-        def f():
-            ## delete all data  if length changed -- a crude test of major changes
-            if len(local_transition)!=len(transition):
-                local_transition.clear()
-                local_transition.set_length(len(transition))
-            ## no data - do not try to set anything
-            if len(transition)==0:
-                return
-            for key in transition.set_keys():
-                if not local_transition.is_set(key) or np.any(local_transition[key]!=transition[key]):
-                    local_transition[key] = transition[key]
-            for key in p.keys():
-                if not local_transition.is_set(key) or np.any(local_transition[key]!=p[key]):
-                    local_transition[key] = p[key]
-            ## indicate a changed optical depth
-            # self.optical_depths[local_transition] = None 
-        local_transition.construct_functions.append(f)
-        ## add this as a suboptimiser to self
-        self.transitions.append(local_transition)
-        self.suboptimisers.append(local_transition)
-        def f():
-            retval = f'{self.name}.add_transition({transition.name},'
-            retval += f'name={repr(name)},'
-            retval += f'{p.format_input()})'
-            return(retval)
-        self.format_input_functions.append(f)
 
     def add_absorption_lines(
             self,
@@ -486,9 +359,9 @@ class Spectrum(optimise.Optimiser):
             return(','.join(retval))
         self.add_format_input_function(f)
 
-    def add_emission_transition(
+    def add_emission_lines(
             self,
-            transition,
+            lines,
             nfwhmL=None,
             nfwhmG=None,
             Imin=None,
@@ -497,32 +370,32 @@ class Spectrum(optimise.Optimiser):
             use_multiprocessing=None,
             use_cache=None,
             **optimise_keys_vals):
-        self.suboptimisers.append(transition) # to model rebuilt when transition changed
-        self.transitions.append(transition)   
-        name = f'add_emission_transition_transition {transition.name} to {self.name}'
-        assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
-        self.emission_intensities[name] = None
-        p = self.add_parameter_set(**optimise_keys_vals,note=name)
+        self._mod.add_suboptimiser(lines) # to model rebuilt when transition changed
+        # self.transitions.append(transition)   
+        name = f'add_emission_lines {lines.name} to {self.name}'
+        # assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
+        # self.emission_intensities[name] = None
+        p = self._mod.add_parameter_set(**optimise_keys_vals,note=name)
         cache = {}
         def construct_function():
             ## first call -- no good, xmod not set yet
             if self.xexp is None:
-                self.emission_intensities[name] = None
+                # self.emission_intensities[name] = None
                 return
             ## recompute spectrum
             if (cache =={}
-                or self.emission_intensities[name] is None # currently no spectrum computed
-                or self.timestamp<transition.timestamp # transition has changed
+                # or self.emission_intensities[name] is None # currently no spectrum computed
+                or self.timestamp<lines.timestamp # transition has changed
                 or self.timestamp<p.timestamp     # optimise_keys_vals has changed
                 or not (len(cache['xexp']) == len(self.xexp)) # experimental domain has changed
                 or not np.all( cache['xexp'] == self.xexp )): # experimental domain has changed
                 ## update optimise_keys_vals that have changed
                 for key,val in p.items():
-                    if (not transition.is_set(key)
-                        or np.any(transition[key]!=val)):
-                        transition[key] = val
+                    if (not lines.is_set(key)
+                        or np.any(lines[key]!=val)):
+                        lines[key] = val
                 ## that actual computation
-                x,y = transition.calculate_spectrum(
+                x,y = lines.calculate_spectrum(
                     x=self.xmod,
                     ykey='I',
                     nfwhmG=(nfwhmG if nfwhmG is not None else 10),
@@ -543,7 +416,7 @@ class Spectrum(optimise.Optimiser):
         self._mod.add_construct_function(construct_function)
         ## new input line
         def f():
-            retval = f'{self.name}.add_emission_transition({transition.name}'
+            retval = f'{self.name}.add_emission_lines({lines.name}'
             if nfwhmL is not None: retval += f',nfwhmL={repr(nfwhmL)}'
             if nfwhmG is not None: retval += f',nfwhmG={repr(nfwhmG)}'
             if Imin is not None: retval += f',Imin={repr(Imin)}'
@@ -553,7 +426,7 @@ class Spectrum(optimise.Optimiser):
             if gaussian_method is not None: retval += f',gaussian_method={repr(gaussian_method)}'
             if len(p)>0: retval += f',{p.format_input()}'
             return(retval+')')
-        self.format_input_functions.append(f)
+        self.add_format_input_function(f)
         
     def construct_experiment(self):
         """Load, calibrate, and preprocess experimental before fitting any
@@ -589,7 +462,7 @@ class Spectrum(optimise.Optimiser):
         x,y,header = load_SOLEIL_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
         self.experimental_parameters.update(header)
-        p = self.add_parameter_set('load_SOLEIL_spectrum_from_file',xscale=xscale,step_default={'xscale':1e-8},)
+        p = self._exp.add_parameter_set('load_SOLEIL_spectrum_from_file',xscale=xscale,step_default={'xscale':1e-8},)
         def f():
             retval = f'{self.name}.load_SOLEIL_spectrum_from_file({repr(filename)}'
             if xbeg is not None:
@@ -600,7 +473,7 @@ class Spectrum(optimise.Optimiser):
                 retval += f',{p.format_input()}'
             retval += ')'
             return(retval)
-        self.format_input_functions.append(f)
+        self.add_format_input_function(f)
         ## Limit xbeg/xend to fall within limits of actual data. If
         ## there is no data then self.xexp and self.yexp are None
         if xbeg is None:
@@ -636,7 +509,7 @@ class Spectrum(optimise.Optimiser):
         between xbeg and xend to the experimental data. Also rescale
         if the experimental data has been interpolated."""
         ## new input line
-        self.format_input_functions.append(
+        self.add_format_input_function(
             lambda: f'{self.name}.fit_noise({xbeg},{xend},n={n},figure_number={figure_number})')
         self.construct_experiment() # need experimental data to be already loaded
         ## deal with interpolation factor (4 means 3 intervening extra points added)
@@ -696,7 +569,7 @@ class Spectrum(optimise.Optimiser):
             if xend is not None:
                 retval += f',{repr(xend)}'
             return retval+')'
-        self.format_input_functions.append(f)
+        self.add_format_input_function(f)
         def f():
             if xbeg is None and xend is None:
                 self.model_residual_weighting = np.full(self.xexp.shape,weighting,dtype=float)
@@ -729,7 +602,7 @@ class Spectrum(optimise.Optimiser):
             **qn,        # anything else describing this 
     ):
         """Autodetect lines in experimental spectrum."""
-        self.format_input_functions.append('# '+self.name+f'.autodetect_lines(filename={repr(filename)},τ={τ},Γ={Γ},vν={repr(vν)},vτ={repr(vτ)},vΓ={repr(vΓ)},τscale={repr(τscale)},xmin={repr(xmin)},ymin={repr(ymin)},'+tools.dict_to_kwargs(qn)+')')
+        self.add_format_input_function('# '+self.name+f'.autodetect_lines(filename={repr(filename)},τ={τ},Γ={Γ},vν={repr(vν)},vτ={repr(vτ)},vΓ={repr(vΓ)},τscale={repr(τscale)},xmin={repr(xmin)},ymin={repr(ymin)},'+tools.dict_to_kwargs(qn)+')')
         ## get something to find lines in
         if filename is None:
             x = copy(self.xexp)
@@ -784,86 +657,23 @@ class Spectrum(optimise.Optimiser):
             lines.append(dict(ν=(ν,vν),τ=(τ,vτ),Γ=(Γ,vΓ)))
         self.add_lines(*lines,**qn) # add to self via add_lines
         if self.verbose: print("autodetect_lines added",i+1,"lines")
-
-    # def convert_to_emission_intensity(
-            # self,
-            # widths_cutoff=np.inf,
-            # minimum_strength=-np.inf,
-            # use_multiprocessing=False,
-    # ):
-        # """Compute total emission intensitiy."""
-        # self.format_input_functions.append(lambda: f'{self.name}.convert_to_emission_intensity(widths_cutoff={repr(widths_cutoff)},minimum_strength={repr(minimum_strength)})')
-        # def f():
-            # ## Add all emission intensities to ymod, recomputing them if
-            # ## necessary.
-            # for transition,I in self.emission_intensities.items():
-                # if I is None:
-                    # ν,I = transition.calculate_spectrum(
-                        # self.xmod,
-                        # ykey='Ae',
-                        # nfwhmG=10,
-                        # nfwhmL=widths_cutoff,
-                        # ymin=minimum_strength,
-                        # method='wofz',
-                        # # method='fortran',
-                        # use_multiprocessing=use_multiprocessing,
-                        # use_cache=False,
-                    # )
-                    # self.emission_intensities[transition] = I
-                # self.ymod += self.emission_intensities[transition]
-        # self._mod.add_construct_function(f)
-
-    # def convert_to_optical_depth(
-            # self,
-            # widths_cutoff=np.inf,
-            # minimum_strength=-np.inf,
-            # use_multiprocessing=False,
-    # ):
-        # """Compute optical depth of self.transition."""
-        # self.format_input_functions.append(lambda: f'{self.name}.convert_to_optical_depth(widths_cutoff={repr(widths_cutoff)},minimum_strength={repr(minimum_strength)})')
-        # def f():
-            # ## ensure computed optical depth
-            # for t in self.transitions:
-                # if t not in self.optical_depths or self.optical_depths[t] is None:
-                    # ## Can use Fortran once under-resolved Lorentzian's are accounted for -- it is about 3 times faster
-                    # ## ν,τ = t.calculate_spectrum(self.xmod,ykey='τ',nfwhmG=10,nfwhmL=widths_cutoff,ymin=minimum_strength,method='wofz',)
-                    # ν,τ = t.calculate_spectrum(
-                        # self.xmod,
-                        # ykey='τ',
-                        # nfwhmG=10,
-                        # nfwhmL=widths_cutoff,
-                        # ymin=minimum_strength,
-                        # voigt_method='wofz',
-                        # # method='fortran',
-                        # use_multiprocessing=use_multiprocessing,
-                        # use_cache=False,
-                    # )
-                    # self.optical_depths[t] = τ
-                # self.ymod += self.optical_depths[t]
-        # self._mod.add_construct_function(f)
-    
-    def convert_to_transmission(self):
-        """Convert optical depths calculated thus far to a transmission spectrum."""
-        ## create the continuum object
-        self.format_input_functions.append(self.name+'.convert_to_transmission()')
-        def f():
-            self.ymod = np.exp(-self.ymod)
-        self._mod.add_construct_function(f)
         
     def scale_by_constant(self,scale=1.0):
         """Scale model by a constant value."""
-        scale = self.add_parameter('scale',scale)
-        self.format_input_functions.append(lambda: f"{self.name}.scale_by_constant(ν={repr(scale)})")
-        def construct_function():
+        scale = self._mod.add_parameter('scale',scale)
+        self.add_format_input_function(lambda: f"{self.name}.scale_by_constant(ν={repr(scale)})")
+        def f():
             self.ymod *= scale.p
-        self._mod.add_construct_function(construct_function)
+        self._mod.add_construct_function(f)
 
     def scale_by_spline(self,ν=50,amplitudes=1,vary=True,step=0.0001,order=3):
         """Scale by a spline defined function."""
-        if np.isscalar(ν):           ν = np.arange(self.xexp[0]-ν,self.xexp[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
-        if np.isscalar(amplitudes):  amplitudes = amplitudes*np.ones(len(ν)) # default amplitudes to list of hge same length
+        if np.isscalar(ν):
+            ν = np.arange(self.xexp[0]-ν,self.xexp[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
+        if np.isscalar(amplitudes):
+            amplitudes = amplitudes*np.ones(len(ν)) # default amplitudes to list of hge same length
         ν,amplitudes = np.array(ν),np.array(amplitudes)
-        p = self.add_parameter_list(f'scale_by_spline',amplitudes,vary,step) # add to optimsier
+        p = self._mod.add_parameter_list(f'scale_by_spline',amplitudes,vary,step) # add to optimsier
         def format_input_function():
             retval = f"{self.name}.scale_by_spline("
             retval += f"vary={repr(vary)}"
@@ -872,8 +682,7 @@ class Spectrum(optimise.Optimiser):
             retval += f",step={repr(step)}"
             retval += f",order={repr(order)}"
             return(retval+')')
-        self.format_input_functions.append(format_input_function)
-        # self.format_input_functions.append(lambda: f"{self.name}.scale_by_spline(ν={repr(list(ν))},amplitudes={repr(p.plist)},vary={repr(vary)},step={repr(step)},order={repr(order)})") # new input line
+        self.add_format_input_function(format_input_function)
         def f():
             i = (self.xmod>=np.min(ν))&(self.xmod<=np.max(ν))
             self.ymod[i] = self.ymod[i]*scipy.interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.xmod[i])
@@ -926,8 +735,8 @@ class Spectrum(optimise.Optimiser):
                     ax.set_ylabel('f')
         elif np.isscalar(phase):
             phase = 2*constants.pi*(ν-self.xexp[0])/phase
-        amplitude = self.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
-        phase = self.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
+        amplitude = self._mod.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
+        phase = self._mod.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
         def format_input_function():
             retval = f"{self.name}.modulate_by_spline("
             retval += f"vary_amplitude={repr(vary_amplitude)}"
@@ -938,48 +747,9 @@ class Spectrum(optimise.Optimiser):
             retval += f",step_amplitude={repr(step_amplitude)}"
             retval += f",step_phase={repr(step_phase)}"
             return(retval+')')
-        self.format_input_functions.append(format_input_function)
+        self.add_format_input_function(format_input_function)
         def f():
             self.ymod *= 1. + tools.spline(ν,amplitude.plist,self.xmod)*np.sin(tools.spline(ν,phase.plist,self.xmod))
-        self._mod.add_construct_function(f)
-
-    # def modulate(self,*modulations,νbeg=None,νend=None,):
-        # """Modulate by 1 + sinusoid."""
-        # amplitude,frequency,phase = [],[],[]
-        # modulations = list(modulations)
-        # for i,m in enumerate(copy(modulations)):
-            # assert len(m)==3
-            # modulations[i] = (
-                # self.add_parameter(f'frequency_{i}',*tools.ensure_iterable(m[0]),note='modulate'),
-                # self.add_parameter(f'amplitude_{i}',*tools.ensure_iterable(m[1]),note='modulate'),
-                # self.add_parameter(f'phase_{i}'        ,*tools.ensure_iterable(m[2]),note='modulate'))
-        # def format_input_function():
-            # retval = f"{self.name}.modulate(\n    "
-            # retval += f",\n    ".join([repr(m) for m in modulations])+',\n'
-            # if νbeg is not None:
-                # retval += f"νbeg={νbeg},"
-            # if νend is not None:
-                # retval += f"νend={νend},"
-            # return(retval+')')
-        # self.format_input_functions.append(format_input_function)
-        # def f():
-            # iν = tools.inrange(self.xmod, (-np.inf if νbeg is None else νbeg), (np.inf if νend is None else νend),)
-            # ν = self.xmod[iν]
-            # modulation = np.zeros(ν.shape,dtype=float)
-            # for f,a,p in modulations:
-                # modulation += a.p*np.sin(2*constants.pi*f.p*ν+p.p)
-            # self.ymod[iν] *= 1. + modulation
-        # self._mod.add_construct_function(f)
-
-    def scale_by_polynomial(self,center=None,p0=0,p1=0,p2=0,p3=0):
-        """Multiply transmission by a source intensity."""
-        ## deal with inputs
-        if center is None: center = 0.5*(self.xexp[0]+self.xexp[-1])
-        p = self.add_parameter_set('scale_by_polynomial',p0=p0,p1=p1,p2=p2,p3=p3,step_scale_default=0.1)
-        if center<(self.xexp[0]-100) or center>(self.xexp[-1]+100): warnings.warn('scale_by_polynomial center far outside of x-range')
-        self.format_input_functions.append(lambda: f"{self.name}.scale_by_polynomial(center={center:0.8g},\n{p.format_multiline(neglect_fixed_zeros=True)}\n)")
-        def f():
-            self.ymod = self.ymod*np.polyval([p['p3'],p['p2'],p['p1'],p['p0']],self.xmod-center)
         self._mod.add_construct_function(f)
 
     def add_intensity(self,intensity=1):
@@ -1012,33 +782,21 @@ class Spectrum(optimise.Optimiser):
             lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.plist)},step={repr(step)},order={repr(order)})") # new input line
         self._mod.add_construct_function(f) # multiply spline during construct
 
-    shift_by_spline = add_intensity_spline # deprecated
+    # def scale_by_source_from_file(self,filename,scale_factor=1.):
+        # p = self._mod.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
+        # self.add_format_input_function(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
+        # x,y = tools.file_to_array_unpack(filename)
+        # scale = tools.spline(x,y,self.xexp)
+        # def f(): self.ymod *= scale*p['scale_factor']
+        # self._mod.add_construct_function(f)
 
     def shift_by_constant(self,shift=0.):
         """Shift by a constant amount."""
-        shift = self.add_parameter('shift_by_constant',*tools.ensure_iterable(shift)) # add to optimsier
-        self.format_input_functions.append(lambda: f"{self.name}.shift_by_constant({repr(shift)})")
+        shift = self._mod.add_parameter('shift_by_constant',*tools.ensure_iterable(shift)) # add to optimsier
+        self.add_format_input_function(lambda: f"{self.name}.shift_by_constant({repr(shift)})")
         def f():
             self.ymod += shift.p
         self._mod.add_construct_function(f) # multiply spline during construct
-
-    def shift_by_polynomial(self,center=None,p0=0,p1=0,p2=0,p3=0):
-        """Multiply transmission by a source intensity."""
-        ## deal with inputs
-        if center is None: center = 0.5*(self.xexp[0]+self.xexp[-1])
-        p = self.add_parameter_set('shift_by_polynomial',p0=p0,p1=p1,p2=p2,p3=p3,step_scale_default=0.1)
-        if center<(self.xexp[0]-100) or center>(self.xexp[-1]+100): warnings.warn('shift_by_polynomial center far outside of x-range')
-        self.format_input_functions.append(lambda: f"{self.name}.shift_by_polynomial(center={center:0.8g},\n{p.format_multiline(neglect_fixed_zeros=True)}\n)")
-        def f(): self.ymod += np.polyval([p['p3'],p['p2'],p['p1'],p['p0']],self.xmod-center)
-        self._mod.add_construct_function(f)
-
-    def scale_by_source_from_file(self,filename,scale_factor=1.):
-        p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
-        self.format_input_functions.append(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
-        x,y = tools.file_to_array_unpack(filename)
-        scale = tools.spline(x,y,self.xexp)
-        def f(): self.ymod *= scale*p['scale_factor']
-        self._mod.add_construct_function(f)
 
     def convolve_with_gaussian(self,width,fwhms_to_include=100):
         """Convolve with gaussian."""
@@ -1065,8 +823,8 @@ class Spectrum(optimise.Optimiser):
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
         """Convolve with lorentzian."""
-        p = self.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
-        self.format_input_functions.append(lambda: f'{self.name}.convolve_with_lorentzian({p.format_input()})')
+        p = self._mod.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
+        self.add_format_input_function(lambda: f'{self.name}.convolve_with_lorentzian({p.format_input()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
             x,y = self.xmod,self.ymod
@@ -1089,11 +847,11 @@ class Spectrum(optimise.Optimiser):
     def convolve_with_sinc(self,width=None,fwhms_to_include=100):
         """Convolve with sinc function, width is FWHM."""
         ## check if there is a risk that subsampling will ruin the convolution
-        p = self.add_parameter_set('convolve_with_sinc',width=width)
+        p = self._mod.add_parameter_set('convolve_with_sinc',width=width)
         if 'sinc_FWHM' in self.experimental_parameters: # get auto width and make sure consistent with what is given
             if width is None: width = self.experimental_parameters['sinc_FWHM']
             if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
-        self.format_input_functions.append(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
+        self.add_format_input_function(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
         if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         def f():
             x,y = self.xmod,self.ymod
@@ -1124,7 +882,7 @@ class Spectrum(optimise.Optimiser):
     ):
         """Convolve with sinc function, width is FWHM."""
         ## check if there is a risk that subsampling will ruin the convolution
-        p = self.add_parameter_set(
+        p = self._mod.add_parameter_set(
             'convolve_with_instrument_function',
             sinc_fwhm=sinc_fwhm,
             gaussian_fwhm=gaussian_fwhm,
@@ -1153,7 +911,7 @@ class Spectrum(optimise.Optimiser):
             if p['lorentzian_fwhm']!=0: retval += f',lorentzian_fwhms_to_include={lorentzian_fwhms_to_include}'
             retval += ')'
             return(retval)
-        self.format_input_functions.append(f)
+        self.add_format_input_function(f)
         # if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         instrument_function_cache = dict(y=None,width=None,) # for persistence between optimsiation function calls
         def f():
@@ -1273,7 +1031,7 @@ class Spectrum(optimise.Optimiser):
             self.ymod = scipy.fft.idct(ft*w) # new apodised spetrum
         self._mod.add_construct_function(f)
         # self.construct_functions.append(f)
-        self.format_input_functions.append(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
+        self.add_format_input_function(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
 
     def convolve_with_blackman_harris(self,terms=3):
         """Convolve with the coefficients equivalent to a Blackman-Harris
@@ -1282,7 +1040,7 @@ class Spectrum(optimise.Optimiser):
         the left.  This is faster than apodisation in the
         length-domain."""
         raise ImplementationError('Does not quite work in current form when compared with frequency-domain apodisation.')
-        # self.format_input_functions.append(lambda: f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow})')
+        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow})')
         warned_already = False
         def f():
             x,y = self.xmod,self.ymod
@@ -1318,7 +1076,7 @@ class Spectrum(optimise.Optimiser):
             xend=None,
     ):
         """Convolve with signum function generating asymmetry. δ(x-x0) + amplitude/(x-x0)."""
-        amplitude = self.add_parameter('amplitude',*tools.ensure_iterable(amplitude),note='convolve_with_signum')
+        amplitude = self._mod.add_parameter('amplitude',*tools.ensure_iterable(amplitude),note='convolve_with_signum')
         def f():
             retval =  f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow}'
             if xbeg is not None:
@@ -1326,7 +1084,7 @@ class Spectrum(optimise.Optimiser):
             if xend is not None:
                 retval += f',xend={xend}'
             return(retval+')')
-        self.format_input_functions.append(f)
+        self.add_format_input_function(f)
         def f():
             i = ((self.xmod>=(xbeg if xbeg is not None else -np.inf))
                  &(self.xmod<=(xend if xend is not None else np.inf)))
@@ -1363,7 +1121,7 @@ class Spectrum(optimise.Optimiser):
             sinc_fwhm = (self.experimental_parameters['sinc_FWHM'],None,1e-3)
         if gaussian_fwhm is None:
             gaussian_fwhm = (0.1,None,1e-3)
-        p = self.add_parameter_set(
+        p = self._mod.add_parameter_set(
             'convolve_with_instrument_function',
             sinc_fwhm=sinc_fwhm,
             gaussian_fwhm=gaussian_fwhm,
@@ -1381,7 +1139,7 @@ class Spectrum(optimise.Optimiser):
             if p['lorentzian_fwhm']!=0: retval += f',lorentzian_fwhms_to_include={lorentzian_fwhms_to_include}'
             retval += ')'
             return(retval)
-        self.format_input_functions.append(f)
+        self.add_format_input_function(f)
         ## generate instrument function and broaden
         cache = dict(y=None,width=None,) # for persistence between optimisation function calls
         def f():
@@ -1453,11 +1211,11 @@ class Spectrum(optimise.Optimiser):
         filename = self.experimental_parameters['filename']
         x,y,header = load_SOLEIL_spectrum_from_file(filename)
         yshifted ={'left':None,'right':None}
-        p = self.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
+        p = self._mod.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
                                    magnitude=magnitude,shift=shift,
                                    step_default={'magnitude':1e-3,'shift':1e-3},)
         previous_shift = [p['shift']]
-        self.format_input_functions.append(lambda: f'{self.name}.add_SOLEIL_double_shifted_delta_function({p.format_input()})')
+        self.add_format_input_function(lambda: f'{self.name}.add_SOLEIL_double_shifted_delta_function({p.format_input()})')
         def f():
             ## +shift from left -- use cached value of splined shifted
             ## spectrum if shift has not changed
@@ -1482,15 +1240,6 @@ class Spectrum(optimise.Optimiser):
                 i,dy = yshifted['right']
             self.ymod[i] += dy*p['magnitude']*-1
         self._mod.add_construct_function(f)
-        
-    # def set_polynomial_fvalue(self,name_regexp='',p0=1,p1=0,p2=0,p3=0,xkey='Jp',**matching_qn):
-        # """Fit f to a polynomial in terms of xkey(xkey+1)."""
-        # p = self.add_parameter_set('set_polynomial_fvalue',p0=p0,p1=p1,p2=p2,p3=p3)
-        # self.format_input_functions.append(lambda: f'{self.name}.set_polynomial_fvalue({repr(name_regexp)},{repr(p)},xkey={repr(xkey)})')
-        # i = self.ftransition.match(name_regexp=name_regexp,**matching_qn) # matching lines
-        # def f():
-            # self.ftransition['f'][i] = np.polyval([p['p3'],p['p2'],p['p1'],p['p0']],self.ftransition[xkey][i]*(self.ftransition[xkey][i]+1))
-        # self._mod.add_construct_function(f)
         
     def plot(
             self,
@@ -1657,36 +1406,6 @@ class Spectrum(optimise.Optimiser):
         self._figure = fig
         return(fig)
 
-
-    plot_spectrum = plot        # DEPRECATED
-
-
-    def plot_band_parameters(self,figure_number=None,ykeys=('f','Treducedp','Treduced_commonp','Γ'),xkey='Jp',names_re='.*',ignore_uncertainties=False,**plot_kwargs): 
-        """Plot band parameters."""
-        self.format_input_functions.append(lambda: f'{self.name}.plot_band_parameters(figure_number={repr(figure_number)},ykeys={repr(ykeys)},xkey={repr(xkey)},names_re={repr(names_re)},ignore_uncertainties={repr(ignore_uncertainties)},{tools.dict_to_kwargs(plot_kwargs)})')
-        plt.rcParams.update({
-            'figure.autolayout':True ,
-            'lines.linewidth': 0.5, 'lines.markersize': 10.0, 'lines.markeredgewidth': 0, 'patch.edgecolor': 'none',
-            'grid.alpha' : 1.0, 'grid.color' : 'gray', 'grid.linestyle' : ':',
-            'axes.titlesize'       :14., 'axes.labelsize'       :14.,
-            'xtick.labelsize'      :14., 'ytick.labelsize'      :14.,
-            'legend.fontsize'      :12., 'legend.handlelength'  :1.5, 'legend.handletextpad' :0.4, 'legend.labelspacing'  :0., 'legend.numpoints'     :1,
-            'font.size'            :14., 'font.family'          :'serif', 'text.usetex'          :False, 'mathtext.fontset'     :'cm',
-            'xtick.minor.top': True, 'xtick.minor.bottom': True, 'xtick.minor.visible': True , 'xtick.top': True , 'xtick.bottom': True ,
-            'ytick.minor.right': True, 'ytick.minor.left': True, 'ytick.minor.visible': True , 'ytick.right': True , 'ytick.left': True ,
-            'toolbar': 'toolbar2',
-            # 'toolbar': 'none',
-        })
-        if figure_number is None: figure_number = plt.gcf().number
-        tools.presetRcParams('a4landscape')
-        fig = plt.figure(figure_number)
-        if names_re is None:    transition = self.ftransition
-        else:                   transition = self.ftransition[tools.find_regexp(names_re,self.ftransition['name'])]
-        if not transition.is_known(xkey): return # no data to plot
-        ykeys = [t for t in ykeys if transition.is_known(t)]
-        if ignore_uncertainties: transition.unset(*['d'+key for key in ykeys])
-        transition.plot(xkey=xkey,ykeys=ykeys,**plot_kwargs)
-
     def output_data_to_directory(
             self,
             directory='td',
@@ -1774,146 +1493,15 @@ class Spectrum(optimise.Optimiser):
                 # # error_on_unknown_key=False, # fault tolerant
             # ))
 
-    # def get_transition(self,name):
-        # for t in self.transitions:
-            # if t.name==name:
-                # return(t)
-        # else:
-            # raise Exception(f'Transition names {repr(name)} not found.')    
-
     def show(self):
         """Show plots."""
-        self.format_input_functions.append(f'{self.name}.show()')
+        self.add_format_input_function(f'{self.name}.show()')
         plt.show()
 
 
-
-# def load_SOLEIL_spectrum_from_file(filename,remove_HeNe=False):
-    # """ Load SOLEIL spectrum from file with given path."""
-    # ## resolve SOLEIL filename
-    # if os.path.exists(tools.expand_path(filename)):
-        # ## filename is an actual path to a file
-        # filename = tools.expand_path(filename)
-    # elif os.path.exists(f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.hdf5'):
-        # ## filename is a scan base name in default data directory
-        # filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.hdf5'
-    # elif os.path.exists(f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'):
-        # ## filename is a scan base name in default data directory
-        # filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'
-    # else:
-        # ## else look for unique prefix in scan database
-        # t = tools.sheet_to_dict('~/exp/SOLEIL/summary_of_scans.rs',comment='#')
-        # i = tools.find_regexp(r'^'+re.escape(filename)+'.*',t['filename'])
-        # if len(i)==1:
-            # filename = t['filename'][int(i)]
-            # filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.hdf5'
-        # else:
-            # raise Exception(f"Could not find SOLEIL spectrum: {repr(filename)}")
-    # extension = os.path.splitext(filename)[1]
-    # ## get header data if possible, not possible if an hdf5 file is used.
-    # header = dict(filename=filename,header=[])
-    # if extension in ('.TXT','.wavenumbers'): 
-        # with open(filename,'r',encoding='latin-1') as fid:
-            # header['header'] = []
-            # while True:
-                # line = fid.readline()[:-1]
-                # if re.match(r'^ *[0-9.eE+-]+[, ]+[0-9.eE+-]+ *$',line): break # end of header
-                # header['header'].append(line) # save all lines to 'header'
-                # ## post-processing zero-adding leads to an
-                # ## interpolation of data by this factor
-                # r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
-                # if r:
-                    # header['interpolation_factor'] = float(r.group(1))
-                # ## the resolution before any interpolation
-                # r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
-                # if r: header['ds'] = float(r.group(1))
-                # ## NMAX parameter indicates that the spectrometer is
-                # ## being run at maximum resolution. This is not an
-                # ## even power of two. Then the spectrum is zero padded
-                # ## to have 2**21 points. This means that there is an
-                # ## additional interpolation factor of 2**21/NMAX. This
-                # ## will likely be non-integer.
-                # r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
-                # if r:
-                    # header['interpolation_factor'] *= 2**21/float(r.group(1))
-                # ## extract pressure from header
-                # r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
-                # if r:
-                    # header['date_time'] = r.group(1)
-                    # header['pressure_pirani'] = float(r.group(2))
-                    # header['pressure_baratron'] = float(r.group(3))
-            # header['header'] = '\n'.join(header['header'])
-            # ## compute instrumental resolution, FWHM
-    # elif extension in ('.hdf5','.h5'): # expect header stored in 'README'
-        # data = tools.hdf5_to_dict(filename)
-        # header['header'] = data['README']
-        # for line in header['header'].split('\n'):
-            # ## post-processing zero-adding leads to an
-            # ## interpolation of data by this factor
-            # r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
-            # if r:
-                # header['interpolation_factor'] = float(r.group(1))
-            # ## the resolution before any interpolation
-            # r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
-            # if r: header['ds'] = float(r.group(1))
-            # ## NMAX parameter -- see above
-            # r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
-            # if r:
-                # header['interpolation_factor'] *= 2**21/float(r.group(1))
-            # ## extract pressure from header
-            # r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
-            # if r:
-                # header['date_time'] = r.group(1)
-                # header['pressure_pirani'] = float(r.group(2))
-                # header['pressure_baratron'] = float(r.group(3))
-    # else:
-        # raise Exception(f"bad extension: {repr(extension)}")
-    # ## compute instrumental resolution, FWHM
-    # header['sinc_FWHM'] = 1.2*header['interpolation_factor']*header['ds'] 
-    # ## get spectrum
-    # if extension=='.TXT':
-        # x,y = [],[]
-        # data_started = False
-        # for line in tools.file_to_lines(filename,encoding='latin-1'):
-            # r = re.match(r'^([0-9]+),([0-9.eE+-]+)$',line) # data point line
-            # if r:
-                # data_started = True # header is passed
-                # x.append(float(r.group(1))),y.append(float(r.group(2))) # data point
-            # else:
-                # if data_started: break            # end of data
-                # else: continue                    # skip header line
-        # x,y = np.array(x)*header['ds'],np.array(y)
-    # elif extension=='.wavenumbers':
-        # x,y = tools.file_to_array(filename,unpack=True,comments='#',encoding='latin-1')
-    # elif extension in ('.hdf5','.h5'):
-        # data = tools.hdf5_to_dict(filename)
-        # x,y = data['data'].transpose()
-    # else:
-        # raise Exception(f"bad extension: {repr(extension)}")
-    # ## process a bit. Sort and remove HeNe line profile and jitter
-    # ## estimate. This is done assumign the spectrum comes
-    # ## first. and finding the first index were the wavenumber
-    # ## scale takes a backward step
-    # if remove_HeNe:
-        # i = x>31600
-        # x,y = x[i],y[i]
-    # t = tools.find(np.diff(x)<0)
-    # if len(t)>0:
-        # i = t[0]+1 
-        # x,y = x[:i],y[:i]
-    # ## get x range
-    # header['xmin'],header['xmax'] = x.min(),x.max()
-    # header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
-    # return (x,y,header)
-
-    # ## deprecated
-    # scale_by_source_spline = scale_by_spline
-
-
-
-# def load_spectrum(filename,**kwargs):
-    # """Use a heuristic method to load a directory output by
-    # Spectrum."""
-    # x = Spectrum()
-    # x.load_from_directory(filename,**kwargs)
-    # return(x)
+def load_spectrum(filename,**kwargs):
+    """Use a heuristic method to load a directory output by
+    Spectrum."""
+    x = Spectrum()
+    x.load_from_directory(filename,**kwargs)
+    return(x)
