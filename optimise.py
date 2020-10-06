@@ -662,8 +662,12 @@ class ParameterSet():
                 kwargs.append(f'{name}={p.name}')
             else:
                 raise Exception(f'Cannot handle: {name} = {repr(p)}')
-        separator = (',\n    ' if len(kwargs)>3 else ',')
-        return separator.join(kwargs)
+        if len(kwargs) == 0:
+            return ''
+        elif len(kwargs) <= 3:
+            return ','.join(kwargs)
+        else:
+            return '\n    '+',\n    '.join(kwargs)+'\n'
 
     def save(self,filename='parameters.psv'):
         tools.string_to_file(filename,str(self))

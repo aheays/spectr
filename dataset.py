@@ -51,53 +51,12 @@ class Dataset(optimise.Optimiser):
         assert self._length is not None,'Dataset has no length because all data is scalar'
         return(self._length)
 
-    # def _get_keys_values_uncertainties(self,**keys_vals):
-        # """Match keys for value and uncertainties, e.g., 'x' and 'dx'."""
-        # keys_values_uncertainties = {}
-        # keys = list(keys_vals.keys())
-        # while len(keys)>0:
-            # key = keys[0]
-            # if key[0] == self.uncertainty_prefix:
-                # assert key[1:] in keys,f'Uncertainty {repr(key)} in data but {repr(key[1:])} is not.'
-                # keys_values_uncertainties[key[1:]] = (keys_vals[key[1:]],keys_vals[key])
-                # keys.remove(key)
-                # keys.remove(key[1:])
-            # elif self.uncertainty_prefix+key in keys:
-                # keys_values_uncertainties[key] = (keys_vals[key],keys_vals[self.uncertainty_prefix+key])
-                # keys.remove(key)
-                # keys.remove(self.uncertainty_prefix+key)
-            # else:
-                # keys_values_uncertainties[key] = (keys_vals[key],None)
-                # keys.remove(key)
-        # return(keys_values_uncertainties)
-
     def __setitem__(self,key,value):
         """Shortcut to set, cannot set uncertainty this way."""
         if (value_key:=self._get_key_without_uncertainty(key)) is not None:
             self.set_uncertainty(value_key,value)
         else:
             self.set(key,value)
-
-    # def set_value(self,key,value,is_scalar=None,**data_kwargs):
-    #     """Set a value and possibly its uncertainty."""
-    #     self.unset_inferences(key)
-    #     assert self.permit_nonprototyped_data or key in self.prototypes, f'New data is not in prototypes: {repr(key)}'
-    #     ## if not previously set then get perhaps get a prototype
-    #     if key not in self and key in self.prototypes:
-    #         for tkey,tval in self.prototypes[key].items():
-    #             if tkey == 'infer':
-    #                 continue # not a Data kwarg
-    #             data_kwargs.setdefault(tkey,copy(tval))
-    #     ## set the data
-    #     if is_scalar or np.isscalar(value):
-    #         self._data[key] = Datum(value=value,**data_kwargs)
-    #     else:
-    #         self._data[key] = Data(value=value,**data_kwargs)
-    #         if self.is_scalar():
-    #             ## first array data, use this to define the length of self
-    #             self._length = len(self._data[key])
-    #         else:
-    #             assert len(self._data[key])==len(self),f'Length of data {repr(key)} does not match existing data.'
 
     def set(
             self,
@@ -307,7 +266,19 @@ class Dataset(optimise.Optimiser):
                 for i,dependency in enumerate(dependencies):
                     if self.has_uncertainty(dependency):
                         dparameters = copy(parameters)
-                        diffstep = self[dependency]*1e-10
+                        # if self.is_scalar(dependency):
+                            # if self[dependency]==0:
+                                # diffstep = 1e-9
+                            # else:
+                                # diffstep = 1e-9*self[dependency]
+                        # else:
+                           #  
+                            # if np.any(j:=(self[dependency]==0)):
+                                # diffstep = np.full(1e-9,len(self))
+                                # diffstep[j] = self[dependency][j]*1e-9
+                            # else:
+                                # diffstep = 1e-9
+                        diffstep = 1e-10*self[dependency]
                         dparameters[i] += diffstep
                         dvalue = value - function(*dparameters)
                         data = self._data[dependency]

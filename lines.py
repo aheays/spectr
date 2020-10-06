@@ -13,6 +13,7 @@ from . import tools
 from . import hitran
 from . import database
 from .conversions import convert
+from .exceptions import InferException
 
 level_suffix = {'upper':'_u','lower':'_l'}
 
@@ -54,31 +55,43 @@ class Base(levels._BaseLinesLevels):
         'species' :dict(description="Chemical species" ,kind=str ,infer={}) ,
         'mass':dict(description="Mass (amu)",kind=float, fmt='<11.4f', infer={
             # ('species',): lambda species: database.get_species_property(species,'mass')},
-            ('species',): lambda species: database.get_mass(species)},
-                    ),
+            ('species',): lambda species: database.get_mass(species),
+        },),
         'reduced_mass':dict(description="Reduced mass (amu)", kind=float, fmt='<11.4f', infer={('species','database',): lambda species: _get_species_property(species,'reduced_mass')}),
         'levels_class':dict(description="What Dataset subclass of Levels this is a transition between",kind='object',infer={}),
         'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s'),
         'ν':dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>0.6f', infer={}),
-        'Γ' :dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind=float, fmt='<10.5g', infer={('γself','Pself'):lambda γ,Pself: γ*convert(Pself,'Pa','atm'),}),
+        'Γ' :dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind=float, fmt='<10.5g', infer={
+            ('γself','Pself','γair','Pair'):lambda γself,Pself,γair,Pair: γself*convert(Pself,'Pa','atm')+γair*convert(Pair,'Pa','atm'), # LINEAR COMBINATION!
+            ('γself','Pself'):lambda γself,Pself: γself*convert(Pself,'Pa','atm'),
+            ('γair','Pair'):lambda γair,Pair: γair*convert(Pair,'Pa','atm'),
+        }),
         'ΓD':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={}),
         'f':dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e', infer={('Ae','ν','g_u','g_l'):lambda Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2,}),
-        'σpa':dict(description="Integrated cross section (cm2.cm-1).", kind=float, fmt='<10.5e', infer={('τ','Nself_l'):lambda τ,column_densitypp: τ/column_densitypp, ('f','α_l'):lambda f,α_l: f/1.1296e12*α_l,}),
+        'σpa':dict(description="Integrated cross section (cm2.cm-1).", kind=float, fmt='<10.5e', infer={
+            ('τ','Nself_l'):lambda τ,column_densitypp: τ/column_densitypp,
+            ('f','α_l'):lambda f,α_l: f/1.1296e12*α_l,
+        }),
         'τpa':dict(description="Integrated optical depth (cm-1)", kind=float, fmt='<10.5e', infer={('σpa','Nself_l'):lambda σpa,Nself_l: σpa*Nself_l,},),
         'Ae':dict(description="Radiative decay rate (s-1)", kind=float, fmt='<10.5g', infer={('At','Ad'): lambda At,Ad: At-Ad,}),
-        'γair':dict(description="Pressure broadening coefficient in air (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
-        'δair':dict(description="Pressure shift coefficient in air (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
-        'nair':dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
-        'γself':dict(description="Pressure self-broadening coefficient (cm-1.atm-1, FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
         'Teq':dict(description="Equilibriated temperature (K)", kind=float, fmt='0.2f', infer={}),
-        'Tex':dict(description="Excitation temperature (K)", kind=float, fmt='0.2f', infer={'Tex':lambda Tex:Tex}),
+        'Tex':dict(description="Excitation temperature (K)", kind=float, fmt='0.2f', infer={'Teq':lambda Tex:Teq}),
         'Ttr':dict(description="Translational temperature (K)", kind=float, fmt='0.2f', infer={'Tex':lambda Tex:Tex}),
         'ΔJ':dict(description="Jp-Jpp", kind=float, fmt='>+4g', infer={('Jp','Jpp'):lambda Jp,Jpp: Jp-Jpp,},),
-        'Zsource':dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind=str, infer={('database',): lambda : 'database',}),
-        'Z':dict(description="Partition function.", kind=float, fmt='<11.3e', infer={}),
+        'Zsource':dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind=str, infer={
+            (): lambda : 'database',
+        }),
+        'Z':dict(description="Partition function.", kind=float, fmt='<11.3e', infer={
+            
+        }),
         'ΓDoppler':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,}),
         'L':dict(description="Optical path length (m)", kind=float, fmt='0.5f', infer={}),
+        'γair':dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
+        'δair':dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
+        'nair':dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
+        'γself':dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
         'Pself':dict(description="Pressure of self (Pa)", kind=float, fmt='0.5f', infer={}),
+        'Pair':dict(description="Pressure of air (Pa)", kind=float, fmt='0.5f', infer={}),
         'Nself':dict(description="Column density (cm-2)",kind=float,fmt='<11.3e', infer={
             ('Pself','L','Teq'): lambda Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,}),
 }
@@ -137,7 +150,6 @@ class Base(levels._BaseLinesLevels):
                 t_plot_kwargs.setdefault('label',my.dict_to_kwargs(qn))
                 t.plot_spectrum(x=x,ykey=ykey,zkeys=None,ax=ax,**t_plot_kwargs)
         return(ax)
-
 
     def calculate_spectrum(
             self,
@@ -369,6 +381,45 @@ class Base(levels._BaseLinesLevels):
     upper_levels = property(lambda self: self.get_levels('upper'))
     lower_levels = property(lambda self: self.get_levels('lower'))
 
+    def load_from_hitran(self,filename):
+        """Load HITRAN .data."""
+        data = hitran.load_lines(filename)
+        species = np.unique(hitran.translate_codes_to_species(data['Mol']))
+        assert len(species)==1,'Cannot handle mixed species HITRAN linelist.'
+        species = species[0]
+        ## interpret into transition quantities common to all transitions
+        kw = {
+            'ν':data['ν'],
+            'Ae':data['A'],
+            'E'+level_suffix['lower']:data['E_l'],
+            'g'+level_suffix['upper']:data['g_u'],
+            'g'+level_suffix['lower']:data['g_l'],
+            'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+            'nair':data['nair'],
+            'δair':data['δair'],
+            'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+        }
+        ## get species
+        assert len(np.unique(data['Mol']))==1
+        try:
+            ## full isotopologue
+            kw['species'] = hitran.translate_codes_to_species(data['Mol'],data['Iso'])
+        except KeyError:
+            assert len(np.unique(data['Iso']))==1,'Cannot identify isotopologues and multiple are present.'
+            kw['species'] = hitran.translate_codes_to_species(data['Mol'])
+        # ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
+        # ## standin for diatomics
+        # kw['v'+level_suffix['upper']] = data['V_u']
+        # kw['v'+level_suffix['lower']] = data['V_l']
+        # branches = {'P':-1,'Q':0,'R':+1}
+        # ΔJ,J_l = [],[]
+        # for Q_l in data['Q_l']:
+            # branchi,Jli = Q_l.split()
+            # ΔJ.append(branches[branchi])
+            # J_l.append(Jli)
+        # kw['ΔJ'] = np.array(ΔJ,dtype=int)
+        # kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
+        self.extend(**kw)
 
 class DiatomicCinfv(Base):
 

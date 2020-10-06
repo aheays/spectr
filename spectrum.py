@@ -217,6 +217,12 @@ class Experiment(optimise.Optimiser):
             tools.plot_hist_with_fitted_gaussian(r,ax=ax)
             ax.set_title(f'noise distribution\n{self.name}')
 
+    def plot(self,ax=None):
+        self.construct()
+        if ax is None:
+            ax = plt.gca()
+        ax.plot(self.x,self.y)
+
 class Model(optimise.Optimiser):
 
     def __init__(

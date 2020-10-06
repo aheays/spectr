@@ -20,6 +20,7 @@ from . import database
 from . import spectrum
 
 from .dataset import Dataset
+from .conversions import convert
 
 # from .spectrum import *
 # from .tools import *
