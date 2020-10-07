@@ -1,5 +1,8 @@
+from . import database
+
 import re
 import periodictable
+
 
 _get_species_cache = {}
 def get_species(name):
@@ -42,6 +45,7 @@ class Species:
         self._mass = None            # of one molecule
         self._reduced_mass = None   # reduced mass (amu), actually a property
         self._nonisotopic_name = None # with mass symbols removed, e.g., '[32S][16O]' to 'SO'
+        self._point_group = None
         self.density = None     # cm-3
         
     def _get_nonisotopic_name(self):
@@ -55,6 +59,13 @@ class Species:
         return self._nonisotopic_name
         
     nonisotopic_name = property(_get_nonisotopic_name)
+
+    def _get_point_group(self):
+        if self._point_group is None:
+            self._point_group = database.get_species_property(self.name,'point_group')
+        return(self._point_group)
+
+    point_group = property(_get_point_group)
 
     def _get_reduced_mass(self):
         if self._reduced_mass is None:
