@@ -29,7 +29,7 @@ _map_codes_to_species = {
 }
 _map_species_to_codes = {val:key for key,val in _map_codes_to_species.items()}
 
-@tools.vectorise_in_chunks
+@tools.vectorise_function_in_chunks
 def get_partition_function(species,temperature):
     """Use hitran to get a partition function."""
     import hapi

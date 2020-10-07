@@ -256,7 +256,7 @@ class Dataset(optimise.Optimiser):
             try:
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted)) # copy of already_attempted so it will not feed back here
-                    # already_attempted.append(dependency) # in case it comes up again at this level
+                    ## already_attempted.append(dependency) # in case it comes up again at this level
                 ## compute value if dependencies successfully inferred
                 self[key] = function(*[self[dependency] for dependency in dependencies])
                 ## compute uncertainties by linearisation
@@ -266,18 +266,18 @@ class Dataset(optimise.Optimiser):
                 for i,dependency in enumerate(dependencies):
                     if self.has_uncertainty(dependency):
                         dparameters = copy(parameters)
-                        # if self.is_scalar(dependency):
-                            # if self[dependency]==0:
-                                # diffstep = 1e-9
-                            # else:
-                                # diffstep = 1e-9*self[dependency]
-                        # else:
-                           #  
-                            # if np.any(j:=(self[dependency]==0)):
-                                # diffstep = np.full(1e-9,len(self))
-                                # diffstep[j] = self[dependency][j]*1e-9
-                            # else:
-                                # diffstep = 1e-9
+                        ### if self.is_scalar(dependency):
+                        ##    # if self[dependency]==0:
+                        ##        # diffstep = 1e-9
+                        ##    # else:
+                        ##        # diffstep = 1e-9*self[dependency]
+                        ### else:
+                        ##   #  
+                        ##    # if np.any(j:=(self[dependency]==0)):
+                        ##        # diffstep = np.full(1e-9,len(self))
+                        ##        # diffstep[j] = self[dependency][j]*1e-9
+                        ##    # else:
+                        ##        # diffstep = 1e-9
                         diffstep = 1e-10*self[dependency]
                         dparameters[i] += diffstep
                         dvalue = value - function(*dparameters)
@@ -293,10 +293,13 @@ class Dataset(optimise.Optimiser):
                 break           
             ## some kind of InferException 
             except InferException as err:
+                if self.verbose:
+                    print(err)
                 continue      
         ## complete failure to infer
         else:
             raise InferException(f"Could not infer key: {repr(key)}")
+
 
     def __iter__(self):
         for key in self._data:

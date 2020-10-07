@@ -1,4 +1,9 @@
 from . import optimise
+from . import levels
+from .species import get_species
+
+import numpy as np
+
 
 class VibLevel(optimise.Optimiser):
     """A vibronic interaction matrix."""
@@ -21,7 +26,7 @@ class VibLevel(optimise.Optimiser):
     ):
         self.name = name          # a nice name
         self.species = species
-        assert species is not None 
+        assert species is not None,'species argument required'
         # self.states = []          # Vibronic_State objects
         # self.interactions = []            # Vibronic_Interaction objects
         # self._vibronic_spin_manifolds = [] #  for the benefit of get_vibrational_level
@@ -30,8 +35,8 @@ class VibLevel(optimise.Optimiser):
         self.Tref = Tref                                   # energy refernce relative to Te
         # self.Tbeg,self.Tend = Tbeg,Tend
         ## get a good default J range
-        d = lib_molecules.Species(species)
-        J_is_half_integer = d.nelectrons%2==1
+        species_object = get_species(species)
+        J_is_half_integer = species_object.nelectrons%2==1
         if J is None:
             if J_is_half_integer:
                 self.J = np.arange(0.5,30.5,1)
@@ -64,7 +69,12 @@ class VibLevel(optimise.Optimiser):
         self.eigvals = None
         self.eigvects = None
         ## a Level object containing data, better access through level property
-        self._rotational_level = Rotational_Level(species=species) # data store for property self.level
+        if species_object.point_group == 'D∞h':
+            self._rotational_level = levels.DiatomicDinfh(species=species)
+        elif species_object.point_group == 'C∞v':
+            self._rotational_level = levels.DiatomicCinfv(species=species)
+        else:
+            raise Exception('Only D∞h and C∞v point group diatomic molecules implemented.')
         if Tref is not None: self._rotational_level['Tref'] = Tref # set Tref if provided as input argument
         self._rotational_level.permit_new_keys  = True
         self._rotational_level.add_vector_data(name='Tresidual',dtype=float,description='Residual term value error (cm-1)')

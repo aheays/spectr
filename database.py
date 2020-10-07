@@ -105,7 +105,7 @@ def get_species_property(species,prop):
 ## deprecate this in favour of get_species_property?
 
 # @functools.lru_cache
-@tools.vectorise_in_chunks
+@tools.vectorise_function_in_chunks
 def get_mass(species):
     t = get_species(species)
     return(t.mass)

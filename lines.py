@@ -78,10 +78,10 @@ class Base(levels._BaseLinesLevels):
         'Tex':dict(description="Excitation temperature (K)", kind=float, fmt='0.2f', infer={'Teq':lambda Tex:Teq}),
         'Ttr':dict(description="Translational temperature (K)", kind=float, fmt='0.2f', infer={'Tex':lambda Tex:Tex}),
         'ΔJ':dict(description="Jp-Jpp", kind=float, fmt='>+4g', infer={('Jp','Jpp'):lambda Jp,Jpp: Jp-Jpp,},),
-        'Zsource':dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind=str, infer={
+        'partition_source':dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind=str, infer={
             (): lambda : 'database',
         }),
-        'Z':dict(description="Partition function.", kind=float, fmt='<11.3e', infer={
+        'partition':dict(description="Partition function.", kind=float, fmt='<11.3e', infer={
             
         }),
         'ΓDoppler':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,}),
@@ -114,13 +114,13 @@ class Base(levels._BaseLinesLevels):
     prototypes['ΔJ']['infer']['J_u','J_l'] = lambda J_u,J_l: J_u-J_l
 
     ## partition function
-    def _f5(Zsource,species,Tex):
-        if Zsource!='HITRAN':
+    def _f5(partition_source,species,Tex):
+        if partition_source!='HITRAN':
             raise InferException(f'Partition source not "HITRAN".')
         return hitran.get_partition_function(species,Tex)
-    prototypes['Z']['infer']['Zsource','species','Tex'] = _f5
-    prototypes['Z_l']['infer']['Z'] = lambda Z:Z
-    prototypes['Z_u']['infer']['Z'] = lambda Z:Z
+    prototypes['partition']['infer']['partition_source','species','Tex'] = _f5
+    prototypes['partition_l']['infer']['partition'] = lambda partition:partition
+    prototypes['partition_u']['infer']['partition'] = lambda partition:partition
 
     def plot_spectrum(
             self,

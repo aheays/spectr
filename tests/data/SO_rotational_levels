@@ -1,7 +1,7 @@
 # description = 'Fitted rovibronic levels.'
 # Eref = 0.0000                 
-# uEref = 0.0500                
-# Zsource = "self"
+# d_Eref = 0.0500                
+# partition_source = "self"
 # S = 1                         
 # species label v   Σ    ef J    Λ  s   Ω   E              Γ         
 32S16O    A     1   -1  +1 0    1  0   0   38927.8636513  0         

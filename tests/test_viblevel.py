@@ -13,4 +13,4 @@ from spectr import viblevel
 make_plot = False 
 
 def test_init():
-    viblevel.VibLevel()
+    viblevel.VibLevel('test','N2')
