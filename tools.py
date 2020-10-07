@@ -56,10 +56,34 @@ class AutoDict:
 #################################
 
 
-def vectorise_in_chunks(function,dtype=float):
-    """Look for groups of common arguments and calculate them only once in
-    a vectorised version of the original function."""
-    def vectorised(*args):
+def vectorise_function(function):
+    """Vectorise a scalar-argument scalar-return values function.  If all
+    arguments are scalar return a scalar result."""
+    def vectorised_function(*args):
+        ## check if scalar
+        length = None
+        for arg in args:
+            if not np.isscalar(arg):
+                if length is None:
+                    length = len(arg)
+                else:
+                    assert len(arg)==length,'Nonconstant length of vector arguments.'
+        if length is None:
+            ## all scalar, do scalar calc
+            return function(*args)
+        else:
+            return np.array([
+                function(*[arg if np.isscalar(arg) else arg[i]
+                           for arg in args])
+                for i in range(length)])
+    return vectorised_function
+
+def vectorise_function_in_chunks(function,dtype=float):
+    """Deorator for looking for groups of common arguments and calculate
+    them only once in a vectorised version of the original function
+    which accepts scalar arguments. If all arguments are scalar return
+    a scalar result."""
+    def vectorised_function(*args):
         ## check if scalar
         length = None
         for arg in args:
@@ -73,16 +97,35 @@ def vectorise_in_chunks(function,dtype=float):
         ## vectorise
         args = [np.asarray(arg) if np.iterable(arg) else np.full(length,arg) for arg in args]
         retval = np.empty(len(args[0]),dtype=dtype,)
-        # if len(args)==1:
-            # for argsi in np.unique(args[0]):
-                # i = args[0]==argsi
-                # retval[i] = function(argsi)
-        # else:
         for argsi in unique_combinations(*args):
             i = np.all([args[j]==argsi[j] for j in range(len(args))],axis=0)
             retval[i] = function(*argsi)
         return(retval)
-    return vectorised
+    return vectorised_function
+
+def vectorise_arguments(function):
+    """Compute an infer with some pre/post processing to ensure vectorised
+    arguments are giving to the function (which may need them)
+    even if all input arguments are scalar, but convert the result
+    back to scalar."""
+    def function_with_vectorised_arguments(*args):
+        arglen = 0
+        for arg in args:
+            if np.isscalar(arg):
+                continue
+            if arglen==0:
+                arglen = len(arg)
+            else:
+                assert arglen == len(arg),'Mismatching lengths of vector arguments.'
+        if arglen==0:
+            ## all scalar -- make length 1 and compute, returning as
+            ## scalar
+            return function(*[np.array([arg]) for arg in args])[0]
+        else:
+            ## ensure all arguments vector and compute a vector
+            ## result
+            return function(*[np.full(arglen,arg) if np.isscalar(arg) else np.asarray(arg) for arg in args])
+    return function_with_vectorised_arguments
 
 # def frozendict_args(f):
     # """A decorator that aims to be like functools.lru_cache except it
