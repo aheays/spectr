@@ -114,7 +114,7 @@ prototypes['g']['infer']['level_type','J','Inuclear','sa'] = _f
 ###################
 
 class _BaseLinesLevels(Dataset):
-    """Init for Lines and Levels"""
+    """Common stuff for for lines and levels."""
 
     prototypes = {key:copy(prototypes[key]) for key in ['description','notes','author','reference','date','level_type',]}
     
@@ -135,6 +135,7 @@ class _BaseLinesLevels(Dataset):
         self.automatic_format_input_function(limit_to_args=('name',))
 
 class Base(_BaseLinesLevels):
+    """A generic level."""
 
     prototypes = copy(_BaseLinesLevels.prototypes)
     prototypes.update(**{key:copy(prototypes[key]) for key in [
@@ -146,15 +147,13 @@ class Base(_BaseLinesLevels):
         return hitran.get_partition_function(species,Tex)
 
 class DiatomicCinfv(Base):
-    """A generic level."""
-    
+    """A heteronuclear diatomic molecule."""
+
     prototypes = copy(Base.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in [
-        'label','v','Λ','LSsign','s','σv','sa','ef','Fi','Ω','Σ','SR',
-        'Eref','Teq','Tex','partition_source','partition','α','Nself',]})
+    prototypes.update(**{key:copy(prototypes[key]) for key in ['label','v','Λ','LSsign','s','σv','sa','ef','Fi','Ω','Σ','SR',]})
 
 class DiatomicDinfh(Base):
-    """A generic level."""
+    """A homonuclear diatomic molecule."""
     
     prototypes = deepcopy(DiatomicCinfv.prototypes)
     prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear','gu',]})
@@ -185,7 +184,7 @@ class DiatomicDinfh(Base):
 
 
 class TriatomicDinfh(Base):
-    """A generic level."""
+    """Triatomic moleculein the D∞h point group."""
     
     prototypes = deepcopy(Base.prototypes)
     prototypes.update({
