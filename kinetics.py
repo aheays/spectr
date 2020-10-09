@@ -408,19 +408,6 @@ class Species:
     def __gt__(self,other): return(self.name>other.name)
 
 
-class Mixture:
-    """A mixture of species.  PERHAPS USABLE BY Reaction."""
-
-    def __init__(self):
-        self.species = {}       # name:density
-        self.state = {}         # name:value
-        self.reaction_network = None
-        self.rate_coefficients = None
-        self.rates = None
-
-    def add_species(self,name,density,encoding='standard'):
-        self.species[decode_species(name,encoding)] = density
-
 ########################
 ## Chemical reactions ##
 ########################
@@ -554,148 +541,93 @@ class Reaction:
 class Reaction_Network:
 
     def __init__(self):
-        self.reactions = []
-        self.rate_coefficients = None
-        self.rates = None
+        self.species = {}       # name:density
+        self.state = {}         # name:value
+        self.reactions = []     # [Reactions]
 
-    def get_all_species(self):
-        retval = set()
-        for r in self.reactions:
-            for s in r.reactants + r.products:
-                retval.add(s)
-        return list(retval)
+    def __getitem__(self,key):
+        if key in self.state:
+            return self.state[key]
+        elif key in self.species:
+            return self.species[key]
+        else:
+            raise KeyError
 
-    def calc_rate_coefficients(self,**state):
+    def calc_rate_coefficients(self):
         self.rate_coefficients = [
-            reaction.get_rate_coefficient(**state)
+            reaction.get_rate_coefficient(**self.state)
             for reaction in self.reactions]
 
-    def print_rate_coefficients(self,**state):
-        for reaction in self.reactions:
-            reaction.get_rate_coefficient(**state)
-            print(f'{reaction.name:20} {reaction.rate_coefficient:15.4e}')
-
-    def calc_rates(self,mixture):
-        self.calc_rate_coefficients(**mixture.state)
+    def calc_rates(self):
+        self.calc_rate_coefficients()
         self.rates = []
         for r in self.reactions:
             k = r.rate_coefficient
             for s in r.reactants:
-                k*= mixture.species[s]
+                k*= self.species[s]
             r.rate = k
+
+    def get_destruction_rates(self, species, **match_reactions,):
+        reaction_name = []
+        destruction_rate = []
+        if 'reactants' in match_reactions:
+            match_reactions['reactants'] = [species]+list(match_reactions['reactants'])
+        else:
+            match_reactions['reactants'] = [species]
+        for r in self.get_matching_reactions(**match_reactions):
+            reaction_name.append(r.name)
+            destruction_rate.append(r.rate/self.species[species])
+        ## sort
+        i = np.argsort([-max(t) for t in destruction_rate])
+        return {reaction_name[ii]:destruction_rate[ii] for ii in i}
 
     def plot_destruction_rates(
             self,
             species,
-            x=None,y=None,
+            ykey,
             ax=None,
+            nplot=10,
+            **match_reactions,
     ):
         if ax is None:
             ax = plt.gca()
             ax.cla()
-        for r in self.get_matching_reactions(reactants=(species,)):
-            if x is None and y is None:
-                ax.plot(r.rate/mixture[species],label=r.name)
-                ax.set_yscale('log')
-            elif x is not None:
-                plot(x,r.rate/mixture[species],label=r.name)
-                ax.set_yscale('log')
-            elif y is not None:
-                plot(r.rate/mixture[species],y,label=r.name)
-                ax.set_xscale('log')
-        my.legend()
+        y = self.state[ykey]
+        d = self.get_destruction_rates(species,**match_reactions)
+        for i,(name,rate) in enumerate(d.items()):
+            if i>nplot: break
+            ax.plot(rate,y,label=name)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        plotting.legend()
+        ax.set_title('Destruction rate (s$^{-1}$)')
         return ax
 
-    # def get_rates(self,time,density):
-        # """Calculate all rate coefficients in the network at a given time and
-        # with given densities."""
-        # rates = np.zeros(len(density),dtype=float) # rates for all species
-        # self.reaction_rates = np.zeros(len(self.reactions),dtype=float)
-        # self.rate_coefficients = np.zeros(len(self.reactions),dtype=float)
-        # ## T is a constant or function fo time
-        # if np.isscalar(self.T):
-            # T = self.T
-        # else:
-            # T = self.T(time)
-        # for ireaction,reaction in enumerate(self.reactions):
-            # ## compute rates of reaction
-            # rate_coefficient = reaction.get_rate_coefficient(T=T)
-            # reaction_rate = (rate_coefficient*np.prod([
-                                # density[self._species_index[reactant.name]]
-                                 # for reactant in reaction.reactants]))
-            # self.reaction_rates[ireaction] = reaction_rate
-            # self.rate_coefficients[ireaction] = rate_coefficient
-            # ## add contribution to product/reactant
-            # ## formation/destruction rates
-            # for reactant in reaction.reactants:
-                # rates[self._species_index[reactant.name]] -= reaction_rate
-            # for product in reaction.products:
-                # rates[self._species_index[product.name]] += reaction_rate
-        # self.rates = rates
-        # return(rates)
-
-    # def integrate(self,time,nsave_points=10,**initial_densities):
-        # ## collect all species names
-        # species = set()
-        # for reaction in self.reactions:
-            # for reactant in reaction.reactants:
-                # species.add(reactant.name)
-            # for product in reaction.products:
-                # species.add(product.name)
-        # for name in initial_densities:
-            # species.add(name)
-        # ## species_name:index_of_species_in_internal_arrays
-        # self._species_index = {name:i for (i,name) in enumerate(species)} 
-        # ## time steps
-        # time = np.array(time,dtype=float)
-        # if time[0]!=0:
-            # time = np.concatenate(([0],time))
-        # density = np.full((len(species),len(time)),0.)
-        # ## set initial conditions
-        # for key,val in initial_densities.items():
-            # density[self._species_index[key],0] = val
-        # ## initialise integrator
-        # r = integrate.ode(self.get_rates)
-        # r.set_integrator('lsoda', with_jacobian=True)
-        # r.set_initial_value(density[:,0])
-        # ## run saving data at requested number of times
-        # for itime,timei in enumerate(time[1:]):
-            # r.integrate(timei)
-            # density[:,itime+1] = r.y
-        # ##
-        # retval = Dynamic_Recarray(
-            # time=time,
-            # T=self.T(time),
-        # )
-        # for speciesi,densityi in zip(species,density):
-            # retval[speciesi] = densityi
-        # self.species = species
-        # self.density = density
-        # self.time = time
-        # self.rates = self.get_rates(self.time[-1],self.density[:,-1])
-        # return(retval)
-
-    def print_rates(self):
-        for reaction,rate,rate_coefficient in zip(self.reactions,self.reaction_rates,self.rate_coefficients):
-            print( format(reaction.name,'35'),format(rate_coefficient,'<+10.2e'),format(rate,'<+10.2e'))
+    def plot_species(self, *species, ykey=None, ax=None,):
+        if ax is None:
+            ax = plt.gca()
+            ax.cla()
+        for s in species:
+            if ykey is not None:
+                ax.plot(self[s],self[ykey],label=s)
+                ax.set_xscale('log')
+            else:
+                ax.plot(self[s],label=s)
+                ax.set_yscale('log')
+        plotting.legend()
+        ax.set_title('Number density (cm$^{-3}$)')
+        return ax
 
     def append(self,*args,**kwargs):
         """Append a Reaction, or arguments to define one."""
         if len(args)==1 and len(kwargs)==0 and  isinstance(args[0],Reaction):
-            self.reactions.append(args[0])
+            r = args[0]
         else:
-            self.reactions.append(Reaction(*args,**kwargs))
-
-
-    def extend(self,reactions):
-        self.reactions.extend(reactions)
-
-    ## a list of unique reactants, useful where these branch
-    unique_reactants = property(lambda self:set([t.reactants for t in self.reactions]))
-
-    def get_species(self):
-        """Return a list of all species in this network."""
-        return(list(np.unique(np.concatenate([list(t.products)+list(t.reactants) for t in self.reactions]))))
+            r = Reaction(*args,**kwargs)
+        self.reactions.append(r)
+        for s in r.reactants + r.products:
+            if s not in self.species:
+                self.species[s] = 0. # or NaN?
 
     def get_product_branches(self,reactants,with_reactants=[],without_reactants=[],with_products=[],without_products=[]):
         """Get a list of reactions with different products and the
@@ -710,7 +642,8 @@ class Reaction_Network:
     def __iter__(self):
         for t in self.reactions: yield(t)
 
-    def __len__(self): return(len(self.reactions))
+    def __len__(self):
+        return(len(self.reactions))
 
     def get_matching_reactions(
             self,
@@ -747,23 +680,5 @@ class Reaction_Network:
         with open(tools.expand_path(filename),'r') as fid:
             for line in fid:
                 self.append(**eval(f'dict({line[:-1]})'),encoding=encoding)
-
-
-    # def get_recarray(self,keys=None):
-        # data = collections.OrderedDict()
-        # ## list reactants up to max number of reactants
-        # for i in range(np.max([len(t.reactants) for t in self.reactions])):
-            # data['reactant'+str(i)] = [t.reactants[i] if len(t.reactants)>i else ''for t in self.reactions]
-        # ## list products up to max number of products
-        # for i in range(np.max([len(t.products) for t in self.reactions])):
-            # data['product'+str(i)] = [t.products[i] if len(t.products)>i else '' for t in self.reactions]
-        # ## all coefficients
-        # if keys is None:
-            # keys = np.unique(np.concatenate(
-                # [list(t.coefficients.keys()) for t in self.reactions]))
-        # for key in keys:
-            # data[key] = [t[key] if key in t.coefficients else np.nan for t in self.reactions]
-        # return(my.dict_to_recarray(data))
-
 
 

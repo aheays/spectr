@@ -18,6 +18,7 @@ from . import lines
 from . import hitran
 from . import database
 from . import spectrum
+from . import kinetics
 
 from .dataset import Dataset
 from .conversions import convert
