@@ -13,12 +13,12 @@ def decode_species(name,encoding):
     """Decode into standard name format from a foreign format."""
     if encoding == 'standard':
         return name
-    ## try _species_name_translation_functions
     if (encoding in _species_name_translation_dict
-        and name in n_species_name_translation_dict[encoding].inverse):
+        and name in _species_name_translation_dict[encoding].inverse):
+        ## try _species_name_translation_functions
         return _species_name_translation_dict[encoding].inverse[name]
-    ## try _species_name_translation_functions
-    if (encoding,'standard') in _species_name_translation_functions:
+    elif (encoding,'standard') in _species_name_translation_functions:
+        ## try _species_name_translation_functions
         return _species_name_translation_functions[(encoding,'standard')](name)
     raise Exception(f"Could not decode {name=} from {encoding=}")
 
@@ -143,14 +143,46 @@ def _f(name):
     return(name.lower())
 _species_name_translation_functions[('standard','meudon')] = _f
 
-## argo
-_species_name_translation_dict['argo'] = bidict({
-    'NH3':'H3N',
+## STAND2015 kinetic network
+_species_name_translation_dict['STAND2015'] = bidict({
+    'O+_2P':'O^+^(^3^P)',       # error in STAND2015 O^+^(^3^P) should be O^+^(^2^P)?
+    'O+_2D':'O^+^(^2^D)',
+    'O2+_X2Πg':'O_2^+_(X^^2Pi_g^)',
+    'O2_a1Δg' :'O_2_(a^1Delta_g^)',
+    'O_1S':'O(^1^S)',
+    'O_1D':'O(^1^D)',
+    'C_1S':'C(^1^S)',
+    'C_1D':'C(^1^D)',
+    'NH3':'H_3_N',
 })
+def _f(name):
+    name = name.replace('_','')
+    name = name.replace('^','')
+    ##  hack because two forms exist (repeated ^), and cannot be treated with a dictionary
+    if name == 'O2(a1Deltag)':
+        name = 'O2_a1Δg'
+    if name == 'O+(3P)':
+        name = 'O+_2P'
+    if name == 'O+(2D)':
+        name = 'O+_2D'
+    return(name)
+_species_name_translation_functions[('STAND2015','standard')] = _f
 
+## ARGO atmospheric model
+_species_name_translation_dict['ARGO'] = bidict({
+    'NH3':'H3N',
+    'O2+_X2Πg':'O2+_P',
+    'O2_a1Δg' :'O2_D',
+    'O+_3P':'O2P',       # error in STAND2015 O^+^(^3^P) should be O^+^(^2^P)?
+    'O+_2D':'O2D',
+    'O_1S':'O1S',
+    'O_1D':'O1D',
+    'C_1S':'C1S',
+    'C_1D':'C1D',
+})
 def _f(name):
     return(name)
-_species_name_translation_functions[('argo','standard')] = _f
+_species_name_translation_functions[('ARGO','standard')] = _f
 
 ## hitran numeric codes - https://hitran.org/docs/iso-meta/
 _species_name_translation_dict['hitran_codes'] = bidict({
@@ -379,65 +411,15 @@ class Species:
 class Mixture:
     """A mixture of species.  PERHAPS USABLE BY Reaction."""
 
-    def __init__(self,name='mixture'):
-        self.name = name
-        self.species = {}       # dictionary list {Species:amount}
-        self.other_data = {}
+    def __init__(self):
+        self.species = {}       # name:density
+        self.state = {}         # name:value
+        self.reaction_network = None
+        self.rate_coefficients = None
+        self.rates = None
 
-    def __getitem__(self,key):
-        if key in self.other_data:
-            return(self.other_data[key])
-        elif key in self.species:
-            return(self.species[key])
-        elif (t:=get_species(key)) in self.species:
-            return(self.species[t])
-
-    def __setitem__(self,key,val):
-        if key in self.species:
-            self.species[key] = val
-        elif key in self.other_data:
-            self.other_data[key] = val
-        else:
-            self.add_species(key,val)
-
-    def add_data(self,key,val):
-        """Add some kind of data."""
-        self.other_data[key] = val
-
-    def add_species(self,name_or_Species,amount):
-        """Add a species to the mixture."""
-        if isinstance(name_or_Species,str):
-            name_or_Species = get_species(name_or_Species)
-        name,species = name_or_Species.name,name_or_Species
-        ## if already in mixture add amount, else add new element to
-        ## self.species
-        for tspecies in self.species:
-            if tspecies.name==name:
-                break
-        else:
-            self.species[species] = amount
-        return(species)
-
-    def get_elements(self):
-        elements = {}
-        for species,amount in self.species.items():
-            for element,multiplicity in species.reduced_elements.items():
-                if element in elements:
-                    elements[element] += multiplicity*amount
-                else:
-                    elements[element] = multiplicity*amount
-        return(elements)
-
-    def __str__(self):
-        return('\n'.join(
-            [f'{str(species):>10s} = {amount}'
-            for species,amount in self.species.items()]))
-
-    def get_atom_number(self):
-        elements = self.get_elements()
-        total_atom_number = sum(elements.values())
-        return(total_atom_number)
-
+    def add_species(self,name,density,encoding='standard'):
+        self.species[decode_species(name,encoding)] = density
 
 ########################
 ## Chemical reactions ##
@@ -452,41 +434,47 @@ def decode_reaction(reaction,encoding='standard'):
     retval['products'] = [decode_species(species,encoding) for species in retval['products']]
     return retval
 
+def encode_reaction(reactants,products,encoding='standard'):
+    """Only just started"""
+    if encoding!='standard':
+        raise ImplementationError()
+    return ' + '.join(reactants)+' → '+' + '.join(products)
+
 _split_reaction_functions = {}
 
 def _f(reaction):
     if '→' in reaction:
-        kind = 'forward'
+        direction = 'forward'
         reactants,products = reaction.split('→')
     elif '←' in reaction:
-        kind = 'backward'
+        direction = 'backward'
         reactants,products = reaction.split('←')
     elif '⇌' in reaction:
-        kind = 'equilibrium'
+        direction = 'equilibrium'
         reactants,products = reaction.split('⇌')
     else:
-        raise Exception(f'Cannot split {reaction=} with {encoding=}')
+        raise Exception(f'Cannot split {reaction=} with standard encoding')
     reactants = [t.strip() for t in reactants.split(' + ')]
     products = [t.strip() for t in products.split(' + ')]
-    return (reactants,products,kind)
+    return (reactants,products,direction)
 _split_reaction_functions['standard'] = _f
 
 def _f(reaction):
     if '->' in reaction:
-        kind = 'forward'
+        direction = 'forward'
         reactants,products = reaction.split('->')
     elif '<-' in reaction:
-        kind = 'backward'
+        direction = 'backward'
         reactants,products = reaction.split('<-')
     elif '<=>' in reaction:
-        kind = 'equilibrium'
+        direction = 'equilibrium'
         reactants,products = reaction.split('<=>')
     else:
-        raise Exception(f'Cannot split {reaction=} with {encoding=}')
+        raise Exception(f'Cannot split {reaction=} with ascii encoding')
     reactants = [t.strip() for t in reactants.split(' + ')]
     products = [t.strip() for t in products.split(' + ')]
-    return (reactants,products,kind)
-_split_reaction_functions['ascii'] = _split_reaction_functions['argo'] = _f
+    return (reactants,products,direction)
+_split_reaction_functions['ascii'] = _split_reaction_functions['STAND2015'] = _f
 
 ## formulae for computing rate coefficients from reaction constants c
 ## and state variables p
@@ -499,7 +487,16 @@ _reaction_coefficient_formulae = {
     'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['T'])*p['I'],c['λ']),
     'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']),
 } 
-    
+
+def _f(c,p):
+    """STAND2015 3-body reaction scheme. Eqs. 9,10,11 in rimmer2016."""
+    k0 = c['α0']*(p['T']/300)**c['β0']*np.exp(-c['γ0']/p['T']) 
+    kinf = c['αinf']*(p['T']/300.)**c['βinf']*np.exp(-c['γinf']/p['T'])
+    pr = k0*p['nt']/kinf             # p['nt'] = total density = M 3-body density
+    k2 = (kinf*pr)/(1+pr)
+    return k2
+_reaction_coefficient_formulae['STAND2015 3-body'] = _f
+
 class Reaction:
     """A class for manipulating a chemical reaction."""
 
@@ -513,9 +510,12 @@ class Reaction:
         t = decode_reaction(name,encoding)
         self.reactants = t['reactants']
         self.products = t['products']
-        self.formula = _reaction_coefficient_formulae[formula]
+        self.name = encode_reaction(self.reactants,self.products)
+        self.formula = formula  # name of formula
+        self._formula = _reaction_coefficient_formulae[formula] # function
         self.coefficients = coefficients 
         self.rate_coefficient = None     
+        self.rate = None     
 
     def get_hash(self):
         """A convenient way to summarise a reaction by its name. I don't use
@@ -528,10 +528,10 @@ class Reaction:
     def __setitem__(self,key,val):
         self.coefficients[key] = val
 
-    def get_rate_coefficient(self,**state_variables):
+    def get_rate_coefficient(self,**state):
         """Calculate rate coefficient from rate constants and state
         variables."""
-        self.rate_coefficient = self.formula(self.coefficients,state_variables)
+        self.rate_coefficient = self._formula(self.coefficients,state)
         return self.rate_coefficient
 
     def format_aligned_reaction_string(
@@ -547,93 +547,133 @@ class Reaction:
 
     def __str__(self):
         return ', '.join([f'name=" {self.name:60}"']
-                         +[format(f'formula="{self.formula.strip()}"',"20")]
+                         +[format(f'formula="{self.formula}"',"20")]
                          +[format(f'{key}={repr(val)}','20') for key,val in self.coefficients.items()])
 
 
 class Reaction_Network:
 
-    def __init__(self,kida_filename=None):
+    def __init__(self):
         self.reactions = []
-        self.T = 300            # constant temperature or a function of time
-        self.species = {}       # indexd by species name
-        self.n = dict()         # indexd by species name
-        self.rate = dict()      # indexd by species name
-        if kida_filename is not None:
-            self.load_from_kida(kida_filename)
+        self.rate_coefficients = None
+        self.rates = None
 
-    def print_rate_coefficients(self):
+    def get_all_species(self):
+        retval = set()
+        for r in self.reactions:
+            for s in r.reactants + r.products:
+                retval.add(s)
+        return list(retval)
+
+    def calc_rate_coefficients(self,**state):
+        self.rate_coefficients = [
+            reaction.get_rate_coefficient(**state)
+            for reaction in self.reactions]
+
+    def print_rate_coefficients(self,**state):
         for reaction in self.reactions:
-            print( format(reaction.name,'40'),reaction.get_rate_coefficient(T=self.T))
+            reaction.get_rate_coefficient(**state)
+            print(f'{reaction.name:20} {reaction.rate_coefficient:15.4e}')
 
-    def get_rates(self,time,density):
-        """Calculate all rate coefficients in the network at a given time and
-        with given densities."""
-        rates = np.zeros(len(density),dtype=float) # rates for all species
-        self.reaction_rates = np.zeros(len(self.reactions),dtype=float)
-        self.rate_coefficients = np.zeros(len(self.reactions),dtype=float)
-        ## T is a constant or function fo time
-        if np.isscalar(self.T):
-            T = self.T
-        else:
-            T = self.T(time)
-        for ireaction,reaction in enumerate(self.reactions):
-            ## compute rates of reaction
-            rate_coefficient = reaction.get_rate_coefficient(T=T)
-            reaction_rate = (rate_coefficient*np.prod([
-                                density[self._species_index[reactant.name]]
-                                 for reactant in reaction.reactants]))
-            self.reaction_rates[ireaction] = reaction_rate
-            self.rate_coefficients[ireaction] = rate_coefficient
-            ## add contribution to product/reactant
-            ## formation/destruction rates
-            for reactant in reaction.reactants:
-                rates[self._species_index[reactant.name]] -= reaction_rate
-            for product in reaction.products:
-                rates[self._species_index[product.name]] += reaction_rate
-        self.rates = rates
-        return(rates)
+    def calc_rates(self,mixture):
+        self.calc_rate_coefficients(**mixture.state)
+        self.rates = []
+        for r in self.reactions:
+            k = r.rate_coefficient
+            for s in r.reactants:
+                k*= mixture.species[s]
+            r.rate = k
 
-    def integrate(self,time,nsave_points=10,**initial_densities):
-        ## collect all species names
-        species = set()
-        for reaction in self.reactions:
-            for reactant in reaction.reactants:
-                species.add(reactant.name)
-            for product in reaction.products:
-                species.add(product.name)
-        for name in initial_densities:
-            species.add(name)
-        ## species_name:index_of_species_in_internal_arrays
-        self._species_index = {name:i for (i,name) in enumerate(species)} 
-        ## time steps
-        time = np.array(time,dtype=float)
-        if time[0]!=0:
-            time = np.concatenate(([0],time))
-        density = np.full((len(species),len(time)),0.)
-        ## set initial conditions
-        for key,val in initial_densities.items():
-            density[self._species_index[key],0] = val
-        ## initialise integrator
-        r = integrate.ode(self.get_rates)
-        r.set_integrator('lsoda', with_jacobian=True)
-        r.set_initial_value(density[:,0])
-        ## run saving data at requested number of times
-        for itime,timei in enumerate(time[1:]):
-            r.integrate(timei)
-            density[:,itime+1] = r.y
-        ##
-        retval = Dynamic_Recarray(
-            time=time,
-            T=self.T(time),
-        )
-        for speciesi,densityi in zip(species,density):
-            retval[speciesi] = densityi
-        self.species = species
-        self.density = density
-        self.time = time
-        self.rates = self.get_rates(self.time[-1],self.density[:,-1])
-        return(retval)
+    def plot_destruction_rates(
+            self,
+            species,
+            x=None,y=None,
+            ax=None,
+    ):
+        if ax is None:
+            ax = plt.gca()
+            ax.cla()
+        for r in self.get_matching_reactions(reactants=(species,)):
+            if x is None and y is None:
+                ax.plot(r.rate/mixture[species],label=r.name)
+                ax.set_yscale('log')
+            elif x is not None:
+                plot(x,r.rate/mixture[species],label=r.name)
+                ax.set_yscale('log')
+            elif y is not None:
+                plot(r.rate/mixture[species],y,label=r.name)
+                ax.set_xscale('log')
+        my.legend()
+        return ax
+
+    # def get_rates(self,time,density):
+        # """Calculate all rate coefficients in the network at a given time and
+        # with given densities."""
+        # rates = np.zeros(len(density),dtype=float) # rates for all species
+        # self.reaction_rates = np.zeros(len(self.reactions),dtype=float)
+        # self.rate_coefficients = np.zeros(len(self.reactions),dtype=float)
+        # ## T is a constant or function fo time
+        # if np.isscalar(self.T):
+            # T = self.T
+        # else:
+            # T = self.T(time)
+        # for ireaction,reaction in enumerate(self.reactions):
+            # ## compute rates of reaction
+            # rate_coefficient = reaction.get_rate_coefficient(T=T)
+            # reaction_rate = (rate_coefficient*np.prod([
+                                # density[self._species_index[reactant.name]]
+                                 # for reactant in reaction.reactants]))
+            # self.reaction_rates[ireaction] = reaction_rate
+            # self.rate_coefficients[ireaction] = rate_coefficient
+            # ## add contribution to product/reactant
+            # ## formation/destruction rates
+            # for reactant in reaction.reactants:
+                # rates[self._species_index[reactant.name]] -= reaction_rate
+            # for product in reaction.products:
+                # rates[self._species_index[product.name]] += reaction_rate
+        # self.rates = rates
+        # return(rates)
+
+    # def integrate(self,time,nsave_points=10,**initial_densities):
+        # ## collect all species names
+        # species = set()
+        # for reaction in self.reactions:
+            # for reactant in reaction.reactants:
+                # species.add(reactant.name)
+            # for product in reaction.products:
+                # species.add(product.name)
+        # for name in initial_densities:
+            # species.add(name)
+        # ## species_name:index_of_species_in_internal_arrays
+        # self._species_index = {name:i for (i,name) in enumerate(species)} 
+        # ## time steps
+        # time = np.array(time,dtype=float)
+        # if time[0]!=0:
+            # time = np.concatenate(([0],time))
+        # density = np.full((len(species),len(time)),0.)
+        # ## set initial conditions
+        # for key,val in initial_densities.items():
+            # density[self._species_index[key],0] = val
+        # ## initialise integrator
+        # r = integrate.ode(self.get_rates)
+        # r.set_integrator('lsoda', with_jacobian=True)
+        # r.set_initial_value(density[:,0])
+        # ## run saving data at requested number of times
+        # for itime,timei in enumerate(time[1:]):
+            # r.integrate(timei)
+            # density[:,itime+1] = r.y
+        # ##
+        # retval = Dynamic_Recarray(
+            # time=time,
+            # T=self.T(time),
+        # )
+        # for speciesi,densityi in zip(species,density):
+            # retval[speciesi] = densityi
+        # self.species = species
+        # self.density = density
+        # self.time = time
+        # self.rates = self.get_rates(self.time[-1],self.density[:,-1])
+        # return(retval)
 
     def print_rates(self):
         for reaction,rate,rate_coefficient in zip(self.reactions,self.reaction_rates,self.rate_coefficients):
@@ -674,36 +714,15 @@ class Reaction_Network:
 
     def get_matching_reactions(
             self,
-            reactants=None,products=None,
-            not_reactants=None,not_products=None,
+            reactants=(),products=(),
+            not_reactants=(),not_products=(),
     ):
         """Return a list of reactions with this reactant."""
         retval = []
         for r in self.reactions:
-            if reactants is not None:
-                if  np.isscalar(reactants):
-                    if reactants not in r.reactants:
-                        continue
-                else:
-                    if not all(reactants in r.reactants):
-                        continue
+            if any([t not in r.reactants for t in reactants]):
+                continue
             retval.append(r)
-            # if reactants is not None:
-                # if  np.isscalar(reactants):
-                    # if reactants not in t.reactants:
-                        # continue
-                # else:
-                    # if not all(reactants in t.reactants):
-                        # continue
-
-        # return([t for t in self.reactions if (
-            # t.reaction_type in reaction_type
-            # and all(
-                    # [t0 in t.reactants for t0 in reactants]
-                    # +[t0 in t.products for t0 in products]
-                    # +[t0 not in t.reactants for t0 in not_reactants]
-                    # +[t0 not in t.products for t0 in not_products]
-                # ))])
         return retval
 
     def get_reaction(self,name):
@@ -715,50 +734,36 @@ class Reaction_Network:
 
     def __str__(self):
         retval = []
-        for name,species in self.species.items():
-            retval.append(f'{name:20} {species.density}')
         for t in self.reactions:
             retval.append(str(t))
         return('\n'.join(retval))
 
-    # def get_rates(self):
-        # self.rates = dict()
-        # for reaction in self.reactions:
-            # self.rates[reaction] = reaction.get_rate(T=self.T,n=self.n)
-            # for multiplicity,species in reaction.reactants:
-                # self.rate[species] -= multiplicity*self.rates[reaction]
-            # for multiplicity,species in reaction.products:
-                # self.rate[species] += multiplicity*self.rates[reaction]
-
-    # def load(self,filename):
-
-
     def save(self,filename):
         """Save encoded reactions and coefficients to a file."""
-        my.string_to_file(filename,str(self))
+        tools.string_to_file(filename,str(self))
 
-    def load(self,filename):
+    def load(self,filename,encoding='standard'):
         """Load encoded reactions and coefficients from a file."""
-        with open(my.expand_path(filename),'r') as fid:
+        with open(tools.expand_path(filename),'r') as fid:
             for line in fid:
-                self.append(**eval(f'dict({line[:-1]})'))
+                self.append(**eval(f'dict({line[:-1]})'),encoding=encoding)
 
 
-    def get_recarray(self,keys=None):
-        data = collections.OrderedDict()
-        ## list reactants up to max number of reactants
-        for i in range(np.max([len(t.reactants) for t in self.reactions])):
-            data['reactant'+str(i)] = [t.reactants[i] if len(t.reactants)>i else ''for t in self.reactions]
-        ## list products up to max number of products
-        for i in range(np.max([len(t.products) for t in self.reactions])):
-            data['product'+str(i)] = [t.products[i] if len(t.products)>i else '' for t in self.reactions]
-        ## all coefficients
-        if keys is None:
-            keys = np.unique(np.concatenate(
-                [list(t.coefficients.keys()) for t in self.reactions]))
-        for key in keys:
-            data[key] = [t[key] if key in t.coefficients else np.nan for t in self.reactions]
-        return(my.dict_to_recarray(data))
+    # def get_recarray(self,keys=None):
+        # data = collections.OrderedDict()
+        # ## list reactants up to max number of reactants
+        # for i in range(np.max([len(t.reactants) for t in self.reactions])):
+            # data['reactant'+str(i)] = [t.reactants[i] if len(t.reactants)>i else ''for t in self.reactions]
+        # ## list products up to max number of products
+        # for i in range(np.max([len(t.products) for t in self.reactions])):
+            # data['product'+str(i)] = [t.products[i] if len(t.products)>i else '' for t in self.reactions]
+        # ## all coefficients
+        # if keys is None:
+            # keys = np.unique(np.concatenate(
+                # [list(t.coefficients.keys()) for t in self.reactions]))
+        # for key in keys:
+            # data[key] = [t[key] if key in t.coefficients else np.nan for t in self.reactions]
+        # return(my.dict_to_recarray(data))
 
 
 
