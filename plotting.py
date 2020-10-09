@@ -449,199 +449,277 @@ def set_figsize_in_pixels(x,y,fig=None):
     fig.set_size_inches(*figsize)
     return(figsize)
 
-def extra_interaction(fig=None,lines_picker=5):
+
+def extra_interaction(fig=None,pickradius=5):
     """Call this to customise the matplotlib interactive gui experience
     for this figure."""
-    ## define a bunch of functions, the action comes at the end 
-    ## select an axes
-    def select_axes(axes):
-        if axes is None: return # sometimes happens for some reason
-        ## initialise dictionrary to store useful data
-        if not hasattr(axes,'my_extra_interaction'):
-            axes.my_extra_interaction = dict(selected_line = None, selected_line_annotation = None, currently_selecting_points = False,) 
-        ## set all lines to requested picker values
-        if lines_picker is not None:
-            for line in axes.lines:
-                line.set_pickradius(lines_picker)
-        ## set this as selected axes
-        fig.my_extra_interaction['axes'] = axes
-    ## some data stored in figure to facilitate actions below
-    ## what to do when a deselected line is picked
-    def select_line(line):
-        print(line.get_label())
-        axes = fig.my_extra_interaction['axes']
-        axes.my_extra_interaction['selected_line_annotation'] = annotate_corner(line.get_label(), ax=axes, fontsize='large')
-        axes.my_extra_interaction['selected_line'] = line
-        line.set_linewidth(line.get_linewidth()*2)
-        line.set_markersize(line.get_markersize()*2)
-        plt.draw()
-    ## what to do when a selected line is picked
-    def deselect_line(line):    
-        axes = fig.my_extra_interaction['axes']
-        line.set_linewidth(line.get_linewidth()/2)
-        line.set_markersize(line.get_markersize()/2)
-        if axes.my_extra_interaction['selected_line_annotation']!=None:
-            axes.my_extra_interaction['selected_line_annotation'].remove()
-        axes.my_extra_interaction['selected_line_annotation'] = None
-        axes.my_extra_interaction['selected_line'] = None
-    ## if selecting previously selected line, unselect it, else select it
-    def on_button_press(event):
-        if event.inaxes: fig.sca(event.inaxes) # set clicked axes to gca
-        select_axes(event.inaxes)
-    ## on picking of line etc
-    def on_pick(event):
-        axes = fig.my_extra_interaction['axes']
-        line = event.artist
-        if axes.my_extra_interaction['currently_selecting_points'] is True:
-            pass
-        elif axes.my_extra_interaction['selected_line'] is None:
-            select_line(line)
-        elif line==axes.my_extra_interaction['selected_line']:
-            deselect_line(line)
-        else:
-            deselect_line(axes.my_extra_interaction['selected_line'])
-            select_line(line)
-        plt.draw()
-        return
-    ## key options
-    def on_key(event):
-        axes = fig.my_extra_interaction['axes']
-        ## delete line
-        if event.key=='d':
-            if axes.my_extra_interaction['selected_line'] is not None:
-                line = axes.my_extra_interaction['selected_line']
-                deselect_line(line)
-                line.set_visible(False)
-        ## autoscale
-        elif event.key=='a':
-            axes.autoscale(enable=True,axis='both')
-        ## zoom to all data
-        elif event.key=='z': 
-            lines  = (axes.get_lines()
-                      if axes.my_extra_interaction['selected_line'] is None
-                      else [axes.my_extra_interaction['selected_line']])  # use all lines if not selected
-            xmin,xmax,ymin,ymax = np.inf,-np.inf,np.inf,-np.inf
-            for line in lines:
-                if not line.get_visible(): continue
-                if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
-                xmin = min(xmin,line.get_xdata().min())
-                xmax = max(xmax,line.get_xdata().max())
-                ymin = min(ymin,line.get_ydata().min())
-                ymax = max(ymax,line.get_ydata().max())
-            if not np.isinf(ymin): axes.set_ylim(ymin=ymin)
-            if not np.isinf(ymax): axes.set_ylim(ymax=ymax)
-        ## zoom to full yscale
-        elif event.key=='y':
-            lines  = (axes.get_lines()
-                      if axes.my_extra_interaction['selected_line'] is None
-                      else [axes.my_extra_interaction['selected_line']])  # use all lines if not selected
-            xmin,xmax = axes.get_xlim()
-            ymin,ymax = np.inf,-np.inf
-            for line in lines:
-                if not line.get_visible(): continue
-                if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
-                i = find((line.get_xdata()>=xmin)&(line.get_xdata()<=xmax))
-                if not any(i): continue
-                ymin = min(ymin,(line.get_ydata()[i]).min())
-                ymax = max(ymin,(line.get_ydata()[i]).max())
-            if not np.isinf(ymin): axes.set_ylim(ymin=ymin)
-            if not np.isinf(ymax): axes.set_ylim(ymax=ymax)
-        ## zoom to full xscale 
-        elif event.key=='x': 
-            lines  = (axes.get_lines()
-                      if axes.my_extra_interaction['selected_line'] is None
-                      else [axes.my_extra_interaction['selected_line']])  # use all lines if not selected
-            xmin,xmax = np.inf,-np.inf
-            ymin,ymax = axes.get_ylim()
-            for line in lines:
-                if not line.get_visible(): continue
-                if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
-                i = (line.get_ydata()>=ymin)&(line.get_ydata()<=ymax) # get only data in current ylim
-                if not any(i): continue
-                xmin = min(xmin,np.min(line.get_xdata()[i])) # get new limits
-                xmax = max(xmax,np.max(line.get_xdata()[i]))
-            if not np.isinf(xmin): axes.set_xlim(xmin=xmin) # set limits
-            if not np.isinf(xmax): axes.set_xlim(xmax=xmax)
-        ## slect points
-        # elif event.key=='p':
-            # if axes.my_extra_interaction['currently_selecting_points'] is False:
-                # axes.my_extra_interaction['currently_selecting_points'] = True
-            # elif axes.my_extra_interaction['currently_selecting_points'] is True:
-                # axes.my_extra_interaction['currently_selecting_points'] = False
-            # points = fig.ginput(n=-1,timeout=-1,show_clicks=True)
-            # print('\n'.join(['{:0.15g} {:0.15g}'.format(*t) for t in points]))
-            # axes.my_extra_interaction['currently_selecting_points'] = False
-        ## move with arrow keys
-        elif event.key=='right':
-            xmin,xmax = axes.get_xlim()
-            shift = (xmax-xmin)*0.2
-            axes.set_xlim(xmin+shift,xmax+shift)
-        elif event.key=='left':
-            xmin,xmax = axes.get_xlim()
-            shift = (xmax-xmin)*0.2
-            axes.set_xlim(xmin-shift,xmax-shift)
-        elif event.key=='up':
-            ymin,ymax = axes.get_ylim()
-            shift = (ymax-ymin)*0.2
-            axes.set_ylim(ymin+shift,ymax+shift)
-        elif event.key=='down':
-            ymin,ymax = axes.get_ylim()
-            shift = (ymax-ymin)*0.2
-            axes.set_ylim(ymin-shift,ymax-shift)
-        ## zoom with arrow keys
-        elif event.key=='shift+right':
-            xmin,xmax = axes.get_xlim()
-            shift = (xmax-xmin)/2.
-            axes.set_xlim(xmin-shift,xmax+shift)
-        elif event.key=='shift+left':
-            xmin,xmax = axes.get_xlim()
-            shift = (xmax-xmin)/4.
-            axes.set_xlim(xmin+shift,xmax-shift)
-        elif event.key=='shift+up':
-            ymin,ymax = axes.get_ylim()
-            shift = (ymax-ymin)/2.
-            axes.set_ylim(ymin-shift,ymax+shift)
-        elif event.key=='shift+down':
-            ymin,ymax = axes.get_ylim()
-            shift = (ymax-ymin)/4.
-            axes.set_ylim(ymin+shift,ymax-shift)
-        ## zoom with +/=/- keys
-        elif event.key=='+' or event.key=='=':
-            xmin,xmax = axes.get_xlim()
-            shift = (xmax-xmin)/4.
-            axes.set_xlim(xmin+shift,xmax-shift)
-            ymin,ymax = axes.get_ylim()
-            shift = (ymax-ymin)/4.
-            axes.set_ylim(ymin+shift,ymax-shift)
-        elif event.key=='-':
-            xmin,xmax = axes.get_xlim()
-            shift = (xmax-xmin)/2.
-            axes.set_xlim(xmin-shift,xmax+shift)
-            ymin,ymax = axes.get_ylim()
-            shift = (ymax-ymin)/2.
-            axes.set_ylim(ymin-shift,ymax+shift)
-        ## redraw
-        plt.draw()
-        return
     ## select figure
-    if fig is None: fig = plt.gcf() # determine figure object
-    if hasattr(fig,'my_extra_interaction'):
-        return                  # extra interaction already set up, do not add again
+    if fig is None:
+        fig = plt.gcf() # determine figure object
+    if hasattr(fig,'_my_extra_interaction'):
+        ## extra interaction already set up, do not add again
+        return                  
     else:
-        fig.my_extra_interaction = {}
-        select_axes(fig.gca())
+        fig._my_extra_interaction = {
+            'pickradius':pickradius,
+        }
+        _extra_interaction_select_axes(fig.gca())
     ## watch for events
-    fig.canvas.mpl_connect('key_press_event', on_key)
-    fig.canvas.mpl_connect('pick_event', on_pick)
-    fig.canvas.mpl_connect('button_press_event', on_button_press)
+    fig.canvas.mpl_connect('key_press_event', _extra_interaction_on_key)
+    fig.canvas.mpl_connect('pick_event', _extra_interaction_on_pick)
+    fig.canvas.mpl_connect('button_press_event', _extra_interaction_on_button_press)
+    fig.canvas.mpl_connect('scroll_event', _extra_interaction_on_scroll_event)
 
-def autoscale_y(ax=None):
-    """Autoscale y axis to fit data within current x limits."""
-    if ax==None: ax = plt.gca()
-    ax.set_ylim(
-        np.nanmin([np.nanmin(line.get_ydata()[inrange(line.get_xdata(),*ax.get_xlim())]) for line in ax.lines]),
-        np.nanmax([np.nanmax(line.get_ydata()[inrange(line.get_xdata(),*ax.get_xlim())]) for line in ax.lines]),
-        )
+def _extra_interaction_select_axes(axes):
+    """"""
+    fig = axes.figure          
+    fig.sca(axes) # set clicked axes to gca
+    ## initialise dictionrary to store useful data
+    if not hasattr(axes,'_my_extra_interaction'):
+        axes._my_extra_interaction = dict(
+            selected_line = None,
+            selected_line_annotation = None,
+            currently_selecting_points = False,
+            make_point_annotations = False,
+            list_of_point_annotations = [],) 
+    ## set all lines to requested picker values
+    if fig._my_extra_interaction['pickradius'] is not None:
+        for line in axes.lines:
+            line.set_picker(True) 
+            line.set_pickradius(fig._my_extra_interaction['pickradius'])
+    ## set this as selected axes
+    fig._my_extra_interaction['axes'] = axes
+
+def _extra_interaction_zoom_in(x_or_y,axes,factor=2/3):
+    if x_or_y == 'x':
+        xmin,xmax = axes.get_xlim()
+        axes.set_xlim(
+            (xmin+xmax)/2-(xmax-xmin)/2*factor,
+            (xmin+xmax)/2+(xmax-xmin)/2*factor)
+    elif x_or_y == 'y':
+        ymin,ymax = axes.get_ylim()
+        axes.set_ylim(
+            (ymin+ymax)/2-(ymax-ymin)/2*factor,
+            (ymin+ymax)/2+(ymax-ymin)/2*factor)
+ 
+def _extra_interaction_zoom_out(x_or_y,axes,factor=2/3):
+    if x_or_y == 'x':
+        xmin,xmax = axes.get_xlim()
+        axes.set_xlim(
+            (xmin+xmax)/2-(xmax-xmin)/2/factor,
+            (xmin+xmax)/2+(xmax-xmin)/2/factor)
+    elif x_or_y == 'y':
+        ymin,ymax = axes.get_ylim()
+        axes.set_ylim(
+            (ymin+ymax)/2-(ymax-ymin)/2/factor,
+            (ymin+ymax)/2+(ymax-ymin)/2/factor)
+
+def _extra_interaction_select_line(line):
+    """some data stored in figure to facilitate actions below
+    what to do when a deselected line is picked"""
+    print(line.get_label())
+    axes = line.axes
+    axes._my_extra_interaction['selected_line_annotation'] = axes.annotate(
+        line.get_label(),(0.1,0.1),xycoords='axes fraction',
+        ha='left',va='top',fontsize='large')
+    axes._my_extra_interaction['selected_line'] = line
+    line.set_linewidth(line.get_linewidth()*2)
+    line.set_markersize(line.get_markersize()*2)
+
+def _extra_interaction_deselect_line(line):    
+    """what to do when a selected line is picked"""
+    axes = line.axes
+    line.set_linewidth(line.get_linewidth()/2)
+    line.set_markersize(line.get_markersize()/2)
+    if axes._my_extra_interaction['selected_line_annotation']!=None:
+        axes._my_extra_interaction['selected_line_annotation'].remove()
+    axes._my_extra_interaction['selected_line_annotation'] = None
+    axes._my_extra_interaction['selected_line'] = None
+
+def _extra_interaction_on_button_press(event):
+    """If turned on annotate click point coordinates."""
+    if event.inaxes:
+        axes = event.inaxes
+        _extra_interaction_select_axes(axes)
+        if axes._my_extra_interaction['make_point_annotations']:
+            ## annotate point
+            x,y = event.xdata,event.ydata
+            point = axes.plot(x,y,marker='x',color='red')[0]
+            annotation = plt.annotate(
+                f"({x:0.12g}, {y:0.12g})",
+                (x,y),
+                # (1,1), xycoords='axes fraction',
+                verticalalignment='top', horizontalalignment='left',
+                fontsize='x-small', color='red',)
+            axes._my_extra_interaction['list_of_point_annotations'].extend((point,annotation))
+            plt.draw()
+
+def _extra_interaction_on_scroll_event(event):
+    """what do to when mouse wheel is rolled -- zoom in and out"""
+    if event.inaxes:
+        axes = event.inaxes
+        if event.button == 'down':
+            _extra_interaction_zoom_in('x',axes,)
+            _extra_interaction_zoom_in('y',axes,)
+        if event.button == 'up':
+            _extra_interaction_zoom_out('x',axes,)
+            _extra_interaction_zoom_out('y',axes,)
+        plt.draw()
+
+def _extra_interaction_on_pick(event):
+    """on picking of line etc"""
+    line = event.artist
+    axes = line.axes
+    if axes._my_extra_interaction['currently_selecting_points'] is True:
+        pass
+    elif axes._my_extra_interaction['selected_line'] is None:
+        _extra_interaction_select_line(line)
+    elif line==axes._my_extra_interaction['selected_line']:
+        _extra_interaction_deselect_line(line)
+    else:
+        _extra_interaction_deselect_line(axes._my_extra_interaction['selected_line'])
+        _extra_interaction_select_line(line)
+    plt.draw()
+    return
+
+def _extra_interaction_on_key(event):
+    """key options"""
+    if event.key=='q':
+        ## quit already handled
+        return              
+    axes = plt.gca()
+    move_factor = 0.2
+    zoom_factor = 1.5
+    if event.key=='d':
+        ## delete line
+        if axes._my_extra_interaction['selected_line'] is not None:
+            line = axes._my_extra_interaction['selected_line']
+            _extra_interaction_deselect_line(line)
+            line.set_visible(False)
+    elif event.key=='a':
+        ## autoscale
+        axes.autoscale(enable=True,axis='both')
+    elif event.key=='z': 
+        ## zoom to all data
+        lines  = (axes.get_lines()
+                  if axes._my_extra_interaction['selected_line'] is None
+                  else [axes._my_extra_interaction['selected_line']])  # use all lines if not selected
+        xmin,xmax,ymin,ymax = np.inf,-np.inf,np.inf,-np.inf
+        for line in lines:
+            if not line.get_visible(): continue
+            if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
+            xmin = min(xmin,line.get_xdata().min())
+            xmax = max(xmax,line.get_xdata().max())
+            ymin = min(ymin,line.get_ydata().min())
+            ymax = max(ymax,line.get_ydata().max())
+        if not np.isinf(xmin):
+            axes.set_xlim(xmin=xmin) 
+        if not np.isinf(xmax):
+            axes.set_xlim(xmax=xmax)
+        if not np.isinf(ymin):
+            axes.set_ylim(ymin=ymin)
+        if not np.isinf(ymax):
+            axes.set_ylim(ymax=ymax)
+    elif event.key=='y':
+        ## zoom to full yscale
+        lines  = (axes.get_lines()
+                  if axes._my_extra_interaction['selected_line'] is None
+                  else [axes._my_extra_interaction['selected_line']])  # use all lines if not selected
+        xmin,xmax = axes.get_xlim()
+        ymin,ymax = np.inf,-np.inf
+        for line in lines:
+            if not line.get_visible(): continue
+            if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
+            i = np.argwhere((line.get_xdata()>=xmin)&(line.get_xdata()<=xmax))
+            if not any(i): continue
+            ymin = min(ymin,(line.get_ydata()[i]).min())
+            ymax = max(ymin,(line.get_ydata()[i]).max())
+        if not np.isinf(ymin):
+            axes.set_ylim(ymin=ymin)
+        if not np.isinf(ymax):
+            axes.set_ylim(ymax=ymax)
+    elif event.key=='x': 
+        ## zoom to full xscale 
+        lines  = (axes.get_lines()
+                  if axes._my_extra_interaction['selected_line'] is None
+                  else [axes._my_extra_interaction['selected_line']])  # use all lines if not selected
+        xmin,xmax = np.inf,-np.inf
+        ymin,ymax = axes.get_ylim()
+        for line in lines:
+            if not line.get_visible(): continue
+            if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
+            i = (line.get_ydata()>=ymin)&(line.get_ydata()<=ymax) # get only data in current ylim
+            if not any(i): continue
+            xmin = min(xmin,np.min(line.get_xdata()[i])) # get new limits
+            xmax = max(xmax,np.max(line.get_xdata()[i]))
+        if not np.isinf(xmin):
+            axes.set_xlim(xmin=xmin) 
+        if not np.isinf(xmax):
+            axes.set_xlim(xmax=xmax)
+    elif event.key=='m':
+        ## set to annotate points
+        if axes._my_extra_interaction['make_point_annotations']:
+            axes._my_extra_interaction['make_point_annotations'] = False
+        else:
+            axes._my_extra_interaction['make_point_annotations'] = True
+    elif event.key=='M':
+        ## delete point annotations
+        if axes._my_extra_interaction['list_of_point_annotations'] is not None:
+            for artist in axes._my_extra_interaction['list_of_point_annotations']:
+                artist.remove()
+            axes._my_extra_interaction['list_of_point_annotations'].clear()
+    elif event.key=='P':
+        ## select (x,y) points and save to clipboard, enter to quit
+        my.clginput()
+    elif event.key=='X':
+        ## select x points and save to clipboard, enter to quit
+        my.clginput('x')
+    elif event.key=='Y':
+        ## select y points and save to clipboard, enter to quit
+        my.clginput('y')
+    elif event.key=='right':
+        ## move with arrow keys
+        xmin,xmax = axes.get_xlim()
+        shift = (xmax-xmin)*move_factor
+        axes.set_xlim(xmin+shift,xmax+shift)
+    elif event.key=='left':
+        ## move with arrow keys
+        xmin,xmax = axes.get_xlim()
+        shift = (xmax-xmin)*move_factor
+        axes.set_xlim(xmin-shift,xmax-shift)
+    elif event.key=='up':
+        ## move with arrow keys
+        ymin,ymax = axes.get_ylim()
+        shift = (ymax-ymin)*move_factor
+        axes.set_ylim(ymin+shift,ymax+shift)
+    elif event.key=='down':
+        ## move with arrow keys
+        ymin,ymax = axes.get_ylim()
+        shift = (ymax-ymin)*move_factor
+        axes.set_ylim(ymin-shift,ymax-shift)
+    elif event.key=='shift+right':
+        ## zoom with arrow keys
+        _extra_interaction_zoom_out('x',axes)
+    elif event.key=='shift+left':
+        ## zoom with arrow keys
+        _extra_interaction_zoom_in('x',axes)
+    elif event.key=='shift+up':
+        ## zoom with arrow keys
+        _extra_interaction_zoom_out('y',axes)
+    elif event.key=='shift+down':
+        ## zoom with arrow keys
+        _extra_interaction_zoom_in('y',axes)
+    elif event.key=='+' or event.key=='=':
+        ## zoom with +/=/- keys
+        _extra_interaction_zoom_in('x',axes)
+        _extra_interaction_zoom_in('y',axes)
+    elif event.key=='-':
+        ## zoom with +/=/- keys
+        _extra_interaction_zoom_out('x',axes)
+        _extra_interaction_zoom_out('y',axes)
+    ## redraw
+    plt.draw()
+    return
     
 _newcolor_nextcolor=0
 linecolors_screen=(
@@ -1952,14 +2030,15 @@ def set_tick_spacing(
             end, minor_spacing),minor=True)
 
 
-def show(*figs):
+def show():
     """ Show current plot in a customised way."""
     ## do nothing if in an ipython shell
     for n in plt.get_fignums():
-        fig = plt.figure(n)
-        if len(figs)>0 and fig not in figs:
-            continue
-        extra_interaction(fig=fig)
+        extra_interaction(fig=plt.figure(n))
+        # if (toolbar:=plt.get_current_fig_manager().toolbar) is not None:
+            # toolbar.setHidden(True) # hide toolbar -- only works on qt?
+        # set_figsize_fullscreen()
+        pass
     try:
         __IPYTHON__
         return
