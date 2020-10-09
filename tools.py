@@ -3395,6 +3395,16 @@ def isnumeric(a):
         # output = np.loadtxt(tmpfile,**kwargs)
     # return output
 
+
+def rootname(path,recurse=False):
+    """Returns path stripped of leading directories and final
+    extension. Set recurse=True to remove all extensions."""
+    path = os.path.splitext(os.path.basename(path))[0]
+    if not recurse or path.count('.')+path.count('/') == 0:
+        return path
+    else:
+        return rootname(path,recurse=recurse)
+
 def array_to_file(filename,*args,mkdir=False,**kwargs):
     """Use filename to decide whether to attempt to save as an hdf5 file
     or ascii data.\n\nKwargs:\n\n mkdir -- If True, create all leading
@@ -3745,6 +3755,23 @@ def file_to_dict(filename,*args,**kwargs):
     else: # load as text
         d = txt_to_dict(filename,*args,**kwargs)
     return(d)
+
+def file_to_string(filename):
+    with open(expand_path(filename),mode='r',errors='replace') as fid:
+        string = fid.read(-1)
+    return(string)
+
+def file_to_lines(filename,**open_kwargs):
+    """Split file data on newlines and return as a list."""
+    fid = open(expand_path(filename),'r',**open_kwargs)
+    string = fid.read(-1)
+    fid.close()
+    return(string.split('\n'))
+
+def file_to_tokens(filename,**open_kwargs):
+    """Split file on newlines and whitespace, then return as a list of
+    lists."""
+    return([line.split() for line in file_to_string(filename).split('\n')])
 
 def org_table_to_dict(filename,table_name=None):
     """Load a table into a dicationary of arrays. table_name is used to
