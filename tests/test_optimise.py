@@ -37,7 +37,7 @@ def test_ParameterSet_set_get():
     assert t['y'] == 0.1
     t['x'] = 6
     assert x.value == 6
-    assert x.vary == False 
+    assert x.vary == None
     assert x.step == 0.0005
 
 def test_ParameterSet_set_print():
