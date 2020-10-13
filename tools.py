@@ -6,10 +6,11 @@ from copy import copy
 
 from scipy import interpolate
 import csv
-import glob
+import glob as glob_module
 import numpy as np
 import h5py
 
+from . import plotting
 
 
 class AutoDict:
@@ -193,9 +194,9 @@ def dict_to_kwargs(d,keys=None):
         keys = d.keys() # default to all keys
     return(','.join([key+'='+repr(d[key]) for key in keys]))
 
-# ############################
-# ## mathematical functions ##
-# ############################
+############################
+## mathematical functions ##
+############################
 
 # def kronecker_delta(x,y):
     # """1 if x==y else 0."""
@@ -205,9 +206,151 @@ def dict_to_kwargs(d,keys=None):
     # retval[x==y] = 1
     # return(retval)              # vector case
 
-# ###########################
-# ## convenience functions ##
-# ###########################
+        
+
+def leastsq(func,
+            x0,
+            dx,
+            R=100.,
+            print_error_mesg=True,
+            error_only=False,
+            xtol=1.49012e-8,
+            rms_noise=None,     # for calculation of uncertaintes use this noise level rather than calculate from fit residual. This is useful in the case of an imperfect fit.
+):
+    """
+    Rejig the inputs of scipy.optimize.leastsq so that they do what I
+    want them to.
+    \nInputs:\n
+      func -- The same as for leastsq.
+      x0 -- The same as for leastsq.
+      dx -- A sequence of the same length as x0 containing the desired
+      absolute stepsize to use when calculating the finite difference
+      Jacobean.
+      R -- The ratio of two step sizes: Dx/dx. Where Dx is the maximum
+      stepsize taken at any time. Note that this is only valid for the
+      first iteration, after which leastsq appears to approximately
+      double the 'factor' parameter.
+      print_error_mesg -- if True output error code and message if failure
+    \nOutputs: (x,sigma)\n
+    x -- array of fitted parameters
+    sigma -- error of these
+    The reason for doing this is that I found it difficult to tweak
+    the epsfcn, diag and factor parametres of leastsq to do what I
+    wanted, as far as I can determine these behave in the following
+    way:
+    dx = x*sqrt(epsfcn) ; x!=0,
+    dx = 1*sqrt(epsfcn) ; x==0.
+    Default epsfcn=2.2e-16 on scucomp2.
+    Dx = abs(x*100)      ; x!=0, factor is not set,
+    Dx = abs(x*factor)   ; x!=0, factor is set,
+    Dx = abs(factor)     ; x==0, factor is set,
+    Dx = 100             ; x==0, factor is not set, diag is not set,
+    Dx = abs(100/diag)   ; x==0, factor is not set, diag is set,
+    Dx = abs(factor/diag); x==0, factor is set, diag is set.
+    Many confusing cases, particularly annoying when initial x==0 and
+    it is not possible to control dx or Dx individually for each
+    parameter.
+    My solution was to add a large value to each parameter so that
+    there is little or no chance it will change magnitude during the
+    course of the optimisation. This value was calculated separately
+    for each parameter giving individual control over dx. I did not
+    think of a way to also control Dx individually, instead the ratio
+    R=Dx/dx may be globally set.
+    """
+    from scipy import optimize
+    ## limit the number of evaluation to a minimum number to compute
+    ## the uncertainty from the second derivative - make R small to
+    ## improve performance? - Doesn't work for very large number of
+    ## parameters - errors are all nan, probably because of a bug in
+    ## leastsq?
+    if error_only:
+        maxfev = len(x0)+1
+        R = 1.
+    else:
+        maxfev = 0
+    ## try and wangle actual inputs of numpy.leastsq to get the right
+    ## step sizes
+    x0=np.array(x0)
+    if np.isscalar(dx): dx = np.full(x0.shape,dx)
+    dx=np.array(dx)
+    epsfcn = 1e-15              # required that sqrt(epsfcn)<<dp/p
+    xshift = x0+dx/np.sqrt(epsfcn)    # required that xshift>>p
+    factor = R*np.sqrt(epsfcn)
+    x = x0-xshift
+    ## perform optimisation. try block is for the case where failure
+    ## to calculte error
+    try:
+        (x,cov_x,info,mesg,success)=optimize.leastsq(
+            lambda x:func(x+xshift),
+            x,
+            epsfcn=epsfcn,
+            factor=factor,
+            full_output=True,
+            maxfev=maxfev,
+            xtol = xtol,
+            )
+    except ValueError as err:
+        if str(err)=='array must not contain infs or NaNs':
+            raise Exception('Bad covariance matrix in error calculation, residual independent of some variable?')
+        else:
+            raise
+    ## check if any parameters have zero effect on the fit, and raise
+    ## a warning if so. This will prevent the calculation of the
+    ## uncertainty.
+    if np.min(np.sum(np.abs(info['fjac']),1))==0: # a test for no effect
+        ## calculate finite difference derivative
+        reference_residual = np.array(func(x+xshift))
+        diff = []
+        for i,dxi in enumerate(dx):
+            x1 = copy(x)
+            x1[i] += dxi
+            diff.append(np.max(np.abs(reference_residual-np.array(func(x1+xshift)))))
+        diff = np.array(diff)
+        ## warn about those that have no difference
+        for j in find(diff==0):
+            print(f'warning: Parameter has no effect: index={j}, value={float(x[j]+xshift[j])}')
+    ## warn on error if requested
+    if (not success) & print_error_mesg:
+        warnings.warn("leastsq exit code: "+str(success)+mesg)
+    ## sometimes this is not an array
+    if not np.iterable(x): x=[x]
+    ## attempt to calculate covariance of parameters
+    if cov_x is None: 
+        sigma_x = np.nan*np.ones(len(x))
+    else:
+        ## calculate noise rms from the resiudal if not explicitly provided
+        if rms_noise is None:
+            chisq=sum(info["fvec"]*info["fvec"])
+            dof=len(info["fvec"])-len(x)+1        # degrees of freedom
+            ## assumes unweighted data with experimental uncertainty
+            ## deduced from fitted residual. ref gavin2011.
+            std_y = np.sqrt(chisq/dof)
+        else:
+            std_y = rms_noise   # note that the degrees of freedom is not considered here
+        sigma_x = np.sqrt(cov_x.diagonal())*std_y
+    return(x+xshift,sigma_x)
+
+def rms(x):
+    """Calculate rms."""
+    return np.sqrt(np.mean(np.array(x)**2))
+
+def nanrms(x):
+    """Calculate rms, ignoring NaN data."""
+    return np.sqrt(np.nanmean(np.array(x)**2))
+
+
+def randn(shape=None):
+    """Return a unit standard deviation normally distributed random
+    float, or array of given shape if provided."""
+    if shape == None:
+        return float(np.random.standard_normal((1)))
+    else:
+        return np.random.standard_normal(shape)
+
+
+###########################
+## convenience functions ##
+###########################
 
 # def date_string():
     # """Get string representing date in ISO format."""
@@ -258,106 +401,10 @@ def isiterable(x):
     # return True
 
 
-# #########
-# ## myc ##
-# #########
 
-# def myc_test_function_array(x):
-    # """An interface to one of the c-code functions."""
-    # ## import myc
-    # import ctypes
-    # myc = ctypes.CDLL(os.path.abspath("myc.so"))
-
-    # ## copy x if it is the wrong type, otherwise use as is -- risk of
-    # ## mutation in c code
-    # if x.dtype != np.dtype(float) or x.ndim!=1:
-        # x = np.array(x,dtype=ctypes.c_double,ndmin=1)
-    # assert x.ndim==1
-    # ## generate return array
-    # retval = np.empty(x.shape,dtype=ctypes.c_double)
-    # ## call function -- operating on return array in place
-    # myc.test_function_array(
-        # x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-        # retval.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-        # len(x))
-    # return(retval)
-
-
-# ###########################
-# ## symbolic computations ##
-# ###########################
-
-# def lambdify_sympy_expression(
-        # expression,     # sympy expression
-        # variables=(),   # a list of argument variables for the final expression
-        # substitutions=None, # a dict with {a:b} leading to kwargs substitutions a=b
-        # parameter_set=None, # special case to handle optimise_model.Parameter_Set substitutions
-# ): 
-    # """A slightly faster reduced lambdify for sympy functions, parameters
-    # is a Parameter_Set object to get variable names from. Function
-    # variable are defined in the final function."""
-    # ## make into a python string
-    # t =  cached_pycode(expression,fully_qualified_modules=False) 
-    # ## replace math functions
-    # for t0,t1 in (('sqrt','np.sqrt'),):
-        # t = t.replace(t0,t1)
-    # ## argument list
-    # arglist = list(variables)
-    # if substitutions is None: substitutions = {}
-    # arglist.extend([f'{key}=substitutions[{repr(key)}]' for key in substitutions])
-    # ## replace variable names with parameter_set['variable_name']
-    # if parameter_set is not None: 
-        # for t0 in parameter_set.keys() :
-            # t = re.sub(r"\b"+t0+r"\b",f"parameter_set[{repr(t0)}]",t)
-        # arglist.append('parameter_set=parameter_set')
-    # ## create function of variables with eval, also getting
-    # ## closure on parameter_set
-    # eval_expression = f'lambda {",".join(arglist)}: {t}'
-    # return(eval(eval_expression))
-
-# def latexify_sympy_expression_string(string_from_sympy_expression) :
-    # """Massive hack to get sympy matrix elements to be latex compatible."""
-    # warnings.warn("Has errors I believe.")
-    # string = string_from_sympy_expression
-    # for original,replacement in (
-            # (r'\.0\b',''), # change 1.0 4.0 etc to 1 or 4
-            # (r'\b1\*',''), # eliminate 1.0*
-            # (r'\*1\b',''), # eliminate *1.0
-            # (r'\*',''), # eliminate multiplication signs
-            # (r' ',''), # eliminate spaces              
-            # (r'0\.5([^0-9])',r'\\frac{1}{2}\1'),
-            # (r'0\.666666666[0-9]*([^0-9])',r'\\frac{2}{3}\1'),
-            # (r'0\.16666666[0-9]*([^0-9])',r'\\frac{1}{6}\1'),
-            # (r'0.08333333333[0-9]*([^0-9])',r'\\frac{1}{12}\1'),
-            # (r'0\.33333333[0-9]*([^0-9])',r'\\frac{1}{3}\1'),
-            # (r'1\.33333333[0-9]*([^0-9])',r'\\frac{4}{3}\1'),
-            # (r'0.353553390[0-9]+([^0-9])',r'2^\\frac{-3}{2}\1'),
-            # (r'0.11785113[0-9]+([^0-9])',r'\\frac{2^\\frac{-3}{2}}{3}\1'),
-            # (r'1\.4142135[0-9]+([^0-9])',r'2^\\frac{1}{2}\1'),
-            # (r'2\.82842712[0-9]*([^0-9])',r'2^\\frac{3}{2}\1'),
-            # (r'5\.65685424[0-9]*([^0-9])',r'2^\\frac{5}{2}\1'),
-            # (r'0\.94280904[0-9]*([^0-9])',r'\\frac{2^\\frac{3}{2}}{3}\1'),
-            # (r'0\.70710678[0-9]*([^0-9])',r'2^\\frac{-1}{2}\1'),
-            # (r'0\.4714045207[0-9]+([^0-9])',r'\\frac{2^\\frac{1}{2}}{3}\1'),
-            # (r'([Aλγgηξ])([DH])',r'\1_\2'),
-            # (r'J\(J\+1\)','x'),
-            # (r'sqrt\((.)\)',r'\1^\\frac{1}{2}'),
-            # (r'sqrt\(([^)]+)\)',r'(\1)^\\frac{1}{2}'),
-            # (r'\+',r' + '), # put some spaces back in
-            # (r'-',r' - '), # put some spaces back in
-            # (r'J ([+-]) ',r'J\1'), # not these ones
-            # (r'x ([+-]) ',r'x\1'), # not these ones
-            # (r'\( ([+-]) ',r'(\1'), # not these ones
-            # (r'\(x\)',r'x'), # not these ones
-            # (r'J([^+-]*)\(J\+1\)',r'\1x'), # not these ones
-            # (r'([xJ)])([0-9]+)',r'\1^{\2}'),                     # superscript powers
-            # ):
-        # string = re.sub(original,replacement,string)
-    # return(string)
-
-# ########################
-# ## file manipulations ##
-# ########################
+########################
+## file manipulations ##
+########################
 
 def expand_path(path):
     """Shortcut to os.path.expanduser(path). Returns a
@@ -398,7 +445,7 @@ def mkdir(*directories,trash_existing=False):
     directory = expand_path(directories[0])
     if os.path.isdir(directory):
         if trash_existing: # deletes contents--keeps directory
-            for t in myglob(f'{directory}/*'):
+            for t in glob(f'{directory}/*'):
                 trash(t)
         return
     ## walk parent directories making if necessary
@@ -411,9 +458,9 @@ def mkdir(*directories,trash_existing=False):
             if os.path.exists(partial_directory): raise Exception("Exists and is not a directory: "+partial_directory)
             os.mkdir(partial_directory)
 
-# #####################
-# ## text formatting ##
-# #####################
+#####################
+## text formatting ##
+#####################
 
 # def decode_format_string(s):
     # """Get the different arts of a format string, return as dictionary."""
@@ -671,6 +718,76 @@ def format_string_or_general_numeric(x):
                             # list(find(np.diff(x)>separation)+1)+[len(x)])]))
 
 
+
+def format_columns(
+        data,                   # list or dict (for labels)
+        fmt='>11.5g',
+        labels=None,
+        header=None,
+        record_separator='\n',
+        delimiter=' ',
+        comment_string='# ',
+):
+    """Print args in with fixed column width. Labels are column
+    titles.  NOT QUITE THERE YET"""
+    ## if data is dict, reinterpret appropriately
+    if hasattr(data,'keys'):
+        labels = data.keys()
+        data = [data[key] for key in data]
+    ## make formats a list as long as data
+    if isinstance(fmt,str):
+        fmt = [fmt for t in data]
+    ## get string formatting for labels and failed formatting
+    fmt_functions = []
+    for f in fmt:
+        def fcn(val,f=f):
+            if isinstance(val,str):
+                ## default to a string of that correct length
+                r = re.match(r'[^0-9]*([0-9]+)(\.[0-9]+)?[^0-9].*',f)
+                return(format(val,'>'+r.groups()[0]+'s'))
+            else:
+                ## return in given format if possible
+                return(format(val,f)) 
+        fmt_functions.append(fcn)
+    ## begin output records
+    records = []
+    ## add header if required
+    if header is not None:
+        records.append(comment_string+header.strip().replace('\n','\n'+comment_string))
+    ## labels if required
+    if labels!=None:
+        records.append(comment_string+delimiter.join([f(label) for (f,label) in zip(fmt_functions,labels)]))
+    ## compose formatted data columns
+    comment_pad = ''.join([' ' for t in comment_string])
+    records.extend([comment_pad+delimiter.join([f(field) for (f,field) in zip(fmt_functions,record)]) for record in zip(*data)])
+    t = record_separator.join(records)
+    return(record_separator.join(records))
+
+# def print_columns(data,**kwargs):
+    # """Print the data into readable columns heuristically."""
+    # if isinstance(data,np.recarray):
+        # print(recarray_to_str(data,**kwargs))
+    # elif isinstance(data,dict):
+        # print(dict_array_to_str(data,**kwargs))
+    # else:
+        # print(format_columns(data,**kwargs))
+
+# def dict_array_to_str(d,keys=None,fmts=None,**kwargs_for_make_table):
+    # """Return a string listing the contents of a dictionary made up of
+    # arrays of the same length. If no keys specified, print all keys."""
+    # if keys is None: keys = list(d.keys())
+    # if fmts is None:
+        # fmts = [max('12',len(key)) for key in keys]
+    # elif isinstance(fmts,str):
+        # fmts = [fmts for key in keys]
+    # columns = [Value_Array(name=key,val=d[key],fmt=fmt) for (key,fmt) in zip(keys,fmts)]
+    # return make_table(columns,**kwargs_for_make_table)
+
+# def recarray_to_str(d,*args,**kwargs):
+    # kwargs.setdefault('headers',d.dtype.names)
+    # return(tabulate(d,*args,**kwargs))
+                            
+
 # def make_latex_table(columns,environment='tabular',preamble='',postscript='',):
     # """Convenient method to create a simple LaTeX table from data.
 
@@ -746,11 +863,9 @@ def format_string_or_general_numeric(x):
         # padding=0, with_header_hide=None)
     # return(_tabulate.tabulate(tabular_data,headers,tablefmt,floatfmt,numalign,stralign,missingval))
 
-# #####################################
-# ## save / load /convert array data ##
-# #####################################
-
-
+#####################################
+## save / load /convert array data ##
+#####################################
 
 # def repeat(x,repeats,axis=None):
     # """Just like numpy repeat, but will extend the dimension of the
@@ -1046,7 +1161,12 @@ def dict_to_hdf5(
         f.create_dataset(key,data=data,**kwargs)
     f.close()
 
-def load_bruker_opus_data(filename,datablock=None):
+def load_bruker_opus(filename):
+    """Load a binary Bruker Opus file into a dictionary."""
+    import brukeropusreader
+    return brukeropusreader.read_file(expand_path(filename))
+
+def load_bruker_opus_spectrum(filename,datablock='ScSm'):
     """Load a binary Bruker Opus file, returning a specific datablock as well as all data in a
     dictionary. Useful datablocks:
     IgSm:  the single-channel sample interferogram
@@ -1054,18 +1174,12 @@ def load_bruker_opus_data(filename,datablock=None):
     IgRf:  the reference (background) interferogram
     ScRf:  the reference (background) spectrum
     """
-    import brukeropusreader
-    d = brukeropusreader.read_file(expand_path(filename))
-    if datablock is None:
-        return(d)
-    assert f'{datablock}' in d, f'Cannot find datablock: {repr(datablock)}'
+    d = load_bruker_opus(filename)
+    assert datablock in d, f'Cannot find datablock: {repr(datablock)}'
     parameters = d[f'{datablock} Data Parameter']
     x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
     y = d[datablock][:parameters['NPT']] # for some reason the data in the datablock can be too long
-    return(x,y,parameters)
-
-def load_bruker_opus_spectrum(filename,datablock='ScSm'):
-    return(load_bruker_opus_data(filename,datablock))
+    return x,y,parameters
 
 
 # def kwargs_to_directory(directory, **dict_to_directory_kwargs,):
@@ -1105,7 +1219,7 @@ def load_bruker_opus_spectrum(filename,datablock='ScSm'):
     # directory = expand_path(directory)
     # directory = re.sub(r'(.*[^/])/*',r'\1',directory) # remove trailing /
     # retval = {}
-    # for filename in myglob(directory+'/*'):
+    # for filename in glob(directory+'/*'):
         # filename = filename[len(directory)+1:]
         # extension = os.path.splitext(filename)[1]
         # ## load subdirectories as dictionaries
@@ -1163,7 +1277,7 @@ def load_bruker_opus_spectrum(filename,datablock='ScSm'):
     # def keys_deep(self):
         # """Keys expanded to all levels."""
         # retval = []
-        # for filename in myglob(f'{self.root}/*'):
+        # for filename in glob(f'{self.root}/*'):
             # key = filename[len(self.root)+1:]
             # if os.path.isdir(filename):
                 # retval.extend([f'{key}/{t}' for t in self[key].keys()])
@@ -1173,7 +1287,7 @@ def load_bruker_opus_spectrum(filename,datablock='ScSm'):
 
     # def keys(self):
         # """Keys in top level."""
-        # return([t[len(self.root)+1:] for t in myglob(f'{self.root}/*')])
+        # return([t[len(self.root)+1:] for t in glob(f'{self.root}/*')])
 
     # def __len__(self):
         # return(len(self.keys()))
@@ -1182,144 +1296,6 @@ def load_bruker_opus_spectrum(filename,datablock='ScSm'):
         # return(str(self.keys()))
 
 
-def leastsq(func,
-            x0,
-            dx,
-            R=100.,
-            print_error_mesg=True,
-            error_only=False,
-            xtol=1.49012e-8,
-            rms_noise=None,     # for calculation of uncertaintes use this noise level rather than calculate from fit residual. This is useful in the case of an imperfect fit.
-):
-    """
-    Rejig the inputs of scipy.optimize.leastsq so that they do what I
-    want them to.
-    \nInputs:\n
-      func -- The same as for leastsq.
-      x0 -- The same as for leastsq.
-      dx -- A sequence of the same length as x0 containing the desired
-      absolute stepsize to use when calculating the finite difference
-      Jacobean.
-      R -- The ratio of two step sizes: Dx/dx. Where Dx is the maximum
-      stepsize taken at any time. Note that this is only valid for the
-      first iteration, after which leastsq appears to approximately
-      double the 'factor' parameter.
-      print_error_mesg -- if True output error code and message if failure
-    \nOutputs: (x,sigma)\n
-    x -- array of fitted parameters
-    sigma -- error of these
-    The reason for doing this is that I found it difficult to tweak
-    the epsfcn, diag and factor parametres of leastsq to do what I
-    wanted, as far as I can determine these behave in the following
-    way:
-    dx = x*sqrt(epsfcn) ; x!=0,
-    dx = 1*sqrt(epsfcn) ; x==0.
-    Default epsfcn=2.2e-16 on scucomp2.
-    Dx = abs(x*100)      ; x!=0, factor is not set,
-    Dx = abs(x*factor)   ; x!=0, factor is set,
-    Dx = abs(factor)     ; x==0, factor is set,
-    Dx = 100             ; x==0, factor is not set, diag is not set,
-    Dx = abs(100/diag)   ; x==0, factor is not set, diag is set,
-    Dx = abs(factor/diag); x==0, factor is set, diag is set.
-    Many confusing cases, particularly annoying when initial x==0 and
-    it is not possible to control dx or Dx individually for each
-    parameter.
-    My solution was to add a large value to each parameter so that
-    there is little or no chance it will change magnitude during the
-    course of the optimisation. This value was calculated separately
-    for each parameter giving individual control over dx. I did not
-    think of a way to also control Dx individually, instead the ratio
-    R=Dx/dx may be globally set.
-    """
-    from scipy import optimize
-    ## limit the number of evaluation to a minimum number to compute
-    ## the uncertainty from the second derivative - make R small to
-    ## improve performance? - Doesn't work for very large number of
-    ## parameters - errors are all nan, probably because of a bug in
-    ## leastsq?
-    if error_only:
-        maxfev = len(x0)+1
-        R = 1.
-    else:
-        maxfev = 0
-    ## try and wangle actual inputs of numpy.leastsq to get the right
-    ## step sizes
-    x0=np.array(x0)
-    if np.isscalar(dx): dx = np.full(x0.shape,dx)
-    dx=np.array(dx)
-    epsfcn = 1e-15              # required that sqrt(epsfcn)<<dp/p
-    xshift = x0+dx/np.sqrt(epsfcn)    # required that xshift>>p
-    factor = R*np.sqrt(epsfcn)
-    x = x0-xshift
-    ## perform optimisation. try block is for the case where failure
-    ## to calculte error
-    try:
-        (x,cov_x,info,mesg,success)=optimize.leastsq(
-            lambda x:func(x+xshift),
-            x,
-            epsfcn=epsfcn,
-            factor=factor,
-            full_output=True,
-            maxfev=maxfev,
-            xtol = xtol,
-            )
-    except ValueError as err:
-        if str(err)=='array must not contain infs or NaNs':
-            raise Exception('Bad covariance matrix in error calculation, residual independent of some variable?')
-        else:
-            raise
-    ## check if any parameters have zero effect on the fit, and raise
-    ## a warning if so. This will prevent the calculation of the
-    ## uncertainty.
-    if np.min(np.sum(np.abs(info['fjac']),1))==0: # a test for no effect
-        ## calculate finite difference derivative
-        reference_residual = np.array(func(x+xshift))
-        diff = []
-        for i,dxi in enumerate(dx):
-            x1 = copy(x)
-            x1[i] += dxi
-            diff.append(np.max(np.abs(reference_residual-np.array(func(x1+xshift)))))
-        diff = np.array(diff)
-        ## warn about those that have no difference
-        for j in find(diff==0):
-            print(f'warning: Parameter has no effect: index={j}, value={float(x[j]+xshift[j])}')
-    ## warn on error if requested
-    if (not success) & print_error_mesg:
-        warnings.warn("leastsq exit code: "+str(success)+mesg)
-    ## sometimes this is not an array
-    if not np.iterable(x): x=[x]
-    ## attempt to calculate covariance of parameters
-    if cov_x is None: 
-        sigma_x = np.nan*np.ones(len(x))
-    else:
-        ## calculate noise rms from the resiudal if not explicitly provided
-        if rms_noise is None:
-            chisq=sum(info["fvec"]*info["fvec"])
-            dof=len(info["fvec"])-len(x)+1        # degrees of freedom
-            ## assumes unweighted data with experimental uncertainty
-            ## deduced from fitted residual. ref gavin2011.
-            std_y = np.sqrt(chisq/dof)
-        else:
-            std_y = rms_noise   # note that the degrees of freedom is not considered here
-        sigma_x = np.sqrt(cov_x.diagonal())*std_y
-    return(x+xshift,sigma_x)
-
-def rms(x):
-    """Calculate rms."""
-    return np.sqrt(np.mean(np.array(x)**2))
-
-def nanrms(x):
-    """Calculate rms, ignoring NaN data."""
-    return np.sqrt(np.nanmean(np.array(x)**2))
-
-
-def randn(shape=None):
-    """Return a unit standard deviation normally distributed random
-    float, or array of given shape if provided."""
-    if shape == None:
-        return float(np.random.standard_normal((1)))
-    else:
-        return np.random.standard_normal(shape)
 
 # def percentDifference(x,y):
     # """Calculate percent difference, i.e. (x-y)/mean(x,y)."""
@@ -1522,74 +1498,6 @@ def randn(shape=None):
         # print((' '.join(format(t,fmt) for t in labels)))
     # print((array2str(list(zip(*args)),fmt=fmt)))
 
-def format_columns(
-        data,                   # list or dict (for labels)
-        fmt='>11.5g',
-        labels=None,
-        header=None,
-        record_separator='\n',
-        delimiter=' ',
-        comment_string='# ',
-):
-    """Print args in with fixed column width. Labels are column
-    titles.  NOT QUITE THERE YET"""
-    ## if data is dict, reinterpret appropriately
-    if hasattr(data,'keys'):
-        labels = data.keys()
-        data = [data[key] for key in data]
-    ## make formats a list as long as data
-    if isinstance(fmt,str):
-        fmt = [fmt for t in data]
-    ## get string formatting for labels and failed formatting
-    fmt_functions = []
-    for f in fmt:
-        def fcn(val,f=f):
-            if isinstance(val,str):
-                ## default to a string of that correct length
-                r = re.match(r'[^0-9]*([0-9]+)(\.[0-9]+)?[^0-9].*',f)
-                return(format(val,'>'+r.groups()[0]+'s'))
-            else:
-                ## return in given format if possible
-                return(format(val,f)) 
-        fmt_functions.append(fcn)
-    ## begin output records
-    records = []
-    ## add header if required
-    if header is not None:
-        records.append(comment_string+header.strip().replace('\n','\n'+comment_string))
-    ## labels if required
-    if labels!=None:
-        records.append(comment_string+delimiter.join([f(label) for (f,label) in zip(fmt_functions,labels)]))
-    ## compose formatted data columns
-    comment_pad = ''.join([' ' for t in comment_string])
-    records.extend([comment_pad+delimiter.join([f(field) for (f,field) in zip(fmt_functions,record)]) for record in zip(*data)])
-    t = record_separator.join(records)
-    return(record_separator.join(records))
-
-# def print_columns(data,**kwargs):
-    # """Print the data into readable columns heuristically."""
-    # if isinstance(data,np.recarray):
-        # print(recarray_to_str(data,**kwargs))
-    # elif isinstance(data,dict):
-        # print(dict_array_to_str(data,**kwargs))
-    # else:
-        # print(format_columns(data,**kwargs))
-
-# def dict_array_to_str(d,keys=None,fmts=None,**kwargs_for_make_table):
-    # """Return a string listing the contents of a dictionary made up of
-    # arrays of the same length. If no keys specified, print all keys."""
-    # if keys is None: keys = list(d.keys())
-    # if fmts is None:
-        # fmts = [max('12',len(key)) for key in keys]
-    # elif isinstance(fmts,str):
-        # fmts = [fmts for key in keys]
-    # columns = [Value_Array(name=key,val=d[key],fmt=fmt) for (key,fmt) in zip(keys,fmts)]
-    # return make_table(columns,**kwargs_for_make_table)
-
-# def recarray_to_str(d,*args,**kwargs):
-    # kwargs.setdefault('headers',d.dtype.names)
-    # return(tabulate(d,*args,**kwargs))
-
 # def recarray_to_file(filename,recarray,*args,**kwargs):
     # """Output a recarray to a text file."""
     # return(string_to_file(filename,recarray_to_string(recarray,*args,**kwargs)))
@@ -1601,24 +1509,24 @@ def format_columns(
     # f.write(dict_array_to_str(d,**kwargs_for_dict_array_to_str))
     # f.close()
 
-def myglob(path='*',regexp=None):
+def glob(path='*',regexp=None):
     """Shortcut to glob.glob(os.path.expanduser(path)). Returns a list
     of matching paths. Also sed alphabetically. If re is provided filter names accordingly."""
-    retval = sorted(glob.glob(os.path.expanduser(path)))
+    retval = sorted(glob_module.glob(os.path.expanduser(path)))
     if regexp is not None:
         retval = [t for t in retval if re.match(regexp,t)]
     return(retval)
 
-# def glob_unique(path):
-    # """Match glob and return as one file. If zero or more than one file
-    # matched raise an error."""
-    # filenames = glob.glob(os.path.expanduser(path))
-    # if len(filenames)==1:
-        # return(filenames[0])
-    # elif len(filenames)==0:
-        # raise FileNotFoundError('No files matched path: '+repr(path))
-    # elif len(filenames)>1:
-        # raise Exception('Multiple files matched path: '+repr(path))
+def glob_unique(path):
+    """Match glob and return as one file. If zero or more than one file
+    matched raise an error."""
+    filenames = glob_module.glob(os.path.expanduser(path))
+    if len(filenames)==1:
+        return(filenames[0])
+    elif len(filenames)==0:
+        raise FileNotFoundError('No files matched path: '+repr(path))
+    elif len(filenames)>1:
+        raise Exception('Multiple files matched path: '+repr(path))
 
 # def grep(regexp,string=None,filename=None):
     # """Poor approx to grep."""
@@ -2670,227 +2578,6 @@ def find(x):
         # ret.append(x)
     # return tuple(ret)
 
-# def localmax(x):
-    # """Return array indices of all local (internal) maxima. The first point is returned
-    # for adjacent equal points that form a maximum."""
-    # j = np.append(np.argwhere(x[1:]!=x[0:-1]),len(x)-1)
-    # y = x[j]
-    # i = np.squeeze(np.argwhere((y[1:-1]>y[0:-2])&(y[1:-1]>y[2:]))+1)
-    # return np.array(j[i],ndmin=1)
-
-# def localmin(x):
-    # """Return array indices of all local (internal) minima. The first point is returned
-    # for adjacent equal points that form a minimum."""
-    # return localmax(-x)
-
-# # def down_sample(x,y,dx):
-    # # """Down sample into bins dx wide.
-    # # An incomplete final bin is discarded.
-    # # Reduce the number of points in y by factor, summing
-    # # n-neighbours. Any remaining data for len(y) not a multiple of n is
-    # # discarded. If x is given, returns the mean value for each bin, and
-    # # return (y,x)."""
-    # # if x is None:
-        # # return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
-    # # else:
-        # # return np.array(
-            # # [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
-
-# def average_to_grid(x,y,xgrid):
-    # """Average y on grid-x to a new (sparser) grid. This might be useful
-    # when you want to average multiple noisy traces onto a common
-    # grid. Splining wont work because of the noise."""
-    # i = ~np.isnan(y);x,y = x[i],y[i] # remove bad data, i.e., nans
-    # ygrid = np.ones(xgrid.shape)*np.nan
-    # ## loop over output grid - SLOW!
-    # for i in np.argwhere((xgrid>x[0])&(xgrid<x[-1])):
-        # if i==0:
-            # ## first point, careful about bounds
-            # j = False*np.ones(x.shape,dtype=bool)
-        # elif i==len(xgrid)-1:
-            # ## first point, careful about bounds
-            # j = False*np.ones(x.shape,dtype=bool)
-        # else:
-            # ## find original data centred around current grid point
-            # j = (x>0.5*(xgrid[i]+xgrid[i-1]))&(x<=0.5*(xgrid[i]+xgrid[i+1]))
-        # if j.sum()>0:
-            # ygrid[i] = y[j].sum()/j.sum()
-    # return ygrid
-
-# def bin_data(y,n,x=None):
-    # """Reduce the number of points in y by factor, summing
-    # n-neighbours. Any remaining data for len(y) not a multiple of n is
-    # discarded. If x is given, returns the mean value for each bin, and
-    # return (y,x)."""
-    # if x is None:
-        # return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
-    # else:
-        # return np.array(
-            # [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
-
-# def locate_peaks(
-        # y,x=None,
-        # minX=0.,
-        # minY=0.,
-        # fitMaxima=True, fitMinima=False,
-        # plotResult=False,
-        # fitSpline=False,
-        # search_width=1,
-        # convolve_with_gaussian_of_width=None,
-# ):
-    # """Find the maxima, minima, or both of a data series. If x is not
-    # specified, then replace with indices.\n
-    # Points closer than minX will be reduced to one extremum, points
-    # less than minY*noise above the mean will be rejected. The mean is
-    # determined from a tensioned spline, unless fitSpline=False.\n
-    # If plotResult then issue matplotlib commands on the current axis.\n\n
-    # """
-    # ## x defaults to indices
-    # if x is None: x = np.arange(len(y))
-    # ## sort by x
-    # x = np.array(x)
-    # y = np.array(y)
-    # i = np.argsort(x)
-    # x,y = x[i],y[i]
-    # ## smooth with gaussianconvolution if requested
-    # if convolve_with_gaussian_of_width is not None:
-        # y = convolve_with_gaussian(x,y,convolve_with_gaussian_of_width,regrid_if_necessary=True)
-    # ## fit smoothed spline if required
-    # if fitSpline:
-        # fs = spline(x,y,x,s=1)
-        # ys = y-fs
-    # else:
-        # fs = np.zeros(y.shape)
-        # ys = y
-    # ## fit up or down, or both
-    # if fitMaxima and fitMinima:
-        # ys = np.abs(ys)
-    # elif fitMinima:
-        # ys = -ys
-    # ## if miny!=0 reject those too close to the noise
-    # # if minY!=0:
-        # # minY = minY*np.std(ys)
-        # # i =  ys>minY
-        # # # ys[i] = 0.
-        # # x,y,ys,fs = x[i],y[i],ys[i],fs[i]
-        # # # x,ys = x[i],ys[i]
-    # ## find local maxima
-    # i =  list(find( (ys[1:-1]>ys[0:-2]) & (ys[1:-1]>ys[2:]) )+1)
-    # ## find equal neighbouring points that make a local maximum
-    # # j = list(np.argwhere(ys[1:]==ys[:-1]).squeeze())
-    # j = list(find(ys[1:]==ys[:-1]))
-    # while len(j)>0:
-        # jj = j.pop(0)
-        # kk = jj + 1
-        # if kk+1>=len(ys): break
-        # while ys[kk+1]==ys[jj]:
-            # j.pop(0)
-            # kk = kk+1
-            # if kk+1>=len(ys):break
-        # if jj==0: continue
-        # if kk+1>=len(ys): continue
-        # if (ys[jj]>ys[jj-1])&(ys[kk]>ys[kk+1]):
-            # i.append(int((jj+kk)/2.))
-    # i = np.sort(np.array(i))
-    # ## if minx!=0 reject one of each pair which are too close to one
-    # ## if miny!=0 reject those too close to the noise
-    # if minY!=0:
-        # minY = minY*np.std(ys)
-        # i = [ii for ii in i if ys[ii]>minY]
-    # ## another, taking the highest
-    # if minX!=0:
-        # while True:
-            # jj = find(np.diff(x[i]) < minX)
-            # if len(jj)==0: break
-            # for j in jj:
-                # if ys[j]>ys[j+1]:
-                    # i[j+1] = -1
-                # else:
-                    # i[j] = -1
-            # i = [ii for ii in i if ii!=-1]
-    # ## plot
-    # if plotResult:
-        # fig = plt.gcf()
-        # ax = fig.gca()
-        # ax.plot(x,y,color='red')
-        # if minY!=0:
-            # ax.plot(x,fs+minY,color='lightgreen')
-            # ax.plot(x,fs-minY,color='lightgreen')
-        # ax.plot(x[i],y[i],marker='o',ls='',color='blue',mew=2)
-    # ## return
-    # return np.array(i,dtype=int)
-
-# def find_peaks(
-        # y,
-        # x=None,                    # if x is None will use index
-        # peak_type='maxima',     # can be 'maxima', 'minima', 'both'
-        # fractional_trough_depth=None, # minimum height of trough between adjacent peaks as a fraction of the lowest neighbouring peak height. I.e., 0.9 would be a very shallow trough.
-        # ybeg = None,       # peaks below this will be ignored
-        # yend = None,      # peaks below this will be ignored
-        # xbeg = None,       # peaks below this will be ignored
-        # xend = None,      # peaks below this will be ignored
-        # x_minimimum_separation = None, # two peaks closer than this will be reduced to the taller
-        # return_coords=True,
-# ):
-    # """A reworked version of locate_peaks with difference features. Does
-# not attempt to fit the background with a tensioned spline, isntead
-# this should already be reduced to zero for the fractional_trough_depth
-# part of the algorithm to work. """
-    # ## find both maxima and minima
-    # assert peak_type in ('maxima', 'minima', 'both')
-    # if peak_type=='both':
-        # maxima = find_peaks(y,x,'maxima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
-        # minima = find_peaks(y,x,'minima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
-        # return(np.concatenate(np.sort(maxima,minima)))
-    # ## get data in correct array format
-    # y = np.array(y,ndmin=1)             # ensure y is an array
-    # if x is None: x = np.arange(len(y)) # default x to index
-    # assert all(np.diff(x)>0), 'Data not sorted or unique with respect to x.'
-    # ## in case of minima search
-    # if peak_type=='minima':
-        # y *= -1
-        # ybeg,yend = -1*yend,-1*ybeg
-    # ## find all peaks
-    # ipeak = find((y[:-2]<=y[1:-1])&(y[2:]<=y[1:-1]))+1
-    # ## limit to minima/maxima
-    # if ybeg is not None:
-        # ipeak = ipeak[y[ipeak]>=ybeg]
-    # if yend is not None:
-        # ipeak = ipeak[y[ipeak]<=yend]
-    # if xbeg is not None:
-        # ipeak = ipeak[x[ipeak]>=xbeg]
-    # if xend is not None:
-        # ipeak = ipeak[x[ipeak]<=xend]
-    # ## compare with next point to see if trough is deep enough to
-    # ## count as tow peaks. If not keep the tallest peak.
-    # if fractional_trough_depth is not None:
-        # i = 0
-        # while i < (len(ipeak)-1):
-            # ## index of minimum between maxima
-            # j = ipeak[i]+np.argmin(y[ipeak[i]:ipeak[i+1]+1])
-            # if (y[j]/min(y[ipeak[i]],y[ipeak[i+1]]) < fractional_trough_depth):
-                # ## no problem, proceed to next maxima
-                # i += 1
-            # else:
-                # ## not happy, delete the lowest height maxima
-                # if y[ipeak[i]]>y[ipeak[i+1]]:
-                    # ipeak.pop(i+1)
-                # else:
-                    # ipeak.pop(i)
-    # ## if any peaks are closer than x_minimimum_separation then keep the taller.
-    # if x_minimimum_separation is not None:
-        # while True:
-            # jj = find(np.diff(x[ipeak]) < x_minimimum_separation)
-            # if len(jj)==0: break
-            # for j in jj:
-                # if y[j]>y[j+1]:
-                    # ipeak[j+1] = -1
-                # else:
-                    # ipeak[j] = -1
-            # ipeak = [ii for ii in ipeak if ii!=-1]
-    # ipeak = np.array(ipeak)
-    # return(ipeak)
-
 # def sum_with_nans_as_zero(args,**kwargs):
     # """Add arrays in args, as if nan values are actually zero. If
 # revert_to_nans is True, then turn all zeros back to nans after
@@ -2922,9 +2609,9 @@ def find(x):
     # """Flatten all args and join together into tuple."""
     # return tuple(x for x in matplotlib.cbook.flatten(args))
 
-# def normal_distribution(x,μ=0.,σ=1):
-    # """Normal distribution."""
-    # return(1/np.sqrt(constants.pi*σ**2)*np.exp(-(x-μ)**2/(2*σ**2)))
+def normal_distribution(x,μ=0.,σ=1):
+    """Normal distribution."""
+    return(1/np.sqrt(constants.pi*σ**2)*np.exp(-(x-μ)**2/(2*σ**2)))
 
 # def gaussian(x,fwhm=1.,mean=0.,norm='area'):
     # """
@@ -4373,7 +4060,7 @@ def stream_to_dict(
                 data[key] = try_cast_to_numerical_array(data[key])
     return data
 
-# def ead_structured_data_file(filename):
+# def read_structured_data_file(filename):
     # """Read a file containing tables and key-val pairs"""
     # d = {'header':[]}
     # with open(expand_path(filename)) as f:
@@ -4507,9 +4194,9 @@ def stream_to_dict(
         # xi.extend([np.nan for i in range(dim1-len(xi))])
     # return np.array(x)
 
-# ###################
-# ## miscellaneous ##
-# ###################
+###################
+## miscellaneous ##
+###################
 
 # def digitise_postscript_figure(
         # filename,
@@ -4561,3 +4248,313 @@ def stream_to_dict(
         # fields = entries[key].rich_fields
         # retval_dict[key] = {key:str(fields[key]) for key in fields}
     # return(retval_dict)
+
+
+
+##############################################################
+## functions for time series / spectra / cross sections etc ##
+##############################################################
+
+def fit_noise_level(x,y,order=3,plot=False,fig=None):
+    """Fit a polynomial through some noisy data and calculate staistics on
+the residual.  Set plot=True to see how well this works."""
+    ## fit polynomial
+    p = np.polyfit(x,y,order)
+    yf = np.polyval(p,x)
+    r = y-yf
+    nrms = rms(r)
+    if plot:
+        if fig is None:
+            fig = plotting.qfig()
+        else:
+            fig.clf()
+        ax = fig.gca()
+        ax.plot(x,y)
+        ax.plot(x,yf)
+        ax = plotting.subplot()
+        ax.plot(x,r)
+        plotting.hist_with_normal_distribution(r, ax=plotting.subplot())
+    return nrms
+
+def fit_spline_background(
+        x,                      # x data in spetrum
+        y,                      # y data in spectra
+        xi=None, # x values to fit spline points, or interval of evenly spaced points
+        dxi=None, # x values to fit spline points, or interval of evenly spaced points
+        dx=None,  # select a value in this interval around xi
+        select='min', # how to select value from dx interval: 'min', 'max', 'mean'
+        nrms=None, # rms noise level: a value or an x-interval to compute value in
+        order=3,s=0,            # spline parameters
+        fit_noise_level_kwargs=None,
+):
+    ## get x spline points
+    if xi is None:
+        xbeg,xend = x.min(),x.max()
+        if dxi is None:
+            dxi = (xend-xbeg)/10
+        nxi = int((xend-xbeg)/dxi)
+        xi = np.linspace(xbeg,xend,nxi)
+    ## get noise rms estimate
+    if nrms is None:
+        nrms = 0
+    elif np.iterable(nrms) and len(nrms)==2:
+        ## expecting nrms=(xbeg,xend). Fit noise level in this
+        ## interval.
+        i = (x>nrms[0])&(x<nrms[1])
+        if fit_noise_level_kwargs is None:
+           fit_noise_level_kwargs = {}     
+        nrms = fit_noise_level(x[i],y[i],**fit_noise_level_kwargs)
+    else:
+        raise Exception(f"Bad input: {nrms=}")
+    ## get y spline points
+    if dx is None:
+        ## use exact given points background
+        yi = np.array([y[np.argmin(np.abs(x-xii))] for xii in xi])
+    else:
+        ## select spline points from intervals
+        i = []
+        xs,ys = [],[]
+        for xii in xi:
+            ii = (x>(xii-dx))&(x<(xii+dx))
+            if select=='min':
+                ## minimum y in interval
+                i = my.find(ii)[np.argmin(y[ii])]
+                xsi,ysi = x[i],y[i]+3*nrms # 3 is a hack
+            elif select=='max':
+                ## maximum y in interval
+                i = find(ii)[np.argmax(y[ii])]
+                xsi,ysi = x[i],y[i]-3*nrms # 3 is a hack
+            else:
+                raise Exception(f"Bad input (select=)")
+            ## ensure endpoints are included
+            if xii == xbeg:
+                xsi = xbeg
+            if xii == xend:
+                xsi = xend
+            xs.append(xsi)
+            ys.append(ysi)
+    xs,ys = np.array(xs),np.array(ys)
+    yf = spline(xs,ys,x,order=order,s=s)
+    return xs,ys,yf
+
+# def localmax(x):
+    # """Return array indices of all local (internal) maxima. The first point is returned
+    # for adjacent equal points that form a maximum."""
+    # j = np.append(np.argwhere(x[1:]!=x[0:-1]),len(x)-1)
+    # y = x[j]
+    # i = np.squeeze(np.argwhere((y[1:-1]>y[0:-2])&(y[1:-1]>y[2:]))+1)
+    # return np.array(j[i],ndmin=1)
+
+# def localmin(x):
+    # """Return array indices of all local (internal) minima. The first point is returned
+    # for adjacent equal points that form a minimum."""
+    # return localmax(-x)
+
+# # def down_sample(x,y,dx):
+    # # """Down sample into bins dx wide.
+    # # An incomplete final bin is discarded.
+    # # Reduce the number of points in y by factor, summing
+    # # n-neighbours. Any remaining data for len(y) not a multiple of n is
+    # # discarded. If x is given, returns the mean value for each bin, and
+    # # return (y,x)."""
+    # # if x is None:
+        # # return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
+    # # else:
+        # # return np.array(
+            # # [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
+
+# def average_to_grid(x,y,xgrid):
+    # """Average y on grid-x to a new (sparser) grid. This might be useful
+    # when you want to average multiple noisy traces onto a common
+    # grid. Splining wont work because of the noise."""
+    # i = ~np.isnan(y);x,y = x[i],y[i] # remove bad data, i.e., nans
+    # ygrid = np.ones(xgrid.shape)*np.nan
+    # ## loop over output grid - SLOW!
+    # for i in np.argwhere((xgrid>x[0])&(xgrid<x[-1])):
+        # if i==0:
+            # ## first point, careful about bounds
+            # j = False*np.ones(x.shape,dtype=bool)
+        # elif i==len(xgrid)-1:
+            # ## first point, careful about bounds
+            # j = False*np.ones(x.shape,dtype=bool)
+        # else:
+            # ## find original data centred around current grid point
+            # j = (x>0.5*(xgrid[i]+xgrid[i-1]))&(x<=0.5*(xgrid[i]+xgrid[i+1]))
+        # if j.sum()>0:
+            # ygrid[i] = y[j].sum()/j.sum()
+    # return ygrid
+
+# def bin_data(y,n,x=None):
+    # """Reduce the number of points in y by factor, summing
+    # n-neighbours. Any remaining data for len(y) not a multiple of n is
+    # discarded. If x is given, returns the mean value for each bin, and
+    # return (y,x)."""
+    # if x is None:
+        # return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
+    # else:
+        # return np.array(
+            # [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
+
+# def locate_peaks(
+        # y,x=None,
+        # minX=0.,
+        # minY=0.,
+        # fitMaxima=True, fitMinima=False,
+        # plotResult=False,
+        # fitSpline=False,
+        # search_width=1,
+        # convolve_with_gaussian_of_width=None,
+# ):
+    # """Find the maxima, minima, or both of a data series. If x is not
+    # specified, then replace with indices.\n
+    # Points closer than minX will be reduced to one extremum, points
+    # less than minY*noise above the mean will be rejected. The mean is
+    # determined from a tensioned spline, unless fitSpline=False.\n
+    # If plotResult then issue matplotlib commands on the current axis.\n\n
+    # """
+    # ## x defaults to indices
+    # if x is None: x = np.arange(len(y))
+    # ## sort by x
+    # x = np.array(x)
+    # y = np.array(y)
+    # i = np.argsort(x)
+    # x,y = x[i],y[i]
+    # ## smooth with gaussianconvolution if requested
+    # if convolve_with_gaussian_of_width is not None:
+        # y = convolve_with_gaussian(x,y,convolve_with_gaussian_of_width,regrid_if_necessary=True)
+    # ## fit smoothed spline if required
+    # if fitSpline:
+        # fs = spline(x,y,x,s=1)
+        # ys = y-fs
+    # else:
+        # fs = np.zeros(y.shape)
+        # ys = y
+    # ## fit up or down, or both
+    # if fitMaxima and fitMinima:
+        # ys = np.abs(ys)
+    # elif fitMinima:
+        # ys = -ys
+    # ## if miny!=0 reject those too close to the noise
+    # # if minY!=0:
+        # # minY = minY*np.std(ys)
+        # # i =  ys>minY
+        # # # ys[i] = 0.
+        # # x,y,ys,fs = x[i],y[i],ys[i],fs[i]
+        # # # x,ys = x[i],ys[i]
+    # ## find local maxima
+    # i =  list(find( (ys[1:-1]>ys[0:-2]) & (ys[1:-1]>ys[2:]) )+1)
+    # ## find equal neighbouring points that make a local maximum
+    # # j = list(np.argwhere(ys[1:]==ys[:-1]).squeeze())
+    # j = list(find(ys[1:]==ys[:-1]))
+    # while len(j)>0:
+        # jj = j.pop(0)
+        # kk = jj + 1
+        # if kk+1>=len(ys): break
+        # while ys[kk+1]==ys[jj]:
+            # j.pop(0)
+            # kk = kk+1
+            # if kk+1>=len(ys):break
+        # if jj==0: continue
+        # if kk+1>=len(ys): continue
+        # if (ys[jj]>ys[jj-1])&(ys[kk]>ys[kk+1]):
+            # i.append(int((jj+kk)/2.))
+    # i = np.sort(np.array(i))
+    # ## if minx!=0 reject one of each pair which are too close to one
+    # ## if miny!=0 reject those too close to the noise
+    # if minY!=0:
+        # minY = minY*np.std(ys)
+        # i = [ii for ii in i if ys[ii]>minY]
+    # ## another, taking the highest
+    # if minX!=0:
+        # while True:
+            # jj = find(np.diff(x[i]) < minX)
+            # if len(jj)==0: break
+            # for j in jj:
+                # if ys[j]>ys[j+1]:
+                    # i[j+1] = -1
+                # else:
+                    # i[j] = -1
+            # i = [ii for ii in i if ii!=-1]
+    # ## plot
+    # if plotResult:
+        # fig = plt.gcf()
+        # ax = fig.gca()
+        # ax.plot(x,y,color='red')
+        # if minY!=0:
+            # ax.plot(x,fs+minY,color='lightgreen')
+            # ax.plot(x,fs-minY,color='lightgreen')
+        # ax.plot(x[i],y[i],marker='o',ls='',color='blue',mew=2)
+    # ## return
+    # return np.array(i,dtype=int)
+
+# def find_peaks(
+        # y,
+        # x=None,                    # if x is None will use index
+        # peak_type='maxima',     # can be 'maxima', 'minima', 'both'
+        # fractional_trough_depth=None, # minimum height of trough between adjacent peaks as a fraction of the lowest neighbouring peak height. I.e., 0.9 would be a very shallow trough.
+        # ybeg = None,       # peaks below this will be ignored
+        # yend = None,      # peaks below this will be ignored
+        # xbeg = None,       # peaks below this will be ignored
+        # xend = None,      # peaks below this will be ignored
+        # x_minimimum_separation = None, # two peaks closer than this will be reduced to the taller
+        # return_coords=True,
+# ):
+    # """A reworked version of locate_peaks with difference features. Does
+# not attempt to fit the background with a tensioned spline, isntead
+# this should already be reduced to zero for the fractional_trough_depth
+# part of the algorithm to work. """
+    # ## find both maxima and minima
+    # assert peak_type in ('maxima', 'minima', 'both')
+    # if peak_type=='both':
+        # maxima = find_peaks(y,x,'maxima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
+        # minima = find_peaks(y,x,'minima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
+        # return(np.concatenate(np.sort(maxima,minima)))
+    # ## get data in correct array format
+    # y = np.array(y,ndmin=1)             # ensure y is an array
+    # if x is None: x = np.arange(len(y)) # default x to index
+    # assert all(np.diff(x)>0), 'Data not sorted or unique with respect to x.'
+    # ## in case of minima search
+    # if peak_type=='minima':
+        # y *= -1
+        # ybeg,yend = -1*yend,-1*ybeg
+    # ## find all peaks
+    # ipeak = find((y[:-2]<=y[1:-1])&(y[2:]<=y[1:-1]))+1
+    # ## limit to minima/maxima
+    # if ybeg is not None:
+        # ipeak = ipeak[y[ipeak]>=ybeg]
+    # if yend is not None:
+        # ipeak = ipeak[y[ipeak]<=yend]
+    # if xbeg is not None:
+        # ipeak = ipeak[x[ipeak]>=xbeg]
+    # if xend is not None:
+        # ipeak = ipeak[x[ipeak]<=xend]
+    # ## compare with next point to see if trough is deep enough to
+    # ## count as tow peaks. If not keep the tallest peak.
+    # if fractional_trough_depth is not None:
+        # i = 0
+        # while i < (len(ipeak)-1):
+            # ## index of minimum between maxima
+            # j = ipeak[i]+np.argmin(y[ipeak[i]:ipeak[i+1]+1])
+            # if (y[j]/min(y[ipeak[i]],y[ipeak[i+1]]) < fractional_trough_depth):
+                # ## no problem, proceed to next maxima
+                # i += 1
+            # else:
+                # ## not happy, delete the lowest height maxima
+                # if y[ipeak[i]]>y[ipeak[i+1]]:
+                    # ipeak.pop(i+1)
+                # else:
+                    # ipeak.pop(i)
+    # ## if any peaks are closer than x_minimimum_separation then keep the taller.
+    # if x_minimimum_separation is not None:
+        # while True:
+            # jj = find(np.diff(x[ipeak]) < x_minimimum_separation)
+            # if len(jj)==0: break
+            # for j in jj:
+                # if y[j]>y[j+1]:
+                    # ipeak[j+1] = -1
+                # else:
+                    # ipeak[j] = -1
+            # ipeak = [ii for ii in ipeak if ii!=-1]
+    # ipeak = np.array(ipeak)
+    # return(ipeak)
+    
