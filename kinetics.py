@@ -597,25 +597,29 @@ class Reaction_Network:
         for i,(name,rate) in enumerate(d.items()):
             if i>nplot: break
             ax.plot(rate,y,label=name)
+        ax.set_ylabel(ykey)
+        ax.set_xlabel('Destruction rate (s$^{-1}$)')
         ax.set_xscale('log')
         ax.set_yscale('log')
         plotting.legend()
-        ax.set_title('Destruction rate (s$^{-1}$)')
         return ax
 
     def plot_species(self, *species, ykey=None, ax=None,):
         if ax is None:
             ax = plt.gca()
             ax.cla()
-        for s in species:
-            if ykey is not None:
+        if ykey is not None:
+            for s in species:
                 ax.plot(self[s],self[ykey],label=s)
+                ax.set_ylabel(ykey)
                 ax.set_xscale('log')
-            else:
+                ax.set_xlabel('Number density (cm$^{-3}$)')
+        else:
+            for s in species:
                 ax.plot(self[s],label=s)
                 ax.set_yscale('log')
+                ax.set_ylabel('Number density (cm$^{-3}$)')
         plotting.legend()
-        ax.set_title('Number density (cm$^{-3}$)')
         return ax
 
     def append(self,*args,**kwargs):
