@@ -30,6 +30,7 @@ class Optimiser:
         self.residual_scale_factor = None # scale all resiudal by this amount -- useful when combining with other optimisers
         self.parameters = []           # Data objects
         self._construct_functions = {} # list of function which collectively construct the model and optionally return a list of fit residuals
+        self._post_construct_functions = {} # run in reverse order after other construct functions
         self._plot_functions = [] 
         self._monitor_functions = [] # call these functions at special times during optimisation
         self.monitor_frequency = 'rms decrease' # when to call monitor fuctions: 'never', 'every iteration', 'rms decrease'
@@ -70,6 +71,33 @@ class Optimiser:
         """Add a new format input function."""
         for function in functions:
             self._format_input_functions[time.time()] = function
+
+    def auto_format_input_function(
+            self,
+            function_name,
+            multiline='auto',   # True, False, 'auto'
+            ignore_None=True,
+            **keys_vals,
+    ):
+        """Add a new format input function given function_name and convert
+        keys_vals to arguments."""
+        keys_vals = {key:val for key,val in keys_vals.items() if val is not None}
+        if multiline == 'auto':
+            multiline = True if len(keys_vals)>2 else False
+        def _f():
+            retval =  f'{self.name}.{function_name}('
+            if len(keys_vals)>0:
+                if multiline:
+                    retval += '\n    '+',\n    '.join([f'{key}={repr(val)}'
+                                                       for key,val in keys_vals.items()
+                                                   if val is not None])+',\n'
+                else:
+                    retval += ','.join([f'{key}={repr(val)}'
+                                        for key,val in keys_vals.items()
+                                    if val is not None])
+            retval += ')'
+            return retval
+        self.add_format_input_function(_f)
 
     def pop_format_input_function(self):
         """Delete last format input function added."""
@@ -158,6 +186,10 @@ class Optimiser:
         to the list of residuals."""
         for f in functions:
             self._construct_functions[time.time()] = f
+
+    def add_post_construct_function(self,*functions):
+        for f in functions:
+            self._post_construct_functions[time.time()] = f
 
     def add_monitor_function(self,*functions):
         """Add one or more functions that are called when a new minimum
@@ -341,15 +373,6 @@ class Optimiser:
                     unique_ids.append(id(parameter))
         return(retval)
 
-    # def has_changed(self):
-    #     """Whether any parameters have changed since this Optimiser was last
-    #     constructed."""
-    #     for p in self.get_parameters():
-    #         ## check if any parameters have been changed
-    #         if p.timestamp>self.timestamp:
-    #             return(True)
-    #     return(False)
-
     def has_changed(self):
         """Whether any parameters have changed since this Optimiser was last
         constructed."""
@@ -359,9 +382,10 @@ class Optimiser:
                 ## changed parameter
                 if p.timestamp>self.timestamp:
                     return True
-            for t,f in o._construct_functions.items():
+            for t,f in (list(o._construct_functions.items())
+                        + list(o._post_construct_functions.items())[::-1]):
                 ## new construct function
-                if t>self.timestamp:
+                if t > self.timestamp:
                     return True 
         ## no changes
         return False
@@ -382,7 +406,9 @@ class Optimiser:
                 if verbose:
                     print(f'constructing optimiser: {optimiser.name}')
                 optimiser.residual = []
-                for f in optimiser._construct_functions.values():
+                for f in (list(optimiser._construct_functions.values())
+                          + list(optimiser._post_construct_functions.values())[::-1]
+                          ):
                     t = f()                # run construction function, get residual if there is one
                     if t is None:
                         continue
@@ -394,7 +420,7 @@ class Optimiser:
                 ## combine construct function residuals into one
                 if optimiser.residual is not None and len(optimiser.residual)>0:
                     optimiser.residual = np.concatenate(optimiser.residual)
-                ## optimiser.set_unchanged() #  to indicate that now it has been recomputed
+                ## record time of construction
                 optimiser.timestamp = time.time()
             ## add resisudal to return value for optimisation, possibly rescaling it
             if optimiser.residual is not None:
@@ -579,7 +605,7 @@ class Parameter(Datum):
                 step = abs(value)*1e-4
         self.step = float(step)
 
-    def format_as_arg(self):
+    def __repr__(self):
         if self.vary is None:
             return format(self.value,self.fmt)
         else:
@@ -588,7 +614,8 @@ class Parameter(Datum):
                     +','+format(self.step,'0.2g')
                     +','+format(self.uncertainty,'0.2g')
                     +')')
-    
+
+        
 class ParameterSet():
 
     """A collection of scalar or array values, possibly with uncertainties."""
@@ -657,17 +684,12 @@ class ParameterSet():
         kwargs = []
         for name,p in self._data.items():
             if isinstance(p,Parameter):
-                kwargs.append(f'{name}={p.format_as_arg()}')
+                kwargs.append(f'{name}={repr(p)}')
             elif isinstance(p,Optimiser):
                 kwargs.append(f'{name}={p.name}')
             else:
                 raise Exception(f'Cannot handle: {name} = {repr(p)}')
-        if len(kwargs) == 0:
-            return ''
-        elif len(kwargs) <= 3:
-            return ','.join(kwargs)
-        else:
-            return '\n    '+',\n    '.join(kwargs)+'\n'
+        return ','.join(kwargs)
 
     def save(self,filename='parameters.psv'):
         tools.string_to_file(filename,str(self))
