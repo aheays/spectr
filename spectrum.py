@@ -2,15 +2,18 @@ import inspect,re
 from copy import copy
 from pprint import pprint
 
+
 from matplotlib import pyplot as plt
-import scipy.signal
+from scipy import signal,constants,fft,interpolate
 import numpy as np
 
+
 from . import optimise
+from .optimise import *
 from . import plotting
 from . import tools
 
-class Experiment(optimise.Optimiser):
+class Experiment(Optimiser):
     
     def __init__(
             self,
@@ -136,10 +139,11 @@ class Experiment(optimise.Optimiser):
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
         scale = self.add_parameter('scalex',scale)
-        self.add_format_input_function(lambda: f"{self.name}.scalex({scale.format_as_arg()})")
+        self.auto_format_input_function('scalex',scale=scale)
         def construct_function():
             self.x *= float(scale)
         self.add_construct_function(construct_function)
+        return scale
 
     def interpolate(self,dx):
         """Interpolate experimental spectrum to a grid of width dx, may change
@@ -223,7 +227,7 @@ class Experiment(optimise.Optimiser):
             ax = plt.gca()
         ax.plot(self.x,self.y)
 
-class Model(optimise.Optimiser):
+class Model(Optimiser):
 
     def __init__(
             self,
@@ -232,6 +236,7 @@ class Model(optimise.Optimiser):
             residual_weighting=None,
             verbose=None,
             xbeg=None,xend=None,
+            interpolate_factor=None,
     ):
         self.experiment = experiment
         if name is None:
@@ -241,63 +246,76 @@ class Model(optimise.Optimiser):
                 name = f'model_of_{experiment.name}'
         self.x = None
         self.y = None
+        self._xin = None
+        self.xbeg = xbeg
+        self.xend = xend
         self.residual = None                      # array of residual fit
         self.residual_weighting = residual_weighting            # weighting pointwise in xexp
-        self.interpolate_factor = None
+        self._interpolate_factor = None
         optimise.Optimiser.__init__(self,name)
         self.pop_format_input_function()
-        self.automatic_format_input_function()
+        # self.automatic_format_input_function()
         if self.experiment is not None:
             self.add_suboptimiser(self.experiment)
-        def f():
-            assert self.experiment is not None or self.x is not None,'Unknown x'
-            if self.x is None:
-                self.xexp = self.experiment.x
-                self.yexp = self.experiment.y
-                if xbeg is not None:
-                    i = self.xexp>=xbeg
-                    self.xexp,self.yexp = self.xexp[i],self.yexp[i]
-                if xend is not None:
-                    i = self.xexp<=xend
-                    self.xexp,self.yexp = self.xexp[i],self.yexp[i]
-                self.x = self.xexp
-            else:
-                self.x = np.asarray(self.x,dtype=float)
-            self.y = np.zeros(self.x.shape,dtype=float)
-        self.add_construct_function(f)
+        self.add_construct_function(self._initialise)
+        self.add_post_construct_function(self._get_residual,self._remove_interpolation)
         self.add_save_to_directory_function(self.output_data_to_directory)
         self._figure = None
 
-    def get_spectrum(self,x=None):
+    def _initialise(self):
+        """Function run before everything else to set x and y model
+        grid."""
+        if self._xin is not None:
+            ## x is from a call to get_spectrum
+            self.x = self._xin
+            self.xexp = self.yexp = None
+        elif self.experiment is not None:
+            ## get domain from experimental data
+            self.xexp = self.experiment.x
+            self.yexp = self.experiment.y
+            if self.xbeg is not None:
+                i = self.xexp>=self.xbeg
+                self.xexp,self.yexp = self.xexp[i],self.yexp[i]
+            if self.xend is not None:
+                i = self.xexp<=self.xend
+                self.xexp,self.yexp = self.xexp[i],self.yexp[i]
+            self.x = copy(self.xexp)
+        else:
+            raise Exception('Cannot determine x')
+        self.y = np.zeros(self.x.shape,dtype=float)
+        
+    def get_spectrum(self,x):
         """Construct a model spectrum at x."""
-        self.x = x
-        self.construct(recompute_all=True)
+        self._xin = np.asarray(x,dtype=float) # needed in _initialise
+        self.timestamp = -1     # force reconstruction, but not suboptimisers
+        self.construct()
+        self._xin = None        # might be needed in next _initialise
         return self.y
 
-    def get_residual(self):
-        def f():
-            ## residual calculation
-            if self.interpolate_factor is None:
-                residual = self.yexp - self.y
-            else:
-                residual = self.yexp - self.y[::self.interpolate_factor]
-            ## weight residual pointwise
-            if self.residual_weighting is not None:
-                residual *= self.residual_weighting
-            return(residual)
-        self.add_construct_function(f)
-        
-    def __len__(self):
-        return len(self.x)
+    def _remove_interpolation(self):
+        """If the model has been interpolated then restore it to original
+        grid."""
+        if self._interpolate_factor is not None:
+            self.x = self.x[::self._interpolate_factor]
+            self.y = self.y[::self._interpolate_factor]
+
+    def _get_residual(self):
+        """Compute residual error."""
+        if self.xexp is None:
+            return []
+        residual = self.yexp - self.y
+        if self.residual_weighting is not None:
+            residual *= self.residual_weighting
+        return residual
 
     def interpolate(self,dx):
         """When calculating model set to dx grid (or less to achieve
         overlap with experimental points."""
         self.add_format_input_function(lambda:f'{self.name}.interpolate({dx})')
         def f():
-            xstep = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1)
-            self.interpolate_factor = int(np.ceil(xstep/dx))
-            self.x = np.linspace(self.xexp[0],self.xexp[-1],1+(len(self.xexp)-1)*self.interpolate_factor)
+            xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
+            self._interpolate_factor = int(np.ceil(xstep/dx))
+            self.x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*self._interpolate_factor)
             self.y = np.zeros(self.x.shape,dtype=float) # delete current y!!
         self.add_construct_function(f)
 
@@ -433,13 +451,10 @@ class Model(optimise.Optimiser):
     def add_absorption_lines(
             self,
             lines,
-            nfwhmL=20,
-            nfwhmG=100,
+            nfwhmL=None, nfwhmG=None,
             τmin=None,
-            gaussian_method=None,
-            voigt_method=None,
-            use_multiprocessing=None,
-            use_cache= None,
+            gaussian_method=None, voigt_method=None,
+            use_multiprocessing=None, use_cache= None,
             **optimise_keys_vals):
         name = f'add_absorption_lines {lines.name} to {self.name}'
         self.add_suboptimiser(lines,add_format_function=False)
@@ -462,8 +477,8 @@ class Model(optimise.Optimiser):
                 or not np.all( cache['x'] == self.x )): # experimental domain has changed
                 ## update optimise_keys_vals that have changed
                 for key,val in parameter_set.items():
-                    if (cache=={} or lines[key][0]!=val): # has been changed elsewhere, or the parameter has changed, or first use
-                        lines[key] = val
+                    if cache == {} or lines[key] != val.value: # has been changed elsewhere, or the parameter has changed, or first use
+                        lines[key] = val.value
                 x,y = lines.calculate_spectrum(
                     x=self.x,
                     ykey='τpa',
@@ -484,29 +499,13 @@ class Model(optimise.Optimiser):
             ## absorb
             self.y *= cache['absorbance']
         self.add_construct_function(f)
-        ## new input line
-        def f():
-            retval = [f'{self.name}.add_absorption_lines({lines.name}']
-            if len(parameter_set)>0:
-                ## retval.append('\n    '+parameter_set.format_input(multiline=True))
-                retval.append(parameter_set.format_input(multiline=False))
-            if nfwhmL is not None:
-                retval.append(f'nfwhmL={repr(nfwhmL)}')
-            if nfwhmG is not None:
-                retval.append(f'nfwhmG={repr(nfwhmG)}')
-            if τmin is not None:
-                retval.append(f'τmin={repr(τmin)}')
-            if use_multiprocessing is not None:
-                retval.append(f'use_multiprocessing={repr(use_multiprocessing)}')
-            if use_cache is not None:
-                retval.append(f'use_cache={repr(use_cache)}')
-            if voigt_method is not None:
-                retval.append(f'voigt_method={repr(voigt_method)}')
-            if gaussian_method is not None:
-                retval.append(f'gaussian_method={repr(gaussian_method)}')
-            retval.append(')')
-            return(','.join(retval))
-        self.add_format_input_function(f)
+        self.auto_format_input_function(
+            'add_absorption_lines', lines=lines,
+            multiline=True, nfwhmL=nfwhmL, nfwhmG=nfwhmG,
+            τmin=τmin, use_multiprocessing=use_multiprocessing,
+            voigt_method=voigt_method, gaussian_method=gaussian_method,
+            **parameter_set)
+        return parameter_set
 
     def add_emission_lines(
             self,
@@ -704,7 +703,7 @@ class Model(optimise.Optimiser):
         self.add_format_input_function(format_input_function)
         def f():
             i = (self.x>=np.min(ν))&(self.x<=np.max(ν))
-            self.y[i] = self.y[i]*scipy.interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.x[i])
+            self.y[i] = self.y[i]*interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.x[i])
         self.add_construct_function(f) # multiply spline during construct
 
     def modulate_by_spline(
@@ -774,10 +773,11 @@ class Model(optimise.Optimiser):
     def add_intensity(self,intensity=1):
         """Shift by a spline defined function."""
         intensity = self.add_parameter('intensity',*tools.ensure_iterable(intensity))
-        self.add_format_input_function(lambda: f"{self.name}.add_intensity(intensity={str(intensity)})")
         def f():
             self.y += float(intensity)
         self.add_construct_function(f)
+        self.auto_format_input_function('add_intensity',intensity=intensity)
+
 
     def add_intensity_spline(self,x=50,y=0,vary=True,step=None,order=3):
         """Shift by a spline defined function."""
@@ -836,7 +836,7 @@ class Model(optimise.Optimiser):
             yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/width**2) # peak normalised gaussian
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
@@ -859,7 +859,7 @@ class Model(optimise.Optimiser):
             yconv = lineshapes.lorentzian(xconv,xconv.mean(),1.,width)
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
     def convolve_with_sinc(self,width=None,fwhms_to_include=100):
@@ -885,7 +885,7 @@ class Model(optimise.Optimiser):
             yconv = np.sinc((xconv-xconv.mean())/width*1.2)*1.2/width # unit integral normalised sinc
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
     def convolve_with_instrument_function(
@@ -984,7 +984,7 @@ class Model(optimise.Optimiser):
             padding = np.arange(dx,instrument_function_cache['width']+dx, dx)
             xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
             ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-            self.y = scipy.signal.convolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+            self.y = signal.convolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
         self.add_construct_function(f)
 
     def apodise(
@@ -1009,12 +1009,12 @@ class Model(optimise.Optimiser):
         cache = {'interpolation_factor':interpolation_factor,}
         def f():
             if cache['interpolation_factor'] is None:
-                interpolation_factor = (self.interpolate_factor if self.interpolate_factor else 1)
+                interpolation_factor = (self._interpolate_factor if self._interpolate_factor else 1)
                 if 'interpolation_factor' in self.experimental_parameters:
                     interpolation_factor *= self.experimental_parameters['interpolation_factor']
             else:
                 interpolation_factor = cache['interpolation_factor']
-            ft = scipy.fft.dct(self.y) # get Fourier transform
+            ft = fft.dct(self.y) # get Fourier transform
             n = np.linspace(0,interpolation_factor,len(ft),dtype=float)
             if apodisation_function == 'boxcar':
                 w = np.ones(lpad.shape); w[abs(lpad)>L/2]  = 0 # boxcar
@@ -1046,7 +1046,7 @@ class Model(optimise.Optimiser):
             else:
                 raise Exception(f'Unknown apodisation_function: {repr(apodisation_function)}')
             w[n>1] = 0          # zero-padded region contributes nothing
-            self.y = scipy.fft.idct(ft*w) # new apodised spetrum
+            self.y = fft.idct(ft*w) # new apodised spetrum
         self.add_construct_function(f)
         # self.construct_functions.append(f)
         self.add_format_input_function(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
@@ -1057,7 +1057,7 @@ class Model(optimise.Optimiser):
         multiple coefficents given for 3- and 5-Term windows. I use
         the left.  This is faster than apodisation in the
         length-domain."""
-        raise ImplementationError('Does not quite work in current form when compared with frequency-domain apodisation.')
+        raise Exception('Does not quite work in current form when compared with frequency-domain apodisation.')
         # self.add_format_input_function(lambda: f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow})')
         warned_already = False
         def f():
@@ -1072,7 +1072,7 @@ class Model(optimise.Optimiser):
                 and not warned_already):
                 warnings.warn("interpolation_factor not found in experimental_parameters, assuming it is 1")
                 warned_already = True 
-            interpolation_factor = (self.interpolate_factor if self.interpolate_factor else 1)
+            interpolation_factor = (self._interpolate_factor if self._interpolate_factor else 1)
             if 'interpolation_factor' in self.experimental_parameters:
                 interpolation_factor *= self.experimental_parameters['interpolation_factor']
             assert interpolation_factor%1 == 0,'Blackman-Harris convolution only valid for integer interpolation_factor (current: {interpolation_factor{)'
@@ -1083,7 +1083,7 @@ class Model(optimise.Optimiser):
                 yconv[interpolation_factor] = yconv[-interpolation_factor-1] = 0.49755 # harris1978
                 yconv[0] = yconv[-1] = 0.07922 # harris1978
             yconv /= yconv.sum()                    # normalised
-            self.y = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
     def convolve_with_signum(
@@ -1120,7 +1120,7 @@ class Model(optimise.Optimiser):
             yconv = amplitude.p/xconv/len(xconv)               # signum function
             yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
             yconv /= yconv.sum()                    # normalised
-            self.y[i] = scipy.signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y[i] = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
     def convolve_with_SOLEIL_instrument_function(
@@ -1216,7 +1216,7 @@ class Model(optimise.Optimiser):
             padding = np.arange(dx,cache['width']+dx, dx)
             xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
             ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-            self.y = scipy.signal.convolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+            self.y = signal.convolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
         self.add_construct_function(f)
 
     def add_SOLEIL_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
@@ -1345,7 +1345,7 @@ class Model(optimise.Optimiser):
             ax.plot(self.x,self.y,color=plotting.newcolor(1), label='Model spectrum') # plot model spectrum
             if invert_model:
                 self.y *= -1
-        if plot_residual and self.residual is not None:
+        if plot_residual and self.residual is not None and len(self.residual)>0:
             ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
             ax.plot(self.xexp,self.residual+shift_residual,color=plotting.newcolor(2),zorder=-1,label='Exp-Mod residual error',) # plot fit residual
@@ -1426,7 +1426,7 @@ class Model(optimise.Optimiser):
             ax.set_ylabel(ylabel)
         self._figure = fig
         if show:
-            plotting.show(fig)
+            plotting.show()
         return(fig)
 
     def output_data_to_directory(
@@ -1513,6 +1513,43 @@ class Model(optimise.Optimiser):
         # plt.show()
 
 
+# class Fit(Optimiser):
+    # def __init__(
+            # self,
+            # name=None,
+            # model=None,
+            # experiment=None,
+            # residual_weighting=None,
+            # verbose=None,
+            # xbeg=None,xend=None,
+    # ):
+        # self.model = model
+        # self.experiment = experiment
+        # self.xbeg = xbeg
+        # self.xend = xend
+        # self.residual = None
+        # if name is None:
+                # name = f'fit_{model.name}_{experiment.name}'
+        # self.residual_weighting = residual_weighting
+        # optimise.Optimiser.__init__(self,name)
+        # self.pop_format_input_function()
+        # self.add_suboptimiser(self.model)
+        # self.add_suboptimiser(self.experiment)
+        # self.add_construct_function(self._get_residual)
+
+    # def _get_residual(self):
+        # i = np.full(True,self.experiment.x.shape)
+        # if self.xbeg is not None:
+            # i &= self.experiment.x>=self.xbeg
+        # if self.xend is not None:
+            # i &= self.experiment.x<=self.xend
+        # ymod = self.model.get_spectrum(self.experiment.x[i])
+        # self.residual = self.experiment.yexp
+        # if self.residual_weighting is not None:
+            # self.residual *= self.residual_weighting
+        # return self.residual
+
+        
 def load_spectrum(filename,**kwargs):
     """Use a heuristic method to load a directory output by
     Spectrum."""
