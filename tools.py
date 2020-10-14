@@ -4,13 +4,14 @@ import os
 import warnings
 from copy import copy
 
-from scipy import interpolate
+from scipy import interpolate,constants
 import csv
 import glob as glob_module
 import numpy as np
 import h5py
 
 from . import plotting
+from .plotting import *
 
 
 class AutoDict:
@@ -745,6 +746,10 @@ def format_columns(
                 ## default to a string of that correct length
                 r = re.match(r'[^0-9]*([0-9]+)(\.[0-9]+)?[^0-9].*',f)
                 return(format(val,'>'+r.groups()[0]+'s'))
+            elif val is None:
+                ## None -- print as None
+                r = re.match(r'[^0-9]*([0-9]+)(\.[0-9]+)?[^0-9].*',f)
+                return(format(repr(val),'>'+r.groups()[0]+'s'))
             else:
                 ## return in given format if possible
                 return(format(val,f)) 
@@ -1175,11 +1180,12 @@ def load_bruker_opus_spectrum(filename,datablock='ScSm'):
     ScRf:  the reference (background) spectrum
     """
     d = load_bruker_opus(filename)
-    assert datablock in d, f'Cannot find datablock: {repr(datablock)}'
+    if datablock not in d:
+        raise Exception(f'Cannot find datablock: {repr(datablock)}.  Existing datablocks are: {repr(list(d))}')
     parameters = d[f'{datablock} Data Parameter']
     x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
     y = d[datablock][:parameters['NPT']] # for some reason the data in the datablock can be too long
-    return x,y,parameters
+    return x,y
 
 
 # def kwargs_to_directory(directory, **dict_to_directory_kwargs,):
@@ -2507,14 +2513,14 @@ def find(x):
     # else:
         # raise Exception('Only implemented for 1D and 2D arrays.')
 
-# def inrange(x,xbeg,xend=None):
-    # """Return arrays of booleans same size as x, True for all those
-    # elements that xbeg<=x<=xend.\n\nIf xend is none and xbeg is an
-    # array, find elements of x in the range of y. """
-    # if xend is None:
-        # return (x>=np.min(xbeg))&(x<=np.max(xbeg))
-    # else:
-        # return (x>=xbeg)&(x<=xend)
+def inrange(x,xbeg,xend=None):
+    """Return arrays of booleans same size as x, True for all those
+    elements that xbeg<=x<=xend.\n\nIf xend is none and xbeg is an
+    array, find elements of x in the range of y. """
+    if xend is None:
+        return (x>=np.min(xbeg))&(x<=np.max(xbeg))
+    else:
+        return (x>=xbeg)&(x<=xend)
 
 # def common_range(x,y):
     # """Return min max of values in both x and y (may not be actual
@@ -2612,6 +2618,32 @@ def find(x):
 def normal_distribution(x,μ=0.,σ=1):
     """Normal distribution."""
     return(1/np.sqrt(constants.pi*σ**2)*np.exp(-(x-μ)**2/(2*σ**2)))
+
+def fit_normal_distribution(x,bins=None,figure=None):
+    """Fit a normal distribution in log space to a polynomial."""
+    if bins is None:
+        ## estimate good amount of binning
+        bins = max(10,int(len(x)/200))
+    count,edges = np.histogram(x,bins)
+    centres = (edges[:-1]+edges[1:])/2
+    logcount = np.log(count)
+    i = ~np.isinf(logcount)
+    p = np.polyfit(centres[i],logcount[i],2)
+    σ = np.sqrt(-1/p[0]/2)
+    μ = p[1]*σ**2
+    if figure is not None:
+        ## make a plot
+        figure.clf()
+        ax = plotting.subplot(0,fig=figure)
+        ax.plot(centres,logcount)
+        ax.plot(centres,np.polyval(p,centres))
+        ax = plotting.subplot(1,fig=figure)
+        ax.set_title("Fit in log space")
+        ax.plot(centres,count)
+        nd = normal_distribution(centres,μ,σ)
+        ax.plot(centres,nd/np.mean(nd)*np.mean(count))
+        ax.set_title("Fit in linear space")
+    return μ,σ
 
 # def gaussian(x,fwhm=1.,mean=0.,norm='area'):
     # """
@@ -3092,13 +3124,14 @@ def rootname(path,recurse=False):
     else:
         return rootname(path,recurse=recurse)
 
-def array_to_file(filename,*args,mkdir=False,**kwargs):
+def array_to_file(filename,*args,make_leading_directories=True,**kwargs):
     """Use filename to decide whether to attempt to save as an hdf5 file
     or ascii data.\n\nKwargs:\n\n mkdir -- If True, create all leading
     directories if they don't exist. """
     filename = expand_path(filename)
     extension = os.path.splitext(filename)[1]
-    if mkdir: mkdir(dirname(filename))
+    if mkdir:
+        mkdir(dirname(filename))
     if extension in ('.hdf5','.h5'):
         array_to_hdf5(filename,*args,**kwargs)
     elif extension=='.npy':
@@ -3172,9 +3205,10 @@ def file_to_array(
         d = np.column_stack((x,y))
     elif filetype=='text':
         np_kwargs = copy(kwargs)
-        # np_kwargs.pop('encoding')
-        if len(filename)>4 and filename[-4:] in ('.csv','.CSV'): np_kwargs['delimiter'] = ','
-        if 'delimiter' in np_kwargs and np_kwargs['delimiter']==' ': np_kwargs.pop('delimiter')
+        if len(filename)>4 and filename[-4:] in ('.csv','.CSV'):
+            np_kwargs['delimiter'] = ','
+        if 'delimiter' in np_kwargs and np_kwargs['delimiter']==' ':
+            np_kwargs.pop('delimiter')
         d = np.genfromtxt(filename,**np_kwargs)
     else:
         raise Exception(f'Unknown filetype: {repr(filetyep)}')
@@ -4256,9 +4290,8 @@ def stream_to_dict(
 ##############################################################
 
 def fit_noise_level(x,y,order=3,plot=False,fig=None):
-    """Fit a polynomial through some noisy data and calculate staistics on
-the residual.  Set plot=True to see how well this works."""
-    ## fit polynomial
+    """Fit a polynomial through some noisy data and calculate statistics on
+    the residual.  Set plot=True to see how well this works."""
     p = np.polyfit(x,y,order)
     yf = np.polyval(p,x)
     r = y-yf
@@ -4276,66 +4309,100 @@ the residual.  Set plot=True to see how well this works."""
         plotting.hist_with_normal_distribution(r, ax=plotting.subplot())
     return nrms
 
-def fit_spline_background(
-        x,                      # x data in spetrum
-        y,                      # y data in spectra
-        xi=None, # x values to fit spline points, or interval of evenly spaced points
-        dxi=None, # x values to fit spline points, or interval of evenly spaced points
-        dx=None,  # select a value in this interval around xi
-        select='min', # how to select value from dx interval: 'min', 'max', 'mean'
-        nrms=None, # rms noise level: a value or an x-interval to compute value in
-        order=3,s=0,            # spline parameters
-        fit_noise_level_kwargs=None,
+def fit_background(
+        x, y,
+        fit_min_or_max='max',           # 'max' to fit absorption data, 'min' for emission
+        x1=3, # spline points for initial fit maximum value fit -- or an interval for evenly spaced
+        x2=None, # spline points for final least squares fit -- or an interval for evenly spaced, None to skip
+        trim=(0,1), # fractional interval of data to keep ordered by initial fit residual
+        figure=None,            # a Figure to plot
 ):
+    """Initially fit background of a noisy spectrum to a spline fixed to
+    maximum (minimum) values in an interval around points x1.  Then
+    select data in trim interval based on the resulting residual
+    error. Then least-squares spline-fit trimmed data at points x2 (or
+    uniform grid if this is an interval)."""
+    ## first estimate remove polynomial and discard points
+    yfit = fit_spline_to_extrema(x,y,'max',x1,1/4)
+    yresidual = y-yfit
+    ## trim residual maxima and minima 
+    itrim = np.full(x.shape,False)
+    itrim[int(len(x)*trim[0]):int(len(x)*trim[1])] = True
+    itrim = itrim[np.argsort(np.argsort(yresidual))] # put in x-order
+    itrim[0] = itrim[-1] = True                      # do not trim endpoints
+    ## get fitted statistics
+    μ,σ = fit_normal_distribution(yresidual[itrim])
+    ## refit trimmed data
+    if x2 is not None:
+        xspline,yspline = fit_least_squares_spline(x[itrim],y[itrim],x2)
+        yfit = spline(xspline,yspline,x)
+    ## adjust for missing noise due to trimming
+    yfit += μ
+    if figure is not None:
+        ## plot somem stuff
+        ax0 = plotting.subplot(0,fig=figure)
+        ax0.plot(x,y)
+        ax0.plot(x[itrim],y[itrim])
+        ax0.plot(x,yfit,lw=3)
+        ax1 = subplot(1,fig=figure)
+        n,b,p = ax1.hist(yresidual[itrim],max(10,int(len(y)/200)),density=True)
+        b = (b[1:]+b[:-1])/2
+        t = normal_distribution(b,μ,σ)
+        ax1.plot(b,t/np.mean(t)*np.mean(n))
+        ax1.set_title('Fitted normal distribution')
+    return yfit
+
+def fit_least_squares_spline(
+        x,                      # x data in spetrum -- sorted
+        y,                      # y data in spectra
+        xspline=10,             # spline points or an interval
+        order=3,
+):
+    """Fit least squares spline coefficients at xspline to (x,y)."""
     ## get x spline points
-    if xi is None:
-        xbeg,xend = x.min(),x.max()
-        if dxi is None:
-            dxi = (xend-xbeg)/10
-        nxi = int((xend-xbeg)/dxi)
-        xi = np.linspace(xbeg,xend,nxi)
-    ## get noise rms estimate
-    if nrms is None:
-        nrms = 0
-    elif np.iterable(nrms) and len(nrms)==2:
-        ## expecting nrms=(xbeg,xend). Fit noise level in this
-        ## interval.
-        i = (x>nrms[0])&(x<nrms[1])
-        if fit_noise_level_kwargs is None:
-           fit_noise_level_kwargs = {}     
-        nrms = fit_noise_level(x[i],y[i],**fit_noise_level_kwargs)
-    else:
-        raise Exception(f"Bad input: {nrms=}")
+    xbeg,xend = x[0],x[-1]
+    if np.isscalar(xspline):
+        xspline = np.linspace(xbeg,xend,max(2,int((xend-xbeg)/xspline)))
+    xspline = np.asarray(xspline,dtype=float)
+    ## get initial y spline points
+    yspline = np.array([y[np.argmin(np.abs(x-xsplinei))] for xsplinei in xspline])
+    print( f'optimising {len(yspline)} spline points...')
+    yspline,dyspline = leastsq(lambda yspline:y-spline(xspline,yspline,x), yspline, yspline*1e-5,)
+    return xspline,yspline
+
+def fit_spline_to_extrema(
+        x,                      # x data in spetrum - must be sorted
+        y,                      # y data in spectra
+        fit_min_or_max='max',
+        xi=10, # x values to fit spline points, or interval of evenly spaced points
+        interval_fraction=1/4,  # select a value in this interval around xi
+        order=3,s=0,            # spline parameters
+):
+    """Fit a spline to data defined at points near xi. Exact points
+    are selected as the maximum (minimum) in an interval around xi
+    defined as the fraction bounded by neighbouring xi."""
+    assert fit_min_or_max in ('min','max')
+    ## get xi spline points
+    xbeg,xend = x[0],x[-1]
+    if np.isscalar(xi):
+        xi = np.linspace(xbeg,xend,max(2,int((xend-xbeg)/xi)))
+    xi = np.asarray(xi,dtype=float)
     ## get y spline points
-    if dx is None:
-        ## use exact given points background
-        yi = np.array([y[np.argmin(np.abs(x-xii))] for xii in xi])
-    else:
-        ## select spline points from intervals
-        i = []
-        xs,ys = [],[]
-        for xii in xi:
-            ii = (x>(xii-dx))&(x<(xii+dx))
-            if select=='min':
-                ## minimum y in interval
-                i = my.find(ii)[np.argmin(y[ii])]
-                xsi,ysi = x[i],y[i]+3*nrms # 3 is a hack
-            elif select=='max':
-                ## maximum y in interval
-                i = find(ii)[np.argmax(y[ii])]
-                xsi,ysi = x[i],y[i]-3*nrms # 3 is a hack
-            else:
-                raise Exception(f"Bad input (select=)")
-            ## ensure endpoints are included
-            if xii == xbeg:
-                xsi = xbeg
-            if xii == xend:
-                xsi = xend
-            xs.append(xsi)
-            ys.append(ysi)
-    xs,ys = np.array(xs),np.array(ys)
-    yf = spline(xs,ys,x,order=order,s=s)
-    return xs,ys,yf
+    interval_beg = np.concatenate((xi[0:1], xi[1:]-(xi[1:]-xi[:-1])*interval_fraction))
+    interval_end = np.concatenate(((xi[:-1]+(xi[1:]-xi[:-1])*interval_fraction,x[-1:])))
+    xspline,yspline = [],[]
+    for begi,endi in zip(interval_beg,interval_end):
+        iinterval = (x>=begi)&(x<=endi)
+        if fit_min_or_max == 'min':
+            ispline = find(iinterval)[np.argmin(y[iinterval])]
+        elif fit_min_or_max == 'max':
+            ispline = find(iinterval)[np.argmax(y[iinterval])]
+        xspline.append(x[ispline])
+        yspline.append(y[ispline])
+    # xspline,yspline = np.array(xspline),np.array(yspline)
+    xspline[0],xspline[-1] = x[0],x[-1] # ensure endpoints are included
+    yf = spline(xspline,yspline,x,order=order,s=s,check_bounds=False)
+    return yf
 
 # def localmax(x):
     # """Return array indices of all local (internal) maxima. The first point is returned
