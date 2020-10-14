@@ -364,7 +364,7 @@ def newfig():
         n = n+1
     fig(n=n)
     
-def fig(
+def qfig(
         n=None,
         preset_rcparams='screen',
         figsize=None,
@@ -409,9 +409,12 @@ def fig(
         else:               ystr = f'{y:0.18f}'
         return(f'x={xstr:<25s} y={ystr:<25s}')
     ax.format_coord = format_coord
-    if preset_rcparams=='scree':
+    if preset_rcparams=='screen':
         ax.grid(True,color='gray')
-    return(fig,ax)
+    return fig
+
+def qax(*qfig_args,**qfig_kwargs):
+    return qfig(*qfig_args,**qfig_kwargs).gca()
 
 def figax(*args,**kwargs):
     f = fig(*args,**kwargs)
@@ -1916,6 +1919,27 @@ def plot_lines_and_disjointed_points(x,y,max_separation=1,ax=None,**plot_kwargs)
         ## last point alone
         if i==len(d)-1:
             ax.plot(x[-1],y[-1],**kwargs)
+
+def hist_with_normal_distribution(
+        y,
+        bins=None,
+        ax=None,
+):
+    """Plot data y as a histogram along with a fitted normal
+    distribution."""
+    if ax is None:
+        ax = plotting.gca()
+    ax.cla()
+    if bins is None:
+        ## guess a sensible number of bins
+        bins = max(10,int(len(y)/200))
+    ax.hist(y,bins=bins,density=True)
+    σ,μ = np.std(y),np.mean(y)
+    x = np.linspace(*ax.get_xlim(),1000)
+    yf = 1/(σ*np.sqrt(2*constants.pi))*np.exp(-1/2*((x-μ)/σ)**2)
+    ax.plot(x,yf)
+    ax.set_title(f'μ={μ:0.5g}, σ={σ:0.5g}')
+    return ax
 
 def axesText(x,y,s,**kwargs):
     """Just like matplotlib ax.text, except defaults to axes fraction
