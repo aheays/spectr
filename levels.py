@@ -15,7 +15,7 @@ from .exceptions import InferException
 ################
 
 prototypes = {
-    'level_type':dict( description="Type of level.",kind=str ,infer={}) ,
+    'classname':dict( description="Type of level.",kind=str ,infer={}) ,
     'description':dict( description="",kind=str ,infer={}) ,
     'notes' :dict(description="Notes regarding this line" , kind=str ,infer={}) ,
     'author' :dict(description="Author of data or printed file" ,kind=str ,infer={}) ,
@@ -79,16 +79,16 @@ def _f(σv,gu):
     return σv*gu
 prototypes['sa']['infer']['σv','gu'] = _f
 
-def _f(level_type,J):
+def _f(classname,J):
     """Calculate heteronuclear diatomic molecule level degeneracy."""
-    if level_type == 'DiatomicCinfv':
+    if classname == 'DiatomicCinfv':
         return 2*J+1
     else:
         raise InferException('Only valid of DiatomicCinfv')
-prototypes['g']['infer']['level_type','J'] = _f
+prototypes['g']['infer']['classname','J'] = _f
 
 @tools.vectorise_function
-def _f(level_type,J,Inuclear,sa):
+def _f(classname,J,Inuclear,sa):
     """Calculate homonuclear diatomic molecule level degeneracy."""
     ## get total number of even or odd exchange combinations
     ntotal = (2*Inuclear+1)**2
@@ -106,7 +106,7 @@ def _f(level_type,J,Inuclear,sa):
             return (2*J+1)*nodd
         else:
             return (2*J+1)*neven
-prototypes['g']['infer']['level_type','J','Inuclear','sa'] = _f
+prototypes['g']['infer']['classname','J','Inuclear','sa'] = _f
 
 
 ###################
@@ -116,7 +116,7 @@ prototypes['g']['infer']['level_type','J','Inuclear','sa'] = _f
 class _BaseLinesLevels(Dataset):
     """Common stuff for for lines and levels."""
 
-    prototypes = {key:copy(prototypes[key]) for key in ['description','notes','author','reference','date','level_type',]}
+    prototypes = {key:copy(prototypes[key]) for key in ['description','notes','author','reference','date','classname',]}
     
     def __init__(self,name=None,**keys_vals,):
         """Default_name is decoded to give default values. Kwargs ca be
@@ -126,7 +126,7 @@ class _BaseLinesLevels(Dataset):
             name = type(self).__name__
             name = name[0].lower()+name[1:]
         Dataset.__init__(self,name=name)
-        self['level_type'] = type(self).__name__
+        self['classname'] = type(self).__name__
         self.permit_nonprototyped_data = False
         self._cache = {}
         for key,val in keys_vals.items():

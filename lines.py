@@ -47,6 +47,7 @@ class Base(levels._BaseLinesLevels):
     _levels_class = levels.Base
 
     prototypes = {
+        'classname':dict( description="Type of lines.",kind=str ,infer={}) ,
         'description':dict( description="",kind=str ,infer={}) ,
         'notes' :dict(description="Notes regarding this line" , kind=str ,infer={}) ,
         'author' :dict(description="Author of data or printed file" ,kind=str ,infer={}) ,
