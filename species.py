@@ -11,7 +11,15 @@ def get_species(name):
     if name not in _get_species_cache:
         _get_species_cache[name] = Species(name=name)
     return(_get_species_cache[name])
-    
+
+
+_main_isotopes = {
+    'H':1,
+    'O':16,
+    }
+def get_main_isotope(element):
+    ## rather than use dict periodictable.py probably contains this information
+    return _main_isotopes[element]
 
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
@@ -79,9 +87,8 @@ class Species:
     
     def _get_mass(self):
         self._mass = 0.
-        for element in self.elements:
-            mass,telement = re.match('([0-9]+)([A-Z][a-z]?)',element).groups()
-            self._mass += getattr(periodictable,telement)[int(mass)].mass
+        for element,isotope in self.isotopes:
+            self._mass += getattr(periodictable,element)[isotope].mass
         return(self._mass)
 
     mass = property(_get_mass)
@@ -105,30 +112,44 @@ class Species:
 
     charge = property(_get_charge)
 
-    def _get_elements(self):
+    def _get_elements_isotopes(self):
+        """Split name into elements / isotopes."""
         if self._elements is not None:
+            ## already computed
             pass
         else:
             self._elements = []
             self._reduced_elements = {}
+            self._isotopes = []
+            self._reduced_isotopes = {}
+            ## split on matches e.g., [32]S2
             for part in re.split(r'(\[[0-9]*[A-Z][a-z]?\][0-9]*|[A-Z][a-z]?[0-9]*)',self.name):
                 if len(part)==0: continue
-                r = re.match('^(.+?)([0-9]*)$',part)
-                if r.group(2)=='':
-                    multiplicity = 1
-                else:
-                    multiplicity = int(r.group(2))
-                element = r.group(1)
-                element = element.replace(']','').replace('[','')
+                if r:=re.match(r'\[([0-9]*)([A-Z][a-z]?)\]([0-9]*)',part):
+                    isotope = int(r.group(1))
+                    element = r.group(2)
+                    multiplicity = (1 if r.group(3)=='' else int(r.group(3)))
+                elif r:=re.match(r'([A-Z][a-z]?)([0-9]*)',part):
+                    element = r.group(1)
+                    multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
+                    isotope = get_main_isotope(element)
+                if element=='D':
+                    raise ImplementationError('Add special case for D')
                 for i in range(multiplicity):
                     self._elements.append(element)
-                if element in self.reduced_elements:
-                    self.reduced_elements[element] += multiplicity
+                    self._isotopes.append((element,isotope))
+                if element in self._reduced_elements:
+                    self._reduced_elements[element] += multiplicity
                 else:
-                    self.reduced_elements[element] = multiplicity
-        return self._elements
+                    self._reduced_elements[element] = multiplicity
+                if isotope in self._reduced_isotopes:
+                    self._reduced_isotopes[(element,isotope)] += multiplicity
+                else:
+                    self._reduced_isotopes[(element,isotope)] = multiplicity
+        return self._elements,self._isotopes
 
-    elements = property(_get_elements)
+    elements = property(lambda self: self._get_elements_isotopes()[0])
+    isotopes = property(lambda self: self._get_elements_isotopes()[1])
 
     def _get_element_species(self):
         if self._element_species is None:
