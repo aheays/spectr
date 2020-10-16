@@ -236,7 +236,6 @@ class Model(Optimiser):
             residual_weighting=None,
             verbose=None,
             xbeg=None,xend=None,
-            interpolate_factor=None,
     ):
         self.experiment = experiment
         if name is None:

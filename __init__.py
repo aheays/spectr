@@ -19,9 +19,14 @@ from . import hitran
 from . import database
 from . import spectrum
 from . import kinetics
+from . import bruker
 
 from .dataset import Dataset
 from .conversions import convert
+
+from .plotting import *
+from .tools import *
+
 
 # from .spectrum import *
 # from .tools import *

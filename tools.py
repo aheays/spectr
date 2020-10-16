@@ -53,10 +53,10 @@ class AutoDict:
         for key,val in self._dict.items():
             yield key,val
 
-#################################
-## decorators / function tools ##
-#################################
 
+#######################################################
+## decorators / decorator factories / function tools ##
+#######################################################
 
 def vectorise_function(function):
     """Vectorise a scalar-argument scalar-return values function.  If all
@@ -80,30 +80,33 @@ def vectorise_function(function):
                 for i in range(length)])
     return vectorised_function
 
-def vectorise_function_in_chunks(function,dtype=float):
+def vectorise_function_in_chunks(dtype=float):
     """Deorator for looking for groups of common arguments and calculate
     them only once in a vectorised version of the original function
     which accepts scalar arguments. If all arguments are scalar return
     a scalar result."""
-    def vectorised_function(*args):
-        ## check if scalar
-        length = None
-        for arg in args:
-            if not np.isscalar(arg):
-                assert length is None or len(arg)==length,'Nonconstant lengths.'
-                length = len(arg)
-                break
-            else:
-                ## all scalar, do scalar calc
-                return function(*args)
-        ## vectorise
-        args = [np.asarray(arg) if np.iterable(arg) else np.full(length,arg) for arg in args]
-        retval = np.empty(len(args[0]),dtype=dtype,)
-        for argsi in unique_combinations(*args):
-            i = np.all([args[j]==argsi[j] for j in range(len(args))],axis=0)
-            retval[i] = function(*argsi)
-        return(retval)
-    return vectorised_function
+    ##  Need the inner function so the decorator can have arguments
+    def actual_decorator(function):
+        def vectorised_function(*args):
+            ## check if scalar
+            length = None
+            for arg in args:
+                if not np.isscalar(arg):
+                    assert length is None or len(arg)==length,'Nonconstant lengths.'
+                    length = len(arg)
+                    break
+                else:
+                    ## all scalar, do scalar calc
+                    return function(*args)
+            ## vectorise
+            args = [np.asarray(arg) if np.iterable(arg) else np.full(length,arg) for arg in args]
+            retval = np.empty(len(args[0]),dtype=dtype)
+            for argsi in unique_combinations(*args):
+                i = np.all([args[j]==argsi[j] for j in range(len(args))],axis=0)
+                retval[i] = function(*argsi)
+            return(retval)
+        return vectorised_function
+    return actual_decorator
 
 def vectorise_arguments(function):
     """Compute an infer with some pre/post processing to ensure vectorised
@@ -1166,27 +1169,12 @@ def dict_to_hdf5(
         f.create_dataset(key,data=data,**kwargs)
     f.close()
 
-def load_bruker_opus(filename):
-    """Load a binary Bruker Opus file into a dictionary."""
-    import brukeropusreader
-    return brukeropusreader.read_file(expand_path(filename))
-
-def load_bruker_opus_spectrum(filename,datablock='ScSm'):
-    """Load a binary Bruker Opus file, returning a specific datablock as well as all data in a
-    dictionary. Useful datablocks:
-    IgSm:  the single-channel sample interferogram
-    ScSm:  the single-channel sample spectrum
-    IgRf:  the reference (background) interferogram
-    ScRf:  the reference (background) spectrum
-    """
-    d = load_bruker_opus(filename)
-    if datablock not in d:
-        raise Exception(f'Cannot find datablock: {repr(datablock)}.  Existing datablocks are: {repr(list(d))}')
-    parameters = d[f'{datablock} Data Parameter']
-    x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
-    y = d[datablock][:parameters['NPT']] # for some reason the data in the datablock can be too long
-    return x,y
-
+def append_to_hdf5(filename,**keys_vals):
+    """Added key=val to hdf5 file."""
+    import h5py
+    with h5py.File(expand_path(filename),'a') as d:
+        for key,val in keys_vals.items() :
+            d[key] = val
 
 # def kwargs_to_directory(directory, **dict_to_directory_kwargs,):
     # dict_to_directory(directory,dict_to_directory_kwargs)
@@ -2522,6 +2510,12 @@ def inrange(x,xbeg,xend=None):
     else:
         return (x>=xbeg)&(x<=xend)
 
+def limit_to_range(beg,end,x,*other_arrays):
+    """Limit x to range between beg and end (using np.searchsorted, must
+    be sorted.  Also index other_arrays and return all arrays."""
+    i = np.searchsorted(x,(beg,end))
+    return tuple([t[i[0]:[i1]] for t in [x]+list(other_arrays)])
+
 # def common_range(x,y):
     # """Return min max of values in both x and y (may not be actual
     # values in x and y)."""
@@ -3158,8 +3152,9 @@ def array_to_file(filename,*args,make_leading_directories=True,**kwargs):
 
 def file_to_array(
         filename,
-        xmin=None,xmax=None,
-        sort=False,
+        xmin=None,xmax=None,    # only load this range
+        sort=False,             #
+        check_uniform=False,
         awkscript=None,
         unpack=False,
         filetype=None,
@@ -3220,6 +3215,11 @@ def file_to_array(
         d = d[d[:,0]<=xmax]
     if sort:
         d = d[np.argsort(d[:,0])]
+    if check_uniform:
+        Δd = np.diff(d[:,0])
+        fractional_tolerance = 1e-5
+        Δdmax,Δdmin = np.max(Δd),np.min(Δd)
+        assert (Δdmax-Δdmin)/Δdmax<fractional_tolerance,f'{check_uniform=} and first column of data is not uniform within {fractional_tolerance=}'
     if unpack:
         d = d.transpose()
     return(d)
@@ -3525,14 +3525,14 @@ def org_table_to_dict(filename,table_name=None):
         ## turn into an array of dicts
         return(stream_to_dict(iter(table_lines)))
 
-# def string_to_dict(string,**kwargs_txt_to_dict):
-    # """Convert a table in string from into a dict. Keys taken from
-    # first row. """
-    # ## turn string into an IO object and pass to txt_to_dict to decode the lines. 
-    # # string = re.sub(r'^[ \n]*','',string) # remove leading blank lines
-    # import io
-    # kwargs_txt_to_dict.setdefault('labels_commented',False)
-    # return(txt_to_dict(io.StringIO(string),**kwargs_txt_to_dict))
+def string_to_dict(string,**kwargs_txt_to_dict):
+    """Convert a table in string from into a dict. Keys taken from
+    first row. """
+    ## turn string into an IO object and pass to txt_to_dict to decode the lines. 
+    # string = re.sub(r'^[ \n]*','',string) # remove leading blank lines
+    import io
+    kwargs_txt_to_dict.setdefault('labels_commented',False)
+    return(txt_to_dict(io.StringIO(string),**kwargs_txt_to_dict))
 
 # def string_to_recarray(string):
     # """Convert a table in string from into a recarray. Keys taken from

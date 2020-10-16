@@ -12,6 +12,7 @@ from . import lineshapes
 from . import tools
 from . import hitran
 from . import database
+from . import plotting
 from .conversions import convert
 from .exceptions import InferException
 
@@ -150,6 +151,29 @@ class Base(levels._BaseLinesLevels):
                 t_plot_kwargs.setdefault('color',my.newcolor(iz))
                 t_plot_kwargs.setdefault('label',my.dict_to_kwargs(qn))
                 t.plot_spectrum(x=x,ykey=ykey,zkeys=None,ax=ax,**t_plot_kwargs)
+        return(ax)
+
+    def plot_stick_spectrum(
+            self,
+            xkey='ν',
+            ykey='σ',
+            zkeys=None,         # None or list of keys to plot as separate lines
+            ax=None,
+            **plot_kwargs # can be calculate_spectrum or plot kwargs
+    ):
+        from matplotlib import pyplot as plt
+        """Plot a nice cross section. If zkeys given then divide into multiple
+        lines accordings."""
+        if ax is None:
+            ax = plt.gca()
+        if zkeys==None:
+            plotting.plot_sticks(self[xkey],self[ykey],**plot_kwargs)
+        else:
+            for iz,(qn,t) in enumerate(self.unique_dicts_matches(*zkeys)):
+                t_plot_kwargs = copy(plot_kwargs)
+                t_plot_kwargs.setdefault('color',my.newcolor(iz))
+                t_plot_kwargs.setdefault('label',my.dict_to_kwargs(qn))
+                t.plot_stick_spectrum(ykey=ykey,zkeys=None,ax=ax,**t_plot_kwargs)
         return(ax)
 
     def calculate_spectrum(
@@ -384,8 +408,8 @@ class Base(levels._BaseLinesLevels):
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
-        data = hitran.load_lines(filename)
-        species = np.unique(hitran.translate_codes_to_species(data['Mol']))
+        data = hitran.load(filename)
+        species = np.unique(hitran.translate_codes_to_species(data['Mol'],data['Iso']))
         assert len(species)==1,'Cannot handle mixed species HITRAN linelist.'
         species = species[0]
         ## interpret into transition quantities common to all transitions

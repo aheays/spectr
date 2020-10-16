@@ -5,10 +5,6 @@ import numpy as np
 from spectr.dataset import *
 from spectr.exceptions import InferException
 
-
-
-
-
 def test_dataset_construct():
     t = Dataset()
 

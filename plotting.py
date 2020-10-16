@@ -1,6 +1,8 @@
 import subprocess
 from cycler import cycler
 from copy import copy,deepcopy
+import tempfile
+import shutil
 
 import numpy as np
 import matplotlib
@@ -8,6 +10,7 @@ from matplotlib import pyplot as plt
 from scipy import constants
 
 from . import tools
+from .tools import *
 
 golden_ratio = 1.61803398874989
 
@@ -1920,6 +1923,18 @@ def plot_lines_and_disjointed_points(x,y,max_separation=1,ax=None,**plot_kwargs)
         if i==len(d)-1:
             ax.plot(x[-1],y[-1],**kwargs)
 
+def plot_sticks(x,y,ax=None,**plot_kwargs):
+    """Plot as vertical lines"""
+    assert len(x)==len(y)
+    if ax is None:
+        ax = plt.gca()
+    x = np.row_stack((x,x,x))
+    t = np.zeros(y.shape)
+    y = np.row_stack((t,y,t))
+    x = np.reshape(x.transpose(),np.prod(x.shape))                                                                                                                                                              
+    y = np.reshape(y.transpose(),np.prod(y.shape))
+    ax.plot(x,y,**plot_kwargs)
+
 def hist_with_normal_distribution(
         y,
         bins=None,
@@ -2177,7 +2192,7 @@ def qplotfile(filenames,showLegend=True):
 def savefig(path,fig=None,**kwargs):
     """Like fig.savefig except saves first to a temporary file in
     order to achieve close to instant file creation."""
-    path = expand_path(path)
+    path = tools.expand_path(path)
     name,ext = os.path.splitext(path)
     tmp = tempfile.NamedTemporaryFile(suffix=ext)
     kwargs.setdefault('dpi',300)

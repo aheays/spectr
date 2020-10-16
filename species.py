@@ -15,7 +15,10 @@ def get_species(name):
 
 _main_isotopes = {
     'H':1,
+    'C':12,
+    'N':14,
     'O':16,
+    'S':32,
     }
 def get_main_isotope(element):
     ## rather than use dict periodictable.py probably contains this information

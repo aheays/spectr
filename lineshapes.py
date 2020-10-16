@@ -42,9 +42,14 @@ def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=np.inf):
             # retval[ibeg:iend] = stepwise_lorentzian(x[ibeg:iend],x0,S,Γ)
         # return(retval)
 
-# def gaussian(x,x0=0.,S=1,Γ=1.):
-    # """A gaussian with area normalised to one. Γ is FWHM."""
-    # return(S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2))
+def gaussian(x,x0=0.,S=1,Γ=1.,y=None):
+    """A gaussian with area normalised to one. Γ is FWHM. If y is
+    provided add to this in place."""
+    if y is None:
+        return S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+    else:
+        y +=  S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+        return y
 
 def voigt(x,
           x0=0,                 # centre
@@ -52,7 +57,7 @@ def voigt(x,
           ΓL=1,ΓG=1,            # fwhm
           nfwhmL=None,          # maximum Lorentzian widths to include
           nfwhmG=None,          # maximum Gaussian widths to include -- pure Lorentzian outside this
-          yin = None            # set to add this line in place to an existing xpecturm of size matching x
+          yin = None            # set to add this line in place to an existing specturm of size matching x
 ):
     "Voigt profile -- x must be sorted for correct and efficient noninfinity nfwhmG and nfwhmL."
     from scipy import special
@@ -80,9 +85,6 @@ def voigt(x,
             y[i0:j0] += lorentzian(x[i0:j0],x0,S,ΓL)
             y[j0:j1] += voigt(x[j0:j1],x0,S,ΓL,ΓG)
             y[j1:i1] += lorentzian(x[j1:i1],x0,S,ΓL)
-            # y[i0:i1] += lorentzian(x[i0:i1],x0,S,ΓL)
-            # y[j0:j1] += voigt(x[j0:j1],x0,S,ΓL,ΓG)
-
     else:
         raise Exception(f'Not implemented: nfwhmL={repr(nfwhmL)} and nfwhmG={repr(nfwhmG)}')
     return(y)
@@ -112,8 +114,7 @@ def voigt_spectrum(
     if Smin is not None:
         i = np.abs(S)>Smin
         x0,S,ΓL,ΓG = x0[i],S[i],ΓL[i],ΓG[i]
-    ## determine calc range in units of fwhm and remove lines outside
-    ## of this range
+    ## remove lines outside of fwhm calc range
     if not nfwhmG is None and not nfwhmL is None:
         i = ((x0+nfwhmL*ΓL+nfwhmG*ΓG)<x[0]) | ((x0-nfwhmL*ΓL-nfwhmG*ΓG)>x[-1])
         x0,S,ΓL,ΓG = x0[~i],S[~i],ΓL[~i],ΓG[~i]
@@ -127,30 +128,11 @@ def voigt_spectrum(
             voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG,yin=y)
             ## y += voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG)
     else:
-
-        # nparallel = min(multiprocessing.cpu_count()-1,multiprocessing_max_cpus)
-        # xstep = int(len(x)/(nparallel-1))
-        # y = np.zeros(x.shape,dtype=float)      # Voigt spectrum
-        # p = multiprocessing.Pool()
-        # for ibeg in range(0,len(x),xstep):
-        #     iend = min(ibeg+xstep,len(x))
-        #     def callback(ypartial,ibeg=ibeg,iend=iend):
-        #         y[ibeg:iend] = ypartial
-        #     t = p.apply_async(voigt_spectrum,
-        #                       args=(x[ibeg:iend],x0,S,ΓL,ΓG,nfwhmL,nfwhmG,Smin,False),
-        #                       callback=callback)
-        # try:
-            # p.close();p.join()
-        # except KeyboardInterrupt as err:
-            # p.terminate()
-            # p.join()
-            # raise err
-
         if tools.isnumeric(use_multiprocessing):
             nparallel = int(use_multiprocessing)
         else:
             nparallel = min(multiprocessing.cpu_count()-1,multiprocessing_max_cpus)
-        step = int(len(x0)/(nparallel-1))
+        step = max(1,int(len(x0)/(nparallel-1)))
         nmax = len(x0)
         # y = [None for t in range(nparallel)]
         y = []
@@ -173,6 +155,7 @@ def voigt_spectrum(
             raise err
         y = np.sum(y,axis=0)
     return(y)
+
 
 def centroided_spectrum(
         x,                      # frequency scale (cm-1) -- ORDERED AND REGULAR!
@@ -712,3 +695,43 @@ def centroided_spectrum(
     # """Autodetect lines in experimental spectrum."""
     # warnings.warn("Deprecated: Use auto_fit_lines(x,y,fit_profile='estimate',**kwargs_find_peaks)")
     # return(auto_fit_lines(x,y,fit_profile='estimate',**kwargs_find_peaks))
+
+def gaussian_spectrum(
+        x,                      # frequency scale (cm-1)
+        x0,                     # line centers (cm-1)
+        S,                      # line strengths
+        Γ,                     # Gaussian linewidth (cm-1 FWHM)
+        nfwhm=10.,             # Number of Gaussian full-width half-maxima to compute
+        Smin=None,
+        method='fortran'
+):
+    """Convert some lines into a spectrum."""
+    ## no x, nothing to do
+    if len(x)==0 or len(x0)==0:
+        return(np.zeros(x.shape,dtype=float))
+    ## strip lines that are too weak
+    if Smin is not None:
+        i = np.abs(S)>Smin
+        x0,S,Γ = x0[i],S[i],Γ[i]
+    ## remove lines outside of fwhm calc range
+    if not nfwhm is None:
+        i = ((x0+nfwhm*Γ)<x[0]) | ((x0-nfwhm*Γ)>x[-1])
+        x0,S,Γ = x0[~i],S[~i],Γ[~i]
+    ## test if nothing left
+    if len(x0)==0:
+        return(np.full(x.shape,0.))
+    ## calc single process
+    if method=='python':
+        y = np.zeros(x.shape,dtype=float)
+        for (x0i,Si,Γi) in zip(x0,S,Γ):
+            i,j = np.searchsorted(x,[x0i-Γi*nfwhm,x0i+Γi*nfwhm])
+            gaussian(x[i:j],x0i,Si,Γi,y=y[i:j])
+    elif method=='fortran':
+        y = np.zeros(x.shape,dtype=float)
+        _fortran_tools.calculate_gaussian_spectrum(x0,S,Γ,x.astype(float),y,nfwhm)
+    elif method=='fortran stepwise':
+        y = np.zeros(x.shape,dtype=float)
+        _fortran_tools.calculate_stepwise_gaussian_spectrum(x0,S,Γ,x.astype(float),y,nfwhm)
+    else:
+        raise Exception(f'Unknown gaussian_method: {repr(method)}')
+    return y 

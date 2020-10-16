@@ -192,9 +192,15 @@ class Dataset(optimise.Optimiser):
     def limit_to_matches(self,**keys_vals):
         self.index(self.match(**keys_vals))
 
+    def remove_matches(self,**keys_vals):
+        self.index(~self.match(**keys_vals))
+
     def unique(self,key):
         """Return unique values of one key."""
-        return(np.unique(self[key]))
+        if self.is_scalar(key):
+            return self[key]
+        else:
+            return np.unique(self[key])
 
     def unique_combinations(self,*keys):
         """Return a list of all unique combination of keys."""
@@ -317,12 +323,15 @@ class Dataset(optimise.Optimiser):
         for key in self._data:
             yield key
 
+    def as_dict(self,index=None):
+        """Data in row index as a dict of scalars."""
+        if index is None:
+            index = slice(0,len(self))
+        return {key:(self[key] if self.is_scalar(key) else self[key][index]) for key in self}
+        
     def rows(self):
-        d = {key:self[key] for key in self if self.is_scalar(key)}
-        vector_keys = [key for key in self if not self.is_scalar(key)]
         for i in range(len(self)):
-            d.update({key:self[key][i] for key in vector_keys})
-            yield d
+            yield(self.as_dict(i))
             
     def keys(self):
         return(list(self._data.keys()))
