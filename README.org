@@ -5,7 +5,9 @@
 
  - change partition to Q
 
- - add species and isotopologue as separate things
+ - add species and isotopologue as separate keys
+
+ - fold Data and Datum into Dataset
  
  - Improve Dataset indexing to cases:
    - get_value(key,index) / get_uncertainty(key,index) -- get numpy

@@ -5,7 +5,7 @@
 - Change _u/_l to ′″ and d_ to σ
 
 - Improve Dataset indexing to cases:
-  - get_value / get_uncertainty -- get numpy arrays
+  - get_value(key,index) / get_uncertainty(key,index) -- get numpy arrays
   - copy(keys,index) -- get copy of self with these limits
   - [key] -- return entire numpy array of key or scalar value
   - [int] -- return copy of self with all scalar data at int

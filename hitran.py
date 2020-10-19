@@ -1,20 +1,24 @@
+import functools
+
 import numpy as np
 
 from . import lines
+from . import tools
 from .tools import *
 from .dataset import Dataset
 
-@vectorise_function_in_chunks()
+@tools.vectorise_function_in_chunks(float)
+@functools.lru_cache
 def get_partition_function(species,temperature):
     """Use hapi to get a partition function."""
     import hapi
     Mol,Iso = translate_species_to_codes(species)
-    return(hapi.partitionSum(Mol,Iso,temperature))
+    return hapi.partitionSum(Mol,Iso,temperature)
 
 def get_species_params(**match_keys_vals):
     return _species_params.matches(**match_keys_vals)
 
-@vectorise_function
+@tools.vectorise_function
 def get_species_params_from_species(species):
     """Get HITEAN params data form a species in standard encoding."""
     if sum(i:=_species_params.match(species=species)) > 0:
@@ -24,7 +28,7 @@ def get_species_params_from_species(species):
         j = np.argmax(_species_params['abundance'][i])
         return _species_params.as_dict(tools.find(i)[j])
 
-@vectorise_function_in_chunks(dtype='U100')
+@tools.vectorise_function_in_chunks(dtype='U100')
 def translate_codes_to_species(
         species_ID,
         local_isotopologue_ID=None,
@@ -73,7 +77,7 @@ def load(filename):
         expand_path(filename),
         dtype=[
             ('Mol',int),    # molecule code number
-            ('Iso',int),    # isotopologue code number
+            ('Iso','U1'),    # isotopologue code number
             ('ν',float),    # wavenumber
             ('S',float), # spectral line intensity at 296K cm-1(molecular.cm-2), the integrated cross section at 296K
             ('A',float), # Einstein A-coefficient
@@ -94,7 +98,12 @@ def load(filename):
         ],
         delimiter=(2,1,12,10,10,5,5,10,4,8,15,15,15,15,6,12,1,7,7), # column widths
     )
-    return {key:data[key] for key in data.dtype.names}
+    retval = {key:data[key] for key in data.dtype.names}
+    iso_translate = {'1':1, '2':2, '3':3, '4':4, '5':5, '6':6, '7':7,
+                     '8':8, '9':9, '0':10, 'A':11, 'B':12, 'C':13, 'D':14, 'E':15,
+                     'F':16, 'G':17, 'H':18, 'I':19, 'J':20,}
+    retval['Iso'] = [iso_translate[t] for t in retval['Iso']]
+    return retval
 
 def get_spectrum(
         species,
@@ -142,7 +151,7 @@ species_ID  global_isotopologue_ID  local_isotopologue_ID  species_iso_indep  sp
 2           13                      7                      CO2                [12C][18O]2              828        3.957340e-6  47.998322      323.42    1
 2           14                      8                      CO2                [17O][12C][18O]          827        1.471800e-6  46.998291      3766.58   6
 2           121                     9                      CO2                [12C][17O]2              727        1.368470e-7  45.998262      10971.57  1
-2           15                       10                     CO2                [13C][18O]2              838        4.446000e-8  49.001675      652.24    2
+2           15                      10                     CO2                [13C][18O]2              838        4.446000e-8  49.001675      652.24    2
 2           120                     11                     CO2                [18O][13C][17O]          837        1.653540e-8  48.001646      7595.04   12
 2           122                     12                     CO2                [13C][17O]2              737        1.537500e-9  47.0016182378  22120.47  2
 3           16                      1                      O3                 [16O]3                   666        0.992901     47.984745      3483.71   1

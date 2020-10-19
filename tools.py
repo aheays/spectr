@@ -84,7 +84,7 @@ def vectorise_function_in_chunks(dtype=float):
     """Deorator for looking for groups of common arguments and calculate
     them only once in a vectorised version of the original function
     which accepts scalar arguments. If all arguments are scalar return
-    a scalar result."""
+    a scalar result. Otherwise return an array of dtype"""
     ##  Need the inner function so the decorator can have arguments
     def actual_decorator(function):
         def vectorised_function(*args):
@@ -109,10 +109,9 @@ def vectorise_function_in_chunks(dtype=float):
     return actual_decorator
 
 def vectorise_arguments(function):
-    """Compute an infer with some pre/post processing to ensure vectorised
-    arguments are giving to the function (which may need them)
-    even if all input arguments are scalar, but convert the result
-    back to scalar."""
+    """Convert all arguments to arrays of the same length.  If all
+    original input arguments are scalar then convert the result back
+    to scalar."""
     def function_with_vectorised_arguments(*args):
         arglen = 0
         for arg in args:

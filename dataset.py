@@ -113,14 +113,22 @@ class Dataset(optimise.Optimiser):
             self._inferences[key].remove(inferred_key)
             self.unset(inferred_key)
 
-    def get_value(self,key,ensure_vector=False):
+    def get_value(
+            self,
+            key,
+            index=None,
+            # ensure_vector=False,
+    ):
+        """Get value of data. Optionally index. """
         if key not in self._data:
             self._infer(key)
-        if ensure_vector and self.is_scalar(key):
-            assert len(self) is not None
-            return np.full(len(self),self[key])
-        else:
+        # if ensure_vector and self.is_scalar(key):
+        #     assert len(self) is not None
+        #     return np.full(len(self),self[key])
+        if index is None or self.is_scalar(key):
             return self._data[key].value
+        else:
+            return self._data[key].value[index]
 
     def get_uncertainty(self,key):
         self.assert_known(key)
@@ -244,7 +252,7 @@ class Dataset(optimise.Optimiser):
             if (value_key:=self._get_key_without_uncertainty(arg)) is not None:
                 return(self.get_uncertainty(value_key))
             else:
-                return(self.get_value(arg))
+                return self.get_value(arg)
         elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
             return(self.copy(keys=arg))
         else:
@@ -309,15 +317,14 @@ class Dataset(optimise.Optimiser):
                 for dependency in dependencies:
                     self._inferences[dependency].append(key)
                 break           
-            ## some kind of InferException 
+            ## some kind of InferException, try next set of dependencies
             except InferException as err:
                 if self.verbose:
-                    print(err)
+                    print('    InferException: '+str(err))
                 continue      
         ## complete failure to infer
         else:
             raise InferException(f"Could not infer key: {repr(key)}")
-
 
     def __iter__(self):
         for key in self._data:

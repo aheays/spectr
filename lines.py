@@ -3,6 +3,7 @@ from copy import copy,deepcopy
 from pprint import pprint
 
 import numpy as np
+from scipy import constants
 
 # from . import *
 # from .dataset import Dataset
@@ -16,23 +17,104 @@ from . import plotting
 from .conversions import convert
 from .exceptions import InferException
 
-level_suffix = {'upper':'_u','lower':'_l'}
 
-def _expand_level_keys(level_class):
-    """Take level keys and make upper and lower level copys for a Lines
-    object."""
-    retval = {}
-    for key,val in level_class.prototypes.items():
-        tval = deepcopy(val)
-        tval['infer'] = {tuple(key+level_suffix['upper']
-                               for key in tools.ensure_iterable(dependencies)):function
-                         for dependencies,function in val['infer'].items()}
-        retval[key+level_suffix['upper']] = tval
-        tval['infer'] = {tuple(key+level_suffix['lower']
-                               for key in tools.ensure_iterable(dependencies)):function
-                         for dependencies,function in val['infer'].items()}
-        retval[key+level_suffix['lower']] = tval
-    return(retval)
+level_suffix = {'upper':'_u','lower':'_l'}
+upper = level_suffix['upper']
+lower = level_suffix['lower']
+
+################
+## prototypes ##
+################
+prototypes = {}
+
+## copy some direct from levels
+for key in ('classname', 'description', 'notes', 'author',
+            'reference', 'date', 'species', 'mass', 'reduced_mass',
+            'partition_source','partition'):
+    prototypes[key] = copy(levels.prototypes[key])
+## import all from levels with suffices added
+for key,val in levels.prototypes.items():
+    tval = deepcopy(val)
+    tval['infer'] = {tuple(key+level_suffix['upper']
+                           for key in tools.ensure_iterable(dependencies)):function
+                     for dependencies,function in val['infer'].items()}
+    prototypes[key+level_suffix['upper']] = tval
+    tval['infer'] = {tuple(key+level_suffix['lower']
+                           for key in tools.ensure_iterable(dependencies)):function
+                     for dependencies,function in val['infer'].items()}
+    prototypes[key+level_suffix['lower']] = tval
+
+## add lines things
+prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s')
+prototypes['ν'] = dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>0.6f', infer={})
+prototypes['Γ'] = dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind=float, fmt='<10.5g',infer={
+    ('γself','Pself','γair','Pair'):lambda γself,Pself,γair,Pair: γself*convert(Pself,'Pa','atm')+γair*convert(Pair,'Pa','atm'), # LINEAR COMBINATION!
+    ('γself','Pself'):lambda γself,Pself: γself*convert(Pself,'Pa','atm'),
+    ('γair','Pair'):lambda γair,Pair: γair*convert(Pair,'Pa','atm'),})
+prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={})
+prototypes['f'] = dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e', infer={
+    ('Ae','ν','g_u','g_l'):lambda Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2, 
+    ('σ','α_l'):lambda σ,α_l: σ*1.1296e12/α_l,})
+prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section (cm2.cm-1).", kind=float, fmt='<10.5e',infer={
+    ('τ','Nself_l'):lambda τ,column_densitypp: τ/column_densitypp, 
+    ('f','α_l'):lambda f,α_l: f/1.1296e12*α_l,
+    ('S','ν','Teq'):lambda S,ν,Teq,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Teq)),})
+def _f0(S296K,species,partition,E_l,Tex,ν):
+    """See Eq. 9 of simeckova2006"""
+    partition_296K = hitran.get_partition_function(species,296)
+    c = convert(constants.Boltzmann,'J','cm-1') # hc/kB
+    return (S296K
+            *((np.exp(-E_l/(c*Tex))/partition)*(1-np.exp(-c*ν/Tex)))
+            /((np.exp(-E_l/(c*296))/partition_296K)*(1-np.exp(-c*ν/296))))
+prototypes['S'] = dict(description="Spectral line intensity (cm or cm-1/(molecular.cm-2) ", kind=float, fmt='<10.5e', infer={
+    ('S296K','species','partition','E_l','Tex','ν'):_f0,})
+prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ( cm-1/(molecular.cm-2) ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.", kind=float, fmt='<10.5e', infer={})
+## Preferentially compute τ from the spectral line intensity, S,
+## rather than than the photoabsorption cross section, σ, because the
+## former considers the effect of stimulated emission.
+prototypes['τ'] = dict(description="Integrated photoabsorption optical depth (cm-1)", kind=float, fmt='<10.5e', infer={
+    ('σ','Nself_l'):lambda σ,Nself_l: σ*Nself_l,},)
+prototypes['Ae'] = dict(description="Radiative decay rate (s-1)", kind=float, fmt='<10.5g', infer={
+    ('f','ν','g_u','g_l'):lambda f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2),
+    ('At','Ad'): lambda At,Ad: At-Ad,})
+prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind=float, fmt='0.2f', infer={})
+prototypes['Tex'] = dict(description="Excitation temperature (K)", kind=float, fmt='0.2f', infer={
+    'Teq':lambda Tex:Teq,
+})
+prototypes['Ttr'] = dict(description="Translational temperature (K)", kind=float, fmt='0.2f', infer={
+    'Tex':lambda Tex:Tex,})
+prototypes['ΔJ'] = dict(description="Jp-Jpp", kind=float, fmt='>+4g', infer={
+    ('Jp','Jpp'):lambda Jp,Jpp: Jp-Jpp,},)
+prototypes['L'] = dict(description="Optical path length (m)", kind=float, fmt='0.5f', infer={})
+prototypes['γair'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},)
+prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},)
+prototypes['nair'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},)
+prototypes['γself'] = dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},)
+prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind=float, fmt='0.5f', infer={})
+prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind=float, fmt='0.5f', infer={})
+prototypes['Nself'] = dict(description="Column density (cm-2)",kind=float,fmt='<11.3e', infer={
+    ('Pself','L','Teq'): lambda Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,})
+
+## add infer functions -- could add some of these to above
+prototypes['ν']['infer']['E_u','E_l'] = lambda Eu,El: Eu-El
+prototypes['E_l']['infer']['E_u','ν'] = lambda Eu,ν: Eu-ν
+prototypes['E_u']['infer']['E_l','ν'] = lambda El,ν: El+ν
+prototypes['Γ']['infer']['Γ_u','Γ_l'] = lambda Γu,Γl: Γu+Γl
+prototypes['Γ_l']['infer']['Γ','Γ_u'] = lambda Γ,Γu: Γ-Γu
+prototypes['Γ_u']['infer']['Γ','Γ_l'] = lambda Γ,Γl: Γ-Γl
+prototypes['J_u']['infer']['J_l','ΔJ'] = lambda J_l,ΔJ: J_l+ΔJ
+prototypes['Tex']['infer']['Teq'] = lambda Teq: Teq
+prototypes['Teq_u']['infer']['Teq'] = lambda Teq: Teq
+prototypes['Teq_l']['infer']['Teq'] = lambda Teq: Teq
+prototypes['Nself_u']['infer']['Nself'] = lambda Nself: Nself
+prototypes['Nself_l']['infer']['Nself'] = lambda Nself: Nself
+prototypes['species_l']['infer']['species'] = lambda species: species
+prototypes['species_u']['infer']['species'] = lambda species: species
+prototypes['ΔJ']['infer']['J_u','J_l'] = lambda J_u,J_l: J_u-J_l
+prototypes['partition']['infer']['partition_l'] = lambda partition_l:partition_l
+prototypes['partition']['infer']['partition_u'] = lambda partition_u:partition_u
+prototypes['partition_l']['infer']['partition'] = lambda partition:partition
+prototypes['partition_u']['infer']['partition'] = lambda partition:partition
 
 def _get_key_without_level_suffix(upper_or_lower,key):
     suffix = level_suffix[upper_or_lower]
@@ -42,87 +124,38 @@ def _get_key_without_level_suffix(upper_or_lower,key):
         return None
     return key[:-len(suffix)]
 
+def _expand_level_keys_to_upper_lower(levels_class):
+    retval = []
+    for key,val in levels_class.prototypes.items():
+        retval.append(key+level_suffix['lower'])
+        retval.append(key+level_suffix['upper'])
+    return retval
+
+
+#############
+## classes ##
+#############
+
 class Base(levels._BaseLinesLevels):
     """For now rotational lines."""
 
-    _levels_class = levels.Base
 
-    prototypes = {
-        'classname':dict( description="Type of lines.",kind=str ,infer={}) ,
-        'description':dict( description="",kind=str ,infer={}) ,
-        'notes' :dict(description="Notes regarding this line" , kind=str ,infer={}) ,
-        'author' :dict(description="Author of data or printed file" ,kind=str ,infer={}) ,
-        'reference' :dict(description="Published reference" ,kind=str ,infer={}) ,
-        'date' :dict(description="Date data collected or printed" ,kind=str ,infer={}) ,
-        'species' :dict(description="Chemical species" ,kind=str ,infer={}) ,
-        'mass':dict(description="Mass (amu)",kind=float, fmt='<11.4f', infer={
-            # ('species',): lambda species: database.get_species_property(species,'mass')},
-            ('species',): lambda species: database.get_mass(species),
-        },),
-        'reduced_mass':dict(description="Reduced mass (amu)", kind=float, fmt='<11.4f', infer={('species','database',): lambda species: _get_species_property(species,'reduced_mass')}),
-        'levels_class':dict(description="What Dataset subclass of Levels this is a transition between",kind='object',infer={}),
-        'branch':dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s'),
-        'ν':dict(description="Transition wavenumber (cm-1)", kind=float, fmt='>0.6f', infer={}),
-        'Γ' :dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind=float, fmt='<10.5g', infer={
-            ('γself','Pself','γair','Pair'):lambda γself,Pself,γair,Pair: γself*convert(Pself,'Pa','atm')+γair*convert(Pair,'Pa','atm'), # LINEAR COMBINATION!
-            ('γself','Pself'):lambda γself,Pself: γself*convert(Pself,'Pa','atm'),
-            ('γair','Pair'):lambda γair,Pair: γair*convert(Pair,'Pa','atm'),
-        }),
-        'ΓD':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={}),
-        'f':dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e', infer={('Ae','ν','g_u','g_l'):lambda Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2,}),
-        'σpa':dict(description="Integrated cross section (cm2.cm-1).", kind=float, fmt='<10.5e', infer={
-            ('τ','Nself_l'):lambda τ,column_densitypp: τ/column_densitypp,
-            ('f','α_l'):lambda f,α_l: f/1.1296e12*α_l,
-        }),
-        'τpa':dict(description="Integrated optical depth (cm-1)", kind=float, fmt='<10.5e', infer={('σpa','Nself_l'):lambda σpa,Nself_l: σpa*Nself_l,},),
-        'Ae':dict(description="Radiative decay rate (s-1)", kind=float, fmt='<10.5g', infer={('At','Ad'): lambda At,Ad: At-Ad,}),
-        'Teq':dict(description="Equilibriated temperature (K)", kind=float, fmt='0.2f', infer={}),
-        'Tex':dict(description="Excitation temperature (K)", kind=float, fmt='0.2f', infer={'Teq':lambda Tex:Teq}),
-        'Ttr':dict(description="Translational temperature (K)", kind=float, fmt='0.2f', infer={'Tex':lambda Tex:Tex}),
-        'ΔJ':dict(description="Jp-Jpp", kind=float, fmt='>+4g', infer={('Jp','Jpp'):lambda Jp,Jpp: Jp-Jpp,},),
-        'partition_source':dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind=str, infer={
-            (): lambda : 'database',
-        }),
-        'partition':dict(description="Partition function.", kind=float, fmt='<11.3e', infer={
-            
-        }),
-        'ΓDoppler':dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,}),
-        'L':dict(description="Optical path length (m)", kind=float, fmt='0.5f', infer={}),
-        'γair':dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
-        'δair':dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
-        'nair':dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
-        'γself':dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind=float, cast=lambda x:abs(x), fmt='<10.5g', infer={},),
-        'Pself':dict(description="Pressure of self (Pa)", kind=float, fmt='0.5f', infer={}),
-        'Pair':dict(description="Pressure of air (Pa)", kind=float, fmt='0.5f', infer={}),
-        'Nself':dict(description="Column density (cm-2)",kind=float,fmt='<11.3e', infer={
-            ('Pself','L','Teq'): lambda Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,}),
-}
-
-    prototypes.update(deepcopy(_expand_level_keys(levels.Base)))
-    prototypes['ν']['infer']['E_u','E_l'] = lambda Eu,El: Eu-El
-    prototypes['E_l']['infer']['E_u','ν'] = lambda Eu,ν: Eu-ν
-    prototypes['E_u']['infer']['E_l','ν'] = lambda El,ν: El+ν
-    prototypes['Γ']['infer']['Γ_u','Γ_l'] = lambda Γu,Γl: Γu+Γl
-    prototypes['Γ_l']['infer']['Γ','Γ_u'] = lambda Γ,Γu: Γ-Γu
-    prototypes['Γ_u']['infer']['Γ','Γ_l'] = lambda Γ,Γl: Γ-Γl
-    prototypes['J_u']['infer']['J_l','ΔJ'] = lambda J_l,ΔJ: J_l+ΔJ
-    prototypes['Tex']['infer']['Teq'] = lambda Teq: Teq
-    prototypes['Teq_u']['infer']['Teq'] = lambda Teq: Teq
-    prototypes['Teq_l']['infer']['Teq'] = lambda Teq: Teq
-    prototypes['Nself_u']['infer']['Nself'] = lambda Nself: Nself
-    prototypes['Nself_l']['infer']['Nself'] = lambda Nself: Nself
-    prototypes['species_l']['infer']['species'] = lambda species: species
-    prototypes['species_u']['infer']['species'] = lambda species: species
-    prototypes['ΔJ']['infer']['J_u','J_l'] = lambda J_u,J_l: J_u-J_l
-
-    ## partition function
-    def _f5(partition_source,species,Tex):
-        if partition_source!='HITRAN':
-            raise InferException(f'Partition source not "HITRAN".')
-        return hitran.get_partition_function(species,Tex)
-    prototypes['partition']['infer']['partition_source','species','Tex'] = _f5
-    prototypes['partition_l']['infer']['partition'] = lambda partition:partition
-    prototypes['partition_u']['infer']['partition'] = lambda partition:partition
+    prototypes = {key:copy(prototypes[key]) for key in (
+        ['classname', 'description', 'notes', 'author', 'reference', 'date',]
+        + _expand_level_keys_to_upper_lower(levels.Base)
+        + ['species', 'mass', 'reduced_mass',
+           'branch', 'ΔJ',
+           'ν',
+           'Γ', 'ΓD',
+           'f', 'σ', 
+           'S','S296K', 
+           'τ', 'Ae',
+           'Teq', 'Tex', 'Ttr','partition',
+           'partition_source',
+           'partition',
+           'L',
+           'γair', 'δair', 'γself', 'nair',
+           'Pself', 'Pair', 'Nself',])}
 
     def plot_spectrum(
             self,
@@ -140,11 +173,11 @@ class Base(levels._BaseLinesLevels):
             ax = plt.gca()
         if zkeys==None:
             if ykey == 'transmission': # special case
-                x,y = self.calculate_spectrum(x,ykey='τpa',xkey=xkey)
+                x,y = self.calculate_spectrum(x,ykey='τ',xkey=xkey)
                 y = np.exp(-y)
             else:
                 x,y = self.calculate_spectrum(x,ykey=ykey,xkey=xkey)
-            line = ax.plot(x,y,**plot_kwargs)[0]
+                line = ax.plot(x,y,**plot_kwargs)[0]
         else:
             for iz,(qn,t) in enumerate(self.unique_dicts_matches(*zkeys)):
                 t_plot_kwargs = copy(plot_kwargs)
@@ -415,15 +448,19 @@ class Base(levels._BaseLinesLevels):
         ## interpret into transition quantities common to all transitions
         kw = {
             'ν':data['ν'],
-            'Ae':data['A'],
-            'E'+level_suffix['lower']:data['E_l'],
-            'g'+level_suffix['upper']:data['g_u'],
-            'g'+level_suffix['lower']:data['g_l'],
+            ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
+            'S296K':data['S'],
+            'E_l':data['E_l'],
+            'g_u':data['g_u'],
+            'g_l':data['g_l'],
             'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
             'nair':data['nair'],
             'δair':data['δair'],
             'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
         }
+        ## missing assignments have zero value -- change to nan
+        i = kw['g_l'] == 0
+        kw['g_l'][i] = kw['g_u'][i] = np.nan
         ## get species
         assert len(np.unique(data['Mol']))==1
         try:
@@ -432,25 +469,26 @@ class Base(levels._BaseLinesLevels):
         except KeyError:
             assert len(np.unique(data['Iso']))==1,'Cannot identify isotopologues and multiple are present.'
             kw['species'] = hitran.translate_codes_to_species(data['Mol'])
-        # ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
-        # ## standin for diatomics
-        # kw['v'+level_suffix['upper']] = data['V_u']
-        # kw['v'+level_suffix['lower']] = data['V_l']
-        # branches = {'P':-1,'Q':0,'R':+1}
-        # ΔJ,J_l = [],[]
-        # for Q_l in data['Q_l']:
-            # branchi,Jli = Q_l.split()
-            # ΔJ.append(branches[branchi])
-            # J_l.append(Jli)
-        # kw['ΔJ'] = np.array(ΔJ,dtype=int)
-        # kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
+        ## ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
+        ## ## standin for diatomics
+        ## kw['v'+level_suffix['upper']] = data['V_u']
+        ## kw['v'+level_suffix['lower']] = data['V_l']
+        ## branches = {'P':-1,'Q':0,'R':+1}
+        ## ΔJ,J_l = [],[]
+        ## for Q_l in data['Q_l']:
+        ##     branchi,Jli = Q_l.split()
+        ##     ΔJ.append(branches[branchi])
+        ##     J_l.append(Jli)
+        ## kw['ΔJ'] = np.array(ΔJ,dtype=int)
+        ## kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
         self.extend(**kw)
 
 class DiatomicCinfv(Base):
 
-    prototypes = {}
-    prototypes.update(_expand_level_keys(levels.DiatomicCinfv))
-    prototypes.update(deepcopy(Base.prototypes)) 
+    prototypes = {key:copy(prototypes[key]) for key in (
+        list(Base.prototypes)
+        + _expand_level_keys_to_upper_lower(levels.DiatomicCinfv))}
+
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -494,8 +532,8 @@ class DiatomicCinfv(Base):
         self.extend(**kw)
         
 
-class TriatomicDinfh(Base):
+# class TriatomicDinfh(Base):
 
-    prototypes = {}
-    prototypes.update(_expand_level_keys(levels.TriatomicDinfh))
-    prototypes.update(deepcopy(Base.prototypes)) 
+    # prototypes = {key:copy(prototypes[key]) for key in (
+        # list(Base.prototypes)
+        # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
