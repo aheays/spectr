@@ -28,9 +28,11 @@ lower = level_suffix['lower']
 prototypes = {}
 
 ## copy some direct from levels
-for key in ('classname', 'description', 'notes', 'author',
-            'reference', 'date', 'species', 'mass', 'reduced_mass',
-            'partition_source','partition'):
+for key in (
+        'classname','description','notes','author','reference','date',
+        'species','isotopologue',
+        'mass','reduced_mass','partition_source','partition',
+):
     prototypes[key] = copy(levels.prototypes[key])
 ## import all from levels with suffices added
 for key,val in levels.prototypes.items():
@@ -51,12 +53,12 @@ prototypes['Γ'] = dict(description="Total natural linewidth of level or transit
     ('γself','Pself','γair','Pair'):lambda γself,Pself,γair,Pair: γself*convert(Pself,'Pa','atm')+γair*convert(Pair,'Pa','atm'), # LINEAR COMBINATION!
     ('γself','Pself'):lambda γself,Pself: γself*convert(Pself,'Pa','atm'),
     ('γair','Pair'):lambda γair,Pair: γair*convert(Pair,'Pa','atm'),})
-prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={})
+prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,})
 prototypes['f'] = dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e', infer={
     ('Ae','ν','g_u','g_l'):lambda Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2, 
     ('σ','α_l'):lambda σ,α_l: σ*1.1296e12/α_l,})
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section (cm2.cm-1).", kind=float, fmt='<10.5e',infer={
-    ('τ','Nself_l'):lambda τ,column_densitypp: τ/column_densitypp, 
+    ('τa','Nself_l'):lambda τ,column_densitypp: τ/column_densitypp, 
     ('f','α_l'):lambda f,α_l: f/1.1296e12*α_l,
     ('S','ν','Teq'):lambda S,ν,Teq,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Teq)),})
 def _f0(S296K,species,partition,E_l,Tex,ν):
@@ -72,8 +74,12 @@ prototypes['S296K'] = dict(description="Spectral line intensity at 296K referenc
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
 ## former considers the effect of stimulated emission.
-prototypes['τ'] = dict(description="Integrated photoabsorption optical depth (cm-1)", kind=float, fmt='<10.5e', infer={
-    ('σ','Nself_l'):lambda σ,Nself_l: σ*Nself_l,},)
+prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission (cm-1)", kind=float, fmt='<10.5e', infer={
+    ('S','Nself_l'):lambda S,Nself_l: S*Nself_l,
+},)
+prototypes['τa'] = dict(description="Integrated optical depth from absorption only (cm-1)", kind=float, fmt='<10.5e', infer={
+    ('σ','Nself_l'):lambda σ,Nself_l: σ*Nself_l,
+},)
 prototypes['Ae'] = dict(description="Radiative decay rate (s-1)", kind=float, fmt='<10.5g', infer={
     ('f','ν','g_u','g_l'):lambda f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2),
     ('At','Ad'): lambda At,Ad: At-Ad,})
@@ -143,13 +149,13 @@ class Base(levels._BaseLinesLevels):
     prototypes = {key:copy(prototypes[key]) for key in (
         ['classname', 'description', 'notes', 'author', 'reference', 'date',]
         + _expand_level_keys_to_upper_lower(levels.Base)
-        + ['species', 'mass', 'reduced_mass',
+        + ['species','isotopologue','mass', 'reduced_mass',
            'branch', 'ΔJ',
            'ν',
            'Γ', 'ΓD',
            'f', 'σ', 
            'S','S296K', 
-           'τ', 'Ae',
+           'τ', 'Ae','τa',
            'Teq', 'Tex', 'Ttr','partition',
            'partition_source',
            'partition',
@@ -214,7 +220,7 @@ class Base(levels._BaseLinesLevels):
             x=None,        # frequency grid (must be regular, I think), if None then construct a reasonable grid
             xkey='ν',      # strength to use, i.e., "ν", or "λ"
             ykey='σ',      # strength to use, i.e., "σ", "τ", or "I"
-            ΓG='ΓDoppler', # a key to use for Gaussian widths (i.e., "ΓDoppler"), a constant numeric value, or None to neglect Gaussian entirely
+            ΓG='ΓD', # a key to use for Gaussian widths, a constant numeric value, or None to neglect Gaussian entirely
             ΓL='Γ',        # a key or for Lorentzian widths (i.e., "Γ"), a constant numeric value, or None to neglect Lorentzian entirely
             nfwhmG=20,         # how many Gaussian FWHMs to include in convolution
             nfwhmL=100,         # how many Lorentzian FWHMs to compute
@@ -442,11 +448,8 @@ class Base(levels._BaseLinesLevels):
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
         data = hitran.load(filename)
-        species = np.unique(hitran.translate_codes_to_species(data['Mol'],data['Iso']))
-        assert len(species)==1,'Cannot handle mixed species HITRAN linelist.'
-        species = species[0]
         ## interpret into transition quantities common to all transitions
-        kw = {
+        new = self.__class__(**{
             'ν':data['ν'],
             ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
             'S296K':data['S'],
@@ -457,18 +460,13 @@ class Base(levels._BaseLinesLevels):
             'nair':data['nair'],
             'δair':data['δair'],
             'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
-        }
-        ## missing assignments have zero value -- change to nan
-        i = kw['g_l'] == 0
-        kw['g_l'][i] = kw['g_u'][i] = np.nan
+        })
         ## get species
-        assert len(np.unique(data['Mol']))==1
-        try:
-            ## full isotopologue
-            kw['species'] = hitran.translate_codes_to_species(data['Mol'],data['Iso'])
-        except KeyError:
-            assert len(np.unique(data['Iso']))==1,'Cannot identify isotopologues and multiple are present.'
-            kw['species'] = hitran.translate_codes_to_species(data['Mol'])
+        species,isotopologue = hitran.translate_codes_to_species_isotopologue(data['Mol'],data['Iso'])
+        new['species'],new['isotopologue'] = species,isotopologue
+        ## remove natural abundance weighting
+        for d,i in new.unique_dicts_match('isotopologue'):
+            new['S296K'][i] /=  hitran.molparam.get_unique_value('natural_abundance',**d)
         ## ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
         ## ## standin for diatomics
         ## kw['v'+level_suffix['upper']] = data['V_u']
@@ -481,7 +479,7 @@ class Base(levels._BaseLinesLevels):
         ##     J_l.append(Jli)
         ## kw['ΔJ'] = np.array(ΔJ,dtype=int)
         ## kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
-        self.extend(**kw)
+        self.concatenate(new)
 
 class DiatomicCinfv(Base):
 
