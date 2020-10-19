@@ -1,10 +1,9 @@
 ## standard library
 from copy import copy,deepcopy
+from pprint import pprint
 
 ## nonstandard library
 import numpy as np
-from numpy import nan
-from matplotlib import pyplot as plt
 
 ## import subpackages of this library
 from . import tools
