@@ -117,14 +117,16 @@ class Dataset(optimise.Optimiser):
             self,
             key,
             index=None,
-            # ensure_vector=False,
+            ensure_vector=False,
     ):
         """Get value of data. Optionally index. """
         if key not in self._data:
             self._infer(key)
-        # if ensure_vector and self.is_scalar(key):
-        #     assert len(self) is not None
-        #     return np.full(len(self),self[key])
+        if ensure_vector and self.is_scalar(key):
+            if len(self) is None:
+                return np.array([self[key]])
+            else:
+                return np.full(len(self),self[key])
         if index is None or self.is_scalar(key):
             return self._data[key].value
         else:
@@ -136,6 +138,13 @@ class Dataset(optimise.Optimiser):
             return self._data[key].uncertainty
         else:
             return None
+
+    def get_unique_value(self,key,**matching_keys_vals):
+        """Return value of key that is the uniquely matches
+        matching_keys_vals."""
+        i = tools.find(self.match(**matching_keys_vals))
+        assert len(i)==1,f'Non-unique matches for {matching_keys_vals=}'
+        return self.get_value(key,i)
 
     def has_uncertainty(self,key):
         self.assert_known(key)
@@ -206,13 +215,18 @@ class Dataset(optimise.Optimiser):
     def unique(self,key):
         """Return unique values of one key."""
         if self.is_scalar(key):
-            return self[key]
+            return np.array([self[key]])
         else:
             return np.unique(self[key])
 
     def unique_combinations(self,*keys):
         """Return a list of all unique combination of keys."""
-        return(tools.unique_combinations(*[self[key] for key in keys]))
+        if all([self.is_scalar(key) for key in keys]):
+            return [[self[key] for key in keys]]
+        else:
+            data = [np.full(len(self),self[key]) if np.is_scalar(key) else self[key]
+                for key in keys]
+            return tools.unique_combinations(*data)
 
     def unique_dicts(self,*keys):
         """Return an iterator where each element is a unique set of keys as a
