@@ -133,6 +133,21 @@ def load(filename):
 
 
 ## downloaded from https://hitran.org/docs/iso-meta/ 2020-10-15
+
+@functools.lru_cache
+def get_lines(species_or_isotopologue):
+    """Load a preconstructed linelists.  If species_or_isotopologue is not
+    an isotopologue return natural abundance."""
+    l = lines.Base(f'species_or_isotopologue')
+    if species_or_isotopologue in molparam['species']:
+        filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/natural_abundance/lines.h5'
+    elif species_or_isotopologue in molparam['species']:
+        filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/lines.h5'
+    l.load(filename)
+    l['partition_source'] = 'HITRAN'
+    return l
+
+
 molparam = Dataset(**tools.string_to_dict('''
 species_ID  global_isotopologue_ID  local_isotopologue_ID  species  isotopologue             AFGL_code  natural_abundance  molar_mass     Q_296K    gi
 1           1                       1                      H2O      [1H]2[16O]               161        0.997317           18.010565      174.58    1
