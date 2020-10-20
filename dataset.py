@@ -309,9 +309,16 @@ class Dataset(optimise.Optimiser):
                     continue # not a Data kwarg
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
-        if is_scalar or np.isscalar(value):
+        if isinstance(value,optimise.𝒫):
+            ## a parameter, set value and uncertainty to a Datum
+            assert uncertainty is None
+            assert is_scalar is None
+            data = Datum(value=value.value,uncertainty=value.uncertainty,**data_kwargs)
+        elif is_scalar or np.isscalar(value):
+            ## a scalar value
             data = Datum(value=value,uncertainty=uncertainty,**data_kwargs)
         else:
+            ## vector data
             data = Data(value=value,uncertainty=uncertainty,**data_kwargs)
             if self.is_scalar():
                 ## first array data in self, use this to define the
