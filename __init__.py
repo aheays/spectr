@@ -8,8 +8,6 @@ import numpy as np
 ## import subpackages of this library
 from . import tools
 from . import plotting
-from . import datum
-from . import data
 from . import optimise
 from . import dataset
 from . import levels
