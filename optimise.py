@@ -23,15 +23,26 @@ def auto_construct_method(function_name):
         def new_function(self,**kwargs):
             ## add parameters in kwargs
             for key in list(kwargs):
-                if isinstance(kwargs[key],P):
+                if isinstance(kwargs[key],𝒫):
                     self.parameters.append(kwargs[key])
-                elif isinstance(kwargs[key],PD):
-                    self.parameters.extend(kwargs[key].values())
+                elif isinstance(kwargs[key],𝒫𝒟):
+                    for val in kwargs[key].values():
+                        if isinstance(val,𝒫):
+                            self.parameters.append(val)
             ## make a construct function
             construct_function = function(self,**kwargs)
             self.add_construct_function(construct_function)
             ## make a foramt_input_function
-            self.add_auto_format_input_function(function_name,**kwargs)
+            def f():
+                if len(kwargs)<2:
+                    formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs.items() if val is not None])
+                    return f'{self.name}.{function_name}({formatted_kwargs},)'
+                else:
+                    formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs.items() if val is not None])
+                    return f'{self.name}.{function_name}(\n    {formatted_kwargs},\n)'
+            self.add_format_input_function(f)
+            ## return kwargs
+            return kwargs
         return new_function
     return actual_decorator
 
@@ -84,24 +95,18 @@ class Optimiser:
             kwargs.pop('verbose')
         if self.description == '':
             kwargs.pop('description')
-        f = self.add_auto_format_input_function('Optimiser',initialisation_function=True,**kwargs,)
-        
-
-    # def.Optimiser):
-        # def m(self,x):
-            # def f():
-                # return x-5
-            # self.add_construct_function(f)
-            # self.add_format_input_function(lambda: f'{self.name}.m(x={repr(x)})')
-    # optimiser = c()
-    # optimiser.m(x=25)
-    # assert list(optimiser.construct()) == [20]
-    # print(optimiser.format_input())
-    # ## decorate creation of method
-    # class c(optimise.Optimiser):
-
-    
-
+        def f():
+            retval = f'{self.name} = Optimser(name={self.name},)'
+            if len(self._suboptimisers)>0:
+                retval += ','.join([repr(t) for t in self._suboptimisers])+','
+            if self.verbose:
+                retval += f'verbose={repr(self.verbose)},'
+            if self.description != '':
+                retval += f'description={repr(self.description)},'
+            if len(parameters)>0:
+                retval += ','.join([f'name={repr(p)}' for name,p in parameters.items()])
+            return retval
+        self.add_format_input_function(f)
 
     def __repr__(self):
         """No attempt to represent this data but its name may be used in place
@@ -112,23 +117,6 @@ class Optimiser:
         """Add a new format input function."""
         for function in functions:
             self._format_input_functions[time.time()] = function
-
-    def add_auto_format_input_function(
-            self,
-            function_name,
-            initialisation_function=False,
-            **kwargs,
-    ):
-        """Add a new format input function given function_name and convert
-            keys_vals to arguments."""
-        def f():
-            formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs.items() if val is not None])
-            if initialisation_function:
-                return f'{self.name} = {function_name}({formatted_kwargs})'
-            else:
-                return f'{self.name}.{function_name}({formatted_kwargs})'
-        self.add_format_input_function(f)
-        return f
 
     def pop_format_input_function(self):
         """Delete last format input function added."""
@@ -166,7 +154,7 @@ class Optimiser:
     def add_parameter(self,*args,description=''):
         """Add one parameter. Return a reference to it. Args are as in
         Parameter.x"""
-        p = P(*args,description=description)
+        p = 𝒫(*args,description=description)
         self.parameters.append(p)
         return p
 
@@ -176,7 +164,7 @@ class Optimiser:
             **keys_parameters,       # kwargs in the form name=p or name=(Parameter_args)
     ):
         """Add multiple parameters. Return a ParameterSet."""
-        p = PD(description=description,**keys_parameters)
+        p = 𝒫𝒫𝒟(description=description,**keys_parameters)
         self.parameters.extend(p.values())
         return p
 
@@ -301,7 +289,8 @@ class Optimiser:
         print(self.format_input(match_lines_regexp=match_lines_regexp))
 
     def __str__(self):
-        return(self.get_parameter_dataset().format())
+        # return self.get_parameter_dataset().format()
+        return self.format_input()
 
     def save_to_directory(
             self,
@@ -601,7 +590,8 @@ class Optimiser:
 
 
 
-class P():
+class 𝒫():
+    """An adjustable parameter."""
 
     def __init__(
             self,
@@ -636,7 +626,7 @@ class P():
     value = property(_get_value,_set_value)
 
     def __repr__(self):
-        return ('(' +format(self.value,self.fmt)
+        return ('𝒫(' +format(self.value,self.fmt)
                 +','+repr(self.vary)
                 +','+format(self.step,'0.2g')
                 +','+format(self.uncertainty,'0.2g')
@@ -663,33 +653,32 @@ class P():
     def __rpow__(self,other): return(other**self.value)
 
 
-class PD():
-
-    def __init__(
-            self,
-            description='parameter dict',
-            **keys_parameters
-    ):
+class 𝒫𝒟():
+    """Dictionary-like container of parameters."""
+    
+    def __init__(self,input_dict):
         self._parameters = {}
-        self.description = description
-        for key,parameter in keys_parameters.items():
-            self._parameters[key] = P(*tools.ensure_iterable(parameter))
+        for key,parameter in input_dict.items():
+            if isinstance(parameter,𝒫):
+                self._parameters[key] = parameter
+            else:
+                self._parameters[key] = parameter
         self._init_timestamp = time.time()
         
-    def format(self,join=','):
-        return join.join([f'{key}={repr(parameter)}' for key,parameter in self._parameters.items()])
-
     def __str__(self):
-        return str(self._parameters)
+        return repr(self)
     
     def __repr__(self):
-        return self.format(join=',')
+        return '𝒫𝒟({'+','.join([f'{repr(key)}:{repr(parameter)}' for key,parameter in self._parameters.items()])+'})'
 
     def _get_timestamp(self):
-        if len(self._parameters)==0:
-            return self._init_timestamp
-        else:
-            return max(p.timestamp for p in self._parameters.values())
+        retval = self._init_timestamp
+        for p in self.values():
+            if not isinstance(p,𝒫):
+                continue        # a scalar value probably
+            else:
+                retval = max(retval,p.timestamp)
+        return retval
 
     timestamp = property(_get_timestamp)
 
@@ -715,86 +704,6 @@ class PD():
     def items(self):
         return self._parameters.items()
 
-
-
-# class ParameterSet():
-
-    # """A collection of scalar or array values, possibly with uncertainties."""
-
-    # def __init__(self,description=None,**keys_args):
-        # self._data = dict()
-        # self.description = description
-        # for key,args in keys_args.items():
-            # self[key] = args
-        # self._init_timestamp = time.time()
-
-    # def __setitem__(self,key,parameter_or_value):
-        # """Assign Parameter to new key or set value to existing
-        # key:parameter."""
-        # if key not in self._data:
-            # if isinstance(parameter_or_value,Parameter):
-                # self._data[key] = parameter_or_value
-            # else:
-                # self._data[key] = Parameter(
-                    # key,
-                    # *tools.ensure_iterable(parameter_or_value))
-        # else:
-            # self._data[key].value = parameter_or_value # a value
-
-    # def _get_timestamp(self):
-        # if len(self)==0:
-            # return self._init_timestamp
-        # else:
-            # return max(data.timestamp for data in self._data.values())
-
-    # timestamp = property(_get_timestamp)
-
-    # def __getitem__(self,key):
-        # return(self._data[key])
-
-    # def __iter__(self):
-        # for key in self._data:
-            # yield key
-
-    # def __len__(self):
-        # return len(self._data)
-
-    # def keys(self):
-        # return(self._data.keys())
-
-    # def values(self):
-        # return(self._data.values())
-
-    # def items(self):
-        # return(self._data.items())
-
-    # def parameter_values(self):
-        # return([t.value for t in self._data.values()])
-
-    # def __str__(self):
-        # return(
-            # tools.format_columns({
-                    # 'description':[self[key].description for key in self],
-                    # 'value':[self[key].value for key in self],
-                    # 'uncertainty':[format(self[key].uncertainty,'0.2g') for key in self],
-                    # 'vary':[self[key].vary for key in self],
-                    # 'step':[format(self[key].step,'0.2g') for key in self],
-                # }, delimiter=' | ',fmt='>11.5g',comment_string=''))
-
-    # def format_as_kwargs(self):
-        # """Each parameter separated by a comma."""
-        # kwargs = []
-        # for name,p in self._data.items():
-            # if isinstance(p,Parameter):
-                # kwargs.append(f'{name}={repr(p)}')
-            # elif isinstance(p,Optimiser):
-                # kwargs.append(f'{name}={p.name}')
-            # else:
-                # raise Exception(f'Cannot handle: {name} = {repr(p)}')
-        # return ','.join(kwargs)
-
-    # def save(self,filename='parameters.psv'):
-        # tools.string_to_file(filename,str(self))
 
     
 
