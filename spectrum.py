@@ -480,11 +480,11 @@ class Model(Optimiser):
                         lines[key] = val.value
                 x,y = lines.calculate_spectrum(
                     x=self.x,
-                    ykey='τpa',
+                    ykey='τ',
                     nfwhmG=(nfwhmG if nfwhmG is not None else 10),
                     nfwhmL=(nfwhmL if nfwhmL is not None else 100),
                     ymin=τmin,
-                    ΓG='ΓDoppler',
+                    ΓG='ΓD',
                     ΓL='Γ',
                     # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
                     gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
@@ -506,6 +506,11 @@ class Model(Optimiser):
             **parameter_set)
         return parameter_set
 
+    def add_hitran_absorption_lines(self,species,**kwargs):
+        """Shortcut"""
+        from . import hitran
+        return self.add_absorption_lines(hitran.get_lines(species),**kwargs)
+                
     def add_emission_lines(
             self,
             lines,
@@ -548,7 +553,7 @@ class Model(Optimiser):
                     nfwhmG=(nfwhmG if nfwhmG is not None else 10),
                     nfwhmL=(nfwhmL if nfwhmL is not None else 100),
                     ymin=Imin,
-                    ΓG='ΓDoppler',
+                    ΓG='ΓD',
                     ΓL='Γ',
                     # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
                     gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
