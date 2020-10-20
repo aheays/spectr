@@ -5,6 +5,143 @@ import numpy as np
 from spectr.dataset import *
 from spectr.exceptions import InferException
 
+
+def test_datum_construct():
+    t = Datum(value=1)
+    assert t._value == 1
+    assert t.value == 1
+    assert t.kind == 'i'
+    assert not t.has_uncertainty()
+    t = Datum(value='dd')
+    assert t.kind == 'U'
+    assert t.value == 'dd'
+    t = Datum(value=1.5,uncertainty=0.3)
+    assert t.has_uncertainty()
+    assert t.kind == 'f'
+    assert t.value == 1.5
+    assert t.uncertainty == 0.3
+    t = Datum(value=1,uncertainty=0.1)
+    assert t.kind == 'f'
+    assert t.has_uncertainty()
+    t = Datum(value=-51,kind=float,cast=lambda x:float(abs(x)))
+    assert t.value == 51
+    t = Datum(value=[1,2,3])
+    assert t.value == [1,2,3]
+    assert t.kind == 'O'
+    assert not t.has_uncertainty()
+    with pytest.raises(ValueError):
+        t = Datum(value='a',kind=float)
+    with pytest.raises(AssertionError):
+        t = Datum(value='a',uncertainty=1.)
+
+def test_datum_has_uncertainty():
+    t = Datum(value=1,uncertainty=1)
+    assert t.has_uncertainty()
+    t = Datum(value=1)
+    assert not t.has_uncertainty()
+
+def test_datum_str():
+    t = Datum(value=1,uncertainty=0.1)
+    assert str(t)=='+1.00000000e+00 ± 0.1'
+    t = Datum(value=1,uncertainty=0.1,fmt='0.5f')
+    assert str(t)=='1.00000 ± 0.1'
+    t = Datum(value='a')
+    assert str(t)=='a'
+    t = Datum(value=1)
+    assert str(t)=='1'
+
+def test_datum_math_builtins():
+    t = Datum(value=5)
+    assert -t == -5
+    assert float(t) == 5.0
+    assert +t == 5
+    assert abs(t) == 5
+    assert t + 2 == 7
+    assert 2 + t == 7
+    assert t - 2 == 3
+    assert 2 - t == -3
+    assert t / 2 == 2.5
+    assert 10 / t == 2
+    assert t * 2 == 10
+    assert 10 * t == 50
+    assert t**2 == 25
+    assert 2**t == 32
+    
+def test_datum_timestamp():
+    t0 = time.time()
+    d = Datum('x')
+    t1 = d.timestamp
+    assert t1>t0
+    d.value = 'j'
+    t2 = d.timestamp
+    assert t2>t1
+
+
+
+
+def test_data_construct():
+    t = Data(value=[1,2])
+    assert list(t.value) == [1,2]
+    t = Data(value=[1.5,2.5],uncertainty=[0.3,0.2])
+    assert list(t.value) == [1.5,2.5]
+    assert list(t.uncertainty) == [0.3,0.2]
+    assert len(t) == 2
+    t = Data(value=[1.5,2.5],uncertainty=1)
+    assert list(t.value) == [1.5,2.5]
+    assert list(t.uncertainty) == [1,1]
+    t = Data(value=[1,2],uncertainty=1)
+    assert list(t.value) == [1,2]
+    assert list(t.uncertainty) == [1,1]
+    with pytest.raises(ValueError):
+        t = Data(value=[1,2],uncertainty=[1,2,3])
+
+def test_data_has_uncertainty():
+    t = Data(value=[1.5,2.5],uncertainty=[0.3,0.2])
+    assert t.has_uncertainty()
+    t = Data(value=[1.5,2.5])
+    assert not t.has_uncertainty()
+
+def test_data_index():
+    t = Data(value=[1.5,2.5],uncertainty=[0.3,0.2])
+    t.index([True,False])
+    assert list(t.value) == [1.5]
+    assert list(t.uncertainty) == [0.3]
+    assert len(t) == 1
+
+def test_data_append():
+    t = Data(value=[2,34])
+    t.append(5)
+    assert list(t.value) == [2,34,5]
+    t = Data(value=[2.,34.],uncertainty=[0.2,0.3])
+    t.append(5,0.5)
+    assert list(t.value) == [2.,34.,5.]
+    assert list(t.uncertainty) == [0.2,0.3,0.5]
+
+def test_data_extend():
+    t = Data(value=['a','b'])
+    t.extend(['c','d'])
+    assert list(t) == ['a','b','c','d']
+    t = Data(value=[1.,2.],uncertainty=[0.1,0.1])
+    t.extend([3,4],[1,2])
+    assert list(t.value) == [1.,2.,3.,4.,]
+    assert list(t.uncertainty) == [0.1,0.1,1.,2.]
+
+def test_data_object():
+    t = Data(value=[[1,2],None],kind=object)
+    assert list(t.value) == [[1,2],None]
+    t = Data(value=[{},np.array([1,2,3]),None],kind=object)
+    assert t.value[0] == {}
+
+def test_data_str():
+    t = Data(value=[1,2,3])
+    assert str(t)=='1\n2\n3'
+    t = Data(value=[1,2,3],uncertainty=[0.1,5,6])
+    assert str(t)=='+1.00000000e+00 ± 0.1\n+2.00000000e+00 ± 5\n+3.00000000e+00 ± 6'
+    t = Data(value=['a','b','c'])
+    assert str(t)=='a\nb\nc'
+
+
+
 def test_dataset_construct():
     t = Dataset()
 
