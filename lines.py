@@ -228,11 +228,8 @@ class Base(levels._BaseLinesLevels):
             ymin=None,     # minimum value of ykey before a line is ignored, None for use all lines
             gaussian_method='fortran', #'fortran stepwise', 'fortran', 'python'
             voigt_method='wofz',   
-            # temperaturepp=None,
-            # column_densitypp=None,
             use_multiprocessing=False, # might see a speed up
             use_cache=False,    # is it actually any faster?!?
-            # ycache = None,
             **set_keys_vals,    # set some data first, e..g, the tempertaure
     ):
         """Calculate a Voigt/Lorentzian/Gaussian spectrum from data in self. Returns (x,σ)."""
@@ -330,7 +327,7 @@ class Base(levels._BaseLinesLevels):
                     y = lineshapes.voigt_spectrum(
                         x,self[xkey],self[ykey],ΓL,ΓG,
                         nfwhmL,nfwhmG,Smin=ymin, use_multiprocessing=use_multiprocessing)
-                elif voigt_method=='fortran Doppler' and ΓLin=='Γ' and ΓGin=='ΓDoppler':
+                elif voigt_method=='fortran Doppler' and ΓLin=='Γ' and ΓGin=='ΓD':
                     ## spectrum of Voigts with common mass/temperature lines
                     ## computed in groups with fortran code
                     if use_multiprocessing and len(self)>100: # multprocess if requested, and there are enough lines to make it worthwhile
@@ -383,7 +380,7 @@ class Base(levels._BaseLinesLevels):
             ## using recarray equality. Need to remove references to
             ## keys containing NaNs
             i = np.any([self[key]!=cache[key] for key in cache_keys],0) # changed lines
-            if (ykey == 'τ'     # absorption
+            if (False and ykey == 'τ'     # absorption
                 and self.vector_data['τ'].inferred_from == {'σ','column_densitypp'} # τ is computed from column_densitypp and σ
                 and sum(i) == len(i)            # all data has changed
                 and len(np.unique(cache['column_densitypp']/self['column_densitypp'])) == 1 # all column_densitypp has changed by the same factor
@@ -395,7 +392,7 @@ class Base(levels._BaseLinesLevels):
                 if self.verbose or True:
                     print('calculate_spectrum: using absorption column_densitypp shortcut')
                 y = cache['y']/cache['column_densitypp'][0]*self['column_densitypp'][0]
-            elif (ykey == 'I'     # emission -- UNSTABLE definition
+            elif (False and ykey == 'I'     # emission -- UNSTABLE definition
                   and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}
                   and sum(i) == len(i)            # all data has changed
                   and len(np.unique(cache['column_densityp']/self['column_densityp'])) == 1 # all column_densityp has changed by the same factor
@@ -424,10 +421,10 @@ class Base(levels._BaseLinesLevels):
             for key in cache_keys:
                 cache[key] = copy(self[key])
             ## save these for rescale column density shortcuts
-            if (ykey == 'τ' and self.vector_data['τ'].inferred_from == {'σ','column_densitypp'}):
+            if False and (ykey == 'τ' and self.vector_data['τ'].inferred_from == {'σ','column_densitypp'}):
                 cache['column_densitypp'] = copy(self['column_densitypp'])
                 cache['σ'] = copy(self['σ'])
-            if (ykey == 'I' and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}):
+            if False and (ykey == 'I' and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}):
                 cache['column_densityp'] = copy(self['column_densityp'])
                 cache['Ae'] = copy(self['Ae'])
         return(x,y)
