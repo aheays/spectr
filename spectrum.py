@@ -12,6 +12,7 @@ from . import optimise
 from .optimise import *
 from . import plotting
 from . import tools
+from . import hitran
 
 class Experiment(Optimiser):
     
@@ -136,14 +137,16 @@ class Experiment(Optimiser):
                     self.set_spectrum(x,yscaled[0],xbeg=xbeg,xend=xend)
             self.add_construct_function(f)
 
+    @auto_construct_method('scalex')
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
-        scale = self.add_parameter('scalex',scale)
-        self.auto_format_input_function('scalex',scale=scale)
+        # scale = self.add_parameter(scale)
+        # self.auto_format_input_function('scalex',scale=scale)
         def construct_function():
             self.x *= float(scale)
-        self.add_construct_function(construct_function)
-        return scale
+        # self.add_construct_function(construct_function)
+        # return scale
+        return construct_function
 
     def interpolate(self,dx):
         """Interpolate experimental spectrum to a grid of width dx, may change
@@ -447,20 +450,23 @@ class Model(Optimiser):
         self.add_construct_function(f)
     add_cross_section = add_absorption_cross_section # deprecated name
 
+    @auto_construct_method('add_absorption_lines')
     def add_absorption_lines(
             self,
-            lines,
+            lines=None,
             nfwhmL=None, nfwhmG=None,
             τmin=None,
             gaussian_method=None, voigt_method=None,
             use_multiprocessing=None, use_cache= None,
-            **optimise_keys_vals):
-        name = f'add_absorption_lines {lines.name} to {self.name}'
-        self.add_suboptimiser(lines,add_format_function=False)
-        parameter_set = self.add_parameter_set(**optimise_keys_vals,description=name)
+            line_parameters=None):
+        # name = f'add_absorption_lines {lines.name} to {self.name}'
+        # self.add_suboptimiser(lines,add_format_function=False)
+        # parameter_set = self.add_parameter_set(**optimise_keys_vals,description=name)
         ## update lines data and recompute optical depth if
         ## necessary
         cache = {}
+
+
         def f():
             ## first call -- no good, x not set yet
             if self.x is None:
@@ -471,13 +477,13 @@ class Model(Optimiser):
             ## recompute spectrum if is necessary for somem reason
             if (cache == {}    # currently no spectrum computed
                 or self.timestamp < lines.timestamp # lines has changed
-                or self.timestamp < parameter_set.timestamp # optimise_keys_vals has changed
+                or (line_parameters is not None and self.timestamp < line_parameters.timestamp) # optimise_keys_vals has changed
                 or not (len(cache['x']) == len(self.x)) # experimental domain has changed
                 or not np.all( cache['x'] == self.x )): # experimental domain has changed
                 ## update optimise_keys_vals that have changed
-                for key,val in parameter_set.items():
-                    if cache == {} or lines[key] != val.value: # has been changed elsewhere, or the parameter has changed, or first use
-                        lines[key] = val.value
+                for key,val in line_parameters.items():
+                    if cache == {} or lines[key] != val: # has been changed elsewhere, or the parameter has changed, or first use
+                        lines[key] = val
                 x,y = lines.calculate_spectrum(
                     x=self.x,
                     ykey='τ',
@@ -497,19 +503,20 @@ class Model(Optimiser):
                 cache['absorbance'] = np.exp(-y)
             ## absorb
             self.y *= cache['absorbance']
-        self.add_construct_function(f)
-        self.auto_format_input_function(
-            'add_absorption_lines', lines=lines,
-            multiline=True, nfwhmL=nfwhmL, nfwhmG=nfwhmG,
-            τmin=τmin, use_multiprocessing=use_multiprocessing,
-            voigt_method=voigt_method, gaussian_method=gaussian_method,
-            **parameter_set)
-        return parameter_set
+        # self.add_construct_function(f)
+        # self.auto_format_input_function(
+            # 'add_absorption_lines', lines=lines,
+            # multiline=True, nfwhmL=nfwhmL, nfwhmG=nfwhmG,
+            # τmin=τmin, use_multiprocessing=use_multiprocessing,
+            # voigt_method=voigt_method, gaussian_method=gaussian_method,
+            # **parameter_set)
+        # return parameter_set
+        return f
 
-    def add_hitran_absorption_lines(self,species,**kwargs):
+    # @auto_construct_method('add_hitran_absorption_lines')
+    def add_hitran_absorption_lines(self,species=None,**kwargs):
         """Shortcut"""
-        from . import hitran
-        return self.add_absorption_lines(hitran.get_lines(species),**kwargs)
+        return self.add_absorption_lines(lines=hitran.get_lines(species),**kwargs)
                 
     def add_emission_lines(
             self,
@@ -774,14 +781,12 @@ class Model(Optimiser):
             self.y *= 1. + tools.spline(ν,amplitude.plist,self.x)*np.sin(tools.spline(ν,phase.plist,self.x))
         self.add_construct_function(f)
 
+    @auto_construct_method('add_intensity')
     def add_intensity(self,intensity=1):
         """Shift by a spline defined function."""
-        intensity = self.add_parameter('intensity',*tools.ensure_iterable(intensity))
         def f():
             self.y += float(intensity)
-        self.add_construct_function(f)
-        self.auto_format_input_function('add_intensity',intensity=intensity)
-
+        return f 
 
     def add_intensity_spline(self,x=50,y=0,vary=True,step=None,order=3):
         """Shift by a spline defined function."""
@@ -820,28 +825,29 @@ class Model(Optimiser):
             self.y += shift.p
         self.add_construct_function(f) # multiply spline during construct
 
-    def convolve_with_gaussian(self,width,fwhms_to_include=100):
+    @auto_construct_method('convolve_with_gaussian')
+    def convolve_with_gaussian(self,width=1,fwhms_to_include=100):
         """Convolve with gaussian."""
-        p = self.add_parameter_set('convolve_with_gaussian',width=width)
-        self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_as_kwargs()})')
+        # p = self.add_parameter_set('convolve_with_gaussian',width=width)
+        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_as_kwargs()})')
         ## check if there is a risk that subsampling will ruin the convolution
         def f():
             x,y = self.x,self.y
-            width = np.abs(p['width'])
-            if self.verbose and width<3*np.diff(self.xexp).min(): warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            if self.verbose and abs(width)<3*np.diff(self.xexp).min(): warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1)
-            padding = np.arange(dx,fwhms_to_include*width+dx,dx)
+            padding = np.arange(dx,fwhms_to_include*abs(width)+dx,dx)
             xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
             ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
             ## generate gaussian to convolve with
-            xconv = np.arange(-fwhms_to_include*width,fwhms_to_include*width,dx)
+            xconv = np.arange(-fwhms_to_include*abs(width),fwhms_to_include*abs(width),dx)
             if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-            yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/width**2) # peak normalised gaussian
+            yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abs(width)**2) # peak normalised gaussian
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
             self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.add_construct_function(f)
+        # self.add_construct_function(f)
+        return f
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
         """Convolve with lorentzian."""
