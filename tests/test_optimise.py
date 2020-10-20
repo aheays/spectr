@@ -7,56 +7,58 @@ from spectr import tools
 
 show_plots =False
 
-def test_ParameterSet_instantiate():
-    t = optimise.ParameterSet()
-
-def test_ParameterSet_set_get():
-    t = optimise.ParameterSet()
-    t['x'] = 5
+def test_PD_instantiate():
+    t = optimise.PD()
+    t = optimise.PD(x=(5,True,1e-2))
     assert t['x'] == 5
-    assert t['x'] != 4
-    t = optimise.ParameterSet()
-    t['x'] = 5,False,1e-3
-    x = t['x']
-    assert x.value == 5
-    assert x.vary == False 
-    assert x.step == 1e-3
-    t = optimise.ParameterSet()
-    t['x'] = 5
-    x = t['x']
-    assert x == 5
-    t = optimise.ParameterSet()
-    t['x'] = (5,False,1e-3)
-    x = t['x']
-    assert x.value == 5
-    assert x.vary == False 
-    assert x.step == 1e-3
-    t = optimise.ParameterSet(x=5,y=0.1)
-    x = t['x']
-    assert x == 5
-    assert t['y'] == 0.1
-    t['x'] = 6
-    assert x.value == 6
-    assert x.vary == None
-    assert x.step == 0.0005
+    assert t['x'].value == 5
+    assert t['x'].vary == True
+    assert t['x'].step == 1e-2
 
-def test_ParameterSet_set_print():
-    t = optimise.ParameterSet(x=(5,False,1e-3),y=(0.1,True,1e-10))
+# def test_ParameterSet_set_get():
+    # t = optimise.ParameterSet()
+    # t['x'] = 5
+    # assert t['x'] == 5
+    # assert t['x'] != 4
+    # t = optimise.ParameterSet()
+    # t['x'] = 5,False,1e-3
+    # x = t['x']
+    # assert x.value == 5
+    # assert x.vary == False 
+    # assert x.step == 1e-3
+    # t = optimise.ParameterSet()
+    # t['x'] = 5
+    # x = t['x']
+    # assert x == 5
+    # t = optimise.ParameterSet()
+    # t['x'] = (5,False,1e-3)
+    # x = t['x']
+    # assert x.value == 5
+    # assert x.vary == False 
+    # assert x.step == 1e-3
+    # t = optimise.ParameterSet(x=5,y=0.1)
+    # x = t['x']
+    # assert x == 5
+    # assert t['y'] == 0.1
+    # t['x'] = 6
+    # assert x.value == 6
+    # assert x.vary == None
+    # assert x.step == 0.0005
+
+def test_PD_set_print():
+    t = optimise.PD(x=(5,False,1e-3),y=(0.1,True,1e-10))
     print( str(t))
     print( repr(t))
-    assert t.format_as_kwargs() == 'x=(5,False,0.001,nan),y=(0.1,True,1e-10,nan)'
+    assert repr(t)== 'x=(5,False,0.001,nan),y=(0.1,True,1e-10,nan)'
 
-def test_ParameterSet_set_save():
-    t = optimise.ParameterSet(x=(5,False,1e-3,'description'),y=(0.1,True,1e-10))
-    t.save('tmp/parameters.psv')
+# def test_ParameterSet_set_save():
+    # t = optimise.ParameterSet(x=(5,False,1e-3,'description'),y=(0.1,True,1e-10))
+    # t.save('tmp/parameters.psv')
 
 def test_timestamps():
     t0 = time.time()
-    t = optimise.ParameterSet(x=1)
+    t = optimise.PD(x=1)
     assert t['x'].timestamp == t.timestamp
-    t['y'] = 25
-    assert t['x'].timestamp < t.timestamp
-    assert t['y'].timestamp == t.timestamp
 
 def test_instantiate_optimiser():
     t = optimise.Optimiser()
@@ -68,9 +70,9 @@ def test_optimiser_add_parameter():
     p = t.add_parameter(0.1,True,1e-5)
     assert len(t.parameters)==2
 
-def test_optimiser_add_parameter_set():
+def test_optimiser_add_parameter_dict():
     t = optimise.Optimiser()
-    p = t.add_parameter_set(x=1,y=(0.1,True,1e-5))
+    p = t.add_parameter_dict(x=1,y=(0.1,True,1e-5))
     assert len(t.parameters)==2
     assert t.parameters[0] is p['x']
     t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
@@ -111,22 +113,23 @@ def test_optimiser_construct():
     assert len(t._construct_functions) == 1
     assert list(t.construct()) == [1,2,3]
     t = optimise.Optimiser()
-    x = t.add_parameter('x',0.1,False,1e-5)
+    x = t.add_parameter(0.1,False,1e-5)
     t.add_construct_function(lambda: x-1)
     assert list(t.construct()) == [-0.9]
     x.value = 0.2
+    assert x.value == 0.2
     assert list(t.construct()) == [-0.8]
 
 def test_optimiser_has_changed():
     t = optimise.Optimiser()
-    pt = t.add_parameter_set(x=1,y=(0.1,True,1e-5))
+    pt = t.add_parameter_dict(x=1,y=(0.1,True,1e-5))
     assert t.has_changed()
     t.construct()
     assert not t.has_changed()
     t = optimise.Optimiser()
-    pt = t.add_parameter_set(x=1,y=(0.1,True,1e-5))
+    pt = t.add_parameter_dict(x=1,y=(0.1,True,1e-5))
     u = optimise.Optimiser()
-    pu = u.add_parameter_set(z=1,w=(0.1,True,1e-5))
+    pu = u.add_parameter_dict(z=1,w=(0.1,True,1e-5))
     t.add_suboptimiser(u)
     assert t.has_changed()
     assert u.has_changed()
@@ -143,7 +146,7 @@ def test_optimiser_has_changed():
 
 def test_optimise():
     t = optimise.Optimiser()
-    x = t.add_parameter('x',0.1, True,1e-5)
+    x = t.add_parameter(0.1, True,1e-5)
     t.add_construct_function(lambda: x-1)
     residual = t.optimise()
     assert tools.rms(residual) < 1e-5
@@ -151,14 +154,18 @@ def test_optimise():
 
 def test_optimiser_format_input():
     t = optimise.Optimiser()
-    assert t.format_input() == "from spectr import *\n\no = Optimiser('o')"
+    print('DEBUG:', )
+    print( t.format_input())
+    print('DEBUG:', )
+    assert t.format_input() == "from spectr import *\n\no = Optimiser(name='o')"
     t.print_input()
     t.print_input('^from')
     assert t.format_input('^from.*') == "from spectr import *\n"
 
 def test_optimiser_str():
     t = optimise.Optimiser()
-    p = t.add_parameter_set(x=1,y=(0.1,True,1e-5))
+    p = t.add_parameter_dict(x=1,y=(0.1,True,1e-5))
+    print( t)
 
 def test_plot_residual():
     t = optimise.Optimiser('t')
