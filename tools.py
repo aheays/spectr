@@ -2513,7 +2513,7 @@ def limit_to_range(beg,end,x,*other_arrays):
     """Limit x to range between beg and end (using np.searchsorted, must
     be sorted.  Also index other_arrays and return all arrays."""
     i = np.searchsorted(x,(beg,end))
-    return tuple([t[i[0]:[i1]] for t in [x]+list(other_arrays)])
+    return tuple([t[i[0]:i[1]] for t in [x]+list(other_arrays)])
 
 # def common_range(x,y):
     # """Return min max of values in both x and y (may not be actual
