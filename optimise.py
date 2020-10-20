@@ -12,6 +12,29 @@ from .tools import ensure_iterable
 from . import plotting
 
 
+def auto_construct_method(function_name):
+    """A decorator factory for automatically adding parameters,
+    construct_function, and input_format_function from a decorated
+    method.  function_name required to make the
+    input_format_function.  The undecorated method must return a
+    construct_function. Parameters are picked out of the input
+    kwargs. Positional arguments not allowed."""
+    def actual_decorator(function):
+        def new_function(self,**kwargs):
+            ## add parameters in kwargs
+            for key in list(kwargs):
+                if isinstance(kwargs[key],P):
+                    self.parameters.append(kwargs[key])
+                elif isinstance(kwargs[key],PD):
+                    self.parameters.extend(kwargs[key].values())
+            ## make a construct function
+            construct_function = function(self,**kwargs)
+            self.add_construct_function(construct_function)
+            ## make a foramt_input_function
+            self.add_auto_format_input_function(function_name,**kwargs)
+        return new_function
+    return actual_decorator
+
 class Optimiser:
     """Defines adjustable parameters and model-building functions which
     may return a residual error. Then optimise the parameters with
@@ -78,28 +101,6 @@ class Optimiser:
     # class c(optimise.Optimiser):
 
     
-    def auto_construct_method(self,function_name):
-        """A decorator factory for automatically adding parameters,
-        construct_function, and input_format_function from a decorated
-        method.  function_name required to make the
-        input_format_function.  The undecorated method must return a
-        construct_function. Parameters are picked out of the input
-        kwargs. Positional arguments not allowed."""
-        def actual_decorator(function):
-            def new_function(self,**kwargs):
-                ## add parameters in kwargs
-                for key in list(kwargs):
-                    if isinstance(kwargs[key],P):
-                        self.parameters.append(kwargs[key])
-                    elif isinstance(kwargs[key],PD):
-                        self.parameters.extend(kwargs[key].values())
-                ## make a construct function
-                construct_function = function(self,**kwargs)
-                self.add_construct_function(construct_function)
-                ## make a foramt_input_function
-                self.add_auto_format_input_function(function_name,**kwargs)
-            return new_function
-        return actual_decorator
 
 
     def __repr__(self):
@@ -161,12 +162,6 @@ class Optimiser:
         if add_format_function:
             self.format_input_functions.append(
                 f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)},{repr(add_format_function)})')
-
-    # def add_parameter(self,description,value,vary=None,step=1e-8,uncertainty=None):
-    #     """Add one parameter. Return a reference to it."""
-    #     p = Parameter(description=description, value=value,vary=vary,step=step,)
-    #     self.parameters.append(p)
-    #     return p
 
     def add_parameter(self,*args,description=''):
         """Add one parameter. Return a reference to it. Args are as in

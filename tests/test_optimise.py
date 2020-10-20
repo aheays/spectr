@@ -3,7 +3,7 @@ import time
 from matplotlib import pyplot as plt
 
 from spectr import optimise
-from spectr.optimise import Optimiser,P,PD
+from spectr.optimise import Optimiser,P,PD,auto_construct_method
 from spectr import tools
 
 show_plots =False
@@ -174,23 +174,17 @@ def test_format_input_decorator():
     print(optimiser.format_input())
     ## decorate creation of method
     class c(Optimiser):
-        @optimiser.auto_construct_method('m')
+        @auto_construct_method('m')
         def m(self,x):
             def f():
                 return x-5
             return f
     optimiser = c()
     optimiser.m(x=P(25))
+    assert len(optimiser._construct_functions)==1
+    assert len(optimiser.parameters)==1
+    assert len(optimiser._format_input_functions) == 2
     assert list(optimiser.construct()) == [20]
-    print(optimiser.format_input())
-    print(optimiser.parameters)
-    
-    # x = t.add_parameter(0.1, True,1e-5)
-    # t.add_construct_function(lambda: x-1)
-    # residual = t.optimise()
-    # assert tools.rms(residual) < 1e-5
-    # assert abs(x.value-1) < 1e-5
-    assert False
 
 def test_optimiser_str():
     t = optimise.Optimiser()
