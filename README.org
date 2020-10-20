@@ -1,14 +1,11 @@
 * To do
  
  - Change u/l to ′″ and d to σ -- not feasible because ′ and ″ are not
-   valid python symbols -- use 1 and 2 for lower and upper?
+   valid python symbols -- use 1 and 2 for lower and upper? -- maybe
+   match script u and l? 𝓊 and 𝓁?
 
  - change partition to Q
 
- - add species and isotopologue as separate keys
-
- - fold Data and Datum into Dataset
- 
  - Improve Dataset indexing to cases:
    - get_value(key,index) / get_uncertainty(key,index) -- get numpy
      arrays
@@ -18,8 +15,7 @@
    - [int] -- return copy of self with all scalar data at int
    - [slice] -- return copy of self reduced to slice
  
- - optim: introduce P and PD objects
- - optim: Add decorator for adding construct functions
  - optim: add new output of parameters based on
    index/optimiser/function/arg_parameter
+ 
  
