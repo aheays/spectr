@@ -8,7 +8,11 @@ def test_construct():
     t = levels.Base()
     assert t.name == 'base'
     assert len(t.prototypes)>0
-    assert list(t.prototypes.keys()) == ['description', 'notes', 'author', 'reference', 'date', 'level_type', 'species', 'E', 'J', 'g', 'pm', 'Γ', 'N', 'S', 'Eref', 'Teq', 'Tex', 'partition_source', 'partition', 'α', 'Nself']
+    assert list(t.prototypes.keys()) == ['description', 'notes',
+    'author', 'reference', 'date', 'classname',
+    'species','isotopologue', 'E', 'J', 'g', 'pm', 'Γ', 'N', 'S',
+    'Eref', 'Teq', 'Tex', 'partition_source', 'partition', 'α',
+    'Nself']
 
 def test_assignment():
     t = levels.Base(name='ddd')
@@ -42,9 +46,13 @@ def test_plot():
 def test_load_DiatomicDinfh():
     t = levels.DiatomicDinfh(
         species='14N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,
-        J=[0,1,2,3],
-    )
-    assert list(t.prototypes) == ['description', 'notes', 'author', 'reference', 'date', 'level_type', 'species', 'E', 'J', 'g', 'pm', 'Γ', 'N', 'S', 'Eref', 'Teq', 'Tex', 'partition_source', 'partition', 'α', 'Nself', 'label', 'v', 'Λ', 'LSsign', 's', 'σv', 'sa', 'ef', 'Fi', 'Ω', 'Σ', 'SR', 'Inuclear', 'gu']
+        J=[0,1,2,3],)
+    assert list(t.prototypes) == ['description', 'notes', 'author',
+                                  'reference', 'date', 'classname', 'species', 'isotopologue','E',
+                                  'J', 'g', 'pm', 'Γ', 'N', 'S', 'Eref', 'Teq', 'Tex',
+                                  'partition_source', 'partition', 'α', 'Nself', 'label', 'v', 'Λ',
+                                  'LSsign', 's', 'σv', 'sa', 'ef', 'Fi', 'Ω', 'Σ', 'SR', 'Inuclear',
+                                  'gu']
 
 def test_level_degeneracy_DiatomicCinfv():
     t = levels.DiatomicCinfv()

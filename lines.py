@@ -145,10 +145,11 @@ def _expand_level_keys_to_upper_lower(levels_class):
 class Base(levels._BaseLinesLevels):
     """For now rotational lines."""
 
+    _levels_class = levels.Base
 
     prototypes = {key:copy(prototypes[key]) for key in (
         ['classname', 'description', 'notes', 'author', 'reference', 'date',]
-        + _expand_level_keys_to_upper_lower(levels.Base)
+        + _expand_level_keys_to_upper_lower(_levels_class)
         + ['species','isotopologue','mass', 'reduced_mass',
            'branch', 'ΔJ',
            'ν',
@@ -162,6 +163,8 @@ class Base(levels._BaseLinesLevels):
            'L',
            'γair', 'δair', 'γself', 'nair',
            'Pself', 'Pair', 'Nself',])}
+
+    
 
     def plot_spectrum(
             self,
@@ -480,9 +483,10 @@ class Base(levels._BaseLinesLevels):
 
 class DiatomicCinfv(Base):
 
+    _levels_class = levels.DiatomicCinfv
     prototypes = {key:copy(prototypes[key]) for key in (
         list(Base.prototypes)
-        + _expand_level_keys_to_upper_lower(levels.DiatomicCinfv))}
+        + _expand_level_keys_to_upper_lower(_levels_class))}
 
 
     def load_from_hitran(self,filename):
