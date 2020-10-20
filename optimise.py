@@ -2,11 +2,13 @@ import time
 import inspect
 import re
 import os
+# import sys
 
 import numpy as np
 
 # from . import dataset
 from . import tools
+from .tools import ensure_iterable
 from . import plotting
 
 
@@ -18,7 +20,7 @@ class Optimiser:
     
     def __init__(
             self,
-            name='o',           # used to generate evaluable python code
+            name='optimiser',           # used to generate evaluable python code
             *suboptimisers,     # Optimisers
             verbose=False,
             description='',
@@ -61,6 +63,44 @@ class Optimiser:
             kwargs.pop('description')
         f = self.add_auto_format_input_function('Optimiser',initialisation_function=True,**kwargs,)
         
+
+    # def.Optimiser):
+        # def m(self,x):
+            # def f():
+                # return x-5
+            # self.add_construct_function(f)
+            # self.add_format_input_function(lambda: f'{self.name}.m(x={repr(x)})')
+    # optimiser = c()
+    # optimiser.m(x=25)
+    # assert list(optimiser.construct()) == [20]
+    # print(optimiser.format_input())
+    # ## decorate creation of method
+    # class c(optimise.Optimiser):
+
+    
+    def auto_construct_method(self,function_name):
+        """A decorator factory for automatically adding parameters,
+        construct_function, and input_format_function from a decorated
+        method.  function_name required to make the
+        input_format_function.  The undecorated method must return a
+        construct_function. Parameters are picked out of the input
+        kwargs. Positional arguments not allowed."""
+        def actual_decorator(function):
+            def new_function(self,**kwargs):
+                ## add parameters in kwargs
+                for key in list(kwargs):
+                    if isinstance(kwargs[key],P):
+                        self.parameters.append(kwargs[key])
+                    elif isinstance(kwargs[key],PD):
+                        self.parameters.extend(kwargs[key].values())
+                ## make a construct function
+                construct_function = function(self,**kwargs)
+                self.add_construct_function(construct_function)
+                ## make a foramt_input_function
+                self.add_auto_format_input_function(function_name,**kwargs)
+            return new_function
+        return actual_decorator
+
 
     def __repr__(self):
         """No attempt to represent this data but its name may be used in place

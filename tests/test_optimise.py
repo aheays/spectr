@@ -3,6 +3,7 @@ import time
 from matplotlib import pyplot as plt
 
 from spectr import optimise
+from spectr.optimise import Optimiser,P,PD
 from spectr import tools
 
 show_plots =False
@@ -154,13 +155,42 @@ def test_optimise():
 
 def test_optimiser_format_input():
     t = optimise.Optimiser()
-    print('DEBUG:', )
-    print( t.format_input())
-    print('DEBUG:', )
-    assert t.format_input() == "from spectr import *\n\no = Optimiser(name='o')"
+    # assert t.format_input() == "from spectr import *\n\no = Optimiser(name='o')"
     t.print_input()
     t.print_input('^from')
     assert t.format_input('^from.*') == "from spectr import *\n"
+
+def test_format_input_decorator():
+    ## explicit crateion of method
+    class c(Optimiser):
+        def m(self,x):
+            def f():
+                return x-5
+            self.add_construct_function(f)
+            self.add_format_input_function(lambda: f'{self.name}.m(x={repr(x)})')
+    optimiser = c()
+    optimiser.m(x=25)
+    assert list(optimiser.construct()) == [20]
+    print(optimiser.format_input())
+    ## decorate creation of method
+    class c(Optimiser):
+        @optimiser.auto_construct_method('m')
+        def m(self,x):
+            def f():
+                return x-5
+            return f
+    optimiser = c()
+    optimiser.m(x=P(25))
+    assert list(optimiser.construct()) == [20]
+    print(optimiser.format_input())
+    print(optimiser.parameters)
+    
+    # x = t.add_parameter(0.1, True,1e-5)
+    # t.add_construct_function(lambda: x-1)
+    # residual = t.optimise()
+    # assert tools.rms(residual) < 1e-5
+    # assert abs(x.value-1) < 1e-5
+    assert False
 
 def test_optimiser_str():
     t = optimise.Optimiser()
