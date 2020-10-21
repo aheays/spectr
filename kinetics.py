@@ -25,6 +25,8 @@ def decode_species(name,encoding):
 @tools.vectorise_function
 def encode_species(name,encoding):
     """Encode from standard name into a foreign format."""
+    if encoding=='standard':
+        return name         
     ## try _species_name_translation_functions
     if (encoding in _species_name_translation_dict
         and name in n_species_name_translation_dict[encoding]):

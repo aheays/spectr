@@ -458,15 +458,11 @@ class Model(Optimiser):
             τmin=None,
             gaussian_method=None, voigt_method=None,
             use_multiprocessing=None, use_cache= None,
-            line_parameters=None):
-        # name = f'add_absorption_lines {lines.name} to {self.name}'
-        # self.add_suboptimiser(lines,add_format_function=False)
-        # parameter_set = self.add_parameter_set(**optimise_keys_vals,description=name)
+            **line_parameters
+    ):
         ## update lines data and recompute optical depth if
         ## necessary
         cache = {}
-
-
         def f():
             ## first call -- no good, x not set yet
             if self.x is None:
@@ -477,7 +473,7 @@ class Model(Optimiser):
             ## recompute spectrum if is necessary for somem reason
             if (cache == {}    # currently no spectrum computed
                 or self.timestamp < lines.timestamp # lines has changed
-                or (line_parameters is not None and self.timestamp < line_parameters.timestamp) # optimise_keys_vals has changed
+                or any([self.timestamp < t.timestamp for t in line_parameters.values() if isinstance(t,𝒫)]) # optimise_keys_vals has changed
                 or not (len(cache['x']) == len(self.x)) # experimental domain has changed
                 or not np.all( cache['x'] == self.x )): # experimental domain has changed
                 ## update optimise_keys_vals that have changed

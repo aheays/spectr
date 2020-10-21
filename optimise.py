@@ -11,6 +11,21 @@ from . import tools
 from .tools import ensure_iterable
 from . import plotting
 
+def _collect_parameters(x):
+    """Iteratively collect Parametero / 𝒫 objects from x descending
+    into any iterable children."""
+    maximum_length_for_searching_for_parameters = 100
+    if isinstance(x,𝒫):
+        return [x]
+    elif np.iterable(x) and len(x)<maximum_length_for_searching_for_parameters:
+        if isinstance(x,dict):
+            x = x.values()
+        retval = []
+        for y in x:
+            retval.extend(_collect_parameters(y))
+        return retval
+    else:
+        return []
 
 def auto_construct_method(function_name):
     """A decorator factory for automatically adding parameters,
@@ -22,13 +37,14 @@ def auto_construct_method(function_name):
     def actual_decorator(function):
         def new_function(self,**kwargs):
             ## add parameters in kwargs
-            for key in list(kwargs):
-                if isinstance(kwargs[key],𝒫):
-                    self.parameters.append(kwargs[key])
-                elif isinstance(kwargs[key],𝒫𝒟):
-                    for val in kwargs[key].values():
-                        if isinstance(val,𝒫):
-                            self.parameters.append(val)
+            self.parameters.extend(_collect_parameters(kwargs))
+            # for key in list(kwargs):
+                # if isinstance(kwargs[key],𝒫):
+                    # self.parameters.append(kwargs[key])
+                # elif isinstance(kwargs[key],𝒫𝒟):
+                #     for val in kwargs[key].values():
+                #         if isinstance(val,𝒫):
+                #             self.parameters.append(val)
             ## make a construct function
             construct_function = function(self,**kwargs)
             self.add_construct_function(construct_function)
@@ -653,58 +669,54 @@ class 𝒫():
     def __rpow__(self,other): return(other**self.value)
 
 
-class 𝒫𝒟():
-    """Dictionary-like container of parameters."""
-    
-    def __init__(self,input_dict):
-        self._parameters = {}
-        for key,parameter in input_dict.items():
-            if isinstance(parameter,𝒫):
-                self._parameters[key] = parameter
-            else:
-                self._parameters[key] = parameter
-        self._init_timestamp = time.time()
-        
-    def __str__(self):
-        return repr(self)
-    
-    def __repr__(self):
-        return '𝒫𝒟({'+','.join([f'{repr(key)}:{repr(parameter)}' for key,parameter in self._parameters.items()])+'})'
+# class 𝒫𝒟():
+    # """Dictionary-like container of parameters."""
+   #  
+    # def __init__(self,input_dict):
+        # self._parameters = {}
+        # for key,parameter in input_dict.items():
+            # if isinstance(parameter,𝒫):
+                # self._parameters[key] = parameter
+            # else:
+                # self._parameters[key] = parameter
+        # self._init_timestamp = time.time()
+       #  
+    # def __str__(self):
+        # return repr(self)
+   #  
+    # def __repr__(self):
+        # return '𝒫𝒟({'+','.join([f'{repr(key)}:{repr(parameter)}' for key,parameter in self._parameters.items()])+'})'
 
-    def _get_timestamp(self):
-        retval = self._init_timestamp
-        for p in self.values():
-            if not isinstance(p,𝒫):
-                continue        # a scalar value probably
-            else:
-                retval = max(retval,p.timestamp)
-        return retval
+    # def _get_timestamp(self):
+        # retval = self._init_timestamp
+        # for p in self.values():
+            # if not isinstance(p,𝒫):
+                # continue        # a scalar value probably
+            # else:
+                # retval = max(retval,p.timestamp)
+        # return retval
 
-    timestamp = property(_get_timestamp)
+    # timestamp = property(_get_timestamp)
 
-    def __getitem__(self,key):
-        return(self._parameters[key])
+    # def __getitem__(self,key):
+        # return(self._parameters[key])
 
-    def __setitem__(self,key,value):
-        self._parameters[key].value = value
+    # def __setitem__(self,key,value):
+        # self._parameters[key].value = value
 
-    def __iter__(self):
-        for key in self._parameters:
-            yield key
+    # def __iter__(self):
+        # for key in self._parameters:
+            # yield key
 
-    def __len__(self):
-        return len(self._parameters)
+    # def __len__(self):
+        # return len(self._parameters)
 
-    def keys(self):
-        return self._parameters.keys()
+    # def keys(self):
+        # return self._parameters.keys()
 
-    def values(self):
-        return self._parameters.values()
+    # def values(self):
+        # return self._parameters.values()
 
-    def items(self):
-        return self._parameters.items()
+    # def items(self):
+        # return self._parameters.items()
 
-
-    
-
-    

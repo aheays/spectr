@@ -7,6 +7,7 @@ import shutil
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
+from matplotlib.pyplot import *
 from scipy import constants
 
 from . import tools

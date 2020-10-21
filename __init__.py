@@ -17,10 +17,12 @@ from . import database
 from . import spectrum
 from . import kinetics
 from . import bruker
+from . import atmosphere
 
 ## import more explicitly for interactive use
 from .dataset import Dataset
 from .conversions import convert
 from .plotting import *
 from .tools import *
+from .optimise import *
 
