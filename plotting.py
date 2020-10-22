@@ -380,9 +380,9 @@ def qfig(
     """quick figure preparation."""
     presetRcParams(preset_rcparams,**preset_rcparams_kwargs)
     if n is None:
-        n = 1
-        # n = plt.gcf().number + 1 
-    fig = plt.figure(n);
+        fig = plt.figure()
+    else:
+        fig = plt.figure(n);
     if fullscreen:
         set_figsize_fullscreen()
     if clear_figure:
@@ -677,13 +677,13 @@ def _extra_interaction_on_key(event):
             axes._my_extra_interaction['list_of_point_annotations'].clear()
     elif event.key=='P':
         ## select (x,y) points and save to clipboard, enter to quit
-        my.clginput()
+        clginput()
     elif event.key=='X':
         ## select x points and save to clipboard, enter to quit
-        my.clginput('x')
+        clginput('x')
     elif event.key=='Y':
         ## select y points and save to clipboard, enter to quit
-        my.clginput('y')
+        clginput('y')
     elif event.key=='right':
         ## move with arrow keys
         xmin,xmax = axes.get_xlim()
@@ -1742,13 +1742,15 @@ def annotate_point(label,x,y,ax=None,fontsize='medium',marker='o',linestyle='',c
 def clginput(return_coord='both',with_comma=False):
     """Get ginput and add to clipboard. return_coord can be 'both', 'x', or 'y'."""
     x = np.array(plt.ginput(-1))
-    if return_coord=='both': cl(x)
+    if return_coord=='both': 
+        tools.cl(x)
     elif return_coord=='x':
         if with_comma:
-            cl('\n'.join([format(t,'#.15g')+',' for t in x[:,0]]))
+            tools.cl('\n'.join([format(t,'#.15g')+',' for t in x[:,0]]))
         else:
-            cl(x[:,0])
-    elif return_coord=='y': cl(x[:,1])
+            tools.cl(x[:,0])
+    elif return_coord=='y':
+        tools.cl(x[:,1])
     else: raise Exception("Unknown return_coord: ",repr(return_coord))
 
 def ginput_spline_curve(x,y):
