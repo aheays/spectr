@@ -294,14 +294,13 @@ class Base(levels._BaseLinesLevels):
         ## establish which data should be stored in cache and load
         ## cache if it exists
         if use_cache:
+            if 'calculate_spectrum' not in self._cache:
+                self._cache['calculate_spectrum'] = {}
+            cache = self._cache['calculate_spectrum']
             cache_keys = (xkey,ykey,ΓLin,ΓGin)
-            if 'calculate_spectrum' in self._cache:
-                cache = self._cache['calculate_spectrum']
-            else:
-                cache = None
         ## test is cache exist and is usable
         if (not use_cache   # no cache requested
-            or cache is None         # cache does not exists - probably first run
+            or len(cache) == 0         #  first run
             or len(cache['y'])!=len(x)   # x domain is the same length as the last cached calculation 
             or not np.all(cache['x']==x)):   # x domain is the same as the last cached calculation -- TEST REQUIRES MUCH MEMORY?
             ## comput entire spectrum with out cache
@@ -378,37 +377,38 @@ class Base(levels._BaseLinesLevels):
             else:
                 raise Exception("No method for calculating spectrum implemented.")
         else:
+            if self.verbose:
+                print('calculate_spectrum: using cached spectrum')
             ## Compute using existing cache. Determine which lines
             ## need to be updated and update them. Do this row-by-row
             ## using recarray equality. Need to remove references to
             ## keys containing NaNs
             i = np.any([self[key]!=cache[key] for key in cache_keys],0) # changed lines
-            if (False and ykey == 'τ'     # absorption
-                and self.vector_data['τ'].inferred_from == {'σ','column_densitypp'} # τ is computed from column_densitypp and σ
-                and sum(i) == len(i)            # all data has changed
-                and len(np.unique(cache['column_densitypp']/self['column_densitypp'])) == 1 # all column_densitypp has changed by the same factor
-                and np.all(self['σ']==cache['σ']) # no σ has not changed
+            if (ykey == 'τ'     # absorption
+                and self.is_inferred_from('τ','S') and self.is_inferred_from('τ','Nself_l') # τ is computed from absorption strength 
+                and len(np.unique(cache['Nself_l']/self['Nself_l'])) == 1 # all column_densitypp has changed by the same factor
+                and np.all(self['S']==cache['S']) # no σ has not changed
                 and np.all([self[key]==cache[key] for key in cache_keys if key != 'τ'])): # frequencies and widths have not changed
                 ## all lines have changed column density but nothing
                 ## else. Rescale spectrum by change common change in
                 ## column density.
-                if self.verbose or True:
-                    print('calculate_spectrum: using absorption column_densitypp shortcut')
-                y = cache['y']/cache['column_densitypp'][0]*self['column_densitypp'][0]
+                if self.verbose:
+                    print('calculate_spectrum: using cached transmission spectrum')
+                y = cache['y']/cache['Nself_l']*self['Nself_l']
             elif (False and ykey == 'I'     # emission -- UNSTABLE definition
                   and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}
-                  and sum(i) == len(i)            # all data has changed
+                  and np.sum(i) == len(i)            # all data has changed
                   and len(np.unique(cache['column_densityp']/self['column_densityp'])) == 1 # all column_densityp has changed by the same factor
                   and np.all(cache['Ae']==self['Ae']) # Ae are the same
                   and np.all([self[key]==cache[key] for key in cache_keys if key != 'I'])): # frequencies and widths have not changed
                 if self.verbose:
                     print('calculate_spectrum: using emission column_densitypp shortcut')
                 y = cache['y']/cache['column_densityp'][0]*self['column_densityp'][0]
-            elif (sum(i)/len(i))>0.25:
+            elif (np.sum(i)/len(i))>0.25:
                 ## many lines have changed, just recompute all
                 self._cache.pop('calculate_spectrum')
                 x,y = self.calculate_spectrum(**all_args,use_cache=use_cache)
-            elif sum(i)==0:
+            elif np.sum(i)==0:
                 ## no change at all
                 y = cache['y']
             else:
@@ -420,13 +420,15 @@ class Base(levels._BaseLinesLevels):
                      + lineshapes.voigt_spectrum(x,self[xkey][i],self[ykey][i],self[ΓLin][i],self[ΓGin][i],**tkwargs))
         ## save cache
         if use_cache:
-            cache = {'x':x,'y':y}
+            if self.verbose:
+                print('calculate_spectrum: saving cache')
+            cache['x'],cache['y']  = x,y
             for key in cache_keys:
                 cache[key] = copy(self[key])
             ## save these for rescale column density shortcuts
-            if False and (ykey == 'τ' and self.vector_data['τ'].inferred_from == {'σ','column_densitypp'}):
-                cache['column_densitypp'] = copy(self['column_densitypp'])
-                cache['σ'] = copy(self['σ'])
+            if (ykey == 'τ'     # absorption
+                and self.is_inferred_from('τ','S') and self.is_inferred_from('τ','Nself_l')): # τ is computed from absorption strength 
+                cache['Nself_l'],cache['S'] = copy(self['Nself_l']),copy(self['S'])
             if False and (ykey == 'I' and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}):
                 cache['column_densityp'] = copy(self['column_densityp'])
                 cache['Ae'] = copy(self['Ae'])
