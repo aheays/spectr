@@ -17,7 +17,9 @@ def get_partition_function(species_or_isotopologue,temperature):
     return hapi.partitionSum(Mol,Iso,temperature)
 
 def get_molparam(**match_keys_vals):
-    return molparam.matches(**match_keys_vals)
+    retval = molparam.matches(**match_keys_vals)
+    assert len(retval)>0,f'No molparams: {match_keys_vals=}'
+    return retval
 
 @tools.vectorise_function
 def get_molparam_from_isotopologue(species_or_isotopologue):
