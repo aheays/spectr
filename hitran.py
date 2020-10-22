@@ -200,7 +200,8 @@ species_ID  global_isotopologue_ID  local_isotopologue_ID  species  isotopologue
 9           42                      1                      SO2      [32S][16O]2              626        0.945678           63.961901      6340.30   1
 9           43                      2                      SO2      [34S][16O]2              646        0.041950           65.957695      6368.98   1
 10          44                      1                      NO2      [14N][16O]2              646        0.991616           45.992904      13577.48  3
-10          130                     2                      NO2      [15N][16O]2              656        0.003646           46.989938      9324.70   2
+## appears in https://hitran.org/docs/iso-meta/ but data appeard to be missing from hapy or something
+# 10          130                     2                      NO2      [15N][16O]2              656        0.003646           46.989938      9324.70   2
 11          45                      1                      NH3      [14N][1H]3               4111       0.995872           17.026549      1725.22   3
 11          46                      2                      NH3      [15N][1H]3               5111       0.003661           18.023583      1153.30   2
 12          47                      1                      HNO3     [1H][14N][16O]3          146        0.989110           62.995644      2.14e5    6
