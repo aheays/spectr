@@ -130,7 +130,7 @@ class Data:
     ):
         if kind is not None:
             self.kind = np.dtype(kind).kind
-        elif value is not None:
+        elif value is not None and len(value)>0:
             self.kind = np.dtype(type(value[0])).kind
             if self.kind=='i' and uncertainty is not None:
                 self.kind = 'f'
