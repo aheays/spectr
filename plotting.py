@@ -380,13 +380,13 @@ def qfig(
     """quick figure preparation."""
     presetRcParams(preset_rcparams,**preset_rcparams_kwargs)
     if n is None:
-        n = plt.gcf().number + 1 
+        n = 1
+        # n = plt.gcf().number + 1 
     fig = plt.figure(n);
     if fullscreen:
         set_figsize_fullscreen()
     if clear_figure:
         fig.clf()
-    # fig.set_tight_layout(tight_layout)
     fig._my_fig = True          # use this as a marker that this figure was created by this function 
     newcolor(reset=True)
     newlinestyle(reset=True)
