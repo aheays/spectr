@@ -342,6 +342,10 @@ class Dataset(optimise.Optimiser):
             ## might already be gone if this is called recursively
             self._data.pop(key)
 
+    def is_inferred_from(self,is_this_key,inferred_from_this_key):
+        """Test if key is inferred from another."""
+        return inferred_from_this_key in self._inferred_from[is_this_key]
+
     def unset_inferences(self,key):
         """Delete any record of inferences to or from this key and any data
         inferred from it."""
