@@ -1435,35 +1435,35 @@ def append_to_hdf5(filename,**keys_vals):
     # """Wait for use to press enter. Not usable outsdie linux."""
     # input(message)
 
-# def getClipboard():
-    # """Get a string from clipboard."""
-    # status,output = subprocess.getstatusoutput("xsel --output --clipboard")
-    # assert status==0, 'error getting clipboard: '+output
-    # return output
+def get_clipboard():
+    """Get a string from clipboard."""
+    status,output = subprocess.getstatusoutput("xsel --output --clipboard")
+    assert status==0, 'error getting clipboard: '+output
+    return output
 
-# def setClipboard(string):
-    # """Send a string to clipboard."""
-    # pipe=os.popen(r'xsel --input --clipboard','w');
-    # pipe.write(string)
-    # pipe.close()
+def set_clipboard(string):
+    """Send a string to clipboard."""
+    pipe=os.popen(r'xsel --input --clipboard','w');
+    pipe.write(string)
+    pipe.close()
 
-# def cl(x,fmt='0.15g'):
-    # """Take array or scalar x and convert to string and put on clipboard."""
-    # if np.isscalar(x):
-        # if isinstance(x,str):
-            # setClipboard(x)
-        # else:
-            # setClipboard(format(x,fmt))
-    # else:
-        # setClipboard(array_to_string(x,fmt=fmt))
+def cl(x,fmt='0.15g'):
+    """Take array or scalar x and convert to string and put on clipboard."""
+    if np.isscalar(x):
+        if isinstance(x,str):
+            set_clipboard(x)
+        else:
+            set_clipboard(format(x,fmt))
+    else:
+        set_clipboard(array_to_string(x,fmt=fmt))
 
-# def pa():
-    # """Get string from clipboard. If possible convert to an array."""
-    # x = getClipboard()
-    # try:
-        # return str2array(x)
-    # except:
-        # return x
+def pa():
+    """Get string from clipboard. If possible convert to an array."""
+    x = get_clipboard()
+    try:
+        return str2array(x)
+    except:
+        return x
 
 # def wget(url):
     # """Downloads data from url and returns it."""
@@ -3194,15 +3194,14 @@ def file_to_array(
             d = np.column_stack(data.get_background())
         else:
             raise Exception(f"Could not load opus data {filename=}")
-    elif filetype=='text':
+    else:
+        ## fallback try text
         np_kwargs = copy(kwargs)
         if len(filename)>4 and filename[-4:] in ('.csv','.CSV'):
             np_kwargs['delimiter'] = ','
         if 'delimiter' in np_kwargs and np_kwargs['delimiter']==' ':
             np_kwargs.pop('delimiter')
         d = np.genfromtxt(filename,**np_kwargs)
-    else:
-        raise Exception(f'Unknown filetype: {repr(filetype)}')
     ## post processing
     d = np.squeeze(d)
     if xmin is not None:
@@ -3334,29 +3333,29 @@ def file_to_array(
     # '''return(string_to_array(s).transpose())'''
     # return(string_to_array(s).transpose())
 
-# def array_to_string(*arrays,fmt='g',field_sep=' ',record_sep='\n'):
-    # """Convert array to a string format. Input arrays are concatenatd
-    # column wise.Nicer output than numpy.array2string, only works on 0,
-    # 1 or 2D arrays. Format fmt can be a single string or a list of
-    # strings corresponding to each column."""
-    # a = np.column_stack(arrays)
-    # ## 0D
-    # if a.ndim==0: return(format(a[0],fmt))
-    # ## make 1D array 2D
-    # if a.ndim==1: a = a.reshape((-1,1))
-    # ## if fmt is a fmt string expand to list with same length as 2nd D
-    # ## of array
-    # if isinstance(fmt,str):
-        # fmt = fmt.strip()
-        # fmt = fmt.split()
-        # ## same fmt for all columsn else must be the same length as
-        # ## columns
-        # if len(fmt)==1: fmt = [fmt[0] for t in range(a.shape[1])]
-    # ## build string and return
-    # return(record_sep.join(
-        # [field_sep.join(
-            # [format(t0,t1) for (t0,t1) in zip(record,fmt)]
-        # ) for record in a]))
+def array_to_string(*arrays,fmt='g',field_sep=' ',record_sep='\n'):
+    """Convert array to a string format. Input arrays are concatenatd
+    column wise.Nicer output than numpy.array2string, only works on 0,
+    1 or 2D arrays. Format fmt can be a single string or a list of
+    strings corresponding to each column."""
+    a = np.column_stack(arrays)
+    ## 0D
+    if a.ndim==0: return(format(a[0],fmt))
+    ## make 1D array 2D
+    if a.ndim==1: a = a.reshape((-1,1))
+    ## if fmt is a fmt string expand to list with same length as 2nd D
+    ## of array
+    if isinstance(fmt,str):
+        fmt = fmt.strip()
+        fmt = fmt.split()
+        ## same fmt for all columsn else must be the same length as
+        ## columns
+        if len(fmt)==1: fmt = [fmt[0] for t in range(a.shape[1])]
+    ## build string and return
+    return(record_sep.join(
+        [field_sep.join(
+            [format(t0,t1) for (t0,t1) in zip(record,fmt)]
+        ) for record in a]))
 
 def string_to_file(
         filename,
@@ -4350,6 +4349,7 @@ def fit_background(
         x2=None, # spline points for final least squares fit -- or an interval for evenly spaced, None to skip
         trim=(0,1), # fractional interval of data to keep ordered by initial fit residual
         figure=None,            # a Figure to plot
+        spline_order=3,
 ):
     """Initially fit background of a noisy spectrum to a spline fixed to
     maximum (minimum) values in an interval around points x1.  Then
@@ -4357,7 +4357,7 @@ def fit_background(
     error. Then least-squares spline-fit trimmed data at points x2 (or
     uniform grid if this is an interval)."""
     ## first estimate remove polynomial and discard points
-    yfit = fit_spline_to_extrema(x,y,'max',x1,1/4)
+    yfit = fit_spline_to_extrema(x,y,'max',x1,1/4,order=spline_order)
     yresidual = y-yfit
     ## trim residual maxima and minima 
     itrim = np.full(x.shape,False)
@@ -4369,12 +4369,12 @@ def fit_background(
     ## refit trimmed data
     if x2 is not None:
         xspline,yspline = fit_least_squares_spline(x[itrim],y[itrim],x2)
-        yfit = spline(xspline,yspline,x)
+        yfit = spline(xspline,yspline,x,order=spline_order)
     ## adjust for missing noise due to trimming
     yfit += μ
     if figure is not None:
         ## plot somem stuff
-        ax0 = plotting.subplot(0,fig=figure)
+        ax0 = subplot(0,fig=figure)
         ax0.plot(x,y)
         ax0.plot(x[itrim],y[itrim])
         ax0.plot(x,yfit,lw=3)
@@ -4426,6 +4426,9 @@ def fit_spline_to_extrema(
     interval_end = np.concatenate(((xi[:-1]+(xi[1:]-xi[:-1])*interval_fraction,x[-1:])))
     xspline,yspline = [],[]
     for begi,endi in zip(interval_beg,interval_end):
+        if begi>x[-1] or endi<x[0]:
+            ## out of bounds of data
+            continue
         iinterval = (x>=begi)&(x<=endi)
         if fit_min_or_max == 'min':
             ispline = find(iinterval)[np.argmin(y[iinterval])]
