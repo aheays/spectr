@@ -30,9 +30,10 @@ class Atmosphere(Dataset):
     prototypes['Hz'] = dict(description="Local scale height (cm1)" ,kind=float ,infer={})
     
     
-    def load_argo_depth(self,filename):
-        """Load an argo depth.dat file."""
+    def load_ARGO_depth(self,filename):
+        """Load an ARGO depth.dat file."""
         data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
+        nt = data['NH(cm-3)']
         ## load physical parameters
         for key_from,key_to in (
                 ('p(bar)','p'),
@@ -48,13 +49,13 @@ class Atmosphere(Dataset):
                 assert np.all(self[key_to] == data.pop(key_from))
             else:
                 self[key_to] = data.pop(key_from)
-        ## load abundances
+        ## load volume density
         for key in data:
             standard_key = kinetics.translate_species(key,'ARGO','standard')
-            self['n('+standard_key+')'] = data[key]
+            self['n('+standard_key+')'] = data[key]*nt
     
-    def load_argo_lifetime(self,filename):
-        """Load an argo lifetime.dat file."""
+    def load_ARGO_lifetime(self,filename):
+        """Load an ARGO lifetime.dat file."""
         data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
         ## load physical parameters
         for key_from,key_to in (
@@ -78,5 +79,7 @@ class Atmosphere(Dataset):
             ax.plot(self[xkey],self[ykey],label=xkey)
         ax.set_xscale('log')
         ax.set_ylim(self[ykey].min(),self[ykey].max())
+        ax.set_ylabel(ykey)
+        ax.set_xlabel('abundance?')
         plt.legend(ax=ax)
 
