@@ -3163,16 +3163,8 @@ def file_to_array(
     file or ascii data. xmin/xmax data ranges to load."""
     ## dealt with filename and type
     filename = expand_path(filename)
-    extension = os.path.splitext(filename)[1]
-    if filetype==None:
-        if extension in ('.hdf5','.h5'):
-            filetype='hdf5'
-        elif extension in ('.npy','.npz'):
-            filetype='numpy array'
-        elif re.match(r'\.[0-9]+',extension):
-            filetype='opus'
-        else:
-            filetype='text'
+    if filetype is None:
+        filetype = infer_filetype(filename)
     ## default kwargs
     kwargs.setdefault('comments','#')
     kwargs.setdefault('encoding','utf8')
@@ -3191,12 +3183,17 @@ def file_to_array(
             else:
                 hdf5_kwargs[key_hdf5] = hdf5_kwargs.pop(key)
         d = hdf5_to_array(filename,**hdf5_kwargs)
-    elif filetype=='numpy array':
+    elif filetype=='numpy':
         d = np.load(filename)
-    elif filetype=='opus':
-        import spectra
-        x,y,header = load_bruker_opus_spectrum(filename)
-        d = np.column_stack((x,y))
+    elif filetype in ('opus', 'opus_spectrum', 'opus_background'):
+        from . import bruker
+        data = bruker.OpusData(filename)
+        if filetype in ('opus','opus_spectrum') and data.has_spectrum():
+            d = np.column_stack(data.get_spectrum())
+        elif data.has_background():
+            d = np.column_stack(data.get_background())
+        else:
+            raise Exception(f"Could not load opus data {filename=}")
     elif filetype=='text':
         np_kwargs = copy(kwargs)
         if len(filename)>4 and filename[-4:] in ('.csv','.CSV'):
@@ -3205,7 +3202,7 @@ def file_to_array(
             np_kwargs.pop('delimiter')
         d = np.genfromtxt(filename,**np_kwargs)
     else:
-        raise Exception(f'Unknown filetype: {repr(filetyep)}')
+        raise Exception(f'Unknown filetype: {repr(filetype)}')
     ## post processing
     d = np.squeeze(d)
     if xmin is not None:
@@ -3442,7 +3439,7 @@ def string_to_file(
             # if match: matches.append(match)
     # return(matches)
 
-def file_to_dict(filename,*args,**kwargs):
+def file_to_dict(filename,*args,filetype=None,**kwargs):
     """Convert text file to dictionary.
     \nKeys are taken from the first uncommented record, or the last
     commented record if labels_commented=True. Leading/trailing
@@ -3450,32 +3447,70 @@ def file_to_dict(filename,*args,**kwargs):
     This requires that all elements be the same length. Header in hdf5
     files is removed."""
     filename = expand_path(filename)
-    file_extension = os.path.splitext(filename)[1]
-    if file_extension=='.npz':
+    if filetype is None:
+        filetype = infer_filetype(filename)
+    if filetype == 'text':
+        d = txt_to_dict(filename,*args,**kwargs)
+    elif filetype=='npz':
         d = dict(**np.load(filename))
         ## avoid some problems later whereby 0D  arrays are not scalars
         for key,val in d.items():
             if val.ndim==0:
                 d[key] = np.asscalar(val)
-    elif file_extension in ('.hdf5','.h5'): # load as hdf5
+    elif filetype == 'hdf5':
         d = hdf5_to_dict(filename)
         if 'header' in d: d.pop('header') # special case header, not data 
         if 'README' in d: d.pop('README') # special case header, not data 
-    elif file_extension in ('.ods','.csv','.CSV'): # load as spreadsheet, set # as comment char
+    elif filetype in ('csv','ods'):
+        ## load as spreadsheet, set # as comment char
         kwargs.setdefault('comment','#')
         d = sheet_to_dict(filename,*args,**kwargs)
-    elif file_extension in ('.rs',): # my convention -- a ␞ separated file
+    elif filetype == 'rs':
+        ## my convention -- a ␞ separated file
         kwargs.setdefault('comment_regexp','#')
         kwargs.setdefault('delimiter','␞')
         d = txt_to_dict(filename,*args,**kwargs)
-    elif rootname(filename) in ('README',): # load as org mode
+    elif filetype == 'org':
+        ## load as table in org-mode file
         d = org_table_to_dict(filename,*args,**kwargs)
-    elif os.path.isdir(filename): # load as directory
+    elif filetype == 'opus':
+        print('DEBUG:', )
+        # ## load as table in org-mode file
+        # d = org_table_to_dict(filename,*args,**kwargs)
+    elif filetype == 'directory':
+        ## load as data directory
         d = Data_Directory(filename)
-    else: # load as text
+    else:
+        ## fall back try text
         d = txt_to_dict(filename,*args,**kwargs)
     return(d)
 
+def infer_filetype(filename):
+    """Determine type of datafile from the name or possibly its
+    contents."""
+    extension = os.path.splitext(filename)[1]
+    if extension=='.npz':
+        return 'npz'
+    elif extension in ('.hdf5','.h5'): # load as hdf5
+        return 'hdf5'
+    elif extension == '.ods':
+        return 'ods'
+    elif extension in ('.csv','.CSV'):
+        return 'csv'
+    elif extension == '.rs':
+        return 'rs'
+    elif basename(filename) == 'README' or extension == '.org':
+        return 'org'
+    elif extension in ('.txt','.dat'):
+        return 'text'
+    elif re.match(r'.*\.[0-9]+$',basename(filename)):
+        return 'opus'
+    elif os.path.exists(filename) and os.path.isdir(filename):
+        return 'directory'
+    else:
+        return None
+    return(d)
+    
 def file_to_string(filename):
     with open(expand_path(filename),mode='r',errors='replace') as fid:
         string = fid.read(-1)
