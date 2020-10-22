@@ -499,14 +499,6 @@ class Model(Optimiser):
                 cache['absorbance'] = np.exp(-y)
             ## absorb
             self.y *= cache['absorbance']
-        # self.add_construct_function(f)
-        # self.auto_format_input_function(
-            # 'add_absorption_lines', lines=lines,
-            # multiline=True, nfwhmL=nfwhmL, nfwhmG=nfwhmG,
-            # τmin=τmin, use_multiprocessing=use_multiprocessing,
-            # voigt_method=voigt_method, gaussian_method=gaussian_method,
-            # **parameter_set)
-        # return parameter_set
         return f
 
     # @auto_construct_method('add_hitran_absorption_lines')
