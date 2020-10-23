@@ -1,8 +1,12 @@
 from . import *
 
+## standard library
+import re
+
 ## non-standard library
 from bidict import bidict
 
+from .dataset import Dataset
 
 ################################
 ## species name normalisation ##
@@ -156,6 +160,7 @@ _species_name_translation_dict['STAND'] = bidict({
     'C_1S':'C(^1^S)',
     'C_1D':'C(^1^D)',
     'NH3':'H_3_N',
+    'OH':'HO',
 })
 def _f(name):
     name = name.replace('_','')
@@ -416,54 +421,32 @@ class Species:
 
 def decode_reaction(reaction,encoding='standard'):
     """Decode a reaction into a list of reactants and products, and other
-    information. In a dictionary."""
-    retval = {}
-    retval['reactants'],retval['products'],retval['kind'] = _split_reaction_functions[encoding](reaction)
-    retval['reactants'] = [decode_species(species,encoding) for species in retval['reactants']]
-    retval['products'] = [decode_species(species,encoding) for species in retval['products']]
-    return retval
+    information. Encoding is for species names. Encoding of reaction
+    string formatting not implemented."""
+    ## split parts
+    reactants_string,products_string = reaction.split('→')
+    reactants,products = [],[]
+    for r_or_p_string,r_or_p_list in ((reactants_string,reactants),
+                                      (products_string,products)):
+        ## decode reactants or products string into a list
+        for species in r_or_p_string.split(' + '):
+            species = species.strip()
+            if r:=re.match(r'^([0-9]+)(.*)',species):
+                multiplicity = int(r.group(1))
+                species = species.group(1)
+            else:
+                multiplicity = 1
+            species = decode_species(r.group(2),encoding)
+            for i in range(multiplicity):
+                r_or_p_list.append(species)
+        r_or_p_list.sort()
+    return reactants,products
 
 def encode_reaction(reactants,products,encoding='standard'):
     """Only just started"""
     if encoding!='standard':
         raise ImplementationError()
     return ' + '.join(reactants)+' → '+' + '.join(products)
-
-_split_reaction_functions = {}
-
-def _f(reaction):
-    if '→' in reaction:
-        direction = 'forward'
-        reactants,products = reaction.split('→')
-    elif '←' in reaction:
-        direction = 'backward'
-        reactants,products = reaction.split('←')
-    elif '⇌' in reaction:
-        direction = 'equilibrium'
-        reactants,products = reaction.split('⇌')
-    else:
-        raise Exception(f'Cannot split {reaction=} with standard encoding')
-    reactants = [t.strip() for t in reactants.split(' + ')]
-    products = [t.strip() for t in products.split(' + ')]
-    return (reactants,products,direction)
-_split_reaction_functions['standard'] = _f
-
-def _f(reaction):
-    if '->' in reaction:
-        direction = 'forward'
-        reactants,products = reaction.split('->')
-    elif '<-' in reaction:
-        direction = 'backward'
-        reactants,products = reaction.split('<-')
-    elif '<=>' in reaction:
-        direction = 'equilibrium'
-        reactants,products = reaction.split('<=>')
-    else:
-        raise Exception(f'Cannot split {reaction=} with ascii encoding')
-    reactants = [t.strip() for t in reactants.split(' + ')]
-    products = [t.strip() for t in products.split(' + ')]
-    return (reactants,products,direction)
-_split_reaction_functions['ascii'] = _split_reaction_functions['STAND'] = _f
 
 ## formulae for computing rate coefficients from reaction constants c
 ## and state variables p
@@ -474,7 +457,8 @@ _reaction_coefficient_formulae = {
     'NIST'                   :lambda c,p: c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['T']),
     'NIST_3rd_body_hack'     :lambda c,p: 1e19*c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['T']),
     'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['T'])*p['I'],c['λ']),
-    'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']),
+    'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']), # α[cm-3], T[K], β[], γ[K]
+    # 'kooij'                  :lambda c,p: np.full(p['T'].shape,c['α'])
 } 
 
 def _f(c,p):
@@ -504,11 +488,11 @@ class Reaction:
             self.reactants = [decode_species(t,encoding) for t in reactants]
             self.products = [decode_species(t,encoding) for t in products]
         elif name is not None and reactants is None and products is None:
-            t = decode_reaction(name,encoding)
-            self.reactants = t['reactants']
-            self.products = t['products']
+            self.reactants,self.products = decode_reaction(name,encoding)
         else:
             raise Exception('Must be name is not None, or reactants/products are not None, but not both.')
+        self.reactants,self.products = tuple(self.reactants),tuple(self.products) # make immutable
+        self._hash = hash((self.reactants,self.products))
         ## tidy name
         self.name = encode_reaction(self.reactants,self.products)
         self.formula = formula  # name of formula
@@ -517,10 +501,6 @@ class Reaction:
         self.rate_coefficient = None     
         self.rate = None     
 
-    def get_hash(self):
-        """A convenient way to summarise a reaction by its name. I don't use
-        __hash__ because I worry that the reactants/products might mutate."""
-        return(hash(' + '.join(sorted([t.name for t in self.reactants]))+' ⟶ '+' + '.join(sorted([t.name for t in self.products]))))
 
     def __getitem__(self,key):
         return(self.coefficients[key])
@@ -528,7 +508,7 @@ class Reaction:
     def __setitem__(self,key,val):
         self.coefficients[key] = val
 
-    def get_rate_coefficient(self,**state):
+    def get_rate_coefficient(self,state):
         """Calculate rate coefficient from rate constants and state
         variables."""
         self.rate_coefficient = self._formula(self.coefficients,state)
@@ -545,17 +525,20 @@ class Reaction:
         return((' + '.join([format(t,f'<{species_name_length}s') for t in reactants])
                 +' ⟶ '+' + '.join([format(t,f'<{species_name_length}s') for t in reactants])))
 
-    def __str__(self):
+    def __repr__(self):
         return ', '.join([f'name=" {self.name:60}"']
                          +[format(f'formula="{self.formula}"',"20")]
                          +[format(f'{key}={repr(val)}','20') for key,val in self.coefficients.items()])
 
 
+    def __str__(self):
+        return self.name
+
 class ReactionNetwork:
 
     def __init__(self):
-        self.species = {}       # name:density
-        self.state = {}         # name:value
+        self.species = Dataset()       # name:density
+        self.state = Dataset()         # name:value
         self.reactions = []     # [Reactions]
 
     def __getitem__(self,key):
@@ -567,72 +550,17 @@ class ReactionNetwork:
             raise KeyError
 
     def calc_rate_coefficients(self):
-        self.rate_coefficients = [
-            reaction.get_rate_coefficient(**self.state)
-            for reaction in self.reactions]
+        self.rate_coefficients = [reaction.get_rate_coefficient(self.state)
+                                  for reaction in self.reactions]
 
     def calc_rates(self):
-        self.calc_rate_coefficients()
+        # self.calc_rate_coefficients()
         self.rates = []
         for r in self.reactions:
-            k = r.rate_coefficient
+            k = copy(r.rate_coefficient)
             for s in r.reactants:
-                k*= self.species[s]
+                k *= self.species[s]
             r.rate = k
-
-
-    def get_matching_rates(
-            self,
-            normalise_to_species=None,
-            **kwargs_get_matching_reactions
-    ):
-        """Return larges-to-smallest reaction rates matching
-        kwargs_get_matching_reactions.  Optionally divide by the density of
-        normalise_to_species."""
-        reaction_names = []
-        rates = []
-        for reaction in self.get_matching_reactions(**kwargs_get_matching_reactions):
-            rate = reaction.rate
-            if normalise_to_species is not None:
-                rate /= self.species[normalise_to_species]
-            reaction_names.append(reaction.name)
-            rates.append(rate)
-        ## sort
-        i = np.argsort([-np.max(t) for t in rates])
-        for ii in i[:4]:        #  DEBUG
-            print(reaction_names[ii], format(np.max(rates[ii]),'e'),) #  DEBUG
-        return {reaction_names[ii]:rates[ii] for ii in i}
-
-    def plot_rates(
-            self,
-            ykey=None,
-            ax=None,
-            nplot=10,
-            **kwargs_get_matching_rates
-    ):
-        """Plot rates matching kwargs_get_matching_reactions."""
-        if ax is None:
-            ax = plotting.plt.gca()
-            ax.cla()
-        y = self.state[ykey]
-
-        rates = self.get_matching_rates(**kwargs_get_matching_rates)
-
-        for i,(name,rate) in enumerate(rates.items()):
-            if i > nplot:
-                break
-            print('DEBUG:', name,format(np.max(rate),'e'))
-            ax.plot(rate,y,label=name)
-        ax.set_ylabel(ykey)
-        if "normalise_to_species" in kwargs_get_matching_rates:
-            ax.set_xlabel(f'Rate normalised to the density of {kwargs_get_matching_rates["normalise_to_species"]} (s$^{{-1}}$)')
-        else:
-            ax.set_xlabel('Rate (cm$^{-3}$ s$^{-1}$)')
-        ax.set_xscale('log')
-        # ax.set_yscale('log')
-        ax.set_ylim(y.min(),y.max())
-        plotting.legend()
-        return ax
 
     def plot_species(self, *species, ykey=None, ax=None,):
         if ax is None:
@@ -660,8 +588,11 @@ class ReactionNetwork:
             r = Reaction(*args,**kwargs)
         self.reactions.append(r)
         for s in r.reactants + r.products:
-            if s not in self.species:
-                self.species[s] = 0. # or NaN?
+            self.set_abundance(s)
+
+    def set_abundance(self,species,abundance=0):
+        self.species[species] = abundance
+        
 
     def get_product_branches(self,reactants,with_reactants=[],without_reactants=[],with_products=[],without_products=[]):
         """Get a list of reactions with different products and the
@@ -678,7 +609,6 @@ class ReactionNetwork:
 
     def __len__(self):
         return(len(self.reactions))
-
 
     def get_matching_reactions(
             self,
@@ -732,7 +662,19 @@ class ReactionNetwork:
             for line in fid:
                 self.append(**eval(f'dict({line[:-1]})'),encoding='standard')
 
-    def load_ARGO(self,filename):
+    def check_reactions(self):
+        """Sanity check on reaction list."""
+        ## warn on repeated reactions
+        hasharray = np.array([r._hash for r in self.reactions])
+        if len(np.unique(hasharray)) != len(hasharray):
+            for h in hasharray:
+                i = tools.find(hasharray==h)
+                if len(i)>1:
+                    print(f'warning: check_reactions: reaction appears {len(i)} times:')
+                    for j in i:
+                        print(f'    {repr(self.reactions[j])}')
+
+    def load_STAND(self,filename):
         """Load encoded reactions and coefficients from a file."""
         def get_line():
             line = fid.readline()
@@ -759,28 +701,34 @@ class ReactionNetwork:
             retval['β'] = float(line[73:82])
             retval['γ'] = float(line[82:91])
             retval['type'] = int(line[91:93])
-            retval['number'] = int(line[93:98])
+            retval['reaction_number'] = int(line[108:112])
             return retval
-        ## haven't figured out how to incorporate these reactions
-        not_implemented = {
+        ## 
+        reaction_types = {      # STAND2020 2020-10-23
+            0 :'B = Neutral Termolecular and Thermal Decomposition Reactions',
             1 :'Z = Cosmic Ray Reactions (All of these are set equal zero for the Venus model ',
+            2 :'D = Ion-Neutral Bimolecular Reactions',
+            3 :'L = Reverse Ion-Neutral Bimolecular Reactions',
+            5 :'T = Three-Body Recombination Reactions',
+            6 :'I = Thermal Ionization Reactions: ',
+            7 :'A = Neutral Bimolecular Reactions',
+            8 :'RA = Radiative Association Reactions',
+            10:'U = Dissociative Recombination Reactions',
+            11:'Q = Ion-Neutral Termolecular and Thermal Decomposition Reaction',
             13:'V = Photochemical Reactions',
+            14:'F = Reverse Neutral Bimolecular Reactions',
+            15:'G = Reverse Neutral Termolecular and Thermal Decomposition Reactions',
+            16:'R = Reverse Ion-Neutral Termolecular and Thermal Decomposition Reactions',
             17:'EV = Condensation/Evaporation Reactions',
+            18:'DP = Unknown, not in Reaction-Guide.txt',
+            66:'BA = Unknown, not in Reaction-Guide.txt',
+            67:'GO = Unknown, not in Reaction-Guide.txt',
+            88:'TR = Unknown, not in Reaction-Guide.txt',
             95:'BI = Neutral Termolecular and Thermal Decomposition Reactions (added to model Isoprene',
             96:'AS (or AI?) = Neutral Bimolecular Reactions (added to model Isoprene)',
             97:'BS = Neutral Termolecular and Thermal Decomposition Reactions (added to model Venus)',
             98:'AS = Neutral Bimolecular Reactions (added to model Venus)',
             99:'GL = Unknown, not in Reaction-Guide.txt',
-            88:'TR = Unknown, not in Reaction-Guide.txt',
-            18:'DP = Unknown, not in Reaction-Guide.txt',
-            66:'BA = Unknown, not in Reaction-Guide.txt',
-            67:'GO = Unknown, not in Reaction-Guide.txt',
-
-            15:'G = Reverse Neutral Termolecular and Thermal Decomposition Reactions',
-            16:'R = Reverse Ion-Neutral Termolecular and Thermal Decomposition Reactions',
-            3:'L = Reverse Ion-Neutral Bimolecular Reactions',
-            14:'F = Reverse Neutral Bimolecular Reactions',
-
         }
         already_warned_for_types = []
         ## loop through network
@@ -790,38 +738,39 @@ class ReactionNetwork:
                 if line is None:
                     ## end of file
                     break
-                ## warn if not implemented
-                if line['type'] in not_implemented:
-                    if line['type'] not in already_warned_for_types:
-                        print(f'warnings: reaction type {line["type"]} not implemented: {not_implemented[line["type"]]}')
-                        already_warned_for_types.append(line['type'])
-                    continue
-                ## three body reactions and thermal decomposition
+                ## three body reactions
                 elif line['type'] in (0,5,11):
-                    ## 0  / B = Neutral Termolecular and Thermal Decomposition Reactions
-                    ## 5  / T = Three-Body Recombination Reactions
-                    ## 11 / Q = Ion-Neutral Termolecular and Thermal Decomposition Reaction
                     line0 = line    # low-density limit
                     lineinf = get_line()    # high-density limit
                     self.append(Reaction(
                         formula='STAND 3-body',
                         reactants=line['reactants'],products=line['products'],
                         α0=line0['α'],β0=line0['β'],γ0=line0['γ'],
-                        αinf=lineinf['α'],βinf=lineinf['β'],γinf=lineinf['γ'],))
+                        αinf=lineinf['α'],βinf=lineinf['β'],γinf=lineinf['γ'],
+                        reaction_number=line['reaction_number'],
+                    ))
                 ## bimolecular reactions and thermal ionisation
-                elif line['type'] in (2,6,7,8,10):
-                    ## 2 / D = Ion-Neutral Bimolecular Reactions
-                    ## 6 / I = Thermal Ionization Reactions: 
-                    ## 7 / A = Neutral Bimolecular Reactions
-                    ## 8 / RA = Radiative Association Reactions
-                    ## 10 / U = Dissociative Recombination Reactions
+                elif line['type'] in (2,7,10):
                     self.append(Reaction(
                         formula='kooij',
                         reactants=line['reactants'],products=line['products'],
-                        α=line['α'],β=line['β'],γ=line['γ'],))
+                        α=line['α'],β=line['β'],γ=line['γ'],
+                        reaction_number=line['reaction_number'],
+                    ))
+                ## bimolecular reactions producing photon
+                elif line['type'] in (8,):
+                    self.append(Reaction(
+                        formula='kooij',
+                        reactants=line['reactants'],products=line['products']+['γ'],
+                        α=line['α'],β=line['β'],γ=line['γ'],
+                        reaction_number=line['reaction_number'],
+                    ))
                 ## unknown reaction type
                 else:
-                    raise Exception(f'Unknown reaction type code: {line["type"]}, decoded line: {line}')
-
+                    if line['type'] not in already_warned_for_types:
+                        print(f'warning: reaction type not implemented {line["type"]}: {reaction_types[line["type"]]}')
+                        already_warned_for_types.append(line['type'])
+            ## verify
+            self.check_reactions()
 
 
