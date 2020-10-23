@@ -770,14 +770,9 @@ def format_columns(
     t = record_separator.join(records)
     return(record_separator.join(records))
 
-# def print_columns(data,**kwargs):
-    # """Print the data into readable columns heuristically."""
-    # if isinstance(data,np.recarray):
-        # print(recarray_to_str(data,**kwargs))
-    # elif isinstance(data,dict):
-        # print(dict_array_to_str(data,**kwargs))
-    # else:
-        # print(format_columns(data,**kwargs))
+def printcols(*columns):
+    """Print the data into readable columns heuristically."""
+    print(format_columns(columns))
 
 # def dict_array_to_str(d,keys=None,fmts=None,**kwargs_for_make_table):
     # """Return a string listing the contents of a dictionary made up of
@@ -2310,6 +2305,18 @@ def unique_combinations(*args):
     # else:
         # return(unique_values)
 
+def sortall(x,*others,reverse=False):
+    """Sort x and return sorted. Also return others sorted according
+    to x."""
+    x = np.asarray(x)
+    i = np.argsort(x)
+    retval = [x[i]]
+    for y in others:
+        retval.append(np.asarray(y)[i])
+    if reverse:
+        retval = [t[::-1] for t in retval]
+    return retval
+
 # def sortByFirst(*args,**kwargs):
     # """Returns iterable args all sorted by the elements of the first
     # arg. Must be same length of course.  Optional key-word argument
@@ -2452,6 +2459,13 @@ def isin(x,y):
 def find(x):
     """Convert boolean array to array of True indices."""
     return(np.where(x)[0])
+
+def find_unique(x,y):
+    """Find one only match of x in y. Else raise an error."""
+    i = find(x==y)
+    assert len(i)!=1,'No match found'
+    assert len(i)<2,'Multiple matches found'
+    return i[0]
 
 # def findin(x,y):
     # """Find indices of x that appear in y, in the order they appear in
@@ -3473,7 +3487,7 @@ def file_to_dict(filename,*args,filetype=None,**kwargs):
         ## load as table in org-mode file
         d = org_table_to_dict(filename,*args,**kwargs)
     elif filetype == 'opus':
-        print('DEBUG:', )
+        raise ImplementationError()
         # ## load as table in org-mode file
         # d = org_table_to_dict(filename,*args,**kwargs)
     elif filetype == 'directory':
