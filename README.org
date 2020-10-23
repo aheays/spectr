@@ -4,7 +4,11 @@
    valid python symbols -- use 1 and 2 for lower and upper? -- maybe
    match script u and l? 𝓊 and 𝓁?
 
- - change partition to Q
+ - A simpler implementation of self.permit_reference_breaking?
+   Currently appears in many places in Dataset
+
+ - change partition to Q -- uncorporate HITRAN partition functions
+   into a database
 
  - Improve Dataset indexing to cases:
    - get_value(key,index) / get_uncertainty(key,index) -- get numpy
