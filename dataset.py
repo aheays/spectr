@@ -272,6 +272,7 @@ class Dataset(optimise.Optimiser):
         self._inferences = AutoDict([])
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
+        self.permit_reference_breaking = True
         self.uncertainty_prefix = 'd_' # a single letter to prefix uncertainty keys
         self.verbose = False
         for key,val in keys_vals.items():
@@ -302,6 +303,7 @@ class Dataset(optimise.Optimiser):
         """Set a value and possibly its uncertainty. Set is_scalar=True to set
         a scalar Object type that is iterable."""
         assert self.permit_nonprototyped_data or key in self.prototypes, f'New data is not in prototypes: {repr(key)}'
+        assert self.permit_reference_breaking or key not in self, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
         ## if not previously set then get perhaps get a prototype
         if key not in self and key in self.prototypes:
             for tkey,tval in self.prototypes[key].items():
@@ -331,6 +333,7 @@ class Dataset(optimise.Optimiser):
 
     def set_uncertainty(self,key,uncertainty):
         """Set a the uncertainty of an existing value."""
+        assert self.permit_reference_breaking or key not in self, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
         self.unset_inferences(key)
         assert key in self,f'Value must exist before setting uncertainty: {repr(key)}'
         self._data[key].uncertainty  = uncertainty
@@ -616,7 +619,6 @@ class Dataset(optimise.Optimiser):
         """Sort rows according to key or keys."""
         if self.is_scalar() or len(self)==0:
             return
-            
         i = np.argsort(self[first_key])
         for key in more_keys:
             i = i[np.argsort(self[key][i])]
@@ -787,6 +789,7 @@ class Dataset(optimise.Optimiser):
         else:
             value = np.full(len(self),data.value)
         if isinstance(data,Datum):
+            assert self.permit_reference_breaking or key not in self, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
             self._data[key] = Data(
                 value=value,
                 uncertainty=data.uncertainty,
@@ -805,6 +808,7 @@ class Dataset(optimise.Optimiser):
             and len(np.unique(data.value))==1
             and (not data.has_uncertainty()
                  or len(np.unique(data.uncertainty))==1)):
+            assert self.permit_reference_breaking or key not in self, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
             self._data[key] = Datum(
                 value=data.value[0],
                 uncertainty=(data.uncertainty[0] if data.has_uncertainty() else None),
@@ -833,6 +837,7 @@ class Dataset(optimise.Optimiser):
         Dataset, but the reverse is not enforced.  If the existing
         Dataset is scalar then its existing data is not vectorised
         before concatenation."""
+        assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
         if new_dataset.is_scalar():
             ## only concatenate if vector data present
             return
