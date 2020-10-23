@@ -4,6 +4,7 @@ from pprint import pprint
 
 ## nonstandard library
 import numpy as np
+from scipy import integrate
 
 ## import subpackages of this library
 from . import tools
