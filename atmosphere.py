@@ -53,8 +53,10 @@ class AtmosphericChemistry():
             self,
             model_output_directory,
             reaction_network_filename=None,
-            rate_coefficient_filename=None,            
-            ):
+            rate_coefficient_filename=None,
+            load_rates_file=False,
+           ):
+
         ## load depth.dat physical parameters and species volume density
         data = tools.file_to_dict(
             f'{model_output_directory}/depth.dat',
@@ -74,27 +76,58 @@ class AtmosphericChemistry():
             self.set_density(
                 kinetics.translate_species(key,'STAND','standard'),
                 data[key]*self.state['nt'])
+
         if reaction_network_filename is not None:
             ## load STAND reaction network
             self.reaction_network.load_STAND(reaction_network_filename)
             self.reaction_network.remove_unnecessary_reactions()
+    
         if rate_coefficient_filename is not None:
             ## Load the rate coefficients from an ARGO
             ## Reactions/Kup.dat or
             data = tools.file_to_dict(rate_coefficient_filename,skiprows=2,labels_commented=False)
+            if 'down' in rate_coefficient_filename:
+                ## reverse z grid 
+                for key in data:
+                    data[key] = data[key][::-1]
             assert np.all(data.pop('p[bar]') == self['p']),'Mismatch between model pressure grid and reaction rate coefficient grid.'
             assert np.all(data.pop('h[cm]') == self['z']),'Mismatch between model z grid and reaction rate coefficient grid.'
-            # reaction_numbers = np.array([t.coefficients['reaction_number'] for t in self.reaction_network.reactions])
-            # assert len(np.unique(reaction_numbers)) == len(reaction_numbers)
-            # rates_reaction_numbers = np.array([int(key[1:]) for key in data])
-            # if reaction_numbers.max() != rates_reaction_numbers.max():
-                # print(f'warning: reaction numbers do not align')
-                # # raise Exception
-            # ## load rate coefficients into self
             for r in self.reaction_network.reactions:
                 r.rate_coefficient = data['R'+str(r.coefficients['reaction_number'])]
 
-
+        if load_rates_file:
+            ## load rates from the last time step in verif files
+            ## loop over height files
+            data = Dataset()
+            for filename in tools.glob(f'{model_output_directory}/Reactions/down*verif.dat',):
+                ## get data from filename
+                r = re.match(r'.*(?:up|down)-P=(.*)_H=(.*)_verif.dat',filename,)
+                assert r
+                p,z = float(r.group(1)),float(r.group(2))*1e5
+                ## load all data in file
+                lines = tools.file_to_lines(filename)
+                ## collect all rates in last timestep
+                i = tools.find(['T(SEC)' in l for l in lines])
+                t0,t1 = [],[]
+                for line in lines[i[-1]+1:]:
+                    tokens = line.split()
+                    if len(tokens) == 2:
+                        t0.append(int(tokens[0]))
+                        t1.append(abs(float(tokens[1])))
+                r = np.unique(tools.make_recarray(t0=t0,t1=t1)) # get rid of dupiliate in a recarray
+                data.extend(p=p,z=z,reaction_number=r['t0'],rate=r['t1'])
+            ## put rates into reaction_network
+            assert np.all((np.sort(data.unique('z')))==np.sort(self['z'])) # check z coordinate matches self
+            assert np.max(np.abs(np.sort(data.unique('p'))-np.sort(self['p']))/np.sort(self['p'])) # check p coordinate matches self
+            data.sort('z')
+            for r in self.reaction_network.reactions:
+                r.rate = np.full(len(self),np.nan)
+                i = tools.find(data.match(reaction_number=r.coefficients['reaction_number']))
+                if len(i)==0: continue
+                # j = findin_numeric(data['z'][i],self['z'])`
+                j = tools.findin(data['z'][i],self['z'])
+                r.rate[j] = data['rate'][i]
+                
     # def load_ARGO_lifetime(self,filename):
         # """Load an ARGO lifetime.dat file."""
         # data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
@@ -120,6 +153,9 @@ class AtmosphericChemistry():
             return self.density[key]
         else:
             raise Exception(f'Unknown {key=}')
+
+    def __len__(self):
+        return len(self.state)
 
     def set_density(self,species,density):
         self.density[species] = density

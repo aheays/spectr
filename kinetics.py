@@ -562,7 +562,8 @@ class ReactionNetwork:
         for r in self.reactions:
             k = copy(r.rate_coefficient)
             for s in r.reactants:
-                k *= self.density[s]
+                if s not in ['γ','e-']:
+                    k *= self.density[s]
             r.rate = k
 
     def plot_species(self, *species, ykey=None, ax=None,):
@@ -595,7 +596,8 @@ class ReactionNetwork:
         """Remove all reactions containing species that have no
         density."""
         for r in copy(self.reactions):
-            if any([s not in self.density for s in list(r.reactants)+list(r.products)]):
+            if any([s not in ('γ','e-') and s not in self.density
+                     for s in list(r.reactants)+list(r.products)]):
                 if self.verbose:
                     print(f'Removing reaction containing species not in model: {str(r)}')
                 self.reactions.remove(r)
@@ -792,13 +794,26 @@ class ReactionNetwork:
                             'reaction_number':line0['reaction_number'],
                         }))
                 ## unknown non-termolecular reaction type -- consume one line
-                elif line['type'] in ( 1, 3, 6, 13, 14, 17, 18, 66, 67, 88, 96, 98, 99):
+                elif line['type'] in ( 1, 3, 6, 14, 17, 18, 66, 67, 88, 96, 98, 99):
                     if line['type'] not in already_warned_for_types:
                         warnings.warn(f'reaction type not implemented, added with zero coefficient: {line["type"]}: {reaction_types[line["type"]]}')
                         already_warned_for_types.append(line['type'])
                     self.append(Reaction(
                         formula='constant',
                         reactants=line['reactants'],products=line['products'],
+                        coefficients={
+                            'k':0,
+                            'type':line['type'],
+                            'reaction_number':line['reaction_number'],
+                        }))
+                ## photo reactions -- add γ reactant
+                elif line['type'] in (  13,):
+                    if line['type'] not in already_warned_for_types:
+                        warnings.warn(f'reaction type not implemented, added with zero coefficient: {line["type"]}: {reaction_types[line["type"]]}')
+                        already_warned_for_types.append(line['type'])
+                    self.append(Reaction(
+                        formula='constant',
+                        reactants=line['reactants']+['γ'],products=line['products'],
                         coefficients={
                             'k':0,
                             'type':line['type'],
