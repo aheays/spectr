@@ -1,12 +1,9 @@
-from . import *
-
-## standard library
 import re
 
-## non-standard library
 from bidict import bidict
 
 from .dataset import Dataset
+from . import tools
 
 ################################
 ## species name normalisation ##
@@ -436,7 +433,7 @@ def decode_reaction(reaction,encoding='standard'):
                 species = species.group(1)
             else:
                 multiplicity = 1
-            species = decode_species(r.group(2),encoding)
+            species = decode_species(species,encoding)
             for i in range(multiplicity):
                 r_or_p_list.append(species)
         r_or_p_list.sort()
@@ -508,10 +505,10 @@ class Reaction:
     def __setitem__(self,key,val):
         self.coefficients[key] = val
 
-    def get_rate_coefficient(self,state):
+    def get_rate_coefficient(self,state=None):
         """Calculate rate coefficient from rate constants and state
         variables."""
-        self.rate_coefficient = self._formula(self.coefficients,state)
+        self.rate_coefficient = self._formula(self.coefficients, ({} if state is None else state))
         return self.rate_coefficient
 
     def format_aligned_reaction_string(
