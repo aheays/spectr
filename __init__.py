@@ -13,12 +13,13 @@ from . import optimise
 from . import dataset
 from . import levels
 from . import lines
-from . import hitran
 from . import database
 from . import spectrum
 from . import kinetics
-from . import bruker
 from . import atmosphere
+from . import hitran
+from . import bruker
+from . import argo
 
 ## import more explicitly for interactive use
 from .dataset import Dataset
