@@ -1,5 +1,8 @@
 import re
+import warnings
+from copy import copy
 
+import numpy as np
 from bidict import bidict
 
 from .dataset import Dataset
@@ -146,34 +149,34 @@ def _f(name):
     return(name.lower())
 _species_name_translation_functions[('standard','meudon')] = _f
 
-## STAND kinetic network
-_species_name_translation_dict['STAND'] = bidict({
-    'O+_2P':'O^+^(^3^P)',       # error in STAND O^+^(^3^P) should be O^+^(^2^P)?
-    'O+_2D':'O^+^(^2^D)',
-    'O2+_X2Πg':'O_2^+_(X^^2Pi_g^)',
-    'O2_a1Δg' :'O_2_(a^1Delta_g^)',
-    'O_1S':'O(^1^S)',
-    'O_1D':'O(^1^D)',
-    'C_1S':'C(^1^S)',
-    'C_1D':'C(^1^D)',
-    'NH3':'H_3_N',
-    'OH':'HO',
-})
-def _f(name):
-    name = name.replace('_','')
-    name = name.replace('^','')
-    ##  hack because two forms exist (repeated ^), and cannot be treated with a dictionary
-    if name == 'O2(a1Deltag)':
-        name = 'O2_a1Δg'
-    if name == 'O+(3P)':
-        name = 'O+_2P'
-    if name == 'O+(2D)':
-        name = 'O+_2D'
-    return(name)
-_species_name_translation_functions[('STAND','standard')] = _f
+# ## STAND kinetic network
+# _species_name_translation_dict['STAND'] = bidict({
+    # 'O+_2P':'O^+^(^3^P)',       # error in STAND O^+^(^3^P) should be O^+^(^2^P)?
+    # 'O+_2D':'O^+^(^2^D)',
+    # 'O2+_X2Πg':'O_2^+_(X^^2Pi_g^)',
+    # 'O2_a1Δg' :'O_2_(a^1Delta_g^)',
+    # 'O_1S':'O(^1^S)',
+    # 'O_1D':'O(^1^D)',
+    # 'C_1S':'C(^1^S)',
+    # 'C_1D':'C(^1^D)',
+    # 'NH3':'H_3_N',
+    # 'OH':'HO',
+# })
+# def _f(name):
+    # name = name.replace('_','')
+    # name = name.replace('^','')
+    # ##  hack because two forms exist (repeated ^), and cannot be treated with a dictionary
+    # if name == 'O2(a1Deltag)':
+        # name = 'O2_a1Δg'
+    # if name == 'O+(3P)':
+        # name = 'O+_2P'
+    # if name == 'O+(2D)':
+        # name = 'O+_2D'
+    # return(name)
+# _species_name_translation_functions[('STAND','standard')] = _f
 
-## ARGO atmospheric model
-_species_name_translation_dict['ARGO'] = bidict({
+## STAND reaction network used in ARGO model
+_species_name_translation_dict['STAND'] = bidict({
     'NH3':'H3N',
     'O2+_X2Πg':'O2+_P',
     'O2_a1Δg' :'O2_D',
@@ -183,10 +186,12 @@ _species_name_translation_dict['ARGO'] = bidict({
     'O_1D':'O1D',
     'C_1S':'C1S',
     'C_1D':'C1D',
+    'NH3':'H3N',
+    'OH':'HO',
 })
 def _f(name):
     return(name)
-_species_name_translation_functions[('ARGO','standard')] = _f
+_species_name_translation_functions[('STAND','standard')] = _f
 
 ## hitran numeric codes - https://hitran.org/docs/iso-meta/
 _species_name_translation_dict['hitran_codes'] = bidict({
@@ -449,19 +454,19 @@ def encode_reaction(reactants,products,encoding='standard'):
 ## and state variables p
 _reaction_coefficient_formulae = {
     'constant'               :lambda c,p: c['k'],
-    'arrhenius'              :lambda c,p: c['A']*(p['T']/300.)**c['B'],
-    'KIDA modified arrhenius':lambda c,p: c['A']*(p['T']/300.)**c['B']*np.exp(-c['C']*p['T']),
-    'NIST'                   :lambda c,p: c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['T']),
-    'NIST_3rd_body_hack'     :lambda c,p: 1e19*c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['T']),
-    'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['T'])*p['I'],c['λ']),
-    'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']), # α[cm-3], T[K], β[], γ[K]
+    'arrhenius'              :lambda c,p: c['A']*(p['Ttr']/300.)**c['B'],
+    'KIDA modified arrhenius':lambda c,p: c['A']*(p['Ttr']/300.)**c['B']*np.exp(-c['C']*p['Ttr']),
+    'NIST'                   :lambda c,p: c['A']*(p['Ttr']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['Ttr']),
+    'NIST_3rd_body_hack'     :lambda c,p: 1e19*c['A']*(p['Ttr']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['Ttr']),
+    'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['Ttr'])*p['I'],c['λ']),
+    'kooij'                  :lambda c,p: c['α']*(p['Ttr']/300.)**c['β']*np.exp(-c['γ']/p['Ttr']), # α[cm-3], T[K], β[], γ[K]
     # 'kooij'                  :lambda c,p: np.full(p['T'].shape,c['α'])
 } 
 
 def _f(c,p):
     """STAND 3-body reaction scheme. Eqs. 9,10,11 in rimmer2016."""
-    k0 = c['α0']*(p['T']/300)**c['β0']*np.exp(-c['γ0']/p['T']) 
-    kinf = c['αinf']*(p['T']/300.)**c['βinf']*np.exp(-c['γinf']/p['T'])
+    k0 = c['α0']*(p['Ttr']/300)**c['β0']*np.exp(-c['γ0']/p['Ttr']) 
+    kinf = c['αinf']*(p['Ttr']/300.)**c['βinf']*np.exp(-c['γinf']/p['Ttr'])
     pr = k0*p['nt']/kinf             # p['nt'] = total density = M 3-body density
     k2 = (kinf*pr)/(1+pr)
     return k2
@@ -475,9 +480,9 @@ class Reaction:
             name=None,
             reactants=None,
             products=None,
-            encoding='standard', # of reaction name or species in products/reactants
             formula='constant', # type of reaction, defined in get_rate_coefficient
-            **coefficients,     # used for computing rate coefficient according to formula
+            coefficients=None,     # used for computing rate coefficient according to formula
+            encoding='standard', # of reaction name or species in products/reactants
     ):
 
         ## get reactants and products from name or provided lists
@@ -494,7 +499,7 @@ class Reaction:
         self.name = encode_reaction(self.reactants,self.products)
         self.formula = formula  # name of formula
         self._formula = _reaction_coefficient_formulae[formula] # function
-        self.coefficients = coefficients 
+        self.coefficients = ({} if coefficients is None else coefficients)
         self.rate_coefficient = None     
         self.rate = None     
 
@@ -534,15 +539,16 @@ class Reaction:
 class ReactionNetwork:
 
     def __init__(self):
-        self.species = Dataset()       # name:density
+        self.density = Dataset()       # name:density
         self.state = Dataset()         # name:value
         self.reactions = []     # [Reactions]
+        self.verbose = False
 
     def __getitem__(self,key):
         if key in self.state:
             return self.state[key]
-        elif key in self.species:
-            return self.species[key]
+        elif key in self.density:
+            return self.density[key]
         else:
             raise KeyError
 
@@ -556,7 +562,7 @@ class ReactionNetwork:
         for r in self.reactions:
             k = copy(r.rate_coefficient)
             for s in r.reactants:
-                k *= self.species[s]
+                k *= self.density[s]
             r.rate = k
 
     def plot_species(self, *species, ykey=None, ax=None,):
@@ -584,22 +590,15 @@ class ReactionNetwork:
         else:
             r = Reaction(*args,**kwargs)
         self.reactions.append(r)
-        for s in r.reactants + r.products:
-            self.set_abundance(s)
 
-    def set_abundance(self,species,abundance=0):
-        self.species[species] = abundance
-        
-
-    def get_product_branches(self,reactants,with_reactants=[],without_reactants=[],with_products=[],without_products=[]):
-        """Get a list of reactions with different products and the
-        same reactants. Restricut to some products"""
-        return([t for t in self.reactions
-                if t.reactants==reactants
-                and np.all([t1 in t.products  for t1 in with_products])
-                and not np.any([t1 in t.products for t1 in without_products])
-                and np.all([t1 in t.reactants for t1 in with_reactants])
-                and not np.any([t1 not in t.reactants for t1 in without_reactants])])
+    def remove_unnecessary_reactions(self):
+        """Remove all reactions containing species that have no
+        density."""
+        for r in copy(self.reactions):
+            if any([s not in self.density for s in list(r.reactants)+list(r.products)]):
+                if self.verbose:
+                    print(f'Removing reaction containing species not in model: {str(r)}')
+                self.reactions.remove(r)
 
     def __iter__(self):
         for t in self.reactions: yield(t)
@@ -609,39 +608,56 @@ class ReactionNetwork:
 
     def get_matching_reactions(
             self,
+            name=None,
             reactants=None,
             products=None,
             not_reactants=None,
             not_products=None,
+            coefficients=None,
     ):
         """Return a list of reactions with this reactant."""
         retval = []
         for reaction in self.reactions:
-            if reactants is not None:
-                reactants = tools.ensure_iterable(reactants)
-                if any([t not in reaction.reactants for t in reactants]):
-                    continue
-            if products is not None:
-                products = tools.ensure_iterable(products)
-                if any([t not in reaction.products for t in products]):
-                    continue
-            if not_reactants is not None:
-                not_reactants = tools.ensure_iterable(not_reactants)
-                if any([t in reaction.reactants for t in not_reactants]):
-                    continue
-            if not_products is not None:
-                not_products = tools.ensure_iterable(not_products)
-                if any([t in reaction.products for t in not_products]):
+            if name is None:
+                ## match reactants/products
+                if reactants is not None:
+                    reactants = tools.ensure_iterable(reactants)
+                    if any([t not in reaction.reactants for t in reactants]):
+                        continue
+                if products is not None:
+                    products = tools.ensure_iterable(products)
+                    if any([t not in reaction.products for t in products]):
+                        continue
+                if not_reactants is not None:
+                    not_reactants = tools.ensure_iterable(not_reactants)
+                    if any([t in reaction.reactants for t in not_reactants]):
+                        continue
+                if not_products is not None:
+                    not_products = tools.ensure_iterable(not_products)
+                    if any([t in reaction.products for t in not_products]):
+                        continue
+            else:
+                ## match by name
+                if reaction.name != name:
+                    continue    
+            if coefficients is not None:
+                ## additional matching by coefficients
+                if any([(key not in reaction.coefficients
+                         or reaction.coefficients[key] != coefficients[key])
+                        for key in coefficients]):
                     continue
             retval.append(reaction)
         return retval
 
-    def get_reaction(self,name):
-        for t in self.reactions:
-            if t.name==name:
-                return(t)
+    def get_reaction(self, **kwargs_get_matching_reactions,):
+        """Return a uniquely matching reaction."""
+        retval = self.get_matching_reactions(**kwargs_get_matching_reactions)
+        if len(retval) == 0:
+            raise Exception('No matching reaction found')
+        elif len(retval) == 1:
+            return retval[0]
         else:
-            raise IndexError('Could not find reaction: '+repr(name))    
+            raise Exception('Multiple matching reaction found')
 
     def __str__(self):
         retval = []
@@ -667,9 +683,8 @@ class ReactionNetwork:
             for h in hasharray:
                 i = tools.find(hasharray==h)
                 if len(i)>1:
-                    print(f'warning: check_reactions: reaction appears {len(i)} times:')
-                    for j in i:
-                        print(f'    {repr(self.reactions[j])}')
+                    warnings.warn(f'Reaction appears {len(i)} times'+'\n    '+'\n    '.join([
+                    repr(self.reactions[j]) for j in i]))
 
     def load_STAND(self,filename):
         """Load encoded reactions and coefficients from a file."""
@@ -742,31 +757,55 @@ class ReactionNetwork:
                     self.append(Reaction(
                         formula='STAND 3-body',
                         reactants=line['reactants'],products=line['products'],
-                        α0=line0['α'],β0=line0['β'],γ0=line0['γ'],
-                        αinf=lineinf['α'],βinf=lineinf['β'],γinf=lineinf['γ'],
-                        reaction_number=line['reaction_number'],
-                    ))
+                        coefficients=dict(
+                            α0=line0['α'],β0=line0['β'],γ0=line0['γ'],
+                            αinf=lineinf['α'],βinf=lineinf['β'],γinf=lineinf['γ'],
+                            reaction_number=line['reaction_number'],type=line['type'],)))
                 ## bimolecular reactions and thermal ionisation
                 elif line['type'] in (2,7,10):
                     self.append(Reaction(
                         formula='kooij',
                         reactants=line['reactants'],products=line['products'],
-                        α=line['α'],β=line['β'],γ=line['γ'],
-                        reaction_number=line['reaction_number'],
-                    ))
+                        coefficients=dict(α=line['α'],β=line['β'],γ=line['γ'],
+                                          reaction_number=line['reaction_number'],type=line['type'],)))
                 ## bimolecular reactions producing photon
                 elif line['type'] in (8,):
                     self.append(Reaction(
                         formula='kooij',
                         reactants=line['reactants'],products=line['products']+['γ'],
-                        α=line['α'],β=line['β'],γ=line['γ'],
-                        reaction_number=line['reaction_number'],
-                    ))
-                ## unknown reaction type
-                else:
+                        coefficients=dict(
+                            α=line['α'],β=line['β'],γ=line['γ'],
+                            reaction_number=line['reaction_number'],type=line['type'],)))
+                ## unknown reaction type -- termolecular -- consume two lines
+                elif line['type'] in ( 15, 16, 95, 97,):
                     if line['type'] not in already_warned_for_types:
-                        print(f'warning: reaction type not implemented {line["type"]}: {reaction_types[line["type"]]}')
+                        warnings.warn(f'reaction type not implemented, added with zero coefficient: {line["type"]}: {reaction_types[line["type"]]}')
                         already_warned_for_types.append(line['type'])
+                    line0 = line    # low-density limit
+                    lineinf = get_line()    # high-density limit
+                    self.append(Reaction(
+                        formula='constant',
+                        reactants=line['reactants'],products=line['products'],
+                        coefficients={
+                            'k':0,
+                            'type':line0['type'],
+                            'reaction_number':line0['reaction_number'],
+                        }))
+                ## unknown non-termolecular reaction type -- consume one line
+                elif line['type'] in ( 1, 3, 6, 13, 14, 17, 18, 66, 67, 88, 96, 98, 99):
+                    if line['type'] not in already_warned_for_types:
+                        warnings.warn(f'reaction type not implemented, added with zero coefficient: {line["type"]}: {reaction_types[line["type"]]}')
+                        already_warned_for_types.append(line['type'])
+                    self.append(Reaction(
+                        formula='constant',
+                        reactants=line['reactants'],products=line['products'],
+                        coefficients={
+                            'k':0,
+                            'type':line['type'],
+                            'reaction_number':line['reaction_number'],
+                        }))
+                else:
+                    raise Exception( 'unspecified line type',line['type'])
             ## verify
             self.check_reactions()
 

@@ -1,6 +1,7 @@
 import functools
 from copy import copy,deepcopy
 import re
+import time
 
 from scipy import constants,integrate
 import numpy as np
@@ -14,8 +15,8 @@ from .exceptions import InferException
 from . import plotting
 
 
-class Atmosphere(Dataset):
-    """1D model atmosphere"""
+
+class OneDimensionalAtmosphere(Dataset):
 
     prototypes = {}
     prototypes['description'] = dict( description="",kind=str ,infer={})
@@ -25,26 +26,42 @@ class Atmosphere(Dataset):
     prototypes['date'] = dict(description="Date data collected or printed" ,kind=str ,infer={})
     prototypes['z'] = dict(description="Height above surface (cm)" ,kind=float ,infer={})
     prototypes['z(km)'] = dict(description="Height above surface (km)" ,kind=float ,infer={'z':lambda z: z*1e-5,})
-    prototypes['T'] = dict(description="Temperature (K)" ,kind=float ,infer={})
+    prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind=float ,infer={})
     prototypes['nt'] = dict(description="Total number density (cm-3)" ,kind=float ,infer={})
     prototypes['p'] = dict(description="Pressure (bar)" ,kind=float ,infer={})
     prototypes['Kzz'] = dict(description="Turbulent diffusion constant (cm2.s-1)" ,kind=float ,infer={})
     prototypes['Hz'] = dict(description="Local scale height (cm1)" ,kind=float ,infer={})
+    prototypes['zeta(s-1)'] = dict(description="not implemented" ,kind=float ,infer={})
+    prototypes['h'] = dict(description="not implemented" ,kind=float ,infer={})
+    prototypes['f+'] = dict(description="not implemented" ,kind=float ,infer={})
+
+    def __init__(self):
+        Dataset.__init__(self)
+        self.permit_nonprototyped_data = False
+
+
+class AtmosphericChemistry():
+    """1D model atmosphere"""
 
     def __init__(self,*args,**kwargs):
-        Dataset.__init__(self,*args,**kwargs)
-        self.permit_reference_breaking = False
         self.reaction_network = kinetics.ReactionNetwork()
-        self.reaction_network.state = self
+        self.density = self.reaction_network.density = Dataset()
+        self.state = self.reaction_network.state = OneDimensionalAtmosphere()
+        self.verbose = self.reaction_network.verbose = False
     
-    def load_ARGO_depth(self,filename):
-        """Load an ARGO depth.dat file."""
-        data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
-        nt = data['NH(cm-3)']
-        ## load physical parameters
+    def load_ARGO(
+            self,
+            model_output_directory,
+            reaction_network_filename=None,
+            rate_coefficient_filename=None,            
+            ):
+        ## load depth.dat physical parameters and species volume density
+        data = tools.file_to_dict(
+            f'{model_output_directory}/depth.dat',
+            skiprows=2,labels_commented=False)
         for key_from,key_to in (
                 ('p(bar)','p'),
-                ('T(K)','T'),
+                ('T(K)','Ttr'),
                 ('NH(cm-3)','nt'),
                 ('Kzz(cm2s-1)','Kzz'),
                 ('Hz(cm)','z'),
@@ -52,55 +69,61 @@ class Atmosphere(Dataset):
                 ('h','h'),
                 ('f+','f+')
         ):
-            if key_to in self:
-                assert np.all(self[key_to] == data.pop(key_from))
-            else:
-                self[key_to] = data.pop(key_from)
-        ## load volume density
+            self.state[key_to] = data.pop(key_from)
         for key in data:
-            self.set_abundance(
-                kinetics.translate_species(key,'ARGO','standard'),
-                data[key]*nt)
+            self.set_density(
+                kinetics.translate_species(key,'STAND','standard'),
+                data[key]*self.state['nt'])
+        if reaction_network_filename is not None:
+            ## load STAND reaction network
+            self.reaction_network.load_STAND(reaction_network_filename)
+            self.reaction_network.remove_unnecessary_reactions()
+        if rate_coefficient_filename is not None:
+            ## Load the rate coefficients from an ARGO
+            ## Reactions/Kup.dat or
+            data = tools.file_to_dict(rate_coefficient_filename,skiprows=2,labels_commented=False)
+            assert np.all(data.pop('p[bar]') == self['p']),'Mismatch between model pressure grid and reaction rate coefficient grid.'
+            assert np.all(data.pop('h[cm]') == self['z']),'Mismatch between model z grid and reaction rate coefficient grid.'
+            # reaction_numbers = np.array([t.coefficients['reaction_number'] for t in self.reaction_network.reactions])
+            # assert len(np.unique(reaction_numbers)) == len(reaction_numbers)
+            # rates_reaction_numbers = np.array([int(key[1:]) for key in data])
+            # if reaction_numbers.max() != rates_reaction_numbers.max():
+                # print(f'warning: reaction numbers do not align')
+                # # raise Exception
+            # ## load rate coefficients into self
+            for r in self.reaction_network.reactions:
+                r.rate_coefficient = data['R'+str(r.coefficients['reaction_number'])]
 
-    def load_ARGO_reaction_rate_coefficients(self,filename):
-        """Load the rate coefficients from an ARGO Reactions/Kup.dat or
-        Kdown.dat."""
-        ## load data -- check consistency with self
-        data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
-        assert np.all(data.pop('p[bar]') == self['p'])
-        assert np.all(data.pop('h[cm]') == self['z'])
-        reaction_numbers = np.array([t.coefficients['reaction_number'] for t in self.reaction_network.reactions])
-        assert len(np.unique(reaction_numbers)) == len(reaction_numbers)
-        rates_reaction_numbers = np.array([int(key[1:]) for key in data])
-        if reaction_numbers.max() != rates_reaction_numbers.max():
-            print(f'warning: reaction numbers do not align')
-            # raise Exception
-        ## load rate coefficients into self
-        for r in self.reaction_network.reactions:
-            r.rate_coefficient = data['R'+str(r.coefficients['reaction_number'])]
 
-    def set_abundance(self,species,abundance):
-        self['n_'+species] = abundance
-        self.reaction_network.set_abundance(species,self['n_'+species])
+    # def load_ARGO_lifetime(self,filename):
+        # """Load an ARGO lifetime.dat file."""
+        # data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
+        # ## load physical parameters
+        # for key_from,key_to in (
+                # ('p(bar)','p'), ('T(K)','T'), ('NH(cm-3)','nt'),
+                # ('Kzz(cm2s-1)','Kzz'), ('Hz(cm)','z'),
+                # ('zeta(s-1)','zeta(s-1)'), ('h','h'), ('f+','f+')
+        # ):
+            # if key_to in self:
+                # assert np.all(self[key_to] == data.pop(key_from))
+            # else:
+                # self[key_to] = data.pop(key_from)
+        # ## load densitys
+        # for key in data:
+            # standard_key = kinetics.translate_species(key,'ARGO','standard')
+            # self['τ_'+standard_key] = data[key]
 
-    def load_ARGO_lifetime(self,filename):
-        """Load an ARGO lifetime.dat file."""
-        data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
-        ## load physical parameters
-        for key_from,key_to in (
-                ('p(bar)','p'), ('T(K)','T'), ('NH(cm-3)','nt'),
-                ('Kzz(cm2s-1)','Kzz'), ('Hz(cm)','z'),
-                ('zeta(s-1)','zeta(s-1)'), ('h','h'), ('f+','f+')
-        ):
-            if key_to in self:
-                assert np.all(self[key_to] == data.pop(key_from))
-            else:
-                self[key_to] = data.pop(key_from)
-        ## load abundances
-        for key in data:
-            standard_key = kinetics.translate_species(key,'ARGO','standard')
-            self['τ_'+standard_key] = data[key]
-    
+    def __getitem__(self,key):
+        if self.state.is_known(key):
+            return self.state[key]
+        elif key in self.density:
+            return self.density[key]
+        else:
+            raise Exception(f'Unknown {key=}')
+
+    def set_density(self,species,density):
+        self.density[species] = density
+
     def plot_vertical(self,ykey,*xkeys,ax=None):
         if ax is None:
             ax = plotting.gca()
@@ -109,12 +132,8 @@ class Atmosphere(Dataset):
         ax.set_xscale('log')
         ax.set_ylim(self[ykey].min(),self[ykey].max())
         ax.set_ylabel(ykey)
-        ax.set_xlabel('abundance?')
+        ax.set_xlabel('density?')
         plotting.legend(ax=ax)
-
-    def calc_rates(self):
-        self.reaction_network.calc_rates()
-
 
     def get_rates(
             self,
@@ -131,7 +150,7 @@ class Atmosphere(Dataset):
         for reaction in self.reaction_network.get_matching_reactions(**kwargs_get_matching_reactions):
             rate = reaction.rate
             if normalise_to_species is not None:
-                rate /= self.reaction_network.species[normalise_to_species]
+                rate /= self.density[normalise_to_species]
             reaction_names.append(reaction.name)
             rates.append(rate)
         ## sort
@@ -167,9 +186,7 @@ class Atmosphere(Dataset):
         if plot_total:
             total = np.sum(list(rates.values()),0)
             integrated = integrate.trapz(total,self['z'])
-            ax.plot(total,y,color='black',alpha=0.3,linewidth=6,
-                    label=f'{integrated:0.2e} total',
-                    **plot_kwargs)
+            ax.plot(total,y,color='black',alpha=0.3,linewidth=6, label=f'{integrated:0.2e} total', **plot_kwargs)
         for i,(name,rate) in enumerate(rates.items()):
             if nplot is not None and i > nplot:
                 break
@@ -185,7 +202,14 @@ class Atmosphere(Dataset):
         plotting.legend()
         return ax
 
-    def plot_production_destruction(self,species,ykey='z',ax=None,normalise=False,nsort=3):
+    def plot_production_destruction(
+            self,
+            species,
+            ykey='z',
+            ax=None,
+            normalise=False,
+            nsort=3,
+    ):
         """Plot rates matching kwargs_get_matching_reactions."""
         if ax is None:
             ax = plotting.plt.gca()
@@ -195,7 +219,7 @@ class Atmosphere(Dataset):
         self.plot_rates(
             ykey=ykey, ax=ax, plot_total= True,
             products=species,
-            plot_kwargs={'linestyle':'-',},
+            plot_kwargs={'linestyle':'-'},
             normalise_to_species=(species if normalise else None),
             nsort=nsort,
         )
