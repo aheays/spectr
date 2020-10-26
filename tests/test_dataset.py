@@ -113,10 +113,13 @@ def test_data_append():
     assert list(t.value) == [2.,34.,5.]
     assert list(t.uncertainty) == [0.2,0.3,0.5]
 
-def test_data_append_with_longer_string():
+def test_data_append_extend_with_longer_string():
     t = Data(value=['a','b'])
     t.append('abc')
-assert list(t.value) == ['a','b','abc']
+    assert list(t.value) == ['a','b','abc']
+    t = Data(value=['a','b'])
+    t.extend(['abc','f'])
+    assert list(t.value) == ['a','b','abc','f']
 
 def test_data_extend():
     t = Data(value=['a','b'])
