@@ -1052,11 +1052,11 @@ def dict_to_recarray(d):
         ra = np.rec.fromarrays([np.array(d[t]) for t in d], names=list(d.keys()),)
     return(ra)
 
-# def make_recarray(**kwargs):
-    # """kwargs are key=val pair defining arrays of equal length from
-    # which to make recarray."""
-    # ra = np.rec.fromarrays(kwargs.values(),names=list(kwargs.keys()))
-    # return(ra)
+def make_recarray(**kwargs):
+    """kwargs are key=val pair defining arrays of equal length from
+    which to make recarray."""
+    ra = np.rec.fromarrays(kwargs.values(),names=list(kwargs.keys()))
+    return(ra)
 
 # def append_fields_to_recarray(recarray,**keyvals):
     # """Add a new field of name name to recarray. All values of keyvals must
@@ -2470,30 +2470,30 @@ def find_unique(x,y):
     assert len(i)<2,'Multiple matches found'
     return i[0]
 
-# def findin(x,y):
-    # """Find indices of x that appear in y, in the order they appear in
-    # y. If an element of x cannot be found in y, or if multiple found,
-    # an error is raised."""
-    # x = ensureIterable(x)
-    # y = ensureIterable(y)
-    # i = np.zeros(len(x),dtype='int')
-    # for j in range(len(x)):
-        # ii = find(y==x[j])
-        # if len(ii)!=1:
-            # raise Exception('Element `'+str(x[j])+'\' should have 1 version, '+str(len(ii))+' found.')
-        # i[j] = ii
-    # return i
+def findin(x,y):
+    """Find indices of x that appear in y, in the order they appear in
+    y. If an element of x cannot be found in y, or if multiple found,
+    an error is raised."""
+    x = ensure_iterable(x)
+    y = ensure_iterable(y)
+    i = np.zeros(len(x),dtype='int')
+    for j in range(len(x)):
+        ii = find(y==x[j])
+        if len(ii)!=1:
+            raise Exception('Element `'+str(x[j])+'\' should have 1 version, '+str(len(ii))+' found.')
+        i[j] = ii
+    return i
 
-# def findin_numeric(x,y,tolerance=1e-10):
-    # """Use compiled code to findin with numeric data only."""
-    # ix,iy = np.argsort(x),np.argsort(y) # sort data
-    # tx,ty = np.asarray(x,dtype=float)[ix],np.asarray(y,dtype=float)[iy]
-    # i = np.full(tx.shape,-1,dtype=int)
-    # myf.findin_sorted(tx,ty,tolerance,i)
-    # if i[0]==-1: raise Exception('Some value of x not found in y within tolerance.') # hack of an error code
-    # i = i[np.argsort(ix)]                 # undo x sort
-    # i = np.argsort(iy)[i]                 # undo y sort
-    # return(i)
+def findin_numeric(x,y,tolerance=1e-10):
+    """Use compiled code to findin with numeric data only."""
+    ix,iy = np.argsort(x),np.argsort(y) # sort data
+    tx,ty = np.asarray(x,dtype=float)[ix],np.asarray(y,dtype=float)[iy]
+    i = np.full(tx.shape,-1,dtype=int)
+    myf.findin_sorted(tx,ty,tolerance,i)
+    if i[0]==-1: raise Exception('Some value of x not found in y within tolerance.') # hack of an error code
+    i = i[np.argsort(ix)]                 # undo x sort
+    i = np.argsort(iy)[i]                 # undo y sort
+    return(i)
 
 # def inv(x):
     # """Invert a symmetric matrix."""
