@@ -2,7 +2,7 @@
  
  - Change u/l to ′″ and d to σ -- not feasible because ′ and ″ are not
    valid python symbols -- use 1 and 2 for lower and upper? -- maybe
-   match script u and l? 𝓊 and 𝓁?
+   match script u and l? 𝓊 and 𝓁 (also not valid)? 
 
  - A simpler implementation of self.permit_reference_breaking?
    Currently appears in many places in Dataset
