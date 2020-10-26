@@ -213,12 +213,23 @@ class Data:
                     np.empty(int(new_length*over_allocate_factor-old_length),dtype=self.kind)))
         self._length = new_length
 
-    # def make_scalar(self):
-        # assert not self.is_scalar(),'Already scalar data.'
-        # assert np.unique(self.get_value()),'Non-unique data, cannot make scalar.'
-        # assert not self.has_uncertainty() or np.unique(self.get_uncertainty()),'Non-unique uncertainty, cannot make scalar.'
-        # self.set(self.get_value()[0],
-                 # (self.get_uncertainty()[0] if self.has_uncertainty() else None))
+    def _change_dtype_if_necessary(self,new_value):
+        """Sometimes adding new data requires a change of dtype."""
+        if self.kind == 'U':
+            ## increase unicode dtype strength length if new strings
+            ## are longer than the current dtype
+            old_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self._value.dtype)))
+            if np.isscalar(new_value):
+                new_len = len(str(new_value))
+            else:
+                ## this is a really hacky way to get the length of string in a numpy array!!!
+                new_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(new_value).dtype)))
+            if new_len>old_len:
+                ## reallocate array with new dtype with overallocation
+                over_allocate_factor = 2
+                t = np.empty(len(self._value),dtype=f'<U{new_len*over_allocate_factor}')
+                t[:len(self)] = self._value[:len(self)]
+                self._value = t
 
     def index(self,index):
         """Set self to index"""
@@ -233,6 +244,7 @@ class Data:
         if (self.has_uncertainty() and uncertainty is None):
             raise Exception('Appended data has uncertainty and existing data does not')
         new_length = len(self)+1
+        self._change_dtype_if_necessary(value)
         self._extend_length_if_necessary(new_length)
         self._value[new_length-1] = value
         if self.has_uncertainty():

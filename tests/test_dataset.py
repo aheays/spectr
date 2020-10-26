@@ -5,7 +5,6 @@ import numpy as np
 from spectr.dataset import *
 from spectr.exceptions import InferException
 
-
 def test_datum_construct():
     t = Datum(value=1)
     assert t._value == 1
@@ -76,9 +75,6 @@ def test_datum_timestamp():
     t2 = d.timestamp
     assert t2>t1
 
-
-
-
 def test_data_construct():
     t = Data(value=[1,2])
     assert list(t.value) == [1,2]
@@ -116,6 +112,11 @@ def test_data_append():
     t.append(5,0.5)
     assert list(t.value) == [2.,34.,5.]
     assert list(t.uncertainty) == [0.2,0.3,0.5]
+
+def test_data_append_with_longer_string():
+    t = Data(value=['a','b'])
+    t.append('abc')
+assert list(t.value) == ['a','b','abc']
 
 def test_data_extend():
     t = Data(value=['a','b'])
