@@ -102,7 +102,7 @@ def presetRcParams(
         ## 'toolbar'  :'none' , # hides toolbar but also disables keyboard shortcuts
         'legend.handlelength':4,
         'text.usetex'        :False,
-        'lines.linewidth'    : 1,
+        'lines.linewidth'    : 2,
         'lines.markersize'   : 10.0,
         'grid.alpha'         : 1.0,
         'grid.color'         : 'gray',
