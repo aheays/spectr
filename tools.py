@@ -355,6 +355,9 @@ def randn(shape=None):
 ## convenience functions ##
 ###########################
 
+def warnings_off():
+    warnings.simplefilter("ignore")
+
 # def date_string():
     # """Get string representing date in ISO format."""
     # import datetime
