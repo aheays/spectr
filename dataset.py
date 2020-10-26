@@ -214,7 +214,7 @@ class Data:
         self._length = new_length
 
     def _change_dtype_if_necessary(self,new_value):
-        """Sometimes adding new data requires a change of dtype."""
+        """Changes datatype of existing data array if adding new_value will require it."""
         if self.kind == 'U':
             ## increase unicode dtype strength length if new strings
             ## are longer than the current dtype
@@ -257,6 +257,7 @@ class Data:
             raise Exception('Extending data has uncertainty and existing data does not')
         old_length = len(self)
         new_length = len(self)+len(value)
+        self._change_dtype_if_necessary(value)
         self._extend_length_if_necessary(new_length)
         self._value[old_length:new_length] = value
         if uncertainty is not None:
@@ -638,7 +639,7 @@ class Dataset(optimise.Optimiser):
             if not self.is_scalar(key):
                 self._data[key].index(i)
 
-    def format(self,keys=None,comment='# ',delimiter=' '):
+    def format(self,keys=None,comment='# ',delimiter=' | '):
         """Format data into a string representation."""
         if keys is None:
             keys = self.keys()
@@ -789,7 +790,8 @@ class Dataset(optimise.Optimiser):
             self.assert_known(key)
             return(isinstance(self._data[key],Datum))
 
-    def make_vector(self,key=None):
+    def make_vector(self, key=None,):
+        """Make an existing key vector if it is currently scalar."""
         if key is None:
             for key in self:
                 self.make_vector(key)
