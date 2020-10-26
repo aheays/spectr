@@ -832,14 +832,22 @@ class Dataset(optimise.Optimiser):
 
     def append(self,**new_keys_vals):
         """Append a single row of data from new scalar values."""
-        new_dataset = self.__class__()
-        for key in new_keys_vals:
-            new_dataset[key] = [new_keys_vals[key]]
-        self.concatenate(new_dataset)
+        assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
+        if set(self.keys())==set(new_keys_vals.keys()):
+            ## all keys are present, add directly to data
+            for key,val in new_keys_vals.items():
+                self._data[key].append(val)
+        else:
+            ## some keys missing, use internal inferences to align them
+            new_dataset = self.__class__()
+            for key in new_keys_vals:
+                new_dataset[key] = [new_keys_vals[key]]
+            self.concatenate(new_dataset)
 
     def extend(self,**new_keys_vals):
         """Extend data from input vector values (scalar values are
         broadcast)."""
+        assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
         new_dataset = self.__class__()
         for key in new_keys_vals:
             new_dataset[key] = new_keys_vals[key]
