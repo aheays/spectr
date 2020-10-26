@@ -19,7 +19,6 @@ from . import kinetics
 from . import atmosphere
 from . import hitran
 from . import bruker
-from . import argo
 
 ## import more explicitly for interactive use
 from .dataset import Dataset
