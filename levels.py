@@ -1,6 +1,7 @@
 import itertools
 import functools
 from copy import copy,deepcopy
+import re
 
 from scipy import constants
 import numpy as np
@@ -10,14 +11,18 @@ from .conversions import convert
 from . import tools
 from . import database
 from .exceptions import InferException
-from .levels_prototypes import *
+from .levels_prototypes import prototypes
 
 
-class BaseLinesLevels(Dataset):
+def _unique(x):
+    """Take a list and return unique element.s"""
+    return tools.unique(x,preserve_ordering= True)
+
+class Base(Dataset):
     """Common stuff for for lines and levels."""
 
-    prototypes = {key:copy(prototypes[key]) for key in [
-        'description','notes','author','reference','date','classname',]}
+    _init_keys = ['description','notes','author','reference','date','classname',]
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
     
     def __init__(self,name=None,**keys_vals,):
         """Default_name is decoded to give default values. Kwargs ca be
@@ -25,7 +30,7 @@ class BaseLinesLevels(Dataset):
         themselves will populate data arrays."""
         if name is None:
             name = type(self).__name__
-            name = name[0].lower()+name[1:]
+            name = re.sub(r'(.)([A-Z])',r'\1_\2',name).lower()
         Dataset.__init__(self,name=name)
         self['classname'] = type(self).__name__
         self.permit_nonprototyped_data = False
@@ -36,23 +41,17 @@ class BaseLinesLevels(Dataset):
         self.automatic_format_input_function(limit_to_args=('name',))
 
 
-
-parent = BaseLinesLevels
-class HeteronuclearDiatomicElectronicLevel(parent):
+class GenericLevel(Base):
     """A generic level."""
+    _init_keys = Base._init_keys + ['species','E','Eref','Γ','ΓD',]
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in [
-        'species','label',
-        'Λ','s','S','LSsign','Eref',
-    ]})
+class HeteronuclearDiatomicElectronicLevel(Base):
+    _init_keys = GenericLevel._init_keys +['label', 'Λ','s','S','LSsign',]
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-parent = HeteronuclearDiatomicElectronicLevel
-class HeteronuclearDiatomicVibrationalLevel(parent):
-    """A generic level."""
-
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in [
+class HeteronuclearDiatomicVibrationalLevel(Base):
+    _init_keys =  HeteronuclearDiatomicElectronicLevel._init_keys + [
         'v',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
@@ -64,62 +63,39 @@ class HeteronuclearDiatomicVibrationalLevel(parent):
         'pv','qv',
         'pDv','qDv',
         'Tvreduced','Tvreduced_common',
-        'Bv_μscaled',
-    ]})
+        'Bv_μscaled',]
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 
-parent = HeteronuclearDiatomicVibrationalLevel
-class HeteronuclearDiatomicRotationalLevel(parent):
+class HeteronuclearDiatomicRotationalLevel(Base):
     """Rotational levels of a heteronuclear diatomic molecule."""
-
-    default_zkeys = ('label','v','Σ','ef')
-
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in [
+    _init_keys = _unique(HeteronuclearDiatomicVibrationalLevel._init_keys + [
         'E','J','g','pm','Γ','N','S',
         'Teq','Tex','partition_source','partition','α','Nself',
-        'σv','sa','ef','Fi','Ω','Σ','SR',
-    ]})
+        'σv','sa','ef','Fi','Ω','Σ','SR',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    default_zkeys = ('label','v','Σ','ef')
 
-parent = HeteronuclearDiatomicElectronicLevel
-class HomonuclearDiatomicElectronicLevel(parent):
-    """A generic level."""
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear','gu',]})
+class HomonuclearDiatomicElectronicLevel(HeteronuclearDiatomicElectronicLevel):
+    _init_keys = _unique(HeteronuclearDiatomicElectronicLevel._init_keys + ['Inuclear','gu',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-parent = HeteronuclearDiatomicVibrationalLevel
-class HomonuclearDiatomicVibrationalLevel(parent):
-    """A generic level."""
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear','gu',]})
+class HomonuclearDiatomicVibrationalLevel(HeteronuclearDiatomicVibrationalLevel):
+    _init_keys = _unique(HeteronuclearDiatomicVibrationalLevel._init_keys + ['Inuclear','gu',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-parent = HeteronuclearDiatomicRotationalLevel
-class HomonuclearDiatomicRotationalLevel(parent):
-    """A generic level."""
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear','gu',]})
+class HomonuclearDiatomicRotationalLevel(HeteronuclearDiatomicRotationalLevel):
+    _init_keys = _unique(HeteronuclearDiatomicRotationalLevel._init_keys + ['Inuclear','gu',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 
-# class TriatomicDinfh(Base):
-    # """Rotational levels of a triatomic molecule in the D∞h point group."""
+# # class TriatomicDinfh(Base):
+    # # """Rotational levels of a triatomic molecule in the D∞h point group."""
 
-    # prototypes = deepcopy(Base.prototypes)
-    # prototypes.update({
-        # 'ν1':dict(description='Vibrational quantum number symmetric stretching' ,kind=int,fmt='<3d',infer={}),
-        # 'ν2':dict(description='Vibrational quantum number bending' ,kind=int,fmt='<3d',infer={}),
-        # 'ν3':dict(description='Vibrational quantum number asymmetric stretching' ,kind=int,fmt='<3d',infer={}),
-        # 'l' :dict(description='Quantum number' ,kind=str,fmt='<3',infer={}),
-        # })
-
-
-######################################
-## convenient access by point group ##
-######################################
-        
-rotational_level_by_point_group = {}
-rotational_level_by_point_group['C∞v'] = HeteronuclearDiatomicRotationalLevel
-rotational_level_by_point_group['D∞h'] = HomonuclearDiatomicRotationalLevel
-
-vibrational_level_by_point_group = {}
-vibrational_level_by_point_group['C∞v'] = HeteronuclearDiatomicVibrationalLevel
-vibrational_level_by_point_group['D∞h'] = HomonuclearDiatomicVibrationalLevel
+    # # prototypes = deepcopy(Base.prototypes)
+    # # prototypes.update({
+        # # 'ν1':dict(description='Vibrational quantum number symmetric stretching' ,kind=int,fmt='<3d',infer={}),
+        # # 'ν2':dict(description='Vibrational quantum number bending' ,kind=int,fmt='<3d',infer={}),
+        # # 'ν3':dict(description='Vibrational quantum number asymmetric stretching' ,kind=int,fmt='<3d',infer={}),
+        # # 'l' :dict(description='Quantum number' ,kind=str,fmt='<3',infer={}),
+        # # })

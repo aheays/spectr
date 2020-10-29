@@ -2269,21 +2269,21 @@ def array_to_hdf5(filename,*args,**kwargs):
     # # return(np.prod([recarray[key]==value for (key,value) in key_value.items()],axis=0))
     # return(np.prod([recarray[key]==value for (key,value) in key_value.items()],axis=0,dtype=bool))
 
-# # def unique(x):
-# #     """Returns unique elements."""
-# #     if not np.iterable(x): return([x])
-# #     return(list(set(x)))
+# def unique(x):
+#     """Returns unique elements."""
+#     if not np.iterable(x): return([x])
+#     return(list(set(x)))
 
-# def unique(*x,preserve_ordering=False):
-    # """Returns unique elements. preserve_ordering is likely slower"""
-    # if preserve_ordering:
-        # x = list(x)
-        # for t in copy(x):
-            # while x.count(t)>1:
-                # x.pop(t)
-        # return(x)
-    # else:
-        # return(list(set(x)))
+def unique(x,preserve_ordering=False):
+    """Returns unique elements. preserve_ordering is likely slower"""
+    if preserve_ordering:
+        x = list(x)
+        for t in copy(x):
+            while x.count(t)>1:
+                x.remove(t)
+        return(x)
+    else:
+        return(list(set(x)))
 
 # def argunique(x):
     # """Find indices of unique elements of x. Picks first such

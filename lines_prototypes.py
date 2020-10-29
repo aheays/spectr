@@ -1,20 +1,21 @@
 from copy import copy,deepcopy
 
 from . import tools
-from . import levels
+# from . import levels
+from . import levels_prototypes
 
 prototypes = {}
 
 ## copy some direct from levels
 for key in (
         'classname','description','notes','author','reference','date',
-        'species',
-        'mass','reduced_mass','partition_source','partition',
+        'species', 'mass','reduced_mass','partition_source','partition',
+        'ΓD',
 ):
-    prototypes[key] = copy(levels.prototypes[key])
+    prototypes[key] = copy(levels_prototypes.prototypes[key])
 
 ## import all from levels with suffices added
-for key,val in levels.prototypes.items():
+for key,val in levels_prototypes.prototypes.items():
     tval = deepcopy(val)
     tval['infer'] = {tuple(key+'_u'
                            for key in tools.ensure_iterable(dependencies)):function
@@ -24,7 +25,6 @@ for key,val in levels.prototypes.items():
                            for key in tools.ensure_iterable(dependencies)):function
                      for dependencies,function in val['infer'].items()}
     prototypes[key+'_l'] = tval
-
 
 ## add lines things
 prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s')
@@ -163,3 +163,5 @@ prototypes['partition']['infer']['partition_l'] = lambda partition_l:partition_l
 prototypes['partition']['infer']['partition_u'] = lambda partition_u:partition_u
 prototypes['partition_l']['infer']['partition'] = lambda partition:partition
 prototypes['partition_u']['infer']['partition'] = lambda partition:partition
+
+

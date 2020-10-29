@@ -16,8 +16,11 @@ from . import database
 from . import plotting
 from .conversions import convert
 from .exceptions import InferException
-from .lines_prototypes import *
+from .lines_prototypes import prototypes
+from . import levels
+from .levels import _unique
 
+print(prototypes.keys())
 
 level_suffix = {'upper':'_u','lower':'_l'}
 
@@ -37,23 +40,15 @@ def _expand_level_keys_to_upper_lower(levels_class):
     return retval
 
 
-#############
-## classes ##
-#############
-
-parent = levels.BaseLinesLevels
-class Base(parent):
-    """For now rotational lines."""
-
-    _levels_class = levels.HeteronuclearDiatomicElectronicLevel
-
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in (
-        _expand_level_keys_to_upper_lower(_levels_class)
-    )})
+class GenericLine(levels.Base):
+    _levels_class = levels.GenericLevel
+    _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
+                         + ['description','notes','author','reference','date','classname',
+                            'ν','Γ','ΓD','f',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
     def __init__(self,*args,**kwargs):
-        levels.BaseLinesLevels.__init__(self,*args,**kwargs)
+        levels.Base.__init__(self,*args,**kwargs)
         self['classname_l'] = self._levels_class.__name__
         self['classname_u'] = self._levels_class.__name__
 
@@ -377,46 +372,29 @@ class Base(parent):
         self.concatenate(new)
 
 
-parent = Base
-class HeteronuclearDiatomicElectronicLine(parent):
-
+class HeteronuclearDiatomicElectronicLine(GenericLine):
     _levels_class = levels.HeteronuclearDiatomicElectronicLevel
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in (
+    _init_keys = _unique(
         _expand_level_keys_to_upper_lower(_levels_class)
-        + [
-           'Teq', 'Tex', 'Ttr',
-           'partition_source',
-           'partition',
-           'L',
-           'γair', 'δair', 'γself', 'nair',
-           'Pself', 'Pair', 'Nself',]
-    )})
+        + GenericLine._init_keys
+        + ['Teq', 'Tex', 'Ttr', 'partition_source', 'partition', 'L', 'γair', 'δair', 'γself', 'nair', 'Pself', 'Pair', 'Nself',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-parent = HeteronuclearDiatomicElectronicLine
-class HeteronuclearDiatomicVibrationalLine(parent):
-
+class HeteronuclearDiatomicVibrationalLine(HeteronuclearDiatomicElectronicLine):
     _levels_class = levels.HeteronuclearDiatomicVibrationalLevel
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in (
+    _init_keys = _unique(
         _expand_level_keys_to_upper_lower(_levels_class)
-        + ['ν','νv','μv',])})
+        + HeteronuclearDiatomicElectronicLine._init_keys
+        + ['ν','νv','μv',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-parent = HeteronuclearDiatomicVibrationalLine
-class HeteronuclearDiatomicRotationalLine(parent):
-
+class HeteronuclearDiatomicRotationalLine(HeteronuclearDiatomicVibrationalLine):
     _levels_class = levels.HeteronuclearDiatomicRotationalLevel
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in (
+    _init_keys = _unique(
         _expand_level_keys_to_upper_lower(_levels_class)
-        + ['branch', 'ΔJ',
-           'Γ', 'ΓD',
-           'f', 'σ', 
-           'S','S296K', 
-           'τ', 'Ae','τa',
-           'Sij',
-           ])})
-
+        + HeteronuclearDiatomicVibrationalLine._init_keys
+        + ['branch', 'ΔJ', 'Γ', 'ΓD', 'f', 'σ', 'S','S296K', 'τ', 'Ae','τa', 'Sij',])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -458,45 +436,30 @@ class HeteronuclearDiatomicRotationalLine(parent):
         kw['ΔJ'] = np.array(ΔJ,dtype=int)
         kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.extend(**kw)
-        
 
-
-parent = HeteronuclearDiatomicElectronicLine
-class HomonuclearDiatomicElectronicLine(parent):
-    """A generic level."""
+class HomonuclearDiatomicElectronicLine(HeteronuclearDiatomicElectronicLine):
     _levels_class = levels.HomonuclearDiatomicElectronicLevel
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear_u','gu_u','Inuclear_l','gu_l',]})
+    _init_keys = _unique(
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + HeteronuclearDiatomicElectronicLine._init_keys)
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-parent = HeteronuclearDiatomicVibrationalLine
-class HomonuclearDiatomicVibrationalLine(parent):
-    """A generic level."""
+class HomonuclearDiatomicVibrationalLine(HeteronuclearDiatomicVibrationalLine):
     _levels_class = levels.HomonuclearDiatomicVibrationalLevel
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear_u','gu_u','Inuclear_l','gu_l',]})
+    _init_keys = _unique(
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + HeteronuclearDiatomicVibrationalLine._init_keys)
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-parent = HeteronuclearDiatomicRotationalLine
-class HomonuclearDiatomicRotationalLine(parent):
-    """A generic level."""
+class HomonuclearDiatomicRotationalLine(HeteronuclearDiatomicRotationalLine):
     _levels_class = levels.HomonuclearDiatomicRotationalLevel
-    prototypes = copy(parent.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear_u','gu_u','Inuclear_l','gu_l',]})
-
+    _init_keys = _unique(
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + HeteronuclearDiatomicRotationalLine._init_keys)
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 # class TriatomicDinfh(Base):
 
     # prototypes = {key:copy(prototypes[key]) for key in (
         # list(Base.prototypes)
         # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
-
-######################################
-## convenient access by point group ##
-######################################
-        
-rotational_line_by_point_group = {}
-rotational_line_by_point_group['C∞v'] = HeteronuclearDiatomicRotationalLine
-rotational_line_by_point_group['D∞h'] = HomonuclearDiatomicRotationalLine
-
-vibrational_line_by_point_group = {}
-vibrational_line_by_point_group['C∞v'] = HeteronuclearDiatomicVibrationalLine
-vibrational_line_by_point_group['D∞h'] = HomonuclearDiatomicVibrationalLine

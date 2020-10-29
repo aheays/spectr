@@ -1,7 +1,10 @@
 import functools
 from copy import copy
 
+import numpy as np 
+
 from . import tools
+from .exceptions import InferException
 
 prototypes = {}
 
@@ -16,14 +19,15 @@ prototypes['mass'] = dict(description="Mass (amu)",kind=float, fmt='<11.4f', inf
 prototypes['reduced_mass'] = dict(description="Reduced mass (amu)", kind=float, fmt='<11.4f', infer={('species','database',): lambda species: _get_species_property(species,'reduced_mass')})
 prototypes['E'] = dict(description="Level energy (cm-1)" ,kind=float ,fmt='<14.7f' ,infer={})
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind=float,infer={})
+prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,})
 
 
 def _f0(classname,J):
     """Calculate heteronuclear diatomic molecule level degeneracy."""
-    if classname == 'HomonuclearDiatomic':
+    if classname == 'HeteronuclearDiatomicRotationalLevel':
         return 2*J+1
     else:
-        raise InferException('Only valid of HomonuclearDiatomic')
+        raise InferException('Only valid for classname=HeteronuclearDiatomicRotationalLevel')
 @tools.vectorise_function
 @functools.lru_cache
 def _f1(classname,J,Inuclear,sa):
