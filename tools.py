@@ -3,12 +3,15 @@ import re
 import os
 import warnings
 from copy import copy
+from pprint import pprint
+import itertools
 
 from scipy import interpolate,constants
 import csv
 import glob as glob_module
 import numpy as np
 import h5py
+from sympy.printing.pycode import pycode
 
 from . import plotting
 from .plotting import *
@@ -81,7 +84,7 @@ def vectorise_function(function):
     return vectorised_function
 
 def vectorise_function_in_chunks(dtype=float):
-    """Deorator for looking for groups of common arguments and calculate
+    """Decorator for looking for groups of common arguments and calculate
     them only once in a vectorised version of the original function
     which accepts scalar arguments. If all arguments are scalar return
     a scalar result. Otherwise return an array of dtype"""
@@ -406,7 +409,12 @@ def isiterable(x):
         # return False
     # return True
 
-
+def indices(arr):
+    """Generator return all combinations of indices for an array."""
+    for i in itertools.product(
+            *[range(n) for n in
+              np.asarray(arr).shape]):
+        yield i
 
 ########################
 ## file manipulations ##
@@ -881,36 +889,36 @@ def printcols(*columns):
         # x = x.reshape(list(x.shape)+[1 for t in range(number_of_axes_to_add)])
     # return np.repeat(x,repeats,axis)
 
-# def repmat_vector(x,repeats=(),axis=-1):
-    # """x must be 1D. Expand to as many other dimension as length of
-    # repeats. Put x variability on axis. All other dimensions just
-    # repeat this one. """
-    # x = np.array(x)
-    # assert len(x.shape)==1,'1D only'
-    # retval = np.tile(x,list(repeats)+[1])
-    # if not (axis==-1 or axis==(retval.ndim-1)):
-        # return(np.moveaxis(np.tile(x,list(repeats)+[1]),-1,axis))
-    # return(retval)
+def repmat_vector(x,repeats=(),axis=-1):
+    """x must be 1D. Expand to as many other dimension as length of
+    repeats. Put x variability on axis. All other dimensions just
+    repeat this one. """
+    x = np.array(x)
+    assert len(x.shape)==1,'1D only'
+    retval = np.tile(x,list(repeats)+[1])
+    if not (axis==-1 or axis==(retval.ndim-1)):
+        return(np.moveaxis(np.tile(x,list(repeats)+[1]),-1,axis))
+    return(retval)
 
-# def repmat(x,repeats):
-    # """Copy and expand matrix in various directions. Length of repeats
-    # must match dimension of x. If greater, then extra dimension are
-    # PREPENDED to x. Each (integer>0) element of repeat determines how
-    # many copies to make along that axis. """
-    # ## ensure types
-    # repeats = ensure_iterable(repeats)
-    # x = np.array(x)
-    # ## ensure all dimensions are included -- otherwise assume 1
-    # if len(repeats)<x.ndim:               #ensure long enough to match array ndim
-        # repeats.extend(np.ones(len(repeats-x.ndim)))
-    # ## ensure array has enough dimensions -- prepending empty dimensions
-    # if x.ndim<len(repeats):               
-        # x = np.reshape(x,[1 for t in range(len(repeats)-x.ndim)]+list(x.shape))
-    # ## for each non-unity repeat increase size of the array
-    # for axis,repeat in enumerate(repeats):
-        # if repeat==1: continue
-        # x = np.concatenate(tuple([x for t in range(repeat)]),axis=axis)
-    # return(x)
+def repmat(x,repeats):
+    """Copy and expand matrix in various directions. Length of repeats
+    must match dimension of x. If greater, then extra dimension are
+    PREPENDED to x. Each (integer>0) element of repeat determines how
+    many copies to make along that axis. """
+    ## ensure types
+    repeats = ensure_iterable(repeats)
+    x = np.array(x)
+    ## ensure all dimensions are included -- otherwise assume 1
+    if len(repeats)<x.ndim:               #ensure long enough to match array ndim
+        repeats.extend(np.ones(len(repeats-x.ndim)))
+    ## ensure array has enough dimensions -- prepending empty dimensions
+    if x.ndim<len(repeats):               
+        x = np.reshape(x,[1 for t in range(len(repeats)-x.ndim)]+list(x.shape))
+    ## for each non-unity repeat increase size of the array
+    for axis,repeat in enumerate(repeats):
+        if repeat==1: continue
+        x = np.concatenate(tuple([x for t in range(repeat)]),axis=axis)
+    return(x)
 
 # def transpose(x):
     # """Take any 2D interable and transpose it. Returns a list of
@@ -4438,6 +4446,7 @@ def fit_spline_to_extrema(
     if np.isscalar(xi):
         xi = np.linspace(xbeg,xend,max(2,int((xend-xbeg)/xi)))
     xi = np.asarray(xi,dtype=float)
+    assert np.all(np.sort(xi)==xi),'Spline points not monotonically increasing'
     ## get y spline points
     interval_beg = np.concatenate((xi[0:1], xi[1:]-(xi[1:]-xi[:-1])*interval_fraction))
     interval_end = np.concatenate(((xi[:-1]+(xi[1:]-xi[:-1])*interval_fraction,x[-1:])))
@@ -4678,4 +4687,29 @@ def fit_spline_to_extrema(
             # ipeak = [ii for ii in ipeak if ii!=-1]
     # ipeak = np.array(ipeak)
     # return(ipeak)
-    
+
+
+#################
+## sympy stuff ##
+#################
+
+@functools.lru_cache
+def cached_pycode(*args,**kwargs):
+    return(pycode(*args,**kwargs))
+
+@functools.lru_cache
+def lambdify_sympy_expression(
+        sympy_expression,
+        *args,                  # strings denoting input arguments of lambda function
+        **kwargs,               # key=val, set to kwarg arguments of lambda function
+): 
+    """An alternative to sympy lambdify.  ."""
+    ## make into a python string
+    t =  cached_pycode(sympy_expression,fully_qualified_modules=False)
+    ## replace math functions
+    for t0,t1 in (('sqrt','np.sqrt'),):
+        t = t.replace(t0,t1)
+    ## build argument list into expression
+    arglist = list(args) + [f'{key}={repr(val)}' for key,val in kwargs.items()] 
+    eval_expression = f'lambda {",".join(arglist)},**kwargs: {t}' # NOTE: includes **kwargs
+    return eval(eval_expression)

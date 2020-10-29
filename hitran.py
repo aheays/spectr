@@ -2,17 +2,20 @@ import functools
 
 import numpy as np
 
+
 from . import lines
 from . import tools
 from .tools import *
 from .dataset import Dataset
+
+
 
 @tools.vectorise_function_in_chunks(float)
 @functools.lru_cache
 def get_partition_function(species_or_isotopologue,temperature):
     """Use hapi to get a partition function.  Uses main isotopologue if
     not given."""
-    import hapi
+    from hapi import hapi
     Mol,Iso = translate_isotopologue_to_codes(species_or_isotopologue)
     return hapi.partitionSum(Mol,Iso,temperature)
 
@@ -65,7 +68,7 @@ def download_linelist(
         data_directory='td',
         table_name=None,        # defaults to species
 ):
-    import hapi
+    from hapi import hapi
     if table_name is None:
         table_name = species
     MOL,ISO = translate_isotopologue_to_codes(species_or_isotopologue)
@@ -114,7 +117,6 @@ def load(filename):
         # data_directory=None,
         # table_name=None,        # defaults to species
 # ):
-    # import hapi
     # if data_directory is None:
         # data_directory = f'/home/heays/data/databases/HITRAN/data/{species}/'
     # if table_name is None:

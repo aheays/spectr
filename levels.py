@@ -29,12 +29,14 @@ prototypes['mass'] = dict(description="Mass (amu)",kind=float, fmt='<11.4f', inf
 prototypes['reduced_mass'] = dict(description="Reduced mass (amu)", kind=float, fmt='<11.4f', infer={('species','database',): lambda species: _get_species_property(species,'reduced_mass')})
 prototypes['E'] = dict(description="Level energy (cm-1)" ,kind=float ,fmt='<14.7f' ,infer={})
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind=float,infer={})
+
+
 def _f0(classname,J):
     """Calculate heteronuclear diatomic molecule level degeneracy."""
-    if classname == 'DiatomicCinfv':
+    if classname == 'HomonuclearDiatomic':
         return 2*J+1
     else:
-        raise InferException('Only valid of DiatomicCinfv')
+        raise InferException('Only valid of HomonuclearDiatomic')
 @tools.vectorise_function
 @functools.lru_cache
 def _f1(classname,J,Inuclear,sa):
@@ -109,10 +111,112 @@ prototypes['SR'] = dict(description="Signed projection of spin angular momentum 
 prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", kind=float,infer={})
 
 
-class _BaseLinesLevels(Dataset):
+## Effective Hamiltonian parameters
+prototypes['Tv']  = dict(description='Term origin (cm-1)' ,kind =float,fmt='0.6f',infer={})
+prototypes['dTv'] = dict(description='Uncertainty in Term origin (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['Bv']  = dict(description='Rotational constant (cm-1)' ,kind =float,fmt='0.8f',infer={})
+prototypes['dBv'] = dict(description='Uncertainty in rotational constant (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['Dv']  = dict(description='Centrifugal distortion (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dDv'] = dict(description='Uncertainty in centrifugal distortion (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['Hv']  = dict(description='Third order centrifugal distortion (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dHv'] = dict(description='Uncertainty in thrid order centrifugal distortion (1σ, cm-1)' ,kind=float,fmt='3g',infer  ={})
+prototypes['Lv']  = dict(description='Fourth order centrifugal distortion (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dLv'] = dict(description='Uncertainty in fourth order centrifugal distortion (1σ, cm-1)' ,kind=float,fmt='3g',infer  ={})
+prototypes['Av']  = dict(description='Spin-orbit energy (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dAv'] = dict(description='Uncertainty in spin-orbit energy (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['ADv'] = dict(description='Spin-orbit centrifugal distortion (cm-1)',kind =float,fmt='0.6g',infer={})
+prototypes['dADv']= dict(description='Uncertainty in spin-orbit centrifugal distortion (1σ, cm-1)',kind=float,fmt='0.2g',infer={})
+prototypes['AHv'] = dict(description='Higher-order spin-orbit centrifugal distortion (cm-1)',kind =float,fmt='0.6g',infer={})
+prototypes['dAHv']= dict(description='Uncertainty in higher-order spin-orbit centrifugal distortion (1σ, cm-1)',kind=float,fmt='0.2g',infer={})
+prototypes['λv']  = dict(description='Spin-spin energy (cm-1)',kind=float,fmt='0.6g',infer={})
+prototypes['dλv'] = dict(description='Uncertainty in spin-spin energy (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['λDv'] = dict(description='Spin-spin centrifugal distortion (cm-1)',kind =float,fmt='0.6g',infer={})
+prototypes['dλDv']= dict(description='Uncertainty in spin-spin centrifugal distortion (1σ, cm-1)',kind=float,fmt='0.2g',infer={})
+prototypes['λHv'] = dict(description='Higher-order spin-spin centrifugal distortion (cm-1)',kind =float,fmt='0.6g',infer={})
+prototypes['dλHv']= dict(description='Uncertainty in higher-order spin-spin centrifugal distortion (1σ, cm-1)',kind=float,fmt='0.2g',infer={})
+prototypes['γv']  = dict(description='Spin-rotation energy (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dγv'] = dict(description='Uncertainty in spin-rotation energy (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['γDv'] = dict(description='Spin-rotation centrifugal distortion (cm-1)',kind =float,fmt='0.6g',infer={})
+prototypes['dγDv']= dict(description='Uncertainty in spin-rotation centrifugal distortion (cm-1)',kind=float,fmt='0.2g',infer={})
+prototypes['γHv'] = dict(description='Higher-orders pin-rotation centrifugal distortion (cm-1)',kind =float,fmt='0.6g',infer={})
+prototypes['dγHv']= dict(description='Uncertainty in higher-order spin-rotation centrifugal distortion (cm-1)',kind=float,fmt='0.2g',infer={})
+prototypes['ov']  = dict(description='Λ-doubling constant o (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dov'] = dict(description='Uncertainty in Λ-doubling constant o (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['oDv']  = dict(description='Higher-order Λ-doubling constant o (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['doDv'] = dict(description='Uncertainty in higher-order Λ-doubling constant o (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['oHv']  = dict(description='Higher-order Λ-doubling constant o (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['doHv'] = dict(description='Uncertainty in higher-order Λ-doubling constant o (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['oLv']  = dict(description='Ligher-order Λ-doubling constant o (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['doLv'] = dict(description='Uncertainty in higher-order Λ-doubling constant o (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['pv']  = dict(description='Λ-doubling constant p (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dpv'] = dict(description='Uncertainty in Λ-doubling constant p (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['pDv']  = dict(description='Higher-order Λ-doubling constant p (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dpDv'] = dict(description='Uncertainty in higher-order Λ-doubling constant p (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['qv']  = dict(description='Λ-doubling constant q (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dqv'] = dict(description='Uncertainty in Λ-doubling constant q (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+prototypes['qDv']  = dict(description='Higher-order Λ-doubling constant q (cm-1)' ,kind =float,fmt='0.6g',infer={})
+prototypes['dqDv'] = dict(description='Uncertainty in higher-order Λ-doubling constant q (1σ, cm-1)' ,kind=float,fmt='0.2g',infer={})
+
+prototypes['Γv'] = dict(description="Total electronic-vibrational linewidth (cm-1 FWHM)", kind =float,  fmt='<10.5g', strictly_positive=True, infer={('τ',):lambda τ: 5.309e-12/τ,}) # tau=1/2/pi/gamma/c
+prototypes['dΓv'] = dict(description="Uncertainty in total electronic-vibrational linewidth (cm-1 FWHM 1σ)", kind =float,  fmt='<10.5g', infer ={('Γ','τ','dτ'): lambda Γ,τ,dτ: dτ*Γ/τ,})
+prototypes['τv'] = dict(description="Total electronic-vibrational decay lifetime (s)", kind=float,  fmt='<10.5g', infer ={('Γv',): lambda Γv: 5.309e-12/Γv, ('Atv',): lambda Atv: 1/Atv,}) 
+prototypes['dτv'] = dict(description="Uncertainty in total electronic-vibrational decay lifetime (s 1σ)", kind =float,  fmt='<10.5g', infer ={('Γ','dΓ','τ'): lambda Γ,dΓ,τ: dΓ/Γ*τ, ('At','dAt','τ'): lambda At,dAt,τ: dAt/At*τ,})
+prototypes['Atv'] = dict(description="Total electronic-vibrational decay rate (s-1)", kind =float,  fmt='<10.5g', infer ={('τv',): lambda τv: 1/τv, ('Adv','Ave'): lambda Adv,Aev: Adv+Aev, ('Aev',): lambda Aev: Aev, ('Adv',): lambda Adv: Adv,})# Test for Ad and Ae, if failed then one or the other is undefined/zero
+prototypes['dAtv']= dict(description="Uncertainty in total electronic-vibrational decay rate (s-1 1σ)", kind =float,  fmt='<10.5g', infer ={('τ','dτ','At'): lambda τ,dτ,At: dτ/τ*At,})
+prototypes['Adv'] = dict(description="Nonradiative electronic-vibrational decay rate (s-1)", kind =float,  fmt='<10.5g', infer ={('At','Ae'): lambda At,Ae: At-Ae,})
+prototypes['dAdv']= dict(description="Uncertainty in nonradiative electronic-vibrational decay rate (s-1 1σ)", kind =float,  fmt='<10.5g', infer ={})
+prototypes['Aev'] = dict(description="Radiative electronic-vibrational decay rate (s-1)", kind =float,  fmt='<10.5g', infer ={('At','Ad'): lambda At,Ad: At-Ad,})
+prototypes['dAev']= dict(description="Uncertainty in radiative electronic-vibrational decay rate (s-1 1σ)", kind =float,  fmt='<10.5g', infer ={})
+prototypes['ηdv'] = dict(description="Fractional probability of electronic-vibrational level decaying nonradiatively (dimensionless)", kind =float,  fmt='<10.5g', infer ={('At','Ad'):lambda At,Ad:Ad/A,})
+prototypes['dηdv']= dict(description="Uncertainty in the fractional probability of electronic-vibrational level decaying by dissociation by any channels (dimensionless, 1σ)", kind=float,  fmt='<10.5g', infer ={})
+prototypes['ηev'] = dict(description="Fractional probability of electronic-vibrational level decaying radiatively (dimensionless)", kind =float,  fmt='<10.5g', infer ={('At','Ae'):lambda At,Ae:Ae/A,})
+prototypes['dηev']= dict(description="Uncertainty in the fractional probability of electronic-vibrational level decaying radiatively (dimensionless, 1σ)", kind=float,  fmt='<10.5g', infer ={})
+
+## v+1 reduced versions of these
+def _vibrationally_reduce(
+        self,
+        reduced_quantum_number,
+        reduced_polynomial_order,
+        val,dval=None,
+):
+    """Reduce a variable."""
+    reduced = np.full(val.shape,np.nan)
+    ## loop through unique rotational series
+    for keyvals in self.unique_dicts(*self.qn_defining_independent_vibrational_progressions):
+        i = self.match(**keyvals)
+        x = self[reduced_quantum_number][i]*(self[reduced_quantum_number][i]+1)
+        y = val[i]
+        ## do an unweighted mean if uncertainties are not set or all the same
+        if dval is None:
+            dy = None
+        else:
+            dy = dval[i]
+        p = my.polyfit(x,y,dy,order=max(0,min(reduced_polynomial_order,sum(i)-2)),error_on_missing_dy=False)
+        reduced[i] = p['residuals']
+    return(reduced)
+
+prototypes['Tvreduced'] = dict(description="Vibrational term value reduced by a polynomial in (v+1/2) (cm-1)", kind=float,  fmt='<11.4f',
+    infer={('self','reduced_quantum_number','reduced_polynomial_order','Tv','dTv'): _vibrationally_reduce, # dTv is known -- use in a weighted mean
+           ('self','reduced_quantum_number','reduced_polynomial_order','Tv'): _vibrationally_reduce,}) # dTv is not known
+prototypes['dTvreduced'] = dict(description="Uncertainty in vibrational term value reduced by a polynomial in (v+1/2) (cm-1 1σ)", kind=float,  fmt='<11.4f', infer={('dT',):lambda dT: dT,})
+prototypes['Tvreduced_common'] = dict(description="Term values reduced by a common polynomial in (v+1/2) (cm-1)", kind=float,  fmt='<11.4f', infer={('v','Tv','Tvreduced_common_polynomial'): lambda v,Tv,Tvreduced_common_polynomial: Tv-np.polyval(Tvreduced_common_polynomial,v+0.5), ('v','Tv'): lambda v,Tv: Tv-np.polyval(np.polyfit(v+0.5,Tv,3),v+0.5),})
+prototypes['dTvreduced_common'] = dict(description="Uncertaintty in term values reduced by a common polynomial in (v+1/2) (cm-1 1σ)", kind=float,  fmt='<11.4e', infer={('dTv',): lambda dTv: dTv})
+prototypes['Tvreduced_common_polynomial'] = dict(description="Polynomial in terms of (v+1/2) to reduce all term values commonly (cm-1)", kind=object, infer={})
+prototypes['Bv_μscaled']  = dict(description='Rotational constant scaled by reduced mass to an isotopologue-independent value (cm-1)' , kind =float,fmt='0.8f', infer={('Bv','reduced_mass'):lambda Bv,reduced_mass: Bv*reduced_mass,})
+prototypes['dBv_μscaled'] = dict(description='Uncertainty in Bv_μscaled (1σ, cm-1)' ,kind=float,fmt='0.2g', infer={('Bv','dBv','Bv_μscaled'):lambda Bv,dBv,Bv_μscaled:dBv/Bv*Bv_μscaled,})
+
+
+
+#############
+## classes ##
+#############
+
+
+class BaseLinesLevels(Dataset):
     """Common stuff for for lines and levels."""
 
-    prototypes = {key:copy(prototypes[key]) for key in ['description','notes','author','reference','date','classname',]}
+    prototypes = {key:copy(prototypes[key]) for key in [
+        'description','notes','author','reference','date','classname',]}
     
     def __init__(self,name=None,**keys_vals,):
         """Default_name is decoded to give default values. Kwargs ca be
@@ -130,62 +234,91 @@ class _BaseLinesLevels(Dataset):
         self.pop_format_input_function()
         self.automatic_format_input_function(limit_to_args=('name',))
 
-class Base(_BaseLinesLevels):
+
+
+parent = BaseLinesLevels
+class HeteronuclearDiatomicElectronicLevel(parent):
     """A generic level."""
 
-    prototypes = copy(_BaseLinesLevels.prototypes)
+    prototypes = copy(parent.prototypes)
     prototypes.update(**{key:copy(prototypes[key]) for key in [
-        'species','isotopologue','E','J','g','pm','Γ','J','N','S','Eref','Teq','Tex','partition_source','partition','α','Nself',]})
-        
+        'species','isotopologue','label',
+        'Λ','s','S','LSsign','Eref',
+    ]})
+
+parent = HeteronuclearDiatomicElectronicLevel
+class HeteronuclearDiatomicVibrationalLevel(parent):
+    """A generic level."""
+
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in [
+        'v',
+        'Γv','τv','Atv','Adv','Aev',
+        'ηdv','ηev',
+        'Tv','Bv','Dv','Hv','Lv',
+        'Av','ADv','AHv',
+        'λv','λDv','λHv',
+        'γv','γDv','γHv',
+        'ov','oDv','oHv','oLv',
+        'pv','qv',
+        'pDv','qDv',
+        'Tvreduced','Tvreduced_common',
+        'Bv_μscaled',
+    ]})
 
 
-class DiatomicCinfv(Base):
-    """A heteronuclear diatomic molecule."""
+parent = HeteronuclearDiatomicVibrationalLevel
+class HeteronuclearDiatomicRotationalLevel(parent):
+    """Rotational levels of a heteronuclear diatomic molecule."""
 
-    prototypes = copy(Base.prototypes)
-    prototypes.update(**{key:copy(prototypes[key]) for key in ['label','v','Λ','LSsign','s','σv','sa','ef','Fi','Ω','Σ','SR',]})
+    default_zkeys = ('isotopologue','label','v','Σ','ef')
 
-class DiatomicDinfh(Base):
-    """A homonuclear diatomic molecule."""
-    
-    prototypes = deepcopy(DiatomicCinfv.prototypes)
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in [
+        'E','J','g','pm','Γ','N','S',
+        'Teq','Tex','partition_source','partition','α','Nself',
+        'σv','sa','ef','Fi','Ω','Σ','SR',
+    ]})
+
+parent = HeteronuclearDiatomicElectronicLevel
+class HomonuclearDiatomicElectronicLevel(parent):
+    """A generic level."""
+    prototypes = copy(parent.prototypes)
     prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear','gu',]})
 
-    def _f(J,Inuclear,sa):
-        """Calculate nuclear spin degeneracy of a homonuclear diatomic molecule."""
-        g = 2*J+1
-        for groupi,Ii in my.unique_combinations(group,I):
-            if groupi=='C∞v':
-                pass
-            elif groupi=='D∞h':
-                ## get total number of even or odd exchange combinations
-                ntotal = (2*Ii+1)**2
-                neven = 2*Ii+1 + (ntotal-(2*Ii+1))/2
-                nodd = ntotal - neven
-                if Ii%1==0:
-                    ## fermion
-                    g[(group==groupi)&(I==Ii)&(sa==+1)] *= neven
-                    g[(group==groupi)&(I==Ii)&(sa==-1)] *= nodd
-                else:
-                    ## boson
-                    g[(group==groupi)&(I==Ii)&(sa==+1)] *= nodd
-                    g[(group==groupi)&(I==Ii)&(sa==-1)] *= neven
-            else:
-                raise Exception(f"Not implemented for this group: {repr(groupi)}")
-        return g
+parent = HeteronuclearDiatomicVibrationalLevel
+class HomonuclearDiatomicVibrationalLevel(parent):
+    """A generic level."""
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear','gu',]})
+
+parent = HeteronuclearDiatomicRotationalLevel
+class HomonuclearDiatomicRotationalLevel(parent):
+    """A generic level."""
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear','gu',]})
 
 
+# class TriatomicDinfh(Base):
+    # """Rotational levels of a triatomic molecule in the D∞h point group."""
 
-class TriatomicDinfh(Base):
-    """Triatomic moleculein the D∞h point group."""
-    
-    prototypes = deepcopy(Base.prototypes)
-    prototypes.update({
-        'ν1':dict(description='Vibrational quantum number symmetric stretching' ,kind=int,fmt='<3d',infer={}),
-        'ν2':dict(description='Vibrational quantum number bending' ,kind=int,fmt='<3d',infer={}),
-        'ν3':dict(description='Vibrational quantum number asymmetric stretching' ,kind=int,fmt='<3d',infer={}),
-        'l' :dict(description='Quantum number' ,kind=str,fmt='<3',infer={}),
-        })
-
+    # prototypes = deepcopy(Base.prototypes)
+    # prototypes.update({
+        # 'ν1':dict(description='Vibrational quantum number symmetric stretching' ,kind=int,fmt='<3d',infer={}),
+        # 'ν2':dict(description='Vibrational quantum number bending' ,kind=int,fmt='<3d',infer={}),
+        # 'ν3':dict(description='Vibrational quantum number asymmetric stretching' ,kind=int,fmt='<3d',infer={}),
+        # 'l' :dict(description='Quantum number' ,kind=str,fmt='<3',infer={}),
+        # })
 
 
+######################################
+## convenient access by point group ##
+######################################
+        
+rotational_level_by_point_group = {}
+rotational_level_by_point_group['C∞v'] = HeteronuclearDiatomicRotationalLevel
+rotational_level_by_point_group['D∞h'] = HomonuclearDiatomicRotationalLevel
+
+vibrational_level_by_point_group = {}
+vibrational_level_by_point_group['C∞v'] = HeteronuclearDiatomicVibrationalLevel
+vibrational_level_by_point_group['D∞h'] = HomonuclearDiatomicVibrationalLevel

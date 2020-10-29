@@ -1,8 +1,14 @@
 * To do
  
- - Change u/l to ′″ and d to σ -- not feasible because ′ and ″ are not
-   valid python symbols -- use 1 and 2 for lower and upper? -- maybe
-   match script u and l? 𝓊 and 𝓁 (also not valid)? 
+ - Get rid of isotopologue
+
+ - Redefine lines/levels hierarchy
+
+ - Add interactions.py
+
+ - Add quantum numbers of VibLevel
+
+ - Add interactions to VibLevel 
 
  - A simpler implementation of self.permit_reference_breaking?
    Currently appears in many places in Dataset
@@ -13,7 +19,7 @@
  - Improve Dataset indexing to cases:
    - get_value(key,index) / get_uncertainty(key,index) -- get numpy
      arrays
-      - Change get_value and get_uncertainty to value and uncertainty?
+     - Change get_value and get_uncertainty to value and uncertainty?
    - copy(keys,index) -- get copy of self with these limits
    - [key] -- return entire numpy array of key or scalar value
    - [int] -- return copy of self with all scalar data at int

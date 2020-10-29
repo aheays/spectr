@@ -703,7 +703,7 @@ def gaussian_spectrum(
         Γ,                     # Gaussian linewidth (cm-1 FWHM)
         nfwhm=10.,             # Number of Gaussian full-width half-maxima to compute
         Smin=None,
-        method='fortran'
+        method='python'
 ):
     """Convert some lines into a spectrum."""
     ## no x, nothing to do

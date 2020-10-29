@@ -18,11 +18,11 @@ class Datum:
 
     _kind_defaults = {
 
-        'f': {'cast':float     ,'fmt'   :'+12.8e','description':'float' },
-        'i': {'cast':int       ,'fmt'   :'d'     ,'description':'int'   },
-        'b': {'cast':bool      ,'fmt'   :''      ,'description':'bool'  },
-        'U': {'cast':str       ,'fmt'   :'s'     ,'description':'str'   },
-        'O': {'cast':lambda x:x,'fmt'   :''      ,'description':'object'},
+        'f': {'cast':float     ,'fmt'   :'+12.8e','description':'float' ,'missing':np.nan},
+        'i': {'cast':int       ,'fmt'   :'d'     ,'description':'int'   ,'missing':-999},
+        'b': {'cast':bool      ,'fmt'   :''      ,'description':'bool'  ,'missing':False},
+        'U': {'cast':str       ,'fmt'   :'s'     ,'description':'str'   ,'missing':''},
+        'O': {'cast':lambda x:x,'fmt'   :''      ,'description':'object','missing':None},
 
     }
 
@@ -37,6 +37,7 @@ class Datum:
             description=None,   # long string
             units=None,
             fmt=None,
+            missing=None,
     ):
         if kind is not None:
             self.kind = np.dtype(kind).kind
@@ -50,6 +51,7 @@ class Datum:
         self.description = (description if description is not None else d['description'])
         self.fmt = (fmt if fmt is not None else d['fmt'])
         self.cast = (cast if cast is not None else d['cast'])
+        self.missing = (missing if missing is not None else d['missing'])
         # self.step = (step if step is not None else d['step'])
         # self.vary = vary
         self.units = units
@@ -111,11 +113,11 @@ class Data:
 
 
     _kind_defaults = {
-        'f': {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt'   :'+12.8e','description':'float' ,},
-        'i': {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt'   :'d'     ,'description':'int'   ,},
-        'b': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt'   :''      ,'description':'bool'  ,},
-        'U': {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt'   :'s'     ,'description':'str'   ,},
-        'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object',},
+        'f': {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt'   :'+12.8e','description':'float' ,'missing':np.nan},
+        'i': {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt'   :'d'     ,'description':'int'   ,'missing':-999},  
+        'b': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt'   :''      ,'description':'bool'  ,'missing':False}, 
+        'U': {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt'   :'s'     ,'description':'str'   ,'missing':''},    
+        'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','missing':None},  
     }
 
     def __init__(
@@ -127,6 +129,7 @@ class Data:
             description=None,   # long string
             units=None,
             fmt=None,
+            missing=None,
     ):
         if kind is not None:
             self.kind = np.dtype(kind).kind
@@ -140,6 +143,7 @@ class Data:
         self.description = (description if description is not None else d['description'])
         self.fmt = (fmt if fmt is not None else d['fmt'])
         self.cast = (cast if cast is not None else d['cast'])
+        self.missing = (missing if missing is not None else d['missing'])
         self.units = units
         self.value = value
         self.uncertainty = uncertainty
@@ -268,6 +272,8 @@ class Dataset(optimise.Optimiser):
 
     """A collection of scalar or array values, possibly with uncertainties."""
 
+    default_zkeys = []
+
     def __init__(
             self,
             name='dataset',
@@ -286,6 +292,7 @@ class Dataset(optimise.Optimiser):
         self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
         self.permit_reference_breaking = True
+        self.permit_missing = True # add missing data if required
         self.uncertainty_prefix = 'd_' # a single letter to prefix uncertainty keys
         self.verbose = False
         for key,val in keys_vals.items():
@@ -324,7 +331,7 @@ class Dataset(optimise.Optimiser):
                     continue # not a Data kwarg
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
-        if isinstance(value,optimise.𝒫):
+        if isinstance(value,optimise.P):
             ## a parameter, set value and uncertainty to a Datum
             assert uncertainty is None
             assert is_scalar is None
@@ -344,12 +351,27 @@ class Dataset(optimise.Optimiser):
         self._data[key] = data
         self.unset_inferences(key)
 
+    def set_missing(self,key,index=None):
+        if key not in self:
+            self[key] = 1.     
+        if self.is_scalar(key):
+            self._data[key].value = self._data[key].missing
+        else:
+            if index is None:
+                ## always use an index to prevent reference breaking
+                index = slice(0,len(self))
+            self._data[key].value[index] = self._data[key].missing
+        
     def set_uncertainty(self,key,uncertainty):
         """Set a the uncertainty of an existing value."""
         assert self.permit_reference_breaking or key not in self, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
         self.unset_inferences(key)
         assert key in self,f'Value must exist before setting uncertainty: {repr(key)}'
         self._data[key].uncertainty  = uncertainty
+
+    def clear(self):
+        for key in self.keys():
+            self.unset(key)
 
     def unset(self,key):
         """Delete data.  Also clean up inferences."""
@@ -441,6 +463,7 @@ class Dataset(optimise.Optimiser):
                 retval[key] = deepcopy(self[key][index])
         return(retval)
 
+
     def match(self,**keys_vals):
         """Return boolean array of data matching all key==val.\n\nIf key has
         suffix '_min' or '_max' then match anything greater/lesser
@@ -466,10 +489,10 @@ class Dataset(optimise.Optimiser):
         """Returns a copy reduced to matching values."""
         return(self.copy(index=self.match(**keys_vals)))
 
-    def limit_to_matches(self,**keys_vals):
+    def limit_to_match(self,**keys_vals):
         self.index(self.match(**keys_vals))
 
-    def remove_matches(self,**keys_vals):
+    def remove_match(self,**keys_vals):
         self.index(~self.match(**keys_vals))
 
     def unique(self,key):
@@ -869,7 +892,20 @@ class Dataset(optimise.Optimiser):
             for key in new_dataset:
                 self[key] = new_dataset[key]
             return
-        ## sort out scalar and  vector keys
+        ## enfore similarity
+        for key in self:
+            if not new_dataset.is_known(key):
+                if self.permit_missing:
+                    new_dataset.set_missing(key)
+                else:
+                    raise Exception(f"Key unknown to new_dataset: {key=}")
+        for key in new_dataset:
+            if not self.is_known(key):
+                if self.permit_missing:
+                    self.set_missing(key)
+                else:
+                    raise Exception(f"Key unknown to self: {key=}")
+        ## sort out scalar and vector keys
         for key in self:
             if self.is_scalar(key):
                 if key in new_dataset:
@@ -907,7 +943,7 @@ class Dataset(optimise.Optimiser):
             self,
             xkey,
             ykeys,
-            zkeys=(),
+            zkeys=None,
             fig=None,           # otherwise automatic
             ax=None,            # otherwise automatic
             ynewaxes=True,
@@ -937,6 +973,8 @@ class Dataset(optimise.Optimiser):
             assert 'index' not in self.keys()
             self['index'] = np.arange(len(self),dtype=int)
             xkey = 'index'
+        if zkeys is None:
+            zkeys = self.default_zkeys
         zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey] # remove xkey and ykeys from zkeys
         ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
         ymin = {}

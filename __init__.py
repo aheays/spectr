@@ -1,6 +1,7 @@
 ## standard library
 from copy import copy,deepcopy
 from pprint import pprint
+import shutil
 
 ## nonstandard library
 import numpy as np

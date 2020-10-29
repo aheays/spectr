@@ -1,19 +1,19 @@
-# from . import *
-
-## standard library
 import re
 from copy import copy
+import functools
+import itertools
 
 import numpy as np
+import sympy
+from frozendict import frozendict
 
-# import functools
-
+from .dataset import Dataset
 
 # ## non-standard library
 # from frozendict import frozendict
 
 ## form here
-from spectra.exceptions import MissingDataException
+from .exceptions import MissingDataException,InvalidEncodingException
 
 # def allowed_level(**qn):
     # """Return bool or array of bools if quantum number are an acceptable
@@ -108,26 +108,26 @@ from spectra.exceptions import MissingDataException
             # if qnj[key] not in qni[key]: return(False)
     # return(True)
 
-# def separate_upper_lower_quantum_numbers(qn):
-    # """Divide quantum numbers into upper and lower level dictionaries and
-    # remove 'p' and 'pp' suffices."""
-    # qnp,qnpp = {},{}
-    # for key,val in qn.items():
-        # if len(key)>2 and key[-2:]=='pp':
-            # qnpp[key[:-2]] = val
-        # elif len(key)>1 and key[-1:]=='p':
-            # qnp[key[:-1]] = val
-        # else:
-            # raise Exception(f"Could not categorise as upper or lower quantum number: {repr(key)} = {repr(val)}")
-    # return(qnp,qnpp)
+def separate_upper_lower_quantum_numbers(qn):
+    """Divide quantum numbers into upper and lower level dictionaries and
+    remove 'p' and 'pp' suffices."""
+    qnl,qnu = {},{}
+    for key,val in qn.items():
+        if len(key)>2 and key[-2:]=='_l':
+            qnl[key[:-2]] = val
+        elif len(key)>2 and key[-2:]=='_u':
+            qnu[key[:-2]] = val
+        else:
+            raise Exception(f"Could not categorise as upper or lower quantum number: {repr(key)} = {repr(val)}")
+    return qnu,qnl
 
-# def join_upper_lower_quantum_numbers(qnp,qnpp):
-    # """Upper and lower level quantum numnbers get 'p' or 'pp' suffices
-    # added and returned as a single dictionary."""
-    # qn = {}
-    # qn.update({key+'p':val for key,val in qnp.items()})
-    # qn.update({key+'pp':val for key,val in qnpp.items()})
-    # return(qn)
+def join_upper_lower_quantum_numbers(qn_u,qn_l):
+    """Upper and lower level quantum numnbers get 'p' or 'pp' suffices
+    added and returned as a single dictionary."""
+    qn = {}
+    qn.update({key+'_u':val for key,val in qn_u.items()})
+    qn.update({key+'_l':val for key,val in qn_l.items()})
+    return qn
 
 
 def decode_level(name):
@@ -185,9 +185,12 @@ def decode_level(name):
                 ## match rest
                 r = re.match(r'([gu]?)?([0-9]+)?([ef+-]?)?$',rest)
                 if r:
-                    if r.group(1) not in (None,''): data['gu'] = r.group(1)
-                    if r.group(2) is not None: data['F'] = float(r.group(2))
-                    if r.group(3) not in (None,''): data['ef'] = r.group(3)
+                    if r.group(1) not in (None,''):
+                        data['gu'] = (+1 if r.group(1)=='g' else -1)
+                    if r.group(2) is not None:
+                        data['F'] = float(r.group(2))
+                    if r.group(3) not in (None,''):
+                        data['ef'] = (+1 if r.group(1)=='e' else -1)
                 ## split parenthesised stuff on comma and look for v, J etc. Assume (v) of (v,J)
                 if parenthesised is not None:
                     x = re.split(r' *, *',parenthesised)
@@ -213,8 +216,6 @@ def decode_level(name):
                 data[key] = int(val)
             elif key in ('J','Ω','S','Σ','SR'):
                 data[key] = float(val)
-            else:
-                data[key] = str(val)
     return(data)
 
 # def encode_atomic_level(**quantum_numbers):
@@ -394,54 +395,54 @@ def decode_level(name):
         # assert ef in ('e','f')
         # retval += ef
     # return(retval)
-   #  
-# def decode_transition(transition,return_separately=False):
-    # """Transition must be in the form
-    # species_levelp-levelpp_rotationaltransition. Matched from beginning,
-    # and returns when matching runs out."""
-    # original_transition = transition
-    # transition = transition.replace(' ','') # all white space removed
-    # qn = dict()                 # determined quantum numbers
-    # ## look for rotational transition as e.g., ..._P11fe23, if found
-    # ## decode and remove from transition
-    # rot_qn_upper = rot_qn_lower = rot_qn_Δ = None
-    # r = re.match(r'^(.*)_([^_-]+)$',transition)
-    # if r:
-        # try:
-            # rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
-            # transition = r.group(1)
-        # except InvalidEncodingException: # not a valid rotational transition
-            # pass
-    # ## split upper and lower level
-    # transition = transition.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
-    # transition = transition.replace('Σ-','SigmaMinus') # hack to temporarily protect minus sign
-    # if transition.count('--')==1:                       # upper-lower
-        # upper,lower = transition.split('--')            # upper (lower not given)
-    # elif transition.count('-')==1:                       # upper-lower
-        # upper,lower = transition.split('-')            # upper (lower not given)
-    # elif transition.count('-')==0:
-        # # upper,lower = transition,''
-        # raise InvalidEncodingException(f'Is this an encoded transition? "-" not found: {repr(original_transition)}')
-    # else:
-        # raise InvalidEncodingException(f'Require only one "-" in an encoded transition: {repr(original_transition)}')
-    # upper,lower = upper.replace('SigmaMinus','Σ-'),lower.replace('SigmaMinus','Σ-') # put this back after split
-    # upper,lower = decode_level(upper),decode_level(lower)
-    # ## add rotataional qn if found above
-    # if rot_qn_lower is not None:
-        # lower.update(rot_qn_lower)
-    # if rot_qn_upper is not None:
-        # upper.update(rot_qn_upper)
-    # ## assume common species if only given once
-    # if 'species' in upper and 'species' not in lower:
-        # lower['species'] = upper['species'] 
-    # if return_separately:
-        # return(upper,lower)
-    # else:
-        # retval = join_upper_lower_quantum_numbers(upper,lower)
-        # if rot_qn_Δ is not None:
-            # for key,val in rot_qn_Δ.items():
-                # retval['Δ'+key] = val
-        # return(retval)
+
+def decode_transition(transition,return_separately=False):
+    """Transition must be in the form
+    species_levelp-levelpp_rotationaltransition. Matched from beginning,
+    and returns when matching runs out."""
+    original_transition = transition
+    transition = transition.replace(' ','') # all white space removed
+    qn = dict()                 # determined quantum numbers
+    ## look for rotational transition as e.g., ..._P11fe23, if found
+    ## decode and remove from transition
+    rot_qn_upper = rot_qn_lower = rot_qn_Δ = None
+    r = re.match(r'^(.*)_([^_-]+)$',transition)
+    if r:
+        try:
+            rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
+            transition = r.group(1)
+        except InvalidEncodingException: # not a valid rotational transition
+            pass
+    ## split upper and lower level
+    transition = transition.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
+    transition = transition.replace('Σ-','SigmaMinus') # hack to temporarily protect minus sign
+    if transition.count('--')==1:                       # upper-lower
+        upper,lower = transition.split('--')            # upper (lower not given)
+    elif transition.count('-')==1:                       # upper-lower
+        upper,lower = transition.split('-')            # upper (lower not given)
+    elif transition.count('-')==0:
+        # upper,lower = transition,''
+        raise InvalidEncodingException(f'Is this an encoded transition? "-" not found: {repr(original_transition)}')
+    else:
+        raise InvalidEncodingException(f'Require only one "-" in an encoded transition: {repr(original_transition)}')
+    upper,lower = upper.replace('SigmaMinus','Σ-'),lower.replace('SigmaMinus','Σ-') # put this back after split
+    upper,lower = decode_level(upper),decode_level(lower)
+    ## add rotataional qn if found above
+    if rot_qn_lower is not None:
+        lower.update(rot_qn_lower)
+    if rot_qn_upper is not None:
+        upper.update(rot_qn_upper)
+    ## assume common species if only given once
+    if 'species' in upper and 'species' not in lower:
+        lower['species'] = upper['species'] 
+    if return_separately:
+        return(upper,lower)
+    else:
+        retval = join_upper_lower_quantum_numbers(upper,lower)
+        if rot_qn_Δ is not None:
+            for key,val in rot_qn_Δ.items():
+                retval['Δ'+key] = val
+        return(retval)
 
 # def decode_rotational_transition(name,return_separately=False):
     # """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
@@ -704,80 +705,80 @@ def decode_level(name):
             # if H[i,j]!=0:
                 # print( encode_bra_op_ket(qn.row(i),operator_name,qn.row(j))+' = '+str(H[i,j]))
 
-# # @my.lru_cache_copy
-# @functools.lru_cache
-# def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
-    # """Determine wavefunctions of a case a state in signed-Ω (pm, +/-)
-    # and e/f bases. As well as transformation matrices between them."""
-    # assert Λ>=0 and (s==0 or s==1) and S>=0,'Some quantum number has an invalid value.'
-    # ## signed-Ω wavefunction
-    # qnpm = [dict(Λ=Λi,s=s,S=S,Σ=Σ,Ω=Λi+Σ) for (Λi,Σ) in itertools.product(((Λ,-Λ) if Λ>0 else (Λ,)),np.arange(S,-S-0.1,-1))]
-    # σvpm = (-1)**(-S+S%1+s)     # phase change when σv operation on converts +Ω to -Ω states
-    # for t in qnpm: t['σv'] = (-1)**(-S+S%1+s) # symmetry of signed-Ω wavefunctions under inversion
-    # ## ef symmetrised wavefunctions (maybe not both)
-    # qnef = []
-    # for Σ in (np.arange(S,-0.1,-1) if Λ==0 else np.arange(S,-S-0.1,-1)):
-        # if Λ==0 and Σ==0:
-            # qnef.append(dict(Λ=Λ,s=s,S=S,Σ=Σ,Ω=np.abs(Λ+Σ),ef=('e' if (-1)**(s+S+S%1)==1 else 'f')))
-        # else:
-            # qnef.extend([dict(Λ=Λ,s=s,S=S,Σ=Σ,Ω=np.abs(Λ+Σ),ef='e'), dict(Λ=Λ,s=s,S=S,Σ=Σ,Ω=np.abs(Λ+Σ),ef='f')])
-    # ## matrix to convert signed to ef
-    # Mef = sympy.zeros(len(qnef),len(qnpm))
-    # for ipm,pm in enumerate(qnpm):
-        # for ief,ef in enumerate(qnef):
-            # if np.abs(ef['Ω'])!=np.abs(pm['Ω']) or np.abs(ef['Σ'])!=np.abs(pm['Σ']): continue # no mixing
-            # if Λ>0:
-                # if pm['Λ']>0:   Mef[ief,ipm] = +1/sympy.sqrt(2)
-                # else:           Mef[ief,ipm] = pm['σv']/sympy.sqrt(2)*(1 if ef['ef']=='e' else -1)
-            # else:
-                # if ef['Σ']==0:  Mef[ief,ipm] = +1
-                # else:
-                    # if pm['Σ']>0:   Mef[ief,ipm] = +1/sympy.sqrt(2)
-                    # else:           Mef[ief,ipm] = pm['σv']/sympy.sqrt(2)*(1 if ef['ef']=='e' else -1)
-    # Mpm = Mef.inv() # matrix to convert from ef to pm
-    # ## get NNpm matrix including spin-rotation interaction
-    # NNpm = sympy.zeros(Mpm.shape[0])
-    # NSpm = sympy.zeros(Mpm.shape[0])
-    # J = sympy.Symbol("J")
-    # for i,qn1 in enumerate(qnpm): # bra
-        # for j,qn2 in enumerate(qnpm): # ket
-            # if i==j:         # diagonal elements
-                # NNpm[i,i] = J*(J+1)+qn1['S']*(qn1['S']+1)-2*qn1['Ω']*qn1['Σ']
-                # NSpm[i,i] = qn1['Ω']*qn1['Σ']-qn1['S']*(qn1['S']+1)
-                # continue
-            # if j<=i: continue          # symmetric elements taken care of below
-            # if (qn1['Σ']-qn2['Σ']) != (qn1['Ω']-qn2['Ω']): continue # selection rule ΔΣ=ΔΩ
-            # ## S-uncoupling,  ⟨iΛS(Σ+1)J(Ω+1)|J-S+|iΛSΣJΩ⟩ = sqrt[(S(S+1)-Σ(Σ+1))*(J(J+1)-Ω(Ω+1))]                if i1==i2 and (Σj-Σi)=+1: 
-            # if (qn1['Σ']-qn2['Σ'])==+1:   NNpm[i,j] = NNpm[j,i] = -sympy.sqrt(qn2['S']*(qn2['S']+1)-qn2['Σ']*(qn2['Σ']+1))*sympy.sqrt(J*(J+1)-qn2['Ω']*(qn2['Ω']+1)) # J-S+
-            # if (qn1['Σ']-qn2['Σ'])==-1:   NNpm[i,j] = NNpm[j,i] = -qn1['σv']*qn2['σv']*sympy.sqrt(qn2['S']*(qn2['S']+1)--qn2['Σ']*(-qn2['Σ']+1))*sympy.sqrt(J*(J+1)--qn2['Ω']*(-qn2['Ω']+1)) # J+S- calculated from J-S+ and using σv operator to determine any sign change -- actually always symmetric with respect to inversion since it is the same electronic state
-            # NSpm[i,j] = NSpm[j,i] = -NNpm[i,j]/2 
-    # NNef = Mef*NNpm*Mef.T
-    # NSef = Mef*NSpm*Mef.T
-    # ## simplify -- slow to execute. Does it run faster when using the
-    # ## simplified expressions later?
-    # # NNpm.simplify();NNef.simplify();NSpm.simplify();NSef.simplify()
-    # ## convert qn to recarrays
-    # # qnpm = my.dict_to_recarray({key:[t[key] for t in qnpm] for key in qnpm[0]})
-    # # qnef = my.dict_to_recarray({key:[t[key] for t in qnef] for key in qnef[0]})
-    # qnpm = Rotational_Level(**{key:[t[key] for t in qnpm] for key in qnpm[0]})
-    # qnef = Rotational_Level(**{key:[t[key] for t in qnef] for key in qnef[0]})
-    # if verbose:
-        # print('\nqnpm:');print(qnpm)
-        # print('\nqnef:'); print(qnef)
-        # print('\nMpm:'); pprint(Mpm)
-        # print('\nMef:'); pprint(Mef)
-        # print('\nNNpm:'); pprint(NNpm)
-        # print('\nNNef:'); pprint(NNef)
-        # print('\nNSpm:'); pprint(NSpm)
-        # print('\nNSef:'); pprint(NSef)
-    # return(frozendict(
-        # n=len(qnpm),
-        # qnpm=qnpm,qnef=qnef,
-        # Mpm=Mpm,Mef=Mef,
-        # NNpm=NNpm,NNef=NNef,
-        # NSpm=NSpm,NSef=NSef,
-        # σvpm=σvpm,
-    # ))
+@functools.lru_cache
+def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
+    """Determine wavefunctions of a case a state in signed-Ω (pm, +/-)
+    and e/f bases. As well as transformation matrices between them."""
+    assert Λ>=0 and (s==0 or s==1) and S>=0,'Some quantum number has an invalid value.'
+    ## signed-Ω wavefunction
+    qnpm = [dict(Λ=Λi,s=s,S=S,Σ=Σ,Ω=Λi+Σ) for (Λi,Σ) in itertools.product(((Λ,-Λ) if Λ>0 else (Λ,)),np.arange(S,-S-0.1,-1))]
+    σvpm = (-1)**(-S+S%1+s)     # phase change when σv operation on converts +Ω to -Ω states
+    for t in qnpm:
+        t['σv'] = (-1)**(-S+S%1+s) # symmetry of signed-Ω wavefunctions under inversion
+    ## ef symmetrised wavefunctions (maybe not both)
+    qnef = []
+    for Σ in (np.arange(S,-0.1,-1) if Λ==0 else np.arange(S,-S-0.1,-1)):
+        if Λ==0 and Σ==0:
+            qnef.append(dict(Λ=Λ,s=s,S=S,Σ=Σ,Ω=np.abs(Λ+Σ),ef=(-1)**(s+S+S%1)))
+        else:
+            qnef.extend([dict(Λ=Λ,s=s,S=S,Σ=Σ,Ω=np.abs(Λ+Σ),ef=+1), dict(Λ=Λ,s=s,S=S,Σ=Σ,Ω=np.abs(Λ+Σ),ef=-1)])
+    ## matrix to convert signed to ef
+    Mef = sympy.zeros(len(qnef),len(qnpm))
+    for ipm,pm in enumerate(qnpm):
+        for ief,ef in enumerate(qnef):
+            if np.abs(ef['Ω'])!=np.abs(pm['Ω']) or np.abs(ef['Σ'])!=np.abs(pm['Σ']): continue # no mixing
+            if Λ>0:
+                if pm['Λ']>0:   Mef[ief,ipm] = +1/sympy.sqrt(2)
+                else:           Mef[ief,ipm] = pm['σv']/sympy.sqrt(2)*ef['ef']
+            else:
+                if ef['Σ']==0:  Mef[ief,ipm] = +1
+                else:
+                    if pm['Σ']>0:   Mef[ief,ipm] = +1/sympy.sqrt(2)
+                    else:           Mef[ief,ipm] = pm['σv']/sympy.sqrt(2)*ef['ef']
+    Mpm = Mef.inv() # matrix to convert from ef to pm
+    ## get NNpm matrix including spin-rotation interaction
+    NNpm = sympy.zeros(Mpm.shape[0])
+    NSpm = sympy.zeros(Mpm.shape[0])
+    J = sympy.Symbol("J")
+    for i,qn1 in enumerate(qnpm): # bra
+        for j,qn2 in enumerate(qnpm): # ket
+            if i==j:         # diagonal elements
+                NNpm[i,i] = J*(J+1)+qn1['S']*(qn1['S']+1)-2*qn1['Ω']*qn1['Σ']
+                NSpm[i,i] = qn1['Ω']*qn1['Σ']-qn1['S']*(qn1['S']+1)
+                continue
+            if j<=i: continue          # symmetric elements taken care of below
+            if (qn1['Σ']-qn2['Σ']) != (qn1['Ω']-qn2['Ω']): continue # selection rule ΔΣ=ΔΩ
+            ## S-uncoupling,  ⟨iΛS(Σ+1)J(Ω+1)|J-S+|iΛSΣJΩ⟩ = sqrt[(S(S+1)-Σ(Σ+1))*(J(J+1)-Ω(Ω+1))]                if i1==i2 and (Σj-Σi)=+1: 
+            if (qn1['Σ']-qn2['Σ'])==+1:   NNpm[i,j] = NNpm[j,i] = -sympy.sqrt(qn2['S']*(qn2['S']+1)-qn2['Σ']*(qn2['Σ']+1))*sympy.sqrt(J*(J+1)-qn2['Ω']*(qn2['Ω']+1)) # J-S+
+            if (qn1['Σ']-qn2['Σ'])==-1:   NNpm[i,j] = NNpm[j,i] = -qn1['σv']*qn2['σv']*sympy.sqrt(qn2['S']*(qn2['S']+1)--qn2['Σ']*(-qn2['Σ']+1))*sympy.sqrt(J*(J+1)--qn2['Ω']*(-qn2['Ω']+1)) # J+S- calculated from J-S+ and using σv operator to determine any sign change -- actually always symmetric with respect to inversion since it is the same electronic state
+            NSpm[i,j] = NSpm[j,i] = -NNpm[i,j]/2 
+    NNef = Mef*NNpm*Mef.T
+    NSef = Mef*NSpm*Mef.T
+    ## simplify -- slow to execute. Does it run faster when using the
+    ## simplified expressions later?
+    # NNpm.simplify();NNef.simplify();NSpm.simplify();NSef.simplify()
+    ## convert qn to recarrays
+    # qnpm = my.dict_to_recarray({key:[t[key] for t in qnpm] for key in qnpm[0]})
+    # qnef = my.dict_to_recarray({key:[t[key] for t in qnef] for key in qnef[0]})
+    qnpm = Dataset(**{key:[t[key] for t in qnpm] for key in qnpm[0]})
+    qnef = Dataset(**{key:[t[key] for t in qnef] for key in qnef[0]})
+    if verbose:
+        print('\nqnpm:');print(qnpm)
+        print('\nqnef:'); print(qnef)
+        print('\nMpm:'); pprint(Mpm)
+        print('\nMef:'); pprint(Mef)
+        print('\nNNpm:'); pprint(NNpm)
+        print('\nNNef:'); pprint(NNef)
+        print('\nNSpm:'); pprint(NSpm)
+        print('\nNSef:'); pprint(NSef)
+    return(frozendict(
+        n=len(qnpm),
+        qnpm=qnpm,qnef=qnef,
+        Mpm=Mpm,Mef=Mef,
+        NNpm=NNpm,NNef=NNef,
+        NSpm=NSpm,NSef=NSef,
+        σvpm=σvpm,
+    ))
 
 # def get_case_a_to_case_b_transformation(Λ,s,S,J):
     # """Calculate matrices converting case (a) vector to case (b). Matrices
@@ -997,39 +998,42 @@ def decode_level(name):
     # if np.isnan(retval): retval=0.
     # return(retval)
 
-# def wigner3j(j1,j2,j3,m1,m2,m3,
-             # # method='sympy',  # symbolic calc with sympy
-             # # method='sympy_numeric',  # numericisation of symbolic calc from sympy
-             # method='py3nj',  # numeric calc in fortran (fast) or symbolic calc with sympy, if j1 is vector the solution is vector
-# ):
-    # """Calculate wigner 3j symbol."""
-    # if method=='sympy':
-        # from sympy.physics.wigner import wigner_3j
-        # return(wigner_3j(j1,j2,j3,m1,m2,m3))
-    # elif method=='sympy_numeric':
-        # from sympy.physics.wigner import wigner_3j
-        # return(float(wigner_3j(j1,j2,j3,m1,m2,m3)))
-    # elif method=='py3nj':       # vectorised
-        # import py3nj
-        # if np.isscalar(j1):
-            # if j1<0 or j2<0 or j3<0: return(0.)
-            # if abs(m1)>j1 or abs(m2)>j2 or abs(m3)>j3: return(0.)
-            # return(py3nj.wigner3j(int(j1*2),int(j2*2),int(j3*2),int(m1*2),int(m2*2),int(m3*2)))
-        # else:
-            # j1 = np.asarray(j1*2,dtype=int)
-            # length = len(j1)
-            # j2 = (np.full(length,j2*2,dtype=int) if np.isscalar(j2) else np.asarray(j2*2,dtype=int))
-            # j3 = (np.full(length,j3*2,dtype=int) if np.isscalar(j3) else np.asarray(j3*2,dtype=int))
-            # m1 = (np.full(length,m1*2,dtype=int) if np.isscalar(m1) else np.asarray(m1*2,dtype=int))
-            # m2 = (np.full(length,m2*2,dtype=int) if np.isscalar(m2) else np.asarray(m2*2,dtype=int))
-            # m3 = (np.full(length,m3*2,dtype=int) if np.isscalar(m3) else np.asarray(m3*2,dtype=int))
-            # retval = np.zeros(length,dtype=float)
-            # i = (j1>=0)&(j2>=0)&(j3>=0)&(j1>=np.abs(m1))&(j2>=np.abs(m2))&(j3>=np.abs(m3))
-            # if np.any(i):
-                # retval[i] = py3nj.wigner3j(j1[i],j2[i],j3[i],m1[i],m2[i],m3[i])
-            # return(retval)
-    # else:
-        # raise Exception(f"Unknown method: {repr(method)}")
+@functools.lru_cache
+def wigner3j(j1,j2,j3,m1,m2,m3,
+             # method='sympy',  # symbolic calc with sympy
+             # method='sympy_numeric',  # numericisation of symbolic calc from sympy
+             method='py3nj',  # numeric calc in fortran (fast) or symbolic calc with sympy, if j1 is vector the solution is vector
+):
+    """Calculate wigner 3j symbol."""
+    if method=='sympy':
+        from sympy.physics.wigner import wigner_3j
+        return(wigner_3j(j1,j2,j3,m1,m2,m3))
+    elif method=='sympy_numeric':
+        from sympy.physics.wigner import wigner_3j
+        return(float(wigner_3j(j1,j2,j3,m1,m2,m3)))
+    elif method=='py3nj':       # vectorised
+        import py3nj
+        if np.isscalar(j1):
+            if j1 < 0 or j2 < 0 or j3 < 0:
+                return 0. 
+            if abs(m1) > j1 or abs(m2) > j2 or abs(m3) > j3:
+                return 0.
+            return py3nj.wigner3j(int(j1*2),int(j2*2),int(j3*2),int(m1*2),int(m2*2),int(m3*2))
+        else:
+            j1 = np.asarray(j1*2,dtype=int)
+            length = len(j1)
+            j2 = (np.full(length,j2*2,dtype=int) if np.isscalar(j2) else np.asarray(j2*2,dtype=int))
+            j3 = (np.full(length,j3*2,dtype=int) if np.isscalar(j3) else np.asarray(j3*2,dtype=int))
+            m1 = (np.full(length,m1*2,dtype=int) if np.isscalar(m1) else np.asarray(m1*2,dtype=int))
+            m2 = (np.full(length,m2*2,dtype=int) if np.isscalar(m2) else np.asarray(m2*2,dtype=int))
+            m3 = (np.full(length,m3*2,dtype=int) if np.isscalar(m3) else np.asarray(m3*2,dtype=int))
+            retval = np.zeros(length,dtype=float)
+            i = (j1>=0)&(j2>=0)&(j3>=0)&(j1>=np.abs(m1))&(j2>=np.abs(m2))&(j3>=np.abs(m3))
+            if np.any(i):
+                retval[i] = py3nj.wigner3j(j1[i],j2[i],j3[i],m1[i],m2[i],m3[i])
+            return(retval)
+    else:
+        raise Exception(f"Unknown method: {repr(method)}")
 
 # def clebsch_gordan(j1,m1,j2,m2,J,M):
     # """Clebsch-Gordan coefficient. Gives coefficent allowing for the

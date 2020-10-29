@@ -1,16 +1,20 @@
 import re
 import warnings
 from copy import copy
+from functools import lru_cache
 
 import numpy as np
 from bidict import bidict
+import periodictable
 
 from .dataset import Dataset
 from . import tools
+from . import database
 
-################################
-## species name normalisation ##
-################################
+
+#############
+## species ##
+#############
 
 @tools.vectorise_function
 def decode_species(name,encoding):
@@ -127,7 +131,6 @@ _species_name_translation_dict['meudon_pdr'] = bidict({
     # '?':'ch2o2',                  # not sure
     })
 
-
 def _f(name):
     """Standard to Meudon PDR with old isotope labellgin."""
     name = re.sub(r'\([0-9][SPDF][0-9]?\)','',name) # remove atomic terms e.g., O(3P1) ⟶ O
@@ -149,32 +152,6 @@ def _f(name):
     return(name.lower())
 _species_name_translation_functions[('standard','meudon')] = _f
 
-# ## STAND kinetic network
-# _species_name_translation_dict['STAND'] = bidict({
-    # 'O+_2P':'O^+^(^3^P)',       # error in STAND O^+^(^3^P) should be O^+^(^2^P)?
-    # 'O+_2D':'O^+^(^2^D)',
-    # 'O2+_X2Πg':'O_2^+_(X^^2Pi_g^)',
-    # 'O2_a1Δg' :'O_2_(a^1Delta_g^)',
-    # 'O_1S':'O(^1^S)',
-    # 'O_1D':'O(^1^D)',
-    # 'C_1S':'C(^1^S)',
-    # 'C_1D':'C(^1^D)',
-    # 'NH3':'H_3_N',
-    # 'OH':'HO',
-# })
-# def _f(name):
-    # name = name.replace('_','')
-    # name = name.replace('^','')
-    # ##  hack because two forms exist (repeated ^), and cannot be treated with a dictionary
-    # if name == 'O2(a1Deltag)':
-        # name = 'O2_a1Δg'
-    # if name == 'O+(3P)':
-        # name = 'O+_2P'
-    # if name == 'O+(2D)':
-        # name = 'O+_2D'
-    # return(name)
-# _species_name_translation_functions[('STAND','standard')] = _f
-
 ## STAND reaction network used in ARGO model
 _species_name_translation_dict['STAND'] = bidict({
     'NH3':'H3N',
@@ -193,32 +170,6 @@ def _f(name):
     return(name)
 _species_name_translation_functions[('STAND','standard')] = _f
 
-## hitran numeric codes - https://hitran.org/docs/iso-meta/
-_species_name_translation_dict['hitran_codes'] = bidict({
-    'H2O':1,'CO2': 2,'O3': 3,'N2O': 4,
-    'CO':5,'CH4': 6,'O2': 7,'NO': 8,'SO2': 9,'NO2': 10,'NH3': 11,
-    'HNO3':12,'OH': 13,'HF': 14,'HCl': 15,'HBr': 16,'HI': 17,'ClO':18,
-    'OCS':19,'H2CO': 20,'HOCl': 21,'N2': 22,'HCN': 23,
-    'CH3Cl':24,'H2O2': 25,'C2H2': 26,'C2H6': 27,'PH3': 28,'COF2': 29,
-    'SF6':30,'H2S': 31,'HCOOH': 32,'HO2': 33,'O': 34,'ClONO2': 35,
-    'HOBr':37,'C2H4': 38,'CH3OH': 39,'CH3Br': 40,'CH3CN': 41,
-    'CF4':42,'C4H2': 43,'HC3N': 44,'H2': 45,'CS': 46,'SO3': 47,
-    'C2N2':48,'COCl2': 49,'[12C][16O]2': (2,1),'[13C][16O]2': (2,2),
-    # '[16O][12C][18O]':(2,3),'[16O][12C][17O]': (2,4),'[16O][13C][18O]': (2,5),'[16O][13C][17O]': (2,6),
-    # '[12C][18O]2':(2,7),'[17O][12C][18O]': (2,8),'[12C][17O]2': (2,9),
-    # '[13C][18O]2':(2,10),'[18O][13C][17O]': (2,11),'[13C][17O]2': (2,12),
-    # '12C16O':(5,1),'13C16O':(5,2),'12C18O':(5,3),'12C17O':(5,4),'13C18O':(5,5),'13C17O':(5,6),
-    # '[12C][16O]':(5,1),
-    # '[13C][16O]':(5,2),'[12C][18O]':(5,3),
-    # '[12C][17O]':(5,4),'[13C][18O]':(5,5),'[13C][17O]':(5,6),
-    # '14N16O':(8,1),'15N16O': (8,2),'14N18O': (8,3), 
-    # '[14N][16O]':(8,1),'[15N][16O]': (8,2),'[14N][18O]': (8,3),
-    # '[16O][12C][32S]':(19,1),'[16O][12C][34S]': (19,2),'[16O][13C][32S]': (19,3),'[16O][12C][33S]': (19,4),'[18O][12C][32S]': (19,5), # OCS
-    # '[12C][1H]3[35Cl]':(24,1),'[12C][1H]3[37Cl]': (24,2), # CH3Cl
-    # '[12C][1H]4':(6,1),'[13C][1H]4': (6,2),'[12C][1H]3[2H]': (6,3),'[13C][1H]3[2H]': (6,4),
-    # '[1H][35Cl]':(15,1),'[1H][37Cl]': (15,2),'[2H][35Cl]': (15,3),'[2H][37Cl]': (15,4),
-})
-
 ## kida
 def _f(name):
     return(name)
@@ -234,192 +185,122 @@ def _f(name):
 _species_name_translation_functions[('standard','latex')] = _f
 
 
-
-##################################
-## Complex object for a species ##
-##################################
-
 _get_species_cache = {}
 def get_species(name):
     """Get species from name, assume immutable and potentially
     cached."""
     if name not in _get_species_cache:
-        _get_species_cache[name] = Species(name=name)
+        _get_species_cache[name] = Species(name)
     return(_get_species_cache[name])
 
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
 
     def __init__(self,name):
-        # ## look for isomer, e..,g c-C3 vs l-C3
-        # if r:=re.match('^(.+)-(.*)$',name):
-            # self.isomer,name = r.groups()
-        # else:
-            # self.isomer = None
-        # ## decode name
-        # ## translate diatomic special cases -- remove one day, e.g., 32S16O to [32]S[16]O
-        # name = re.sub(r'^([0-9]+)([A-Z][a-z]?)([0-9]+)([A-Z][a-z]?)$',r'[\1\2][\3\4]',name)
-        # name = re.sub(r'^([0-9]+)([A-Z][a-z]?)2$',r'[\1\2]2',name)
-        self.name = name # must be unique in standard form -- use a hash instead?
-        self._reduced_elements = None            # keys are names of elements, values are multiplicity in ONE molecule
-        self._elements = None            # list of elements, possibly repeated
-        self._element_species = None            # list of elements as Species objects
-        self._charge = None
-        self._nelectrons = None
-        self._mass = None            # of one molecule
-        self._reduced_mass = None   # reduced mass (amu), actually a property
-        self._nonisotopic_name = None # with mass symbols removed, e.g., '[32S][16O]' to 'SO'
-        self.density = None     # cm-3
+        ## determine if name is for a species or an isotopologue
+        if '[' in name or ']' in name:
+            self.isotopologue = name
+            self.species = database.get_species_property(self.isotopologue,'iso_indep')
+        else:
+            self.species = name
+            self.isotopologue = database.get_species_property(self.species,'iso_main')
+        # self._reduced_elements = None            # keys are names of elements, values are multiplicity in ONE molecule
+        self._elements = None   # set of elements, possibly repeated
+        self._isotopes = None   # set of elements, possibly repeated
+        # self._element_species = None            # list of elements as Species objects
+        self._charge = None     # net charge
+        self._nelectrons = None # number of electrnos
+        self._mass = None            # amu
+        self._reduced_mass = None   # reduced mass (amu)
+        # self._nonisotopic_name = None # with mass symbols removed, e.g., '[32S][16O]' to 'SO'
 
-    def _get_nonisotopic_name(self):
-        """NOT WELL TESTED, ADD SPECIAL CASE FOR DEUTERIUM"""
-        if self._nonisotopic_name is None:
-            if r:=re.match(r'^[0-9]+([A-Z].*)',self.name):
-                ## simple atom ,e.g., 13C
-                self._nonisotopic_name = r.group(1)
-            else:
-                self._nonisotopic_name = r.sub(r'\[[0-9]*([A-Za-z]+)\]',r'\1',self.name)
-        return self._nonisotopic_name
-
-    nonisotopic_name = property(_get_nonisotopic_name)
-
-    def _get_reduced_mass(self): 
-        if self._reduced_mass is None:
-            self._reduced_mass = database.get_species_property(self.name,'reduced_mass')
-        return(self._reduced_mass)
-
-    def _set_reduced_mass(self,reduced_mass):
-        self._reduced_mass = reduced_mass
-
-    reduced_mass = property(_get_reduced_mass,_set_reduced_mass)
-
-    def _get_mass(self):
-        if self._mass is None:
-            self._mass = database.get_species_property(self.name,'mass')
-        return(self._mass)
-
-    mass = property(_get_mass)
 
     def _get_charge(self):
-        if self._charge is not None:
-            pass
-        elif self.name=='e-':
-            self._charge = -1
-        elif self.name=='photon':
-            self.charge = 0
-        elif r:=re.match('^(.*)[^]([-+][0-9]+)$',self.name): # ddd^+3 / ddd^-3 / ddd^3
-            self._charge = int(r.group(2))
-        elif r:=re.match('^(.*)[^]([0-9]+)([+-])$',self.name): # ddd^3+ / ddd^3-
-            self._charge = int(r.group(3)+r.group(2))
-        elif r:=re.match('^(.*[^+-])([+]+|-+)$',self.name): # ddd+ / ddd++
-            self._charge = r.group(2).count('+') - r.group(2).count('-')
-        else:
-            self._charge = 0
+        if self._charge is None:
+            if r:=re.match('^(.*[^+-])([+]+|-+)$',self.species): # ddd+ / ddd++
+                self._charge = r.group(2).count('+') - r.group(2).count('-')
+            else:
+                self._charge = 0
         return self._charge
-
-    charge = property(_get_charge)
 
     def _get_elements(self):
         if self._elements is not None:
             pass
         else:
             self._elements = []
-            self._reduced_elements = {}
-            for part in re.split(r'(\[[0-9]*[A-Z][a-z]?\][0-9]*|[A-Z][a-z]?[0-9]*)',self.name):
-                if len(part)==0: continue
-                r = re.match('^(.+?)([0-9]*)$',part)
-                if r.group(2)=='':
-                    multiplicity = 1
-                else:
-                    multiplicity = int(r.group(2))
-                element = r.group(1)
-                element = element.replace(']','').replace('[','')
-                for i in range(multiplicity):
-                    self._elements.append(element)
-                if element in self.reduced_elements:
-                    self.reduced_elements[element] += multiplicity
-                else:
-                    self.reduced_elements[element] = multiplicity
+            for part in re.split(r'([A-Z][a-z]?[0-9]*)',self.species):
+                if r:= re.match('^([A-Z][a-z]?)([0-9]*)',part):
+                    element = r.group(1)
+                    multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
+                    for i in range(multiplicity):
+                        self._elements.append(element)
+            self._elements.sort()
         return self._elements
 
-    elements = property(_get_elements)
-
-    def _get_element_species(self):
-        if self._element_species is None:
-            self._element_species = [Species(element) for element in self.elements]
-        return(self._element_species)
-
-    element_species = property(_get_element_species)
-
-    def _get_reduced_elements(self):
-        if self._reduced_elements is None:
-            self._get_elements()
-        return self._reduced_elements
-
-    reduced_elements = property(_get_reduced_elements)
+    def _get_isotopes(self):
+        if self._isotopes is not None:
+            pass
+        else:
+            self._isotopes = set()
+            for part in re.split(r'\[([0-9]+[A-Z][a-z]?[0-9]*)\]',self.isotopologue):
+                if r:= re.match('^([0-9]+[A-Z][a-z]?)([0-9]*)',part):
+                    isotope = r.group(1)
+                    multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
+                    for i in range(multiplicity):
+                        self._isotopes.append(isotope)
+        return self._isotopes
 
     def _get_nelectrons(self):
-        if self._nelectrons is not None:
-            pass
-        elif self.name == 'e-':
-            self.charge = -1
-            self._nelectrons = 1
-        elif self.name == 'photon':
-            self.charge = 0
-            self.nelectrons = 0
-        else:
+        if self._nelectrons is None:
+            if self.species in ('e-','photon'):
+                raise NotImplementedError()
             self._nelectrons = 0
-            for element,multiplicity in self.reduced_elements.items():
-                element = re.sub(r'^\[?[0-9]*([A-Za-z]+)\]?',r'\1',element)
-                self._nelectrons += multiplicity*getattr(periodictable,element).number # add electrons attributable to each nucleus
-            self._nelectrons -= self.charge # account for ionisation
+            for element in self['elements']:
+                self._nelectrons += getattr(periodictable,element).number # add electrons attributable to each nucleus
+            self._nelectrons -= self['charge'] # account for ionisation
         return self._nelectrons
 
-    nelectrons = property(_get_nelectrons)
-
-    def encode_elements(self,elements,charge=None,isomer=None):
-        ## convert list of elements into elemets with degeneracies
-        element_degeneracy = []
-        for element in elements:
-            if len(element_degeneracy)==0 or element_degeneracy[-1][0]!=element: # first or new
-                element_degeneracy.append([element,1])
-            elif element_degeneracy[-1][0]==element: # continuation
-                element_degeneracy[-1][1] += 1
-        ## concatenate
-        name = ''.join(
-            [(element if element[0] not in '0123456789' else '['+element+']') # bracket isotopes
-             +('' if degeneracy==1 else str(degeneracy)) # multiplicity
-             for element,degeneracy in element_degeneracy])
-        if charge is not None:
-            if charge>0:
-                for i in range(charge): name += '+'
-            if charge<0:
-                for i in range(-charge): name += '-'
-        if isomer is not None and isomer!='':
-            name = isomer+'-'+name
-        self.decode_name(name)
-
-    def get_isotopologues(self,element_from,element_to):
-        """Find disctinct single-substitutions of one element."""
-        isotopologues = []      # list of Species, one for each distinct isotopologue
-        for i,element in enumerate(self.elements):
-            if i<(len(self.elements)-1) and element==self.elements[i+1]: continue # skip identical subsitutiotns, i.,e., keep rightmost, CO[18O] and not C[18O]O for CO2 substitution
-            if element==element_from:
-                t = copy(self.elements)
-                t[i] = element_to
-                isotopologues.append(Species(elements=t,charge=self.charge,isomer=self.isomer))
-        return(isotopologues)         
-
-    def __str__(self): return(self.name)
+    def __str__(self):
+        if self.isotopologue is None:
+            return self.species
+        else:
+            return self.isotopologue
 
     ## for sorting a list of Species objects
-    def __lt__(self,other): return(self.name<other.name)
-    def __gt__(self,other): return(self.name>other.name)
+    def __lt__(self,other):
+        if self.isotopologue is None:
+            return self.species < other
+        else:
+            return self.isotopologue < other
 
+    def __gt__(self,other):
+        if self.isotopologue is None:
+            return self.species > other
+        else:
+            return self.isotopologue > other
 
+    @lru_cache
+    def __getitem__(self,key):
+        if key == 'charge':
+            return self._get_charge()
+        elif key == 'elements':
+            return self._get_elements()
+        elif key == 'isotopes':
+            return self._get_isotopes()
+        elif key == 'nelectrons':
+            return self._get_nelectrons()
+        else:
+            if self.isotopologue is None:
+                raise NotImplementedError(f'Properties only implemented for isotopologues')
+            return database.get_species_property(self.isotopologue,key)
+        
+
+    
 ########################
 ## Chemical reactions ##
 ########################
+
+
 
 def decode_reaction(reaction,encoding='standard'):
     """Decode a reaction into a list of reactants and products, and other

@@ -1,17 +1,27 @@
-from . import optimise
-from . import levels
-from .species import get_species
+from copy import copy
+from pprint import pprint
+from functools import lru_cache
+import itertools
 
 import numpy as np
+import sympy
+from scipy import linalg
+
+from . import levels,lines
+from . import quantum_numbers
+from . import tools
+from .optimise import Optimiser,P,auto_construct_method
+from .kinetics import get_species,Species
 
 
-class VibLevel(optimise.Optimiser):
+
+class VibLevel(Optimiser):
     """A vibronic interaction matrix."""
 
     def __init__(
             self,
             name='viblevel',
-            species=None,
+            species='14N2',
             # Rbeg=None, Rend=None, Rstep=None, # for solving Schrödinger equation if potential energy curves are used
             J=None,                       # compute on this, or default added
             ef=None,                      # compute for these e/f parities , default ('e','f')
@@ -19,24 +29,29 @@ class VibLevel(optimise.Optimiser):
             experimental_level=None,      # a Level object for optimising relative to 
             eigenvalue_ordering='maximise coefficients', # for deciding on the quantum number assignments of mixed level, options are 'minimise residual', 'maximise coefficients', 'preserve energy ordering' or None
             # fitΓ=None,       # optimise for linewidths or not
-            Tref=0.,       # energy reference relative to equilibrium energy, defaults to 0.
+            Eref=0.,       # energy reference relative to equilibrium energy, defaults to 0. -- not well defined
             # Tbeg=None,Tend=None,
             # input_vibrational_level=None, # contains a list of electronic-vibrational level parameters, automatically added to the interacting states
             **qn,               # applies to all levels
     ):
         self.name = name          # a nice name
-        self.species = species
-        assert species is not None,'species argument required'
+        t = get_species(species)
+        self.species = t.species
+        self.isotopologue = t.isotopologue
+        self.point_group = t['point_group']
+        self.rotational_level = levels.rotational_level_by_point_group[self.point_group]()
+        self.vibrational_level = levels.vibrational_level_by_point_group[self.point_group]()
+        self.vibrational_spin_level = levels.rotational_level_by_point_group[self.point_group]()
         # self.states = []          # Vibronic_State objects
         # self.interactions = []            # Vibronic_Interaction objects
         # self._vibronic_spin_manifolds = [] #  for the benefit of get_vibrational_level
         # self._vibronic_interactions = [] #  for the benefit of get_vibrational_interactions
         # self.ef = (ef if ef is not None else ('e','f'))    # set this to restrict parity to ('e',) or ('f',)
-        self.Tref = Tref                                   # energy refernce relative to Te
+        self.Eref = Eref                                   # energy refernce relative to Te
         # self.Tbeg,self.Tend = Tbeg,Tend
         ## get a good default J range
         species_object = get_species(species)
-        J_is_half_integer = species_object.nelectrons%2==1
+        J_is_half_integer = species_object['nelectrons']%2==1
         if J is None:
             if J_is_half_integer:
                 self.J = np.arange(0.5,30.5,1)
@@ -69,18 +84,9 @@ class VibLevel(optimise.Optimiser):
         self.eigvals = None
         self.eigvects = None
         ## a Level object containing data, better access through level property
-        if species_object.point_group == 'D∞h':
-            self._rotational_level = levels.DiatomicDinfh(species=species)
-        elif species_object.point_group == 'C∞v':
-            self._rotational_level = levels.DiatomicCinfv(species=species)
-        else:
-            raise Exception('Only D∞h and C∞v point group diatomic molecules implemented.')
-        if Tref is not None: self._rotational_level['Tref'] = Tref # set Tref if provided as input argument
-        self._rotational_level.permit_new_keys  = True
-        self._rotational_level.add_vector_data(name='Tresidual',dtype=float,description='Residual term value error (cm-1)')
-        self._rotational_level.add_vector_data(name='dTresidual',dtype=float,description='Uncertainty in residual term value error (1σ, cm-1)')
-        self._vibrational_level = Vibrational_Level(species=species) # data store for property self.level
-        self.fitΓ = (fitΓ if fitΓ is not None else False) # whether to include width residual when optimising
+        if Eref is not None:
+            self.rotational_level['Eref'] = Eref # set Eref if provided as input argument
+        self.rotational_level.permit_new_keys  = True
         self._exp = None # an array of experimental data matching the model data in shape
         ## the optimiser
         Optimiser.__init__(self,name=self.name)
@@ -90,14 +96,15 @@ class VibLevel(optimise.Optimiser):
             self.vibrational_level.save_to_file(directory+'/Vibrational_Level') # 
             t = self.get_vibronic_interactions()
             t.save_to_file(directory+'/vibronic_interactions') # 
-        self.output_to_directory_functions.append(f)
-        self.construct_functions.append(lambda:self.construct_level())
+        self.add_save_to_directory_function(f)
+        self.add_construct_function(self._initialise_construct)
+        self.add_post_construct_function(self._finalise_construct)
         ## if experimental data is present this might be an adjustable
         ## thing to so add as a suboptimiser
-        if experimental_level is None:
-            self.set_experimental_level()
-        else:
-            self.set_experimental_level(experimental_level)
+        # if experimental_level is None:
+            # self.set_experimental_level()
+        # else:
+            # self.set_experimental_level(experimental_level)
         # self.add_monitor(self.get_level) # ensure level constructed at end
         def f():
             # retval = '\nfrom anh import *\n'
@@ -111,7 +118,7 @@ class VibLevel(optimise.Optimiser):
             if experimental_level is not None: retval += f'experimental_level={experimental_level.name},'
             if eigenvalue_ordering is not None: retval += f'eigenvalue_ordering={repr(eigenvalue_ordering)},'
             if fitΓ  is not None: retval += f'fitΓ={repr(fitΓ)},'
-            if Tref  is not None: retval += f'Tref={repr(Tref)},'
+            if Eref  is not None: retval += f'Eref={repr(Eref)},'
             if len(self.qn)>0: retval += f"{my.dict_to_kwargs(self.qn)})"
             retval += ')'
             return(retval)
@@ -119,6 +126,69 @@ class VibLevel(optimise.Optimiser):
         # ## add spin manifolds form input Vibrational_Level
         # if input_vibrational_level is not None:
             # self.add_spin_manifolds_from_dynamic_array(input_vibrational_level)
+
+    def _initialise_construct(self):
+        self.H = []
+
+    def _finalise_construct(self):
+        ## construct big matrix
+        n = sum(t.shape[1] for t in self.H)
+        H = np.full((len(self.J),n,n),0.)
+        i = 0
+        for Hi in self.H:
+            ni = Hi.shape[1]
+            H[:,i:i+ni,i:i+ni] = Hi
+            i += ni
+        self.H = H
+        ## diagonalise
+        E = []                 # perturbed energy levels
+        c = []                  # mixing coefficients
+        self.rotational_level['E'] = np.full(len(self.rotational_level),np.nan)
+        for i in range(len(self.J)):
+            eigvals,eigvects = linalg.eig(H[i,:,:])
+            j = self.rotational_level.match(J=self.J[i])
+            self.rotational_level['E'][j] = eigvals.real
+            E.append([eigvals.real])
+            c.append([eigvects])
+        self.E = np.concatenate(E)
+        self.c = np.concatenate(c)
+        # print( self.rotational_level[:10]) #  DEBUG
+
+    @auto_construct_method('add_level')
+    def add_level(self,name='level',**kwargs):
+        """Add a new electronic vibrational level. kwargs contains fitting
+        parameters and optionally extra quantum numbers."""
+        ## get all quantum numbers
+        kwargs['isotopologue'] = self.isotopologue
+        for key,val in quantum_numbers.decode_level(name).items():
+            kwargs.setdefault(key,val)
+        self.vibrational_level.append(**kwargs)
+        ## Checks that integer/half-integer nature of J corresponds to quantum number S
+        assert kwargs['S']%1==self.J[0]%1,f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}'
+        ## get Hamiltonian
+        ef,Σ,H,fH = _get_linear_H(kwargs['S'],kwargs['Λ'],kwargs['s'])
+        for efi,Σi in zip(ef,Σ):
+            self.vibrational_spin_level.append(ef=efi,Σ=Σi,**kwargs)
+        ## insert adjuatable parameters into functional Hamiltonian
+        for i in range(fH.shape[0]):
+            for j in range(fH.shape[1]):
+                fH[i,j] = lambda J,f=fH[i,j]: f(J,**kwargs)
+        def construct_function():
+            ## compute energy levels and interactions
+            H = np.full((len(self.J),fH.shape[0],fH.shape[1]),0.)
+            for i in range(fH.shape[0]):
+                for j in range(fH.shape[1]):
+                    iJ = (self.J>=(Σ[i]+kwargs['Λ'])) & (self.J>=(Σ[j]+kwargs['Λ'])) # allowed only J≥Ω
+                    H[iJ,i,j] = fH[i,j](self.J[iJ])
+            self.H.append(H)
+            ## add to rotational and vibrational level
+            for efi,Σi in zip(ef,Σ):
+                self.rotational_level.extend(J=self.J,ef=efi,Σ=Σi,**kwargs)
+
+        return construct_function
+            
+        
+
 
     # def set_experimental_level(self,*rotational_levels):
         # """Set a Rotational_Level as the experimental data to optimise. If
@@ -165,15 +235,16 @@ class VibLevel(optimise.Optimiser):
                 # print( transition['namep'],transition['namepp'],transition['ηv'],)
                 # self.add_LS_coupling(transition['namep'],transition['namepp'],p=transition['ηv'])
 
-    # def add_spin_manifold(
+
+    # def add_linear_manifold(
             # self,
             # name,
-            # T=0,B=0,D=0,H=0,L=0,
-            # A=0,AD=0,
-            # λ=0,λD=0,λH=0,γ=0,γD=0,
-            # o=0,p=0,pD=0,q=0,qD=0,
-            # print_latex_Hamiltonian=False,
-            # return_symbolic_Hamiltonian=False,
+            # T=None,B=None,D=None,H=None,L=None,
+            # A=None,AD=None,
+            # λ=None,λD=None,λH=None,γ=None,γD=None,
+            # o=None,p=None,pD=None,q=None,qD=None,
+            # # print_latex_Hamiltonian=False,
+            # # return_symbolic_Hamiltonian=False,
             # **qn,
     # ):
         # '''An effective Hamiltonian for diatomic molecules taken from
@@ -185,23 +256,27 @@ class VibLevel(optimise.Optimiser):
         # compared to other approximations made by brown1979 while
         # refining their effective Hamiltonian.  Not all parameters are
         # relevant to all kinds of states.'''
-        # ## do nothing if outisde Tbeg/Tend range
-        # Ttest = my.ensure_iterable(T)[0]
-        # if (   (self.Tbeg is not None and Ttest<self.Tbeg)
-            # or (self.Tend is not None and Ttest>self.Tend)):
-            # print(f"warning: Spin manifold {repr(name)} outside of range: Tbeg={self.Tbeg}, Tend={self.Tend}")
-            # return
+        # # ## do nothing if outisde Tbeg/Tend range
+        # # Ttest = my.ensure_iterable(T)[0]
+        # # if (   (self.Tbeg is not None and Ttest<self.Tbeg)
+            # # or (self.Tend is not None and Ttest>self.Tend)):
+            # # print(f"warning: Spin manifold {repr(name)} outside of range: Tbeg={self.Tbeg}, Tend={self.Tend}")
+            # # return
         # ## get all quantum numbers possible from the name
-        # for key in qn: assert key in Rotational_Level._class_key_data['vector'],f'Unknown quantum number: {repr(key)}'
-        # qn_input = copy(qn)     # preserve those that were input only
-        # qn = self._combine_quantum_numbers(name,**qn)
-        # qn.setdefault('species',self.species)
+        # # for key in qn:
+            # # assert key in Rotational_Level._class_key_data['vector'],f'Unknown quantum number: {repr(key)}'
+        # # qn_input = copy(qn)     # preserve those that were input only
+        # qn = copy(qn)
+        # for key,val in quantum_numbers.decode_level(name).items():
+            # qn.setdefault(key,val)
+        # # qn = self._combine_quantum_numbers(name,**qn)
+        # # qn.setdefault('species',self.species)
         # ## parameters for optimisation
-        # parameters = self.add_parameter_set(
-            # note=f'add_spin_manifold {encode_level(**qn)}',
-            # step_default = {'T':1e-3,'B':1e-5,'D':1e-7,'H':1e-11,'L':1e-13,'A':1e-3,'AD':1e-5,
-                            # 'λ':1e-3,'λD':1e-5,'γ':1e-3,'γD':1e-5,'o':1e-3,'p':1e-3,'pD':1e-5,'q':1e-5,'qD':1e-7,},
-            # T=T,B=B,D=D,H=H,L=L,A=A,AD=AD,λ=λ,λD=λD,λH=λH,γ=γ,γD=γD,o=o,p=p,pD=pD,q=q,qD=qD,)
+        # # parameters = self.add_parameter_set(
+            # # note=f'add_spin_manifold {encode_level(**qn)}',
+            # # step_default = {'T':1e-3,'B':1e-5,'D':1e-7,'H':1e-11,'L':1e-13,'A':1e-3,'AD':1e-5,
+                            # # 'λ':1e-3,'λD':1e-5,'γ':1e-3,'γD':1e-5,'o':1e-3,'p':1e-3,'pD':1e-5,'q':1e-5,'qD':1e-7,},
+            # # T=T,B=B,D=D,H=H,L=L,A=A,AD=AD,λ=λ,λD=λD,λH=λH,γ=γ,γD=γD,o=o,p=p,pD=pD,q=q,qD=qD,)
         # ## ## in order to compute SR, F and N correctly the sign of
         # ## ## spin-orbit interaction must be known,
         # ## ## here they are set depending on the sign of A (before
@@ -212,31 +287,41 @@ class VibLevel(optimise.Optimiser):
         # ## not all parameters make physical sense for all kinds of
         # ## states, raise an error if they are given in the input
         # ## arguments or varied
-        # valid_params = ['T','B','D','H','A','AD','λ','λD','λH','γ','γD','o','p','pD','q','qD',]
-        # if qn['S']==0:
-            # for key in ('A','AD','λ','λD','λH','γ','γD',):
-                # if key in valid_params: valid_params.remove(key)
-        # if qn['Λ']==0:
-            # for key in ('A','AD'):
-                # if key in valid_params: valid_params.remove(key)
-        # if qn['Λ']==0 and qn['S']==0:
-            # for key in ('o','p','pD','q','qD'):
-                # if key in valid_params: valid_params.remove(key)
-        # if qn['Λ']==1 and qn['S']==0.5: valid_params.remove('o')
-        # for key,val in parameters.items():
-            # if key not in valid_params and (val.p!=0 or val.vary==True):
-                # raise Exception("Invalid parameter for this kind of spin-manifold: "+repr(key))
-        # ## recreate input
-        # self.format_input_functions.append(lambda qn=qn: f"{self.name}.add_spin_manifold({repr(name)},\n{parameters.format_multiline(neglect_fixed_zeros=True)},\n   {my.dict_to_kwargs(qn_input)})")
-        # ## store vibronic_spin_manifold data for use in printing the output etc
-        # self._vibronic_spin_manifolds.append(dict(qn=qn,parameter_set=parameters))
+        # invalid_parameters = set()
+        # for (test,parameters) in (
+                # (qn['S']==0,('A','AD','λ','λD','λH','γ','γD',)),
+                # (qn['Λ']==0,('A','AD')),
+                # (qn['Λ']==0 and qn['S']==0,('o','p','pD','q','qD')),
+                # (qn['Λ']==1 and qn['S']==0.5,('o',)),
+        # ):
+            # if test:
+                # invalid_parameters.union(parameters)
+        # parameters = {}
+        # for key,val in (
+            # ('T',T),('B',B),('D',D),('H',H),
+            # ('A',A),('AD',AD),('λ',λ),('λD',λD),('λH',λH),('γ',γ),('γD',γD),
+            # ('o',o),('p',p),('pD',pD),('q',q),('qD',qD),
+        # ):
+            # if key in invalid_parameters:
+                # if val is not None:
+                    # raise Exception(f'Invalid parameter set: {key}')
+            # else:
+                # parameters[key] = val if val is not None else 0.
+        # # for key,val in parameters.items():
+            # # if key not in valid_parameters and (val.p!=0 or val.vary==True):
+                # # raise Exception("Invalid parameter for this kind of spin-manifold: "+repr(key))
+        # # ## recreate input
+        # # self.format_input_functions.append(lambda qn=qn: f"{self.name}.add_spin_manifold({repr(name)},\n{parameters.format_multiline(neglect_fixed_zeros=True)},\n   {my.dict_to_kwargs(qn_input)})")
+        # # ## store vibronic_spin_manifold data for use in printing the output etc
+        # # self._vibronic_spin_manifolds.append(dict(qn=qn,parameter_set=parameters))
         # ## some numerical quantum numbers used below
         # s,S,Λ = qn['s'],qn['S'],qn['Λ']
         # ## Checks that integer/half-integer nature of J corresponds to quantum number S
         # assert S%1==self.J[0]%1,f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}'
         # ## symbolic variables, Note that expected value of ef is +1 or -1 for 'e' and 'f'
-        # J,T,B,D,H,A,AD,λ,λD,λH,γ,γD,o,p,pD,q,qD = (sympy.Symbol('J'),sympy.Symbol('T'),sympy.Symbol('B'),sympy.Symbol('D'),sympy.Symbol('H'),sympy.Symbol('A'),sympy.Symbol('AD'),sympy.Symbol('λ'),sympy.Symbol('λD'),sympy.Symbol('λH'),sympy.Symbol('γ'),sympy.Symbol('γD'),sympy.Symbol('o'),sympy.Symbol('p'),sympy.Symbol('pD'),sympy.Symbol('q'),sympy.Symbol('qD'))
-        # case_a = get_case_a_basis(Λ,s,S,print_output=False)
+        # Z = sympy.Symbol
+        # J = Z('J')
+        # case_a = quantum_numbers.get_case_a_basis(Λ,s,S,print_output=False)
         # efs = case_a['qnef']['ef']
         # Σs = case_a['qnef']['Σ']
         # NN = case_a['NNef']
@@ -245,11 +330,11 @@ class VibLevel(optimise.Optimiser):
         # def anticommutate(X,Y): return(X*Y+Y*X) # convenience function
         # ## Equation 18 of brown1979
         # I  = sympy.eye(case_a['n']) # unit matrix
-        # HH = T*I + B*NN - D*NN**2 + H*NN**3       # T + BN**2 - DN**4 + HN**6
+        # HH = Z('T')*I + Z('B')*NN - Z('D')*NN**2 + Z('H')*NN**3       # T + BN**2 - DN**4 + HN**6
         # if S>0:
-            # if Λ>0: HH += anticommutate(A*I+AD*NN,sympy.diag(*[float(Λ*Σ) for Σ in Σs]))/2 # 1/2[A+AN2,LzSz]+
-            # HH += (γ*I+γD*NN)*NS # (γ+γD.N**2)N.S
-            # HH += anticommutate(λ*I+λD*NN+λH*NN**2,sympy.diag(*[float(Σ**2) for Σ in Σs])-I/3*S*(S+1)) # [λ+λD.N**2),Sz**2-1/3*S**2]+
+            # if Λ>0: HH += anticommutate(Z('A')*I+Z('AD')*NN,sympy.diag(*[float(Λ*Σ) for Σ in Σs]))/2 # 1/2[A+AN2,LzSz]+
+            # HH += (Z('γ')*I+Z('γD')*NN)*NS # (γ+γD.N**2)N.S
+            # HH += anticommutate(Z('λ')*I+Z('λD')*NN+Z('λH')*NN**2,sympy.diag(*[float(Σ**2) for Σ in Σs])-I/3*S*(S+1)) # [λ+λD.N**2),Sz**2-1/3*S**2]+
         # ## add Λ-doubling terms here, element-by-element.
         # for i,(Σi,efi) in enumerate(zip(Σs,efs)):
             # for j,(Σj,efj) in enumerate(zip(Σs,efs)):
@@ -257,7 +342,7 @@ class VibLevel(optimise.Optimiser):
                 # ef = (1 if efi=='e' else -1) # Here ef is +1 for 'e' and -1 for 'f'
                 # ## 1Π state
                 # if Λ>0 and S==0: 
-                    # if efi=='f' and efj=='f': HH[i,j] += q*J*(J+1)   # coefficient
+                    # if efi=='f' and efj=='f': HH[i,j] += Z('q')*J*(J+1)   # coefficient
                 # # ## 1Π states -- f levels are shifted by q
                 # # elif Λ==1 and S==0:
                     # # if efi=='f' and efj=='f':
@@ -275,35 +360,35 @@ class VibLevel(optimise.Optimiser):
                             # if efi!=efj: continue
                             # ## diagonal element for level 2 in amiot1981
                             # if   Σi==-0.5 and Σj==-0.5:
-                                # HH[i,j] += efi*( -0.5*(J+0.5)*p
-                                                 # -(J+0.5)*q
-                                                 # -0.5*(J+0.5)*((J-0.5)*(J+0.5)+2)*pD
-                                                 # -0.5*(3*(J-0.5)*(J+0.5)+4)*(J+0.5)*qD    )
+                                # HH[i,j] += efi*( -0.5*(J+0.5)*Z('p')
+                                                 # -(J+0.5)*Z('q')
+                                                 # -0.5*(J+0.5)*((J-0.5)*(J+0.5)+2)*Z('pD')
+                                                 # -0.5*(3*(J-0.5)*(J+0.5)+4)*(J+0.5)*Z('qD')    )
                             # ## diagonal element for level 1 in amiot1981
                             # elif Σi==+0.5 and Σj==+0.5:
-                                # HH[i,j] += efi*( -0.5*(J-0.5)*(J+1.5)*(J+0.5)*q
-                                                 # -0.5*(J-0.5)*(J+0.5)*(J+0.5)*qD  )
+                                # HH[i,j] += efi*( -0.5*(J-0.5)*(J+1.5)*(J+0.5)*Z('q')
+                                                 # -0.5*(J-0.5)*(J+0.5)*(J+0.5)*Z('qD')  )
                             # ## off-diagonal element
                             # elif Σi==-0.5 and Σj==+0.5:
-                                # HH[i,j] += efi*(  0.5*((J-0.5)*(J+1.5))**0.5*(J+0.5)*q
-                                                  # + 0.25*((J-0.5)*(J+0.5))**0.5*(J+0.5)*pD
-                                                  # +0.5*((J-0.5)*(J+0.5))**(0.5)*((J-0.5)*(J+0.5)+2)*(J+0.5)*qD )
+                                # HH[i,j] += efi*(  0.5*((J-0.5)*(J+1.5))**0.5*(J+0.5)*Z('q')
+                                                  # + 0.25*((J-0.5)*(J+0.5))**0.5*(J+0.5)*Z('pD')
+                                                  # +0.5*((J-0.5)*(J+0.5))**(0.5)*((J-0.5)*(J+0.5)+2)*(J+0.5)*Z('qD') )
                 # ## 3Π states, from Table I brown_merer1979            
                 # elif Λ==1 and S==1:
                     # ## diagonal elements
-                    # if   Σi==-1 and Σj==-1: HH[i,j] += -ef*(o+p+q)
-                    # elif Σi== 0 and Σj== 0: HH[i,j] += -ef*q*J*(J+1)/2
+                    # if   Σi==-1 and Σj==-1: HH[i,j] += -ef*(Z('o')+Z('p')+Z('q'))
+                    # elif Σi== 0 and Σj== 0: HH[i,j] += -ef*Z('q')*J*(J+1)/2
                     # elif Σi==+1 and Σj==+1: HH[i,j] += 0
                     # ## off-diagonal elements
                     # elif Σi==-1 and Σj==+0:
-                        # HH[i,j] += -sympy.sqrt(2*J*(J+1))*-1/2*(p+2*q)*ef
-                        # HH[j,i] += -sympy.sqrt(2*J*(J+1))*-1/2*(p+2*q)*ef
+                        # HH[i,j] += -sympy.sqrt(2*J*(J+1))*-1/2*(Z('p')+2*Z('q'))*ef
+                        # HH[j,i] += -sympy.sqrt(2*J*(J+1))*-1/2*(Z('p')+2*Z('q'))*ef
                     # elif Σi==-1 and Σj==+1:
-                        # HH[i,j] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*q*ef
-                        # HH[j,i] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*q*ef
+                        # HH[i,j] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*Z('q')*ef
+                        # HH[j,i] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*Z('q')*ef
                     # elif Σi==+0 and Σj==+1: pass # zero
                 # else:
-                    # if parameters['o']!=0 or parameters['p']!=0 or parameters['q']!=0 or parameters.vary['o'] or parameters.vary['p'] or parameters.vary['q']:
+                    # if o is not None or p is not None or q is not None:
                         # raise Exception("Cannot use o, p, or q because Λ-doubling not specified for state with Λ="+repr(Λ)+" and S="+repr(S))
         # ## simplify and print Hamiltonian if requested
         # # if self.verbose:
@@ -337,7 +422,12 @@ class VibLevel(optimise.Optimiser):
                 # ## slow step during the model initialisation
                 # ## t = sympy.lambdify(['J','T','B','D','H','A','AD','λ','λD','λH','γ','γD','o','p','q'],HH[i,j]) # make symbolic matrix element into a numerical function
                 # ## fH = lambda J,t=t: t(J=J,**{key:val for key,val in parameters.items() if key[0]!='Γ'})
-                # fH = _tools.lambdify_sympy_expression(HH[i,j],('J',),{},parameters)
+                # print('DEBUG:', HH[i,j])
+                # fH = tools.lambdify_sympy_expression(
+                    # HH[i,j],
+                    # ('J',),
+                    # parameters.keys(),
+                # )
                 # if i==j:        # diagonal element, make a new Vibronic_State, or add parity level to existing one
                     # self.states.append(Vibronic_State(name=name+'_Σ='+format(Σi,'g'),Σ=Σi,Ω=np.abs(Σi+qn['Λ']),ef=efi, fH=fH, **qn))
                 # else:        # off-diagonal element, make as Vibronic_Interaction
@@ -478,7 +568,7 @@ class VibLevel(optimise.Optimiser):
                 # self._exp[key][i,istate] = t[key][j]
         # assert not np.any(self._exp['dT']==0), 'Zero term value errors in experimental level.'
         # assert not np.any(self._exp['dΓ']==0), 'Zero width errors in experimental level.'
-       #  
+
     # def construct_level(self):
         # """Generate and perturb energy levels."""
         # self._rotational_level.clear()
@@ -607,9 +697,9 @@ class VibLevel(optimise.Optimiser):
         # parameters. This could somehow be a property or be a static
         # object."""
         # if len(self._vibrational_level) == 0:
-            # ## creat a new Vibrational_Level and set Tref if possible
+            # ## creat a new Vibrational_Level and set Eref if possible
             # self._vibrational_level['description'] = 'List of vibronic level constants.'
-            # self._vibrational_level['Tref'] = self.Tref
+            # self._vibrational_level['Eref'] = self.Eref
             # ## add data from vibronic_spin_manifolds
             # for t in self._vibronic_spin_manifolds:
                 # keys_vals = copy(t['qn'])
@@ -629,7 +719,7 @@ class VibLevel(optimise.Optimiser):
     # def get_vibronic_interactions(self):
         # """Get a Vibrational_Transition containing mixing energy for all
         # interacting levels."""
-        # retval = Vibrational_Transition(description='List of nonradiative couplings.',Tref=self.Tref)
+        # retval = Vibrational_Transition(description='List of nonradiative couplings.',Eref=self.Eref)
         # for vibronic_interaction in self._vibronic_interactions:
             # keys_vals = copy(vibronic_interaction['qn'])
             # for name,p in vibronic_interaction['parameter_set'].items():
@@ -1234,4 +1324,933 @@ class VibLevel(optimise.Optimiser):
     # def set_exchange_levels(self,*args,**kwargs):
         # self.format_input_functions.append(f'{self.name}.set_exchange_levels({my.repr_args_kwargs(*args,**kwargs)})')
         # self.construct_functions.append(lambda: self.exchange_levels(*args,**kwargs))
-                          #  
+
+
+@lru_cache
+def _get_linear_H(S,Λ,s):
+    """Compute symbolic and functional Hamiltonian for the spin manifold
+    of a linear molecule."""
+    ## symbolic variables, Note that expected value of ef is +1 or -1 for 'e' and 'f'
+    p = {key:sympy.Symbol(key) for key in (
+        'Tv','Bv','Dv','Hv','Av','ADv','λv','λDv','λHv', 'γv','γDv','ov','pv','pDv','qv','qDv')}
+    J = sympy.Symbol('J')
+    case_a = quantum_numbers.get_case_a_basis(Λ,s,S,print_output=False)
+    efs = case_a['qnef']['ef']
+    Σs = case_a['qnef']['Σ']
+    NN = case_a['NNef']
+    NS = case_a['NSef']
+    ## construct some convenient matrices
+    def anticommutate(X,Y):
+        return(X*Y+Y*X)
+    I  = sympy.eye(case_a['n']) # unit matrix
+    ## Equation 18 of brown1979
+    H = p['Tv']*I + p['Bv']*NN - p['Dv']*NN**2 + p['Hv']*NN**3       # T + BN**2 - DN**4 + HN**6
+    if S>0:
+        if Λ>0: H += anticommutate(p['Av']*I+p['ADv']*NN,sympy.diag(*[float(Λ*Σ) for Σ in Σs]))/2 # 1/2[A+AN2,LzSz]+
+        H += (p['γv']*I+p['γDv']*NN)*NS # (γ+γD.N**2)N.S
+        H += anticommutate(p['λv']*I+p['λDv']*NN+p['λHv']*NN**2,sympy.diag(*[float(Σ**2) for Σ in Σs])-I/3*S*(S+1)) # [λ+λD.N**2),Sz**2-1/3*S**2]+
+    ## add Λ-doubling terms here, element-by-element.
+    for i,(Σi,efi) in enumerate(zip(Σs,efs)):
+        for j,(Σj,efj) in enumerate(zip(Σs,efs)):
+            if efi!=efj: continue
+            ef = (1 if efi=='e' else -1) # Here ef is +1 for 'e' and -1 for 'f'
+            ## 1Π state
+            if Λ>0 and S==0: 
+                if efi=='f' and efj=='f': H[i,j] += p['qv']*J*(J+1)   # coefficient
+            ## is ef=1 for e, ef=-1 for f 2Π states, amiot1981
+            ## table II, there are more distortion constants,
+            ## which I have not included here, but could be
+            ## done. Perhaps these could be included with N-matrix
+            ## multiplication?
+            elif Λ==1 and S==0.5:
+                for i,(Σi,efi) in enumerate(zip(Σs,efs)):
+                    efi = (1 if efi=='e' else -1)
+                    for j,(Σj,efj) in enumerate(zip(Σs,efs)):
+                        efj = (1 if efj=='e' else -1)
+                        if efi!=efj: continue
+                        ## diagonal elseement for level 2 in amiot1981
+                        if   Σi==-0.5 and Σj==-0.5:
+                            H[i,j] += efi*( -0.5*(J+0.5)*p['pv']
+                                             -(J+0.5)*p['qv']
+                                             -0.5*(J+0.5)*((J-0.5)*(J+0.5)+2)*p['pDv']
+                                             -0.5*(3*(J-0.5)*(J+0.5)+4)*(J+0.5)*p['qDv']    )
+                        ## diagonal element for level 1 in amiot1981
+                        elif Σi==+0.5 and Σj==+0.5:
+                            H[i,j] += efi*( -0.5*(J-0.5)*(J+1.5)*(J+0.5)*p['qv']
+                                             -0.5*(J-0.5)*(J+0.5)*(J+0.5)*p['qDv']  )
+                        ## off-diagonal element
+                        elif Σi==-0.5 and Σj==+0.5:
+                            H[i,j] += efi*(  0.5*((J-0.5)*(J+1.5))**0.5*(J+0.5)*p['qv']
+                                              + 0.25*((J-0.5)*(J+0.5))**0.5*(J+0.5)*p['pDv']
+                                              +0.5*((J-0.5)*(J+0.5))**(0.5)*((J-0.5)*(J+0.5)+2)*(J+0.5)*p['qDv'] )
+            ## 3Π states, from Table I brown_merer1979            
+            elif Λ==1 and S==1:
+                ## diagonal elements
+                if   Σi==-1 and Σj==-1:
+                    H[i,j] += -ef*(p['ov']+p['pv']+p['qv'])
+                elif Σi== 0 and Σj== 0:
+                    H[i,j] += -ef*p['qv']*J*(J+1)/2
+                elif Σi==+1 and Σj==+1:
+                    H[i,j] += 0
+                ## off-diagonal elements
+                elif Σi==-1 and Σj==+0:
+                    H[i,j] += -sympy.sqrt(2*J*(J+1))*-1/2*(p['pv']+2*p['qv'])*ef
+                    H[j,i] += -sympy.sqrt(2*J*(J+1))*-1/2*(p['pv']+2*p['qv'])*ef
+                elif Σi==-1 and Σj==+1:
+                    H[i,j] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*ef
+                    H[j,i] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*ef
+                elif Σi==+0 and Σj==+1:
+                    pass # zero
+            # else:
+                # if 'ov' in kwargs or 'pv' in kwargs or 'qv' in kwargs:
+                    # raise Exception("Cannot use ov, pv, or qv because Λ-doubling not specified for state with Λ="+repr(Λ)+" and S="+repr(S))
+    ## simplify and print Hamiltonian if requested
+    # if self.verbose:
+        # print( )
+        # print(self.format_input_functions[-1]())
+        # print_matrix_elements(case_a['qnef'],H,'H')
+    ## Convert elements of symbolic Hamiltonian into lambda functions
+    fH = np.full(H.shape,None)
+    for i in range(len(Σs)):
+        for j in range(i,-1,-1):
+            fH[i,j] = fH[j,i] = tools.lambdify_sympy_expression(
+                H[i,j],'J',**{key:0 for key in p})
+    return efs,Σs,H,fH
+
+
+class VibLine(Optimiser):
+    
+    """Calculate and optimally fit the line strengths of a band between
+    two states defined by LocalDeperturbation objects. Currently only
+    for single-photon transitions. """
+
+    def __init__(
+            self,
+            name,
+            level_u,level_l,
+            J_l=None,ΔJ=None,
+            # # experimental_transition=None,
+            # verbose=None,
+    ):
+        ## add upper and lower levels
+        self.name = name
+        self.level_u = level_u
+        self.level_l = level_l
+        self.vibrational_line = lines.vibrational_line_by_point_group[level_u.point_group]()
+        self.vibrational_spin_line= lines.rotational_line_by_point_group[level_u.point_group]()
+        self.rotational_line = lines.rotational_line_by_point_group[level_u.point_group]()
+        self.μ = None
+        # assert statep.Tref==statepp.Tref, 'statep and statepp Tref do not match..'
+        # self.Tref = statep.Tref
+        ## determine a name
+        # if name is None:
+            # self.name = self.statep.name+'_'+self.statepp.name
+        # else:
+            # self.name = name
+        # self.transition_moments = []
+        # self._scalar_transition_moments = [] # stored for the benefit of get_vibrational_transition
+        # self.experimental_transition = experimental_transition        # a Transition object for comparing model results to 
+        # self.transition = Rotational_Transition(
+            # Name=f'{self.name}.transition',
+            # description='Constructed by an Interacting_Vibronic_Transition object.',
+            # Tref=self.Tref,
+            # partition_source = 'self',
+        # )
+        # self.transition.format_input_functions.clear() # delete the constructor line
+        # self.rotational_transition = self.transition # alternative name
+        # ## how much to print
+        # self.verbose = (False if verbose is None else verbose)
+        ## implement default Js, set in states, or provided as input argument
+        if J_l is not None: 
+            self.J_l = np.array(J_l,ndmin=1)
+            self.level_l.J = self.J_l
+        elif J_l is None and self.level_l.J is not None:
+            self.J_l = self.level_l.J
+        elif J_l is None and self.level_l.J is None:
+            if self.level_u.states[0].qn['S']%1==0:
+                self.J_l = np.arange(0,30)
+            else:
+                self.J_l = np.arange(0.5,30)
+            self.level_l.J = self.J_l
+        if ΔJ is None:  
+            self.ΔJ = (-1,0,+1)
+        else:
+            self.ΔJ = np.array(ΔJ,ndmin=1)
+        # self.statep.J = np.unique(np.concatenate([self.Jpp+t for t in self.ΔJ]))
+        # ## check for bad quantum numbers
+        # assert self.statepp.states[0].qn['S']%1==self.statepp.J[0]%1,'Jpp should be / should not be half-integer.'
+        # assert self.statep.states[0].qn['S']%1==self.statep.J[0]%1,'Jp should be / should not be half-integer.'
+        # ## define R coordinate in case wavefunctions are used
+        # assert np.all(self.statep.R==self.statepp.R),'statep and statepp must have identical R coordinate'
+        # self.R = self.statep.R
+        ## construct optimiser -- inheriting from states
+        Optimiser.__init__(self,name=self.name)
+        # self.format_input_functions = [] # no formatted input
+        self.add_suboptimiser(self.level_u,self.level_l)
+        self.add_construct_function(self._initialise_construct)
+        self.add_post_construct_function(self._finalise_construct)
+        # self.preconstruct_functions = []
+        # self.construct_functions.append(self.construct_transition)
+        # # self.construct_functions.append(self.get_residuals) 
+        # self.output_to_directory_functions.append(lambda directory: self.transition.save_to_file(directory+'/Rotational_Transition.h5'))
+        # self.output_to_directory_functions.append(lambda directory: self.get_vibrational_transition().save_to_file(directory+'/Vibrational_Transition.h5'))
+        # # self.format_input_functions.append(f"\nfrom anh import *")
+        # # self.format_input_functions.append(lambda: f"{self.name} = spectra.Interacting_Vibronic_Transition({self.statep.name},{self.statepp.name},name={repr(self.name)},Jpp={repr(self.Jpp if isinstance(self.Jpp,range) else list(self.Jpp))},ΔJ={repr(list(self.ΔJ))})")
+        # def f():
+            # retval = f"{self.name} = spectra.Interacting_Vibronic_Transition({self.statep.name},{self.statepp.name}"
+            # if name is not None:
+                # retval += f',name={repr(self.name)}'
+            # if Jpp is not None:
+                # retval += f',Jpp={repr(Jpp)}'
+            # if ΔJ is not None:
+                # retval += f',ΔJ={repr(ΔJ)}'
+            # if experimental_transition is not None:
+                # retval += f',experimental_transition={repr(experimental_transition.name)}'
+            # if verbose is not None:
+                # retval += f',verbose={repr(verbose)}'
+            # return(retval+')')
+        # self.format_input_functions.append(f)
+        # self.transition.suboptimisers.append(self)
+        # self._cache = {}
+
+    def _initialise_construct(self):
+        self.μ = np.full((len(self.J_l),len(self.ΔJ),
+                          len(self.level_u.vibrational_spin_level),
+                          len(self.level_l.vibrational_spin_level)),0.)
+
+    def _finalise_construct(self):
+        ## initialise arrays
+        Sij = np.full(self.μ.shape,0.)
+        E_u = np.full(self.μ.shape,0.)
+        E_l = np.full(self.μ.shape,0.)
+        J_u = np.full(self.μ.shape,0.)
+        J_l = np.full(self.μ.shape,0.)
+        ## loop over all rotational transitions
+        for (iJ_l,J_li),(iΔJ,ΔJi) in itertools.product(enumerate(self.J_l),enumerate(self.ΔJ)):
+            ## get upper lower level indices
+            J_ui = J_li+ΔJi
+            iJ_u = tools.find(self.level_u.J==J_ui)
+            iJ_l = tools.find(self.level_l.J==J_li)
+            if len(iJ_u)==0: continue
+            if len(iJ_l)==0: continue
+            iJ_u,iJ_l = iJ_u[0],iJ_l[0]
+            ## get mixing coefficients
+            c_u  =  self.level_u.c[iJ_u ,:,:]
+            c_l  =  self.level_l.c[iJ_l ,:,:]
+            ## get mixed line strengths
+            Sij[iJ_u,iΔJ,:,:] = np.dot(c_u,np.dot(self.μ[iJ_l,iΔJ,:,:],np.transpose(c_l)))**2
+            ## get upper and lower energy levels
+            E_u[iJ_u,iΔJ,:,:] = np.column_stack([self.level_u.E[iJ_u].real for t in range(Sij.shape[3])])
+            E_l[iJ_l,iΔJ,:,:] = np.row_stack([self.level_l.E[iJ_l].real for t in range(Sij.shape[2])])
+            J_u[iJ_l,iΔJ,:,:] = J_ui
+            J_l[iJ_l,iΔJ,:,:] = J_li
+        ## collect data in  rotational line object
+        self.rotational_line['Sij'] = np.ravel(Sij)
+        self.rotational_line['E_u'] = np.ravel(E_u)
+        self.rotational_line['E_l'] = np.ravel(E_l)
+        self.rotational_line['J_u'] = np.ravel(J_u)
+        self.rotational_line['J_l'] = np.ravel(J_l)
+        self.rotational_line['ν']
+        self.rotational_line['f']
+        self.rotational_line['isotopologue_l'] = self.level_l.isotopologue
+        self.rotational_line['isotopologue_u'] = self.level_u.isotopologue
+        # print( self.rotational_line[:10]) #  DEBUG
+
+    @auto_construct_method('add_transition_moment')
+    def add_transition_moment(self,name=None,μv=1,**extra_qn):
+        """Add constant transition moment. μv can be optimised."""
+        """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed
+        transitions. μv should be in atomic units and can be specifed
+        as a value (optimisable), a function of R or a suboptimiser
+        given ['μ']."""
+        ## get all quantum numbers
+        qn = quantum_numbers.decode_transition(name)
+        qn.update(extra_qn)
+        self.vibrational_line.append(μv=μv,**qn)
+        ## get transition moment functions for all ef/Σ
+        ## combinations
+        ef_u,Σ_u,ef_l,Σ_l,fμrot = _get_linear_transition_moment(qn['S_u'],qn['Λ_u'],qn['s_u'], qn['S_l'],qn['Λ_l'],qn['s_l'],)
+        ## set to None if always zero, and record in line lists
+        for i,j in tools.indices(fμrot):
+            if (fμrot[i,j](10,0)==0.) and (fμrot[i,j](10,1)==0.):
+                ## this is always zero
+                fμrot[i,j] = None
+            else:
+                self.vibrational_spin_line.append(
+                    μv=μv,
+                    ef_u=ef_u[i],Σ_u=Σ_u[i],
+                    ef_l=ef_l[j],Σ_l=Σ_l[j],
+                    **qn)
+        ## construct function
+        qnu,qnl = quantum_numbers.separate_upper_lower_quantum_numbers(qn)
+        iu = tools.find(self.level_u.vibrational_spin_level.match(**qnu))
+        il = tools.find(self.level_l.vibrational_spin_level.match(**qnl))
+        def construct_function():
+            for k,l in itertools.product(range(fμrot.shape[0]), range(fμrot.shape[1]),):
+                if fμrot[k,l] is None:
+                    continue
+                for i,j in itertools.product(range(len(self.J_l)), range(len(self.ΔJ)),):
+                    μ = fμrot[k,l](self.J_l[i],self.ΔJ[j])*μv
+                    if np.isnan(μ):
+                        μ = 0.
+                    self.μ[i,j,iu[k],il[j]] += μ
+        return construct_function
+
+
+    # # def add_transition_moment(
+            # # self,
+            # # namep,              # name to match upper state too, also used to augment quantum numbers
+            # # namepp,             # lower state
+            # # qnp=None,           # upper states matched to these quantum numbers
+            # # qnpp=None,          # lower state
+            # # μ=None,             # a constant value of Parameter input arguments or an Electronic_Transition_Moment
+            # # verbose=False,
+    # # ):
+        # # """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed
+        # # transitions. μ should be in atomic units and can be specifed
+        # # as a value (optimisable), a function of R or a suboptimiser
+        # # given ['μ']."""
+        # # print('warning: add_transition_moment is being deprecated, perhaps use add_transition_moment_constant?')
+        # # ## get full set of quantum numbesr
+        # # if qnp  is None: qnp = {} 
+        # # if qnpp is None: qnpp = {}
+        # # qnpin = qnp; qnp = copy(qnpin)
+        # # qnppin = qnpp; qnpp = copy(qnppin)
+        # # for key,val in  decode_level(namep).items():
+            # # qnp.setdefault(key,val) 
+        # # for key,val in decode_level(namepp).items():
+            # # qnpp.setdefault(key,val)
+        # # qnp['species']  = self.statep.species
+        # # qnpp['species'] = self.statepp.species
+        # # ## Decide what μ is. Ultimately a dicationary-like variable p must be created
+        # # ## indexable with element  p['μ'] that is a scalar or vector
+        # # ## transition moment. 
+        # # ##
+        # # ## An Electronic_Transition_Moment, callable as an R-dependent
+        # # ## function
+        # # if isinstance(μ,Electronic_Transition_Moment):
+            # # p = {'μ':None}
+            # # def f(p=p):
+                # # p['μ'] = μ(self.R)
+            # # μ.add_construct(f)
+            # # self.suboptimisers.append(μ)
+        # # ## A function of R -- not optimisable, for tha use an
+        # # ## Electronic_Transition_Moment
+        # # elif my.isfunction(μ):
+            # # p = {'μ':μ(self.R)}
+        # # ## a regular scalar parameter (or Optimised_Parameter)
+        # # else:
+            # # p = self.add_parameter_set(μ=μ,note=f'add_transition_moment {encode_transition(qnp,qnpp)}')
+            # # μ = p               # back reference for format_input_functions
+            # # self._scalar_transition_moments.append(
+                # # {'qn':join_upper_lower_quantum_numbers(qnp,qnpp), 'parameter_set':p})
+        # # ## format input function
+        # # def f(μ=μ,qnp=copy(qnp),qnpp=copy(qnpp)):
+            # # retval = f'{self.name}.add_transition_moment({repr(namep):15},{repr(namepp):15},'
+            # # if qnpin is not None and len(qnpin)>0:
+                # # retval += f'qnp={repr(qnpin)},'
+            # # if qnppin is not None and len(qnppin)>0:
+                # # retval += f'qnpp={repr(qnppin)},'
+            # # if μ is not None:
+                # # if isinstance(μ,Electronic_Transition_Moment):
+                    # # retval += f'μ={μ.name},'
+                # # elif my.isfunction(μ):
+                    # # retval += f'μ={repr(μ)},'
+                # # else:
+                    # # retval += f'{μ.format_input()},'
+            # # retval += ')'
+            # # return(retval)
+        # # self.format_input_functions.append(f)
+        # # ## check some selection rules
+        # # if ((qnp['Λ']==0 and qnpp['Λ']==0 and qnp['s']!=qnpp['s'])
+            # # or (np.abs(qnp['Λ']-qnpp['Λ'])>1)
+            # # or (qnpp['S']!=qnp['S'])):
+            # # raise Exception(f"Forbidden transition: {repr(namep)} to {repr(namepp)}")
+        # # ## Get signed and e/f parity quantum numbers and transformation matrices
+        # # caseap  = get_case_a_basis( qnp['Λ'], qnp['s'], qnp['S']) 
+        # # caseapp = get_case_a_basis(qnpp['Λ'],qnpp['s'],qnpp['S'])
+        # # Mefp  = np.array( caseap['Mef'].evalf())
+        # # Mefpp = np.array(caseapp['Mef'].evalf())
+        # # ## for each ΔΩ e/f transition compute the contribution signed
+        # # ## ΔΩ transitions. Previously I did this symbolically using
+        # # ## formulae for Honl-London factors, but I could never get
+        # # ## fully consistent phase factors (still can't really) and so
+        # # ## I rewrote this using Wigner-3J coefficients (see
+        # # ## hansson2005) which are solved numerically. This means
+        # # ## rather than merely computing symbolic signed-Ω transition
+        # # ## moemnt and then using matrix multiplication to get e/f
+        # # ## parity moement the quadruple-loop below and fucntion
+        # # ## addition below is needed.
+        # # fM = {}                 # dictionary of (Σp,efp,Σpp,efpp) transition moments
+        # # for (ip,qnpef),(ipp,qnppef) in itertools.product(
+                # # enumerate(caseap['qnef']), enumerate(caseapp['qnef']),):
+            # # ## loop over signed-Ω combinations of upper and lower
+            # # ## states and compute a transition moment functions for
+            # # ## each
+            # # fsigned = []            
+            # # for (jp,qnppm),(jpp,qnpppm) in itertools.product(
+                    # # enumerate(caseap['qnpm']),enumerate(caseapp['qnpm'])):
+                # # if qnppm['Σ']!=qnpppm['Σ']: continue # not allowed!
+                # # c = Mefp[ip,jp]*Mefpp[ipp,jpp] # compute coefficient of thes signed-Ω wavefunctions to their respective ef-states
+                # # if c==0: continue
+                # # ## compute change in sign if reversed transition moment.
+                # # μsign = +1
+                # # if (qnppm['Λ']+qnpppm['Λ']) < 0: μsign = caseap['σvpm']*caseapp['σvpm']
+                # # if (qnppm['Λ']+qnpppm['Λ']) == 0 and (qnppm['Σ']+qnpppm['Σ']) < 0:
+                    # # μsign = caseap['σvpm']*caseapp['σvpm']
+                # # ## this computes every part of the linestrength apart
+                # # ## from the adjustable transition moment, with a cache
+                # # ## for speed
+                # # @functools.lru_cache(maxsize=4096)
+                # # def fsignedi_scalar_no_μ(Jpp,ΔJ, Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'], Λp=qnppm['Λ'],Λpp=qnpppm['Λ'], μsign=float(μsign), c=float(c)):
+                    # # return(
+                        # # c       # contribution to ef-basis state
+                        # # *np.sqrt((2*Jpp+1)*(2*(Jpp+ΔJ)+1)) # see hansson2005 eq. 13
+                        # # *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
+                        # # *(-1 if Λp==0 else 1)   # phase factor, a hack that should be understood
+                        # # *μsign # transition moment phase factor (+1 or -1)
+                        # # *wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') # Wigner 3J line strength factor vectorised over Jpp
+                    # # )
+                # # ## ## add the transiton moment and vectorise over Jpp
+                # # ## def fsignedi(Jpp,ΔJ,fsignedi_scalar_no_μ=fsignedi_scalar_no_μ):
+                # # ##     return(np.array([fsignedi_scalar_no_μ(Jppi,ΔJ)*p['μ'] for Jppi in my.ensure_iterable(Jpp)]))
+                # # ## add the transiton moment
+                # # def fsignedi(Jpp,ΔJ,fsignedi_scalar_no_μ=fsignedi_scalar_no_μ):
+                    # # return fsignedi_scalar_no_μ(Jpp,ΔJ)*p['μ']
+                # # fsigned.append(fsignedi)
+            # # ## sum over all sign combinations and save this
+            # # ## Σp,efp,Σpp,efpp transition moment
+            # # fM[qnpef['Σ'],qnpef['ef'],qnppef['Σ'],qnppef['ef'],] = lambda Jpp,ΔJ,fsigned=fsigned: np.sum([f(Jpp,ΔJ) for f in fsigned],axis=0)
+        # # ## for all matching transition states find the corret
+        # # ## transition moment, if their is one
+        # # stateps = self.statep.get_matching_states(**qnp)
+        # # statepps = self.statepp.get_matching_states(**qnpp)
+        # # for tstates,tqn in ((stateps,qnp),(statepps,qnpp)):
+            # # if len(tstates)==0:
+                # # print(f'warning: add_transition_moment: No states found matching {repr(tqn)}')
+        # # for statep,statepp in itertools.product(stateps, statepps):
+            # # qns = (statep.qn['Σ'],statep.qn['ef'],statepp.qn['Σ'],statepp.qn['ef'])
+            # # if qns not in fM: continue
+            # # self.transition_moments.append(Vibronic_Transition_Moment(statep,statepp,fM[qns]))
+    # # def add_transition_moment(
+            # # self,
+            # # namep,              # name to match upper state too, also used to augment quantum numbers
+            # # namepp,             # lower state
+            # # qnp=None,           # upper states matched to these quantum numbers
+            # # qnpp=None,          # lower state
+            # # μ=None,             # a constant value of Parameter input arguments or an Electronic_Transition_Moment
+            # # verbose=False,
+    # # ):
+        # # """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed
+        # # transitions. μ should be in atomic units and can be specifed
+        # # as a value (optimisable), a function of R or a suboptimiser
+        # # given ['μ']."""
+        # # ## get full set of quantum numbesr
+        # # if qnp  is None: qnp = {} 
+        # # if qnpp is None: qnpp = {}
+        # # qnpin = qnp; qnp = copy(qnpin)
+        # # qnppin = qnpp; qnpp = copy(qnppin)
+        # # for key,val in  decode_level(namep).items():
+            # # qnp.setdefault(key,val) 
+        # # for key,val in decode_level(namepp).items():
+            # # qnpp.setdefault(key,val)
+        # # qnp['species']  = self.statep.species
+        # # qnpp['species'] = self.statepp.species
+        # # ## Decide what μ is. Ultimately a dicationary-like variable p must be created
+        # # ## indexable with element  p['μ'] that is a scalar or vector
+        # # ## transition moment. 
+        # # ##
+        # # ## An Electronic_Transition_Moment, callable as an R-dependent
+        # # ## function
+        # # if isinstance(μ,Electronic_Transition_Moment):
+            # # p = {'μ':None}
+            # # def f(p=p):
+                # # p['μ'] = μ(self.R)
+            # # μ.add_construct(f)
+            # # self.suboptimisers.append(μ)
+        # # ## A function of R -- not optimisable, for tha use an
+        # # ## Electronic_Transition_Moment
+        # # elif my.isfunction(μ):
+            # # p = {'μ':μ(self.R)}
+        # # ## a regular scalar parameter (or Optimised_Parameter)
+        # # else:
+            # # p = self.add_parameter_set(μ=μ,note=f'add_transition_moment {encode_transition(qnp,qnpp)}')
+            # # μ = p               # back reference for format_input_functions
+            # # self._scalar_transition_moments.append(
+                # # {'qn':join_upper_lower_quantum_numbers(qnp,qnpp), 'parameter_set':p})
+        # # ## format input function
+        # # def f(μ=μ,qnp=copy(qnp),qnpp=copy(qnpp)):
+            # # retval = f'{self.name}.add_transition_moment({repr(namep):15},{repr(namepp):15},'
+            # # if qnpin is not None and len(qnpin)>0:
+                # # retval += f'qnp={repr(qnpin)},'
+            # # if qnppin is not None and len(qnppin)>0:
+                # # retval += f'qnpp={repr(qnppin)},'
+            # # if μ is not None:
+                # # if isinstance(μ,Electronic_Transition_Moment):
+                    # # retval += f'μ={μ.name},'
+                # # elif my.isfunction(μ):
+                    # # retval += f'μ={repr(μ)},'
+                # # else:
+                    # # retval += f'{μ.format_input()},'
+            # # retval += ')'
+            # # return(retval)
+        # # self.format_input_functions.append(f)
+        # # ## check some selection rules
+        # # if ((qnp['Λ']==0 and qnpp['Λ']==0 and qnp['s']!=qnpp['s'])
+            # # or (np.abs(qnp['Λ']-qnpp['Λ'])>1)
+            # # or (qnpp['S']!=qnp['S'])):
+            # # raise Exception(f"Forbidden transition: {repr(namep)} to {repr(namepp)}")
+        # # ## Get signed and e/f parity quantum numbers and transformation matrices
+        # # caseap  = get_case_a_basis( qnp['Λ'], qnp['s'], qnp['S']) 
+        # # caseapp = get_case_a_basis(qnpp['Λ'],qnpp['s'],qnpp['S'])
+        # # Mefp  = np.array( caseap['Mef'].evalf())
+        # # Mefpp = np.array(caseapp['Mef'].evalf())
+        # # ## for each ΔΩ e/f transition compute the contribution signed
+        # # ## ΔΩ transitions. Previously I did this symbolically using
+        # # ## formulae for Honl-London factors, but I could never get
+        # # ## fully consistent phase factors (still can't really) and so
+        # # ## I rewrote this using Wigner-3J coefficients (see
+        # # ## hansson2005) which are solved numerically. This means
+        # # ## rather than merely computing symbolic signed-Ω transition
+        # # ## moemnt and then using matrix multiplication to get e/f
+        # # ## parity moement the quadruple-loop below and fucntion
+        # # ## addition below is needed.
+        # # fM = {}                 # dictionary of (Σp,efp,Σpp,efpp) transition moments
+        # # for (ip,qnpef),(ipp,qnppef) in itertools.product(
+                # # enumerate(caseap['qnef']), enumerate(caseapp['qnef']),):
+            # # ## loop over signed-Ω combinations of upper and lower
+            # # ## states and compute a transition moment functions for
+            # # ## each
+            # # fsigned = []            
+            # # for (jp,qnppm),(jpp,qnpppm) in itertools.product(
+                    # # enumerate(caseap['qnpm']),enumerate(caseapp['qnpm'])):
+                # # if qnppm['Σ']!=qnpppm['Σ']: continue # not allowed!
+                # # c = Mefp[ip,jp]*Mefpp[ipp,jpp] # compute coefficient of thes signed-Ω wavefunctions to their respective ef-states
+                # # if c==0: continue
+                # # ## compute change in sign if reversed transition moment.
+                # # μsign = +1
+                # # if (qnppm['Λ']+qnpppm['Λ']) < 0: μsign = caseap['σvpm']*caseapp['σvpm']
+                # # if (qnppm['Λ']+qnpppm['Λ']) == 0 and (qnppm['Σ']+qnpppm['Σ']) < 0:
+                    # # μsign = caseap['σvpm']*caseapp['σvpm']
+                # # ## this computes every part of the linestrength apart
+                # # ## from the adjustable transition moment, with a cache
+                # # ## for speed
+                # # @functools.lru_cache(maxsize=4096)
+                # # def fsignedi_scalar_no_μ(Jpp,ΔJ, Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'], Λp=qnppm['Λ'],Λpp=qnpppm['Λ'], μsign=float(μsign), c=float(c)):
+                    # # return(
+                        # # c       # contribution to ef-basis state
+                        # # *np.sqrt((2*Jpp+1)*(2*(Jpp+ΔJ)+1)) # see hansson2005 eq. 13
+                        # # *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
+                        # # *(-1 if Λp==0 else 1)   # phase factor, a hack that should be understood
+                        # # *μsign # transition moment phase factor (+1 or -1)
+                        # # *wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') # Wigner 3J line strength factor vectorised over Jpp
+                    # # )
+                # # ## ## add the transiton moment and vectorise over Jpp
+                # # ## def fsignedi(Jpp,ΔJ,fsignedi_scalar_no_μ=fsignedi_scalar_no_μ):
+                # # ##     return(np.array([fsignedi_scalar_no_μ(Jppi,ΔJ)*p['μ'] for Jppi in my.ensure_iterable(Jpp)]))
+                # # ## add the transiton moment
+                # # def fsignedi(Jpp,ΔJ,fsignedi_scalar_no_μ=fsignedi_scalar_no_μ):
+                    # # return fsignedi_scalar_no_μ(Jpp,ΔJ)*p['μ']
+                # # fsigned.append(fsignedi)
+            # # ## sum over all sign combinations and save this
+            # # ## Σp,efp,Σpp,efpp transition moment
+            # # fM[qnpef['Σ'],qnpef['ef'],qnppef['Σ'],qnppef['ef'],] = lambda Jpp,ΔJ,fsigned=fsigned: np.sum([f(Jpp,ΔJ) for f in fsigned],axis=0)
+        # # ## for all matching transition states find the corret
+        # # ## transition moment, if their is one
+        # # stateps = self.statep.get_matching_states(**qnp)
+        # # statepps = self.statepp.get_matching_states(**qnpp)
+        # # for tstates,tqn in ((stateps,qnp),(statepps,qnpp)):
+            # # if len(tstates)==0:
+                # # print(f'warning: add_transition_moment: No states found matching {repr(tqn)}')
+        # # for statep,statepp in itertools.product(stateps, statepps):
+            # # qns = (statep.qn['Σ'],statep.qn['ef'],statepp.qn['Σ'],statepp.qn['ef'])
+            # # if qns not in fM: continue
+            # # self.transition_moments.append(Vibronic_Transition_Moment(statep,statepp,fM[qns]))
+
+
+    # def add_transition_moment_Jpp_spline(
+            # self,
+            # namep,namepp,
+            # *Jpp_μ_spline_points, # e.g., (0,0.1),(5,0.2),(20,(0.5,True))
+            # qnp=None,qnpp=None,
+            # order=3,            # spline order
+            # ΔJ=None             # which ΔJ to apply this to, None for all
+    # ):
+        # """Add transition moment as a spline function of Jpp and
+        # independent of ΔJ. Specified μ can be optimised."""
+        # ## make adjusted μ into Parameters
+        # Jpp_μ_spline_points = [
+            # [Jpp, (self.add_parameter('μ',*μ,note=f'add_transition_moment_Jpp_spline Jpp={Jpp}')
+                   # if my.isiterable(μ) else μ)]
+            # for Jpp,μ in Jpp_μ_spline_points]
+        # ## make a functional form of μ
+        # ΔJ_to_include = (None if ΔJ is None else my.ensure_iterable(ΔJ))
+        # def μf(Jpp,ΔJ):
+            # if ΔJ_to_include is not None and ΔJ not in ΔJ_to_include:
+                # return 0
+            # else:
+                # return my.spline(
+                    # [Jpp for Jpp,μ in Jpp_μ_spline_points],
+                    # [float(μ) for Jpp,μ in Jpp_μ_spline_points],
+                    # Jpp,order=order)
+        # ## format input function
+        # def f(qnp=copy(qnp),qnpp=copy(qnpp)):
+            # retval = [f'{self.name}.add_transition_moment_Jpp_spline({repr(namep):15},{repr(namepp):15}']
+            # retval.extend([repr(t) for t in Jpp_μ_spline_points])
+            # if qnp is not None:
+                # retval.append(f'qnp={repr(qnp)}')
+            # if qnpp is not None:
+                # retval.append(f'qnpp={repr(qnpp)}')
+            # if ΔJ is not None:
+                # retval.append(f'ΔJ={repr(ΔJ)}')
+            # return ','.join(retval)+')'
+        # self.format_input_functions.append(f)
+        # ## implement transition
+        # self._add_transition_moment_internal(namep,namepp,μf,qnp,qnpp)
+
+
+    # def get_transition_moment(self,statep,statepp):
+        # for t in self.transition_moments:
+            # if t.statep==statep and t.statepp==statep:
+                # return(t)
+        # else: return(None)    
+
+    # def get_residuals(self):
+        # """Get list of integrated cross section differences."""
+        # # raise ImplementationError()
+        # if self.experimental_transition is None: return(None)
+        # i,j = spectra.find_common_transitions_levels(self.transition,self.experimental_transition)
+        # # return(np.log(self.transition['σ'][i]/self.experimental_transition['σ'][j]))
+        # # t = np.log2(self.transition['Sij'][i]/self.experimental_transition['Sij'][j])
+        # # return(np.log2(self.transition['Sij'][i]/self.experimental_transition['Sij'][j]))
+        # return(self.experimental_transition['ν'][j]-self.transition['ν'][i])
+        # # return(t)
+        # # return(self.transition['Sij'][i]-self.experimental_transition['Sij'][j])
+
+    # def construct_transition(
+            # self,
+            # # remove_lines_fractionally_smaller_than=1e-10,
+    # ):
+        # """Calculate line strengths from mixing of zeroth-order
+        # transition moments -- only works for one-photon absorption."""
+        # for f in self.preconstruct_functions: f()
+        # Jpp,ΔJ = np.array(self.Jpp),np.array(self.ΔJ)
+        # ## build unmixed M indexed by [statep,statepp,efpp,Jpp,ΔJ]
+        # if self.verbose:
+            # print( )
+            # print('constructing transition moments')
+        # M = np.zeros((len(self.statep.states),len(self.statepp.states),len(Jpp),len(ΔJ))) 
+        # for t in self.transition_moments:
+            # M[self.statep.states.index(t.statep),self.statepp.states.index(t.statepp),:,:] += t.construct(Jpp,ΔJ)
+        # ## determine all mixed transitions and save in a Transition object
+        # if self.verbose:
+            # print( 'building transition')
+        # Tp,Tpp = np.full(M.shape,np.nan,dtype=float),np.full(M.shape,np.nan,dtype=float) 
+        # Γp,Γpp = np.full(M.shape,np.nan,dtype=float),np.full(M.shape,np.nan,dtype=float) 
+        # Sij = np.zeros(M.shape)
+        # for (iJpp,Jppi),(iΔJ,ΔJi) in itertools.product(enumerate(Jpp),enumerate(ΔJ)):
+            # # if self.verbose and iΔJ==0 and iJpp%10==0: print(f'Jppi = {Jppi}, Jppi max = {np.max(Jpp)}')
+            # ## determine other transition quantum numbers
+            # Jpi = Jppi+ΔJi
+            # iJp = my.find(self.statep.J==Jpi)
+            # if len(iJp)==0: continue
+            # iJp = int(iJp)
+            # ## determine which transition connect allowed levels
+            # eigvalp  =  self.statep.eigvals[ iJp,:] # relevant upper state energy levels computed above
+            # eigvalpp = self.statepp.eigvals[iJpp,:] # relevant lower state energy levels computed above
+            # ivalidp,ivalidpp = my.find(~np.isnan(eigvalp)),my.find(~np.isnan(eigvalpp)) # NaN energy levels indicate levels not allowed
+            # eigvalp,eigvalpp = eigvalp[ivalidp],eigvalpp[ivalidpp] # only compute transitions between allowed levels
+            # if len(ivalidp)==0 or len(ivalidpp)==0: continue       # no valid levels for any transition to occur between
+            # ## get zeroth-order matrix and mixing coefficients
+            # Mi = M[:,:,iJpp,iΔJ][np.ix_(ivalidp,ivalidpp)]
+            # cp  =  self.statep.eigvects[iJp ,:,:][ivalidp ,:][:,ivalidp ]  
+            # cpp = self.statepp.eigvects[iJpp,:,:][ivalidpp,:][:,ivalidpp]
+            # ## get mixed intensities
+            # Mi = np.dot(cp,np.dot(Mi,np.transpose(cpp)))
+            # ## get arrays of transition data -- all expanded to full
+            # ## size of all data -- efficient cpu, more memory, its
+            # ## actually pretty hard to do this efficiently
+            # Sij[:,:,iJpp,iΔJ][np.ix_(ivalidp,ivalidpp)] = Mi**2
+            # t = my.repmat_vector( eigvalp,(len(eigvalpp),),0)
+            # Tp [:,:,iJpp,iΔJ][np.ix_(ivalidp,ivalidpp)] = t.real
+            # Γp [:,:,iJpp,iΔJ][np.ix_(ivalidp,ivalidpp)] = t.imag
+            # t = my.repmat_vector(eigvalpp,(len( eigvalp),),1)
+            # Tpp[:,:,iJpp,iΔJ][np.ix_(ivalidp,ivalidpp)] = t.real
+            # Γpp[:,:,iJpp,iΔJ][np.ix_(ivalidp,ivalidpp)] = t.imag
+            # ## Sij[:,:,iefpp,iJpp,iΔJ][np.ix_(ivalidp,ivalidpp)] = Mi**2
+            # ## Sij[:,:,iefpp,iJpp,iΔJ][ivalidp,:][:,ivalidpp] = Mi**2
+            # ## t = my.repmat_vector( eigvalp,(len(eigvalpp),),0)
+            # ## Tp [:,:,iefpp,iJpp,iΔJ][ivalidp,:][:,ivalidpp] = t.real
+            # ## Γp [:,:,iefpp,iJpp,iΔJ][ivalidp,:][:,ivalidpp] = t.imag
+            # ## t = my.repmat_vector(eigvalpp,(len( eigvalp),),1)
+            # ## Tpp[:,:,iefpp,iJpp,iΔJ][ivalidp,:][:,ivalidpp] = t.real
+            # ## Γpp[:,:,iefpp,iJpp,iΔJ][ivalidp,:][:,ivalidpp] = t.imag
+        # ## collect all new data, unfortunately the order of qn etc has probably changed
+        # new_data = dict(
+            # Sij=np.ravel(Sij),
+            # Tp=np.ravel(Tp),
+            # Tpp=np.ravel(Tpp),
+            # Γp=np.ravel(Γp),
+            # Γpp=np.ravel(Γpp),
+            # Jpp=np.ravel(my.repmat_vector(Jpp,(len(self.statep.states),len(self.statepp.states),len(ΔJ)),2)),
+            # ΔJ=np.ravel(my.repmat_vector(ΔJ,  (len(self.statep.states),len(self.statepp.states),len(Jpp)),3)),
+        # )
+        # ## first run compute all quantum numbers and append to Transition. Afterards just insert new data.
+        # if len(self.transition)==0:
+            # ## limt to certain strength
+            # ## ikeep = new_data['Sij']>(new_data['Sij'].max()*remove_lines_fractionally_smaller_than)
+            # ikeep = new_data['Sij']>0
+            # ## expand all other quantum numbers into full size array data
+            # qnp = {}
+            # for key,val in self.statep.states[0].qn.items():
+                # qnp[key+'p'] = np.zeros(Sij.shape,dtype=Rotational_Level._class_vector_data[key].dtype)
+                # for i,state in enumerate(self.statep.states):
+                    # qnp[key+'p'][i,:,:,:] = state.qn[key]
+                # qnp[key+'p'] = np.ravel(qnp[key+'p'])
+            # qnpp = {}
+            # for key,val in self.statepp.states[0].qn.items():
+                # qnpp[key+'pp'] = np.zeros(Sij.shape,dtype=Rotational_Level._class_vector_data[key].dtype)
+                # for i,state in enumerate(self.statepp.states):
+                    # qnpp[key+'pp'][:,i,:,:] = state.qn[key]
+                # qnpp[key+'pp'] = np.ravel(qnpp[key+'pp'])
+            # ## put new data in transition
+            # self.transition.clear(clear_scalar_data=False)
+            # self.transition.append( 
+                # **{key:val[ikeep] for key,val in new_data.items()}, 
+                # **{key:val[ikeep] for key,val in qnp.items()}, 
+                # **{key:val[ikeep] for key,val in qnpp.items()}, 
+            # )
+            # self._cache['construct_transition_ikeep'] = ikeep
+            # self._cache['construct_transition_qnp']   = qnp
+            # self._cache['construct_transition_qnpp']  = qnpp
+        # else:
+            # ikeep = self._cache['construct_transition_ikeep']
+            # qnp   = self._cache['construct_transition_qnp']
+            # qnpp  = self._cache['construct_transition_qnpp']
+            # for t in (new_data,qnp,qnpp):
+                # for key,val in t.items():
+                    # self.transition[key] = val[ikeep]
+        # ## compute resiudals
+        # if self.experimental_transition is not None:
+            # return(self.get_residuals())
+        # if self.verbose:
+            # print('number of lines computed:',len(self.transition))
+
+    # def get_vibrational_transition(self):
+        # """Get a Vibrational_Transition containing transition quantum
+        # numbers and transition moment."""
+        # ## intialise transition object
+        # retval = Vibrational_Transition(
+            # description='Constants and transition moment of two vibronic levels.',Tref=self.Tref)
+        # ## add row for each transition moment
+        # for transition_moment in self._scalar_transition_moments:
+            # qn = transition_moment['qn']
+            # μ = transition_moment['parameter_set'].p['μ']
+            # dμ = transition_moment['parameter_set'].dp['μ']
+            # ## find relevant state spin_manifolds if they exist
+            # qnp,qnpp = separate_upper_lower_quantum_numbers(qn)
+            # parametersp,parameterspp = {},{}
+            # for t in self.statep._vibronic_spin_manifolds:
+                # if match_quantum_numbers(qnp,t['qn']):
+                    # for name,p in t['parameter_set'].items():
+                        # parametersp[name+'vp'] = p.p
+                        # parametersp['d'+name+'vp'] = p.dp
+            # for t in self.statepp._vibronic_spin_manifolds:
+                # if match_quantum_numbers(qnpp,t['qn']):
+                    # for name,p in t['parameter_set'].items():
+                        # parametersp[name+'vpp'] = p.p
+                        # parametersp['d'+name+'vpp'] = p.dp
+            # ## add line data
+            # keys_vals = dict(**qn,**parametersp,**parameterspp,μ=μ,dμ=dμ)
+            # retval.set_default(*keys_vals)
+            # retval.append(**keys_vals)
+        # return(retval)
+
+    # vibrational_transition = property(get_vibrational_transition)
+
+    # def plot(self):
+        # """Convenience quick plot."""
+        # my.fig(1)
+        # self.plot_transitions()
+        # my.fig(2)
+        # self.plot_spectrum()
+
+    # def plot_transitions(self,ykey='Sij',xkey='Jpp',fig=None,**plot_kwargs):
+        # """Plot linestrengths or fvalues. Uses a whole figure."""
+        # if fig is None: fig = plt.gcf()
+        # fig.clf()
+        # for i0,(d0,t0) in enumerate(self.transition.unique_dicts_matches('labelp','labelpp','vp','vpp')):
+            # ax = my.subplot(i0)
+            # my.annotate_corner(t0['labelp'][0]+'('+str(int(t0['vp'][0]))+')$-$'+t0['labelpp'][0]+'('+str(int(t0['vpp'][0]))+')',ax=ax,loc='top right')
+            # for i1,(d1,t1) in enumerate(t0.unique_dicts_matches('Fp','Fpp')):
+                # for i2,(d2,t2) in enumerate(t1.unique_dicts_matches('ΔJ')):
+                    # kwargs = dict(
+                        # color=my.newcolor(i1),
+                        # label=t2['branch'][0]+' ΔΣ='+format(int(t2['Σp'][0]-t2['Σpp'][0])),
+                        # # ls=my.newlinestyle(i2),
+                        # ls={0:'-',1:'--',-1:':'}[t2['ΔJ'][0]],
+                        # mfc='none',
+                        # mec=my.newcolor(i1),
+                        # mew=1)
+                    # kwargs.update(plot_kwargs)
+                    # ax.plot(t2[xkey],t2[ykey],**kwargs)
+                    # if self.experimental_transition is not None:
+                        # i,j = spectra.find_common_transitions_levels(t2,self.experimental_transition)
+                        # texp = self.experimental_transition[j]
+                        # kwargs['label'] = None
+                        # kwargs['ls'] = ''
+                        # marker=my.newmarker(i2),
+                        # if any(texp):
+                            # if texp.is_known('d'+ykey):
+                                # ax.errorbar(texp[xkey],texp[ykey],t['d'+ykey],**kwargs)
+                            # else:
+                                # ax.plot(texp[xkey],texp[ykey],**kwargs)
+        # for ax in fig.axes:
+            # ax.set_ylim(ymin=0)
+            # # ax.set_yscale('log')
+            # ax.set_xlabel(xkey)
+            # ax.set_ylabel(ykey)
+            # my.legend(loc='lower right',ax=ax,fontsize='medium',show_style=True)
+        # return(fig)
+
+    # def plot_spectrum(self,temperaturepp=300,ax=None,**plot_cross_section_kwargs):
+        # """Plot a simulated cross section."""
+        # transition = self.transition
+        # transition['temperaturepp'] = temperaturepp
+        # if ax is None: ax = plt.gca()
+        # return(transition.plot_spectrum(**plot_cross_section_kwargs))
+
+@lru_cache
+def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp):
+
+
+    ## check some selection rules
+    if ((Λp==0 and Λpp==0 and sp!=spp)
+        or (np.abs(Λp-Λpp)>1)
+        or (Sp!=Spp)):
+        raise Exception(f"Forbidden transition")
+
+    ## Get signed and e/f parity quantum numbers and transformation matrices
+    caseap  = quantum_numbers.get_case_a_basis( Λp, sp, Sp) 
+    caseapp = quantum_numbers.get_case_a_basis(Λpp,spp,Spp)
+    Mefp  = np.array( caseap['Mef'].evalf())
+    Mefpp = np.array(caseapp['Mef'].evalf())
+    efp = caseap['qnef']['ef']
+    efpp = caseapp['qnef']['ef']
+    Σp = caseap['qnef']['Σ']
+    Σpp = caseapp['qnef']['Σ']
+
+
+    
+    fμrot = np.full((len(Mefp),len(Mefpp)),None)
+    for (ip,qnpef),(ipp,qnppef) in itertools.product(
+            enumerate(caseap['qnef'].rows()),
+            enumerate(caseapp['qnef'].rows()),):
+
+        fi = []                # add +- basis componetns
+        for (jp,qnppm),(jpp,qnpppm) in itertools.product(
+                enumerate(caseap['qnpm'].rows()),
+                enumerate(caseapp['qnpm'].rows())):
+
+
+            if qnppm['Σ'] != qnpppm['Σ']:
+                continue
+            
+            c = Mefp[ip,jp]*Mefpp[ipp,jpp] # compute coefficient of thes signed-Ω wavefunctions to their respective ef-states
+            if c==0:
+                continue
+            
+            ## compute change in sign if reversed transition moment.
+            μsign = +1
+            if (qnppm['Λ']+qnpppm['Λ']) < 0:
+                μsign = caseap['σvpm']*caseapp['σvpm']
+            if (qnppm['Λ']+qnpppm['Λ']) == 0 and (qnppm['Σ']+qnpppm['Σ']) < 0:
+                μsign = caseap['σvpm']*caseapp['σvpm']
+
+
+            ## this computes every part of the linestrength apart
+            ## from the adjustable transition moment, with a cache
+            ## for speed
+            # @lru_cache
+            def fij(Jpp,ΔJ,
+                    Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'],
+                    Λp=qnppm['Λ'],Λpp=qnpppm['Λ'],
+                    μsign=float(μsign), c=float(c)):
+                if Jpp+ΔJ<0:
+                    return 0.
+                return(
+                    c       # contribution to ef-basis state
+                    *np.sqrt((2*Jpp+1)*(2*(Jpp+ΔJ)+1)) # see hansson2005 eq. 13
+                    *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
+                    *(-1 if Λp==0 else 1)   # phase factor, a hack that should be understood
+                    *μsign # transition moment phase factor (+1 or -1)
+                    *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') # Wigner 3J line strength factor vectorised over Jpp
+                )
+            fi.append(fij)
+        fμrot[ip,ipp] = lambda Jpp,ΔJ,fi=fi: sum([fij(Jpp,ΔJ) for fij in fi])
+    return efp,Σp,efpp,Σpp,fμrot
+
+    # ## for each ΔΩ e/f transition compute the contribution signed
+    # ## ΔΩ transitions. Previously I did this symbolically using
+    # ## formulae for Honl-London factors, but I could never get
+    # ## fully consistent phase factors (still can't really) and so
+    # ## I rewrote this using Wigner-3J coefficients (see
+    # ## hansson2005) which are solved numerically. This means
+    # ## rather than merely computing symbolic signed-Ω transition
+    # ## moemnt and then using matrix multiplication to get e/f
+    # ## parity moement the quadruple-loop below and fucntion
+    # ## addition below is needed.
+    # fM = {}                 # dictionary of (Σp,efp,Σpp,efpp) transition moments
+    # for (ip,qnpef),(ipp,qnppef) in itertools.product(
+            # enumerate(caseap['qnef']), enumerate(caseapp['qnef']),):
+        # ## loop over signed-Ω combinations of upper and lower
+        # ## states and compute a transition moment functions for
+        # ## each
+        # fsigned = []            
+        # for (jp,qnppm),(jpp,qnpppm) in itertools.product(
+                # enumerate(caseap['qnpm'].rows()),enumerate(caseapp['qnpm'].rows())):
+            # if qnppm['Σ']!=qnpppm['Σ']: continue # not allowed!
+            # c = Mefp[ip,jp]*Mefpp[ipp,jpp] # compute coefficient of thes signed-Ω wavefunctions to their respective ef-states
+            # if c==0: continue
+            # ## compute change in sign if reversed transition moment.
+            # μsign = +1
+            # if (qnppm['Λ']+qnpppm['Λ']) < 0: μsign = caseap['σvpm']*caseapp['σvpm']
+            # if (qnppm['Λ']+qnpppm['Λ']) == 0 and (qnppm['Σ']+qnpppm['Σ']) < 0:
+                # μsign = caseap['σvpm']*caseapp['σvpm']
+            # ## this computes every part of the linestrength apart
+            # ## from the adjustable transition moment, with a cache
+            # ## for speed
+            # @lru_cache(maxsize=4096)
+            # def fsignedi_scalar_no_μ(
+                    # Jpp,ΔJ,
+                    # Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'], Λp=qnppm['Λ'],Λpp=qnpppm['Λ'],
+                    # μsign=float(μsign), c=float(c),
+            # ):
+                # return(
+                    # c       # contribution to ef-basis state
+                    # *np.sqrt((2*Jpp+1)*(2*(Jpp+ΔJ)+1)) # see hansson2005 eq. 13
+                    # *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
+                    # *(-1 if Λp==0 else 1)   # phase factor, a hack that should be understood
+                    # *μsign # transition moment phase factor (+1 or -1)
+                    # *wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') # Wigner 3J line strength factor vectorised over Jpp
+                # )
+            # ## add the transiton moment
+            # def fsignedi(Jpp,ΔJ,fsignedi_scalar_no_μ=fsignedi_scalar_no_μ):
+                # return fsignedi_scalar_no_μ(Jpp,ΔJ)*μ(Jpp,ΔJ)
+            # fsigned.append(fsignedi)
+
+        # # ## sum over all sign combinations and save this
+        # # ## Σp,efp,Σpp,efpp transition moment
+        # # fM[qnpef['Σ'],qnpef['ef'],qnppef['Σ'],qnppef['ef'],] = lambda Jpp,ΔJ,fsigned=fsigned: np.sum([f(Jpp,ΔJ) for f in fsigned],axis=0)
+    # # ## for all matching transition states find the corret
+    # # ## transition moment if there is one
+    # # stateps = self.statep.get_matching_states(**qn_u)
+    # # statepps = self.statepp.get_matching_states(**qn_l)
+    # # for tstates,tqn in ((stateps,qn_u),(statepps,qn_l)):
+        # # if len(tstates)==0:
+            # # print(f'warning: add_transition_moment: No states found matching {repr(tqn)}')
+    # # for statep,statepp in itertools.product(stateps, statepps):
+        # # qns = (statep.qn['Σ'],statep.qn['ef'],statepp.qn['Σ'],statepp.qn['ef'])
+        # # if qns not in fM: continue
+        # # self.transition_moments.append(Vibronic_Transition_Moment(statep,statepp,fM[qns]))
+

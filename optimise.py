@@ -12,12 +12,12 @@ from .tools import ensure_iterable
 from . import plotting
 
 def _collect_parameters(x):
-    """Iteratively collect Parametero / 𝒫 objects from x descending
+    """Iteratively collect Parametero / P objects from x descending
     into any iterable children."""
     maximum_length_for_searching_for_parameters = 100
-    if isinstance(x,𝒫):
+    if isinstance(x,P):
         return [x]
-    elif np.iterable(x) and len(x)<maximum_length_for_searching_for_parameters:
+    elif tools.isiterable(x) and len(x)<maximum_length_for_searching_for_parameters:
         if isinstance(x,dict):
             x = x.values()
         retval = []
@@ -33,18 +33,11 @@ def auto_construct_method(function_name):
     method.  function_name required to make the
     input_format_function.  The undecorated method must return a
     construct_function. Parameters are picked out of the input
-    kwargs. Positional arguments not allowed."""
+    kwargs. POSITIONAL ARGUMENTS NOT ALLOWED for simplicity."""
     def actual_decorator(function):
         def new_function(self,**kwargs):
             ## add parameters in kwargs
             self.parameters.extend(_collect_parameters(kwargs))
-            # for key in list(kwargs):
-                # if isinstance(kwargs[key],𝒫):
-                    # self.parameters.append(kwargs[key])
-                # elif isinstance(kwargs[key],𝒫𝒟):
-                #     for val in kwargs[key].values():
-                #         if isinstance(val,𝒫):
-                #             self.parameters.append(val)
             ## make a construct function
             construct_function = function(self,**kwargs)
             self.add_construct_function(construct_function)
@@ -170,19 +163,19 @@ class Optimiser:
     def add_parameter(self,*args,description=''):
         """Add one parameter. Return a reference to it. Args are as in
         Parameter.x"""
-        p = 𝒫(*args,description=description)
+        p = P(*args,description=description)
         self.parameters.append(p)
         return p
 
-    def add_parameter_dict(
-            self,
-            description='', # added as a description to all parameters
-            **keys_parameters,       # kwargs in the form name=p or name=(Parameter_args)
-    ):
-        """Add multiple parameters. Return a ParameterSet."""
-        p = 𝒫𝒫𝒟(description=description,**keys_parameters)
-        self.parameters.extend(p.values())
-        return p
+    # def add_parameter_dict(
+            # self,
+            # description='', # added as a description to all parameters
+            # **keys_parameters,       # kwargs in the form name=p or name=(Parameter_args)
+    # ):
+        # """Add multiple parameters. Return a ParameterSet."""
+        # p = PPD(description=description,**keys_parameters)
+        # self.parameters.extend(p.values())
+        # return p
 
     # def add_parameter_list(
             # self,name_prefix='',p=[],vary=False,
@@ -606,7 +599,7 @@ class Optimiser:
 
 
 
-class 𝒫():
+class P():
     """An adjustable parameter."""
 
     def __init__(
@@ -642,7 +635,7 @@ class 𝒫():
     value = property(_get_value,_set_value)
 
     def __repr__(self):
-        return ('𝒫(' +format(self.value,self.fmt)
+        return ('P(' +format(self.value,self.fmt)
                 +','+repr(self.vary)
                 +','+format(self.step,'0.2g')
                 +','+format(self.uncertainty,'0.2g')
@@ -669,13 +662,13 @@ class 𝒫():
     def __rpow__(self,other): return(other**self.value)
 
 
-# class 𝒫𝒟():
+# class PD():
     # """Dictionary-like container of parameters."""
    #  
     # def __init__(self,input_dict):
         # self._parameters = {}
         # for key,parameter in input_dict.items():
-            # if isinstance(parameter,𝒫):
+            # if isinstance(parameter,P):
                 # self._parameters[key] = parameter
             # else:
                 # self._parameters[key] = parameter
@@ -685,12 +678,12 @@ class 𝒫():
         # return repr(self)
    #  
     # def __repr__(self):
-        # return '𝒫𝒟({'+','.join([f'{repr(key)}:{repr(parameter)}' for key,parameter in self._parameters.items()])+'})'
+        # return 'PD({'+','.join([f'{repr(key)}:{repr(parameter)}' for key,parameter in self._parameters.items()])+'})'
 
     # def _get_timestamp(self):
         # retval = self._init_timestamp
         # for p in self.values():
-            # if not isinstance(p,𝒫):
+            # if not isinstance(p,P):
                 # continue        # a scalar value probably
             # else:
                 # retval = max(retval,p.timestamp)

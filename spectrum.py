@@ -473,7 +473,7 @@ class Model(Optimiser):
             ## recompute spectrum if is necessary for somem reason
             if (cache == {}    # currently no spectrum computed
                 or self.timestamp < lines.timestamp # lines has changed
-                or any([self.timestamp < t.timestamp for t in line_parameters.values() if isinstance(t,𝒫)]) # optimise_keys_vals has changed
+                or any([self.timestamp < t.timestamp for t in line_parameters.values() if isinstance(t,P)]) # optimise_keys_vals has changed
                 or not (len(cache['x']) == len(self.x)) # experimental domain has changed
                 or not np.all( cache['x'] == self.x )): # experimental domain has changed
                 ## update optimise_keys_vals that have changed

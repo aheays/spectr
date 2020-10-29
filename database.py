@@ -1,4 +1,6 @@
 import functools
+import warnings
+
 import numpy as np
 from scipy import constants
 
@@ -75,12 +77,17 @@ species_property_dtypes = {'species':'U50','iso_indep':float,'mass':float,
                            'T0-Te':float,}
 
 # @cachetools.cached(cache=cachetools.LRUCache(1e3))
+@tools.vectorise_function
 @functools.lru_cache(maxsize=1024)
-def _get_species_property_scalar(species,prop):
+def get_species_property(species,prop):
     """Get a property fo this species using get_species_data. If an
     array of species then return an array of properties. Scalar output, cached."""
-    translate_prop = {'μ':'reduced_mass'}
+    translate_prop = {
+        'μ':'reduced_mass',
+        'mass_mixture':'mass',
+    }
     if prop in translate_prop:
+        warnings.warn(f"Translating species property {repr(prop)} to {repr(translate_prop[prop])}")
         prop = translate_prop[prop]
     d = get_species_data(species)
     assert prop in d.dtype.names,f'Property {repr(prop)} of species {repr(species)} not known to database.'
@@ -89,18 +96,18 @@ def _get_species_property_scalar(species,prop):
     if ((np.isreal(retval) and np.isnan(retval))
         or retval=='nan'): 
         raise MissingDataException(f"Property is unknown: {repr(species)}, {repr(prop)}")
-    return(retval)
+    return retval
 
-def get_species_property(species,prop):
-    """Get a property fo this species using get_species_data. If an array
-    of species then return an array of properties. Can be vector. """
-    if np.isscalar(species):
-        return(_get_species_property_scalar(species,prop))
-    else:
-        retval = np.ones(species.shape,dtype=species_property_dtypes[prop])
-        for speciesi in np.unique(species):
-            retval[species==speciesi] = _get_species_property_scalar(speciesi,prop)
-        return(retval)
+# def get_species_property(species,prop):
+    # """Get a property fo this species using get_species_data. If an array
+    # of species then return an array of properties. Can be vector. """
+    # if np.isscalar(species):
+        # return(_get_species_property_scalar(species,prop))
+    # else:
+        # retval = np.ones(species.shape,dtype=species_property_dtypes[prop])
+        # for speciesi in np.unique(species):
+            # retval[species==speciesi] = _get_species_property_scalar(speciesi,prop)
+        # return(retval)
 
 ## deprecate this in favour of get_species_property?
 

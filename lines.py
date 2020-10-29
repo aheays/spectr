@@ -19,8 +19,6 @@ from .exceptions import InferException
 
 
 level_suffix = {'upper':'_u','lower':'_l'}
-upper = level_suffix['upper']
-lower = level_suffix['lower']
 
 ################
 ## prototypes ##
@@ -34,17 +32,19 @@ for key in (
         'mass','reduced_mass','partition_source','partition',
 ):
     prototypes[key] = copy(levels.prototypes[key])
+
 ## import all from levels with suffices added
 for key,val in levels.prototypes.items():
     tval = deepcopy(val)
-    tval['infer'] = {tuple(key+level_suffix['upper']
+    tval['infer'] = {tuple(key+'_u'
                            for key in tools.ensure_iterable(dependencies)):function
                      for dependencies,function in val['infer'].items()}
-    prototypes[key+level_suffix['upper']] = tval
-    tval['infer'] = {tuple(key+level_suffix['lower']
+    prototypes[key+'_u'] = tval
+    tval['infer'] = {tuple(key+'_l'
                            for key in tools.ensure_iterable(dependencies)):function
                      for dependencies,function in val['infer'].items()}
-    prototypes[key+level_suffix['lower']] = tval
+    prototypes[key+'_l'] = tval
+
 
 ## add lines things
 prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='8U', cast=str, fmt='<10s')
@@ -55,12 +55,16 @@ prototypes['Γ'] = dict(description="Total natural linewidth of level or transit
     ('γair','Pair'):lambda γair,Pair: γair*convert(Pair,'Pa','atm'),})
 prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind=float,fmt='<10.5g', infer={('mass','Ttr','ν'): lambda mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,})
 prototypes['f'] = dict(description="Line f-value (dimensionless)",kind=float,fmt='<10.5e', infer={
-    ('Ae','ν','g_u','g_l'):lambda Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2, 
+    ('Ae','ν','g_u','g_l'):lambda Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2,
+    ('Sij','ν','J_l'): lambda Sij,ν,J_l: 3.038e-6*ν*Sij/(2*J_l+1), 
     ('σ','α_l'):lambda σ,α_l: σ*1.1296e12/α_l,})
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section (cm2.cm-1).", kind=float, fmt='<10.5e',infer={
     ('τa','Nself_l'):lambda τ,column_densitypp: τ/column_densitypp, 
     ('f','α_l'):lambda f,α_l: f/1.1296e12*α_l,
     ('S','ν','Teq'):lambda S,ν,Teq,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Teq)),})
+# prototypes['σ'] =dict(description="Integrated cross section (cm2.cm-1).", kind=float,  fmt='<10.5e', infer={('τ','column_densitypp'):lambda τ,column_densitypp: τ/column_densitypp, ('f','populationpp'):lambda f,populationpp: f/1.1296e12*populationpp,})
+
+
 def _f0(S296K,species,partition,E_l,Tex,ν):
     """See Eq. 9 of simeckova2006"""
     partition_296K = hitran.get_partition_function(species,296)
@@ -101,6 +105,64 @@ prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind=float, fmt='0
 prototypes['Nself'] = dict(description="Column density (cm-2)",kind=float,fmt='<11.3e', infer={
     ('Pself','L','Teq'): lambda Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,})
 
+
+## vibratiobanl transition frequencies
+prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber (cm-1)", kined=float, fmt='>11.4f', infer={('Tvp','Tvpp'): lambda Tvp,Tvpp: Tvp-Tvpp, ('λv',): lambda λv: convert_units(λv,'nm','cm-1'),})
+prototypes['λv'] = dict(description="Electronic-vibrational transition wavelength (nm)", kind=float, fmt='>11.4f', infer={('νv',): lambda νv: convert_units(νv,'cm-1','nm'),},)
+
+## transition strengths
+prototypes['M']   = dict(description="Pointer to electronic transition moment (au).", kind=object, infer={})
+prototypes['Mv']   = dict(description="Electronic transition moment for this vibronic level (au).", kind=float, fmt='<10.5e', infer={('μ','FCfactor'): lambda μ,FCfactor: μ/np.sqrt(FCfactor),})
+prototypes['μv']  = dict(description="Electronic-vibrational transition moment (au)", kind=float,  fmt='<10.5e', infer={('M','χp','χpp','R'): lambda M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),},) # could infer from S but then sign would be unknown
+prototypes['μ']   = dict(description="Electronic-vibrational-rotational transition moment (au)", kind=float,  fmt='<10.5e', infer={('M','χp','χpp','R'): lambda M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),},) # could infer from S but then sign would be unknown
+def _f0(fv,ν,Λp,Λpp):
+    """Convert a summed band fvalue into a band_strength."""
+    Sv = fv/3.038e-6/ν
+    Sv[(Λpp==0)&(Λp!=0)] /= 2 # divisor of (2-δ(0,Λ")δ(0,Λ'))/(2-δ(0,Λ')
+    return(Sv)
+def _f1(Aev,ν,Λp,Λpp):
+    """Convert an average band emission rate a band_strength"""
+    Sv = Aev/2.026e-6/v**3
+    Sv[(Λp==0)&(Λpp!=0)] /= 2.
+    return(Sv)
+prototypes['Sv'] =dict(description="Band strength (⟨vp|Re|vpp⟩**2, au)", kind=float,  fmt='<10.5e', infer={('Sij','SJ'): lambda Sij,SJ: Sij/SJ, ('μ',):lambda μ:μ**2, ('fv','ν','Λp','Λpp')  : lambda fv,ν,Λp,Λpp  : band_fvalue_to_band_strength(fv,ν,Λp,Λpp), ('fv','νv','Λp','Λpp') : lambda fv,νv,Λp,Λpp : band_fvalue_to_band_strength(fv,νv,Λp,Λpp), ('Aev','ν','Λp','Λpp') : lambda Aev,ν,Λp,Λpp : band_emission_rate_to_band_strength(Aev,ν,Λp,Λpp ), ('Aev','νv','Λp','Λpp'): lambda Aev,νv,Λp,Λpp: band_emission_rate_to_band_strength(Aev,νv,Λp,Λpp),},)
+def _f1(f,SJ,Jpp,Λp,Λpp):
+    """Get band fvalues from line strength"""
+    fv = f/SJ*(2.*Jpp+1.)       # correct? What about 2S+1?
+    fv[(Λpp==0)&(Λp!=0)] *= 2
+    return(fv)
+prototypes['fv'] = dict(description="Band f-value (dimensionless)", kind=float,  fmt='<10.5e', infer={('Sv','ν','Λp','Λpp'):  lambda Sv,ν,Λp,Λpp :  band_strength_to_band_fvalue(Sv,ν, Λp,Λpp), ('Sv','νv','Λp','Λpp'): lambda Sv,νv,Λp,Λpp:  band_strength_to_band_fvalue(Sv,νv,Λp,Λpp), ('f','SJ','Jpp','Λp','Λpp'): _f1,})
+prototypes['Aev'] =dict(description="Einstein A coefficient / emission rate averaged over a band (s-1).", kind=float,  fmt='<10.5e', infer={('Sv','ν' ,'Λp','Λpp'): lambda Sv,ν ,Λp,Λpp: band_strength_to_band_emission_rate(Sv,ν ,Λp,Λpp), ('Sv','νv','Λp','Λpp'): lambda Sv,νv,Λp,Λpp: band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp),},) 
+prototypes['σv'] =dict(description="Integrated cross section of an entire band (cm2.cm-1).", kind=float,  fmt='<10.5e', infer={('fv',):lambda fv: band_fvalue_to_band_cross_section(fv),},)
+prototypes['Sij'] =dict(description="Line strength (au)", kind=float,  fmt='<10.5e', infer={('Sv','SJ'): lambda Sv,SJ:  Sv*SJ, ('f','ν','Jpp'): lambda f,ν,Jpp: f/3.038e-6/ν*(2*Jpp+1), ('Ae','ν','Jp'): lambda Ae,ν,Jp: Ae/(2.026e-6*ν**3/(2*Jp+1)),})
+prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate (s-1).", kind=float,  fmt='<10.5e', infer={('f','ν','Jp','Jpp'): lambda f,ν,Jp,Jpp: f*0.666886/(2*Jp+1)*(2*Jpp+1)*ν**2, ('Sij','ν','Jp'): lambda Sij,ν,Jp: Sij*2.026e-6*ν**3/(2*Jp+1),},)
+prototypes['FCfactor'] =dict(description="Franck-Condon factor (dimensionless)", kind=float,  fmt='<10.5e', infer={('χp','χpp','R'): lambda χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)]),},)
+prototypes['Rcentroid'] =dict(description="R-centroid (Å)", kind=float,  fmt='<10.5e', infer={('χp','χpp','R','FCfactor'): lambda χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)]),},)
+def _f0(Sp,Spp,Ωp,Ωpp,Jp,Jpp):
+    if not (np.all(Sp==0) and np.all(Spp==0)): raise InferException('Honl-London factors only defined here for singlet states.')
+    try:
+        return(quantum_numbers.honl_london_factor(Ωp,Ωpp,Jp,Jpp))
+    except ValueError as err:
+        if str(err)=='Could not find correct Honl-London case.':
+            raise InferException('Could not compute rotational line strength')
+        else:
+            raise(err)
+# prototypes['SJ'] = dict(description="Rotational line strength (dimensionless)", kind=float,  fmt='<10.5e', infer= {('Sp','Spp','Ωp','Ωpp','Jp','Jpp'): _f0,})
+# prototypes['τ'] = dict(description="Integrated optical depth (cm-1)", kind=float,  fmt='<10.5e', infer={('σ','column_densitypp'):lambda σ,column_densitypp: σ*column_densitypp,},)
+# prototypes['I'] = dict(description="Integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind=float,  fmt='<10.5e', infer={('Ae','populationp','column_densityp','ν'):lambda Ae,populationp,column_densityp,ν: Ae*populationp*column_densityp*ν,},)
+# prototypes['Ip'] = dict(description="Integrated emission photon intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind=float,  fmt='<10.5e', infer={('Ae','populationp','column_densityp'):lambda Ae,populationp,column_densityp: Ae*populationp*column_densityp,},)
+# prototypes['σd'] = dict(description="Integrated photodissociation cross section (cm2.cm-1).", kind=float,  fmt='<10.5e', infer={('σ','ηdp'):lambda σ,ηdp: σ*ηdp,})
+# prototypes['Sabs'] = dict(description="Absorption intensity (cm-1/(molecule.cm-1)).", kind=float,  fmt='<10.5e', infer={})
+
+## vibrational interaction energies
+prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels (cm-1).", kind=float,  fmt='<10.5e', infer={})
+prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixing two vibronic levels (cm-1).", kind=float,  fmt='<10.5e', infer={})
+prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels (cm-1).", kind=float,  fmt='<10.5e', infer={})
+prototypes['ξDv'] = dict(description="Higher-roder reduced rotational interaction energy mixing two vibronic levels (cm-1).", kind=float,  fmt='<10.5e', infer={})
+
+
+
+
 ## add infer functions -- could add some of these to above
 prototypes['ν']['infer']['E_u','E_l'] = lambda Eu,El: Eu-El
 prototypes['E_l']['infer']['E_u','ν'] = lambda Eu,ν: Eu-ν
@@ -122,6 +184,12 @@ prototypes['partition']['infer']['partition_u'] = lambda partition_u:partition_u
 prototypes['partition_l']['infer']['partition'] = lambda partition:partition
 prototypes['partition_u']['infer']['partition'] = lambda partition:partition
 
+
+
+
+
+
+
 def _get_key_without_level_suffix(upper_or_lower,key):
     suffix = level_suffix[upper_or_lower]
     if len(key) <= len(suffix):
@@ -133,8 +201,8 @@ def _get_key_without_level_suffix(upper_or_lower,key):
 def _expand_level_keys_to_upper_lower(levels_class):
     retval = []
     for key,val in levels_class.prototypes.items():
-        retval.append(key+level_suffix['lower'])
-        retval.append(key+level_suffix['upper'])
+        retval.append(key+'_l')
+        retval.append(key+'_u')
     return retval
 
 
@@ -142,29 +210,23 @@ def _expand_level_keys_to_upper_lower(levels_class):
 ## classes ##
 #############
 
-class Base(levels._BaseLinesLevels):
+parent = levels.BaseLinesLevels
+class Base(parent):
     """For now rotational lines."""
 
-    _levels_class = levels.Base
+    _levels_class = levels.HeteronuclearDiatomicElectronicLevel
 
-    prototypes = {key:copy(prototypes[key]) for key in (
-        ['classname', 'description', 'notes', 'author', 'reference', 'date',]
-        + _expand_level_keys_to_upper_lower(_levels_class)
-        + ['species','isotopologue','mass', 'reduced_mass',
-           'branch', 'ΔJ',
-           'ν',
-           'Γ', 'ΓD',
-           'f', 'σ', 
-           'S','S296K', 
-           'τ', 'Ae','τa',
-           'Teq', 'Tex', 'Ttr','partition',
-           'partition_source',
-           'partition',
-           'L',
-           'γair', 'δair', 'γself', 'nair',
-           'Pself', 'Pair', 'Nself',])}
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in (
+        _expand_level_keys_to_upper_lower(_levels_class)
+    )})
 
-    
+    def __init__(self,*args,**kwargs):
+        levels.BaseLinesLevels.__init__(self,*args,**kwargs)
+        self['classname_l'] = self._levels_class.__name__
+        self['classname_u'] = self._levels_class.__name__
+
+
 
     def plot_spectrum(
             self,
@@ -229,7 +291,7 @@ class Base(levels._BaseLinesLevels):
             nfwhmL=100,         # how many Lorentzian FWHMs to compute
             nx=10000,     # number of grid points used if x not give
             ymin=None,     # minimum value of ykey before a line is ignored, None for use all lines
-            gaussian_method='fortran', #'fortran stepwise', 'fortran', 'python'
+            gaussian_method='python', #'fortran stepwise', 'fortran', 'python'
             voigt_method='wofz',   
             use_multiprocessing=False, # might see a speed up
             use_cache=False,    # is it actually any faster?!?
@@ -471,8 +533,8 @@ class Base(levels._BaseLinesLevels):
             new['S296K'][i] /=  hitran.molparam.get_unique_value('natural_abundance',**d)
         ## ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
         ## ## standin for diatomics
-        ## kw['v'+level_suffix['upper']] = data['V_u']
-        ## kw['v'+level_suffix['lower']] = data['V_l']
+        ## kw['v'+'_u'] = data['V_u']
+        ## kw['v'+'_l'] = data['V_l']
         ## branches = {'P':-1,'Q':0,'R':+1}
         ## ΔJ,J_l = [],[]
         ## for Q_l in data['Q_l']:
@@ -480,15 +542,49 @@ class Base(levels._BaseLinesLevels):
         ##     ΔJ.append(branches[branchi])
         ##     J_l.append(Jli)
         ## kw['ΔJ'] = np.array(ΔJ,dtype=int)
-        ## kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
+        ## kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.concatenate(new)
 
-class DiatomicCinfv(Base):
 
-    _levels_class = levels.DiatomicCinfv
-    prototypes = {key:copy(prototypes[key]) for key in (
-        list(Base.prototypes)
-        + _expand_level_keys_to_upper_lower(_levels_class))}
+parent = Base
+class HeteronuclearDiatomicElectronicLine(parent):
+
+    _levels_class = levels.HeteronuclearDiatomicElectronicLevel
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in (
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + [
+           'Teq', 'Tex', 'Ttr',
+           'partition_source',
+           'partition',
+           'L',
+           'γair', 'δair', 'γself', 'nair',
+           'Pself', 'Pair', 'Nself',]
+    )})
+
+parent = HeteronuclearDiatomicElectronicLine
+class HeteronuclearDiatomicVibrationalLine(parent):
+
+    _levels_class = levels.HeteronuclearDiatomicVibrationalLevel
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in (
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + ['ν','νv','μv',])})
+
+parent = HeteronuclearDiatomicVibrationalLine
+class HeteronuclearDiatomicRotationalLine(parent):
+
+    _levels_class = levels.HeteronuclearDiatomicRotationalLevel
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in (
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + ['branch', 'ΔJ',
+           'Γ', 'ΓD',
+           'f', 'σ', 
+           'S','S296K', 
+           'τ', 'Ae','τa',
+           'Sij',
+           ])})
 
 
     def load_from_hitran(self,filename):
@@ -502,9 +598,9 @@ class DiatomicCinfv(Base):
         kw = {
             'ν':data['ν'],
             'Ae':data['A'],
-            'E'+level_suffix['lower']:data['E_l'],
-            'g'+level_suffix['upper']:data['g_u'],
-            'g'+level_suffix['lower']:data['g_l'],
+            'E'+'_l':data['E_l'],
+            'g'+'_u':data['g_u'],
+            'g'+'_l':data['g_l'],
             'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
             'nair':data['nair'],
             'δair':data['δair'],
@@ -520,8 +616,8 @@ class DiatomicCinfv(Base):
             kw['species'] = hitran.translate_codes_to_species(data['Mol'])
         ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
         ## standin for diatomics
-        kw['v'+level_suffix['upper']] = data['V_u']
-        kw['v'+level_suffix['lower']] = data['V_l']
+        kw['v'+'_u'] = data['V_u']
+        kw['v'+'_l'] = data['V_l']
         branches = {'P':-1,'Q':0,'R':+1}
         ΔJ,J_l = [],[]
         for Q_l in data['Q_l']:
@@ -529,12 +625,47 @@ class DiatomicCinfv(Base):
             ΔJ.append(branches[branchi])
             J_l.append(Jli)
         kw['ΔJ'] = np.array(ΔJ,dtype=int)
-        kw['J'+level_suffix['lower']] = np.array(J_l,dtype=float)
+        kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.extend(**kw)
         
+
+
+parent = HeteronuclearDiatomicElectronicLine
+class HomonuclearDiatomicElectronicLine(parent):
+    """A generic level."""
+    _levels_class = levels.HomonuclearDiatomicElectronicLevel
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear_u','gu_u','Inuclear_l','gu_l',]})
+
+parent = HeteronuclearDiatomicVibrationalLine
+class HomonuclearDiatomicVibrationalLine(parent):
+    """A generic level."""
+    _levels_class = levels.HomonuclearDiatomicVibrationalLevel
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear_u','gu_u','Inuclear_l','gu_l',]})
+
+parent = HeteronuclearDiatomicRotationalLine
+class HomonuclearDiatomicRotationalLine(parent):
+    """A generic level."""
+    _levels_class = levels.HomonuclearDiatomicRotationalLevel
+    prototypes = copy(parent.prototypes)
+    prototypes.update(**{key:copy(prototypes[key]) for key in ['Inuclear_u','gu_u','Inuclear_l','gu_l',]})
+
 
 # class TriatomicDinfh(Base):
 
     # prototypes = {key:copy(prototypes[key]) for key in (
         # list(Base.prototypes)
         # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
+
+######################################
+## convenient access by point group ##
+######################################
+        
+rotational_line_by_point_group = {}
+rotational_line_by_point_group['C∞v'] = HeteronuclearDiatomicRotationalLine
+rotational_line_by_point_group['D∞h'] = HomonuclearDiatomicRotationalLine
+
+vibrational_line_by_point_group = {}
+vibrational_line_by_point_group['C∞v'] = HeteronuclearDiatomicVibrationalLine
+vibrational_line_by_point_group['D∞h'] = HomonuclearDiatomicVibrationalLine
