@@ -8,7 +8,7 @@ from . import tools
 from .exceptions import MissingDataException
 
 ## module data and caches
-from .species import get_species
+from .kinetics import get_species
 
 data_directory = '~/data/reference_data/' # root directory where data is stored in various ways
 global _level_data

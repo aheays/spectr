@@ -472,9 +472,10 @@ def test_dataset_load_save_to_file():
     t['x'] = [1,2,3]
     t['z'] = ['a','b','c']
     t['f'] = 1.29
-    t.save('tmp/t0.txt',comment='# ')
+    t.save('tmp/t0.psv',comment='# ')
     u = Dataset()
-    u.load('tmp/t0.txt')
+    u.load('tmp/t0.psv')
+    print('DEBUG:', u)
     assert set(u.keys()) == {'x','f','z'}
     assert list(u['x']) == list(t['x'])
     assert list(u['z']) == list(t['z'])

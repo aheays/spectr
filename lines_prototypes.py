@@ -1,3 +1,8 @@
+from copy import copy,deepcopy
+
+from . import tools
+from . import levels
+
 prototypes = {}
 
 ## copy some direct from levels

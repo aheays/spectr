@@ -1,3 +1,8 @@
+import functools
+from copy import copy
+
+from . import tools
+
 prototypes = {}
 
 prototypes['classname'] = dict( description="Type of levels of lines object.",kind=str ,infer={})

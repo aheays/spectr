@@ -757,6 +757,8 @@ class Dataset(optimise.Optimiser):
                 delimiter = ','
             elif re.match(r'.*\.rs',filename):
                 delimiter = '␞'
+            elif re.match(r'.*\.psv',filename):
+                delimiter = '|'
             assert comment not in ['',' '], "Not implemented"
             filename = tools.expand_path(filename)
             data = {}
@@ -859,7 +861,15 @@ class Dataset(optimise.Optimiser):
         if set(self.keys())==set(new_keys_vals.keys()):
             ## all keys are present, add directly to data
             for key,val in new_keys_vals.items():
+                if self.is_scalar(key):
+                    ## if unchanged scalar data then do nothing, if
+                    ## chnaged then vectorise before appending
+                    if val == self[key]:
+                        continue
+                    else:
+                        self.make_vector(key)
                 self._data[key].append(val)
+            self._length += 1
         else:
             ## some keys missing, use internal inferences to align them
             new_dataset = self.__class__()
