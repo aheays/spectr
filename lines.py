@@ -20,7 +20,6 @@ from .lines_prototypes import prototypes
 from . import levels
 from .levels import _unique
 
-print(prototypes.keys())
 
 level_suffix = {'upper':'_u','lower':'_l'}
 
@@ -44,7 +43,7 @@ class GenericLine(levels.Base):
     _levels_class = levels.GenericLevel
     _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
                          + ['description','notes','author','reference','date','classname',
-                            'ν','Γ','ΓD','f',])
+                            'species','ν','Γ','ΓD','f',])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
     def __init__(self,*args,**kwargs):
@@ -370,6 +369,21 @@ class GenericLine(levels.Base):
         ## kw['ΔJ'] = np.array(ΔJ,dtype=int)
         ## kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.concatenate(new)
+
+
+
+    def generate_from_levels(self,lu,ll):
+        for key in lu:
+            if lu.is_scalar(key):
+                self[key+'_u'] = lu[key]
+            else:
+                self[key+'_u'] = np.ravel(np.tile(lu.as_vector(key),len(ll)))
+        for key in ll:
+            if ll.is_scalar(key):
+                self[key+'_l'] = ll[key]
+            else:
+                self[key+'_l'] = np.ravel(np.repeat(ll.as_vector(key),len(lu)))
+
 
 
 class HeteronuclearDiatomicElectronicLine(GenericLine):
