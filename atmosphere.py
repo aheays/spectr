@@ -34,6 +34,14 @@ class OneDimensionalAtmosphere(Dataset):
     prototypes['zeta(s-1)'] = dict(description="not implemented" ,kind=float ,infer={})
     prototypes['h'] = dict(description="not implemented" ,kind=float ,infer={})
     prototypes['f+'] = dict(description="not implemented" ,kind=float ,infer={})
+    def _f(z):
+        """Get height intervals. CURRENTLY NAIVELY COMPUTED!!!!"""
+        dz = np.full(z.shape,0.)
+        dz[1:-1] = (z[2:]-z[1:-1])/2+(z[1:-1]-z[:-2])/2
+        dz[0] = (z[1]-z[0])/2
+        dz[-1] = (z[-1]-z[-2])/2
+        return dz
+    prototypes['dz'] = dict(description="Depth of grid cell (cm)." ,kind=float ,infer={'z':_f})
 
     def __init__(self):
         Dataset.__init__(self)
@@ -129,26 +137,9 @@ class AtmosphericChemistry():
                 j = tools.findin(data['z'][i],self['z'])
                 r.rate[j] = data['rate'][i]
                 
-    # def load_ARGO_lifetime(self,filename):
-        # """Load an ARGO lifetime.dat file."""
-        # data = tools.file_to_dict(filename,skiprows=2,labels_commented=False)
-        # ## load physical parameters
-        # for key_from,key_to in (
-                # ('p(bar)','p'), ('T(K)','T'), ('NH(cm-3)','nt'),
-                # ('Kzz(cm2s-1)','Kzz'), ('Hz(cm)','z'),
-                # ('zeta(s-1)','zeta(s-1)'), ('h','h'), ('f+','f+')
-        # ):
-            # if key_to in self:
-                # assert np.all(self[key_to] == data.pop(key_from))
-            # else:
-                # self[key_to] = data.pop(key_from)
-        # ## load densitys
-        # for key in data:
-            # standard_key = kinetics.translate_species(key,'ARGO','standard')
-            # self['τ_'+standard_key] = data[key]
-
     def __getitem__(self,key):
-        if self.state.is_known(key):
+        if (self.state.is_known(key)
+            or key in self.state.prototypes):
             return self.state[key]
         elif key in self.density:
             return self.density[key]
@@ -231,13 +222,13 @@ class AtmosphericChemistry():
             self,
             ykey=None,
             ax=None,
-            nplot=None,
+            nplot=None,         # only plot this many rates
             plot_total=True,
             plot_kwargs=None,
-            normalise_to_species=None,
-            **kwargs_get_rates
+            normalise_to_species=None, # normalise rates to the density fo this species
+            **kwargs_get_rates         # for selecting rates to plot
     ):
-        """Plot rates matching kwargs_get_matching_reactions."""
+        """Plot rates matching kwargs_get_rates."""
         if ax is None:
             ax = plotting.plt.gca()
             ax.cla()
@@ -245,15 +236,27 @@ class AtmosphericChemistry():
             plot_kwargs = {}
         y = self[ykey]
         rates = self.get_rates(normalise_to_species=normalise_to_species,**kwargs_get_rates)
+        ## plot total of all rates
         if plot_total:
             total = np.sum(list(rates.values()),0)
-            integrated = integrate.trapz(total,self['z'])
-            ax.plot(total,y,color='black',alpha=0.3,linewidth=6, label=f'{integrated:0.2e} total', **plot_kwargs)
+            if normalise_to_species:
+                ## plot mean of normalised total rate
+                weight = self.density[normalise_to_species]*self['dz']
+                summary_value = np.sum(total*weight)/np.sum(weight)
+            else:
+                ## plot integrated total rate
+                summary_value = integrate.trapz(total,self['z'])
+            ax.plot(total,y,color='black',alpha=0.3,linewidth=6, label=f'{summary_value:0.2e} total', **plot_kwargs)
+        ## plot individual rates
         for i,(name,rate) in enumerate(rates.items()):
             if nplot is not None and i > nplot:
                 break
-            integrated = integrate.trapz(rate,self['z'])
-            ax.plot(rate,y, label=f'{integrated:0.2e} {name:40}', **plot_kwargs)
+            if normalise_to_species:
+                weight = self.density[normalise_to_species]*self['dz']
+                summary_value = np.sum(rate*weight)/np.sum(weight)
+            else:
+                summary_value = integrate.trapz(rate,self['z'])
+            ax.plot(rate,y, label=f'{summary_value:0.2e} {name:40}', **plot_kwargs)
         ax.set_ylabel(ykey)
         if normalise_to_species is not None:
             ax.set_xlabel(f'Rate normalised to the density of {normalise_to_species} (s$^{{-1}}$)')
