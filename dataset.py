@@ -815,6 +815,14 @@ class Dataset(optimise.Optimiser):
             self.assert_known(key)
             return(isinstance(self._data[key],Datum))
 
+    def as_vector(self,key):
+        """Return a vectorised version of key if it is scalar, or the data if
+        it is vector."""
+        if self.is_scalar(key):
+            return np.full(len(self),self[key])
+        else:
+            return self[key]
+
     def make_vector(self, key=None,):
         """Make an existing key vector if it is currently scalar."""
         if key is None:
