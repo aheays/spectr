@@ -2471,9 +2471,16 @@ def find(x):
     """Convert boolean array to array of True indices."""
     return(np.where(x)[0])
 
-def find_unique(x,y):
+def find_unique(x):
+    """Convert boolean array to array of True indices."""
+    i = find(x)
+    assert len(i)>0,'No match found'
+    assert len(i)<2,'Multiple matches found'
+    return i[0]
+
+def findin_unique(x,y):
     """Find one only match of x in y. Else raise an error."""
-    i = find(x==y)
+    i = findin(x,y)
     assert len(i)!=1,'No match found'
     assert len(i)<2,'Multiple matches found'
     return i[0]
@@ -4693,9 +4700,9 @@ def fit_spline_to_extrema(
 ## sympy stuff ##
 #################
 
-@functools.lru_cache
-def cached_pycode(*args,**kwargs):
-    return(pycode(*args,**kwargs))
+# @functools.lru_cache
+# def cached_pycode(*args,**kwargs):
+    # return(pycode(*args,**kwargs))
 
 @functools.lru_cache
 def lambdify_sympy_expression(
@@ -4705,7 +4712,8 @@ def lambdify_sympy_expression(
 ): 
     """An alternative to sympy lambdify.  ."""
     ## make into a python string
-    t =  cached_pycode(sympy_expression,fully_qualified_modules=False)
+    # t =  cached_pycode(sympy_expression,fully_qualified_modules=False)
+    t =  pycode(sympy_expression,fully_qualified_modules=False)
     ## replace math functions
     for t0,t1 in (('sqrt','np.sqrt'),):
         t = t.replace(t0,t1)
