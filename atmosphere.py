@@ -53,8 +53,8 @@ class AtmosphericChemistry():
             self,
             model_output_directory,
             reaction_network_filename=None,
-            rate_coefficient_filename=None,
-            load_rates_file=False,
+            load_rate_coefficients=False,
+            load_rates=False,
            ):
 
         ## load depth.dat physical parameters and species volume density
@@ -82,10 +82,11 @@ class AtmosphericChemistry():
             self.reaction_network.load_STAND(reaction_network_filename)
             self.reaction_network.remove_unnecessary_reactions()
     
-        if rate_coefficient_filename is not None:
+        if load_rate_coefficients:
             ## Load the rate coefficients from an ARGO
             ## Reactions/Kup.dat or
-            data = tools.file_to_dict(rate_coefficient_filename,skiprows=2,labels_commented=False)
+            rate_coefficient_filename = f'{model_output_directory}/Reactions/Kup.dat'
+            data = tools.file_to_dict(rate_coefficient_filename, skiprows=2,labels_commented=False)
             if 'down' in rate_coefficient_filename:
                 ## reverse z grid 
                 for key in data:
@@ -95,7 +96,7 @@ class AtmosphericChemistry():
             for r in self.reaction_network.reactions:
                 r.rate_coefficient = data['R'+str(r.coefficients['reaction_number'])]
 
-        if load_rates_file:
+        if load_rates:
             ## load rates from the last time step in verif files
             ## loop over height files
             data = Dataset()
@@ -169,6 +170,31 @@ class AtmosphericChemistry():
         ax.set_ylim(self[ykey].min(),self[ykey].max())
         ax.set_ylabel(ykey)
         ax.set_xlabel('density?')
+        plotting.legend(ax=ax)
+
+    def plot_density(self,xkeys=5,ykey='z(km)',ax=None):
+        """Plot density of speices. If xkeys is an integer then plot that many
+        most abundant anywhere species. Or else give a list of species
+        names."""
+        if isinstance(xkeys,int):
+            ## get most abundance species anywhere
+            all_keys = np.array(self.density.keys())
+            xkeys = []
+            for i in range(len(self.density)):
+                j = np.argsort([-self.density[t][i] for t in self.density])
+                xkeys.extend(all_keys[j[:5]])
+            xkeys = tools.unique(xkeys)
+        if ax is None:
+            ax = plotting.gca()
+        ## plot total density
+        ax.plot(self['nt'],self[ykey],label='nt',color='black',alpha=0.3,linewidth=6)
+        ## plot individual species
+        for xkey in xkeys:
+            ax.plot(self.density[xkey],self[ykey],label=xkey)
+        ax.set_xscale('log')
+        ax.set_ylim(self[ykey].min(),self[ykey].max())
+        ax.set_ylabel(ykey)
+        ax.set_xlabel('Density (cm-3)')
         plotting.legend(ax=ax)
 
     def get_rates(
