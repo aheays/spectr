@@ -39,9 +39,16 @@ class VibLevel(Optimiser):
         self.species = t.species
         self.isotopologue = t.isotopologue
         self.point_group = t['point_group']
-        self.rotational_level = levels.rotational_level_by_point_group[self.point_group]()
-        self.vibrational_level = levels.vibrational_level_by_point_group[self.point_group]()
-        self.vibrational_spin_level = levels.rotational_level_by_point_group[self.point_group]()
+        if self.point_group == 'D∞h':
+            self.rotational_level = levels.HomonuclearDiatomicRotationalLevel()
+            self.vibrational_level = levels.HomonuclearDiatomicVibrationalLevel()
+            self.vibrational_spin_level = levels.HomonuclearDiatomicRotationalLevel() # could make HomonuclearDiatomicVibrationalSpinLevel
+        elif self.point_group == 'C∞v':
+            self.rotational_level = levels.HeteronuclearDiatomicRotationalLevel()
+            self.vibrational_level = levels.HeteronuclearDiatomicVibrationalLevel()
+            self.vibrational_spin_level = levels.HeteronuclearDiatomicRotationalLevel() # could make HeteronuclearDiatomicVibrationalSpinLevel
+        else:
+            raise Exception(f"Not implemented: {self.point_group=}")
         # self.states = []          # Vibronic_State objects
         # self.interactions = []            # Vibronic_Interaction objects
         # self._vibronic_spin_manifolds = [] #  for the benefit of get_vibrational_level
@@ -131,37 +138,25 @@ class VibLevel(Optimiser):
         self.H = []
 
     def _finalise_construct(self):
-        ## construct big matrix
-        n = sum(t.shape[1] for t in self.H)
-        H = np.full((len(self.J),n,n),0.)
-        i = 0
-        for Hi in self.H:
-            ni = Hi.shape[1]
-            H[:,i:i+ni,i:i+ni] = Hi
-            i += ni
-        self.H = H
-        ## diagonalise
-        E = []                 # perturbed energy levels
-        c = []                  # mixing coefficients
-        self.rotational_level['E'] = np.full(len(self.rotational_level),np.nan)
+        E,c = [],[]                 # perturbed energy levels
         for i in range(len(self.J)):
-            eigvals,eigvects = linalg.eig(H[i,:,:])
-            j = self.rotational_level.match(J=self.J[i])
-            self.rotational_level['E'][j] = eigvals.real
+            eigvals,eigvects = linalg.eig(
+                linalg.block_diag(
+                    *[t[i,:,:] for t in self.H]))
             E.append([eigvals.real])
             c.append([eigvects])
         self.E = np.concatenate(E)
         self.c = np.concatenate(c)
-        # print( self.rotational_level[:10]) #  DEBUG
+        self.rotational_level['E'] = np.ravel(self.E)
 
     @auto_construct_method('add_level')
     def add_level(self,name='level',**kwargs):
         """Add a new electronic vibrational level. kwargs contains fitting
         parameters and optionally extra quantum numbers."""
         ## get all quantum numbers
-        kwargs['isotopologue'] = self.isotopologue
         for key,val in quantum_numbers.decode_level(name).items():
             kwargs.setdefault(key,val)
+        kwargs['species'] = self.species
         self.vibrational_level.append(**kwargs)
         ## Checks that integer/half-integer nature of J corresponds to quantum number S
         assert kwargs['S']%1==self.J[0]%1,f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}'
@@ -173,6 +168,7 @@ class VibLevel(Optimiser):
         for i in range(fH.shape[0]):
             for j in range(fH.shape[1]):
                 fH[i,j] = lambda J,f=fH[i,j]: f(J,**kwargs)
+        cache = {'first_run':True,}
         def construct_function():
             ## compute energy levels and interactions
             H = np.full((len(self.J),fH.shape[0],fH.shape[1]),0.)
@@ -182,13 +178,12 @@ class VibLevel(Optimiser):
                     H[iJ,i,j] = fH[i,j](self.J[iJ])
             self.H.append(H)
             ## add to rotational and vibrational level
-            for efi,Σi in zip(ef,Σ):
-                self.rotational_level.extend(J=self.J,ef=efi,Σ=Σi,**kwargs)
-
+            if cache['first_run']:
+                for efi,Σi in zip(ef,Σ):
+                    self.rotational_level.extend(J=self.J,ef=efi,Σ=Σi,**kwargs)
+                cache['first_run'] = False
+                
         return construct_function
-            
-        
-
 
     # def set_experimental_level(self,*rotational_levels):
         # """Set a Rotational_Level as the experimental data to optimise. If
@@ -1326,7 +1321,7 @@ class VibLevel(Optimiser):
         # self.construct_functions.append(lambda: self.exchange_levels(*args,**kwargs))
 
 
-@lru_cache
+# @lru_cache
 def _get_linear_H(S,Λ,s):
     """Compute symbolic and functional Hamiltonian for the spin manifold
     of a linear molecule."""
@@ -1436,10 +1431,31 @@ class VibLine(Optimiser):
         self.name = name
         self.level_u = level_u
         self.level_l = level_l
-        self.vibrational_line = lines.vibrational_line_by_point_group[level_u.point_group]()
-        self.vibrational_spin_line= lines.rotational_line_by_point_group[level_u.point_group]()
-        self.rotational_line = lines.rotational_line_by_point_group[level_u.point_group]()
+        self.species = self.level_l.species
+        self.point_group = self.level_l.point_group
+        if self.point_group == 'D∞h':
+            self.rotational_line = lines.HomonuclearDiatomicRotationalLine()
+            self.vibrational_line = lines.HomonuclearDiatomicVibrationalLine()
+            self.vibrational_spin_line = lines.HomonuclearDiatomicRotationalLine() # could make HomonuclearDiatomicVibrationalSpinLine
+        elif self.point_group == 'C∞v':
+            self.rotational_line = lines.HeteronuclearDiatomicRotationalLine()
+            self.vibrational_line = lines.HeteronuclearDiatomicVibrationalLine()
+            self.vibrational_spin_line = lines.HeteronuclearDiatomicRotationalLine() # could make HeteronuclearDiatomicVibrationalSpinLine
+        else:
+            raise Exception(f"Not implemented: {self.point_group=}")
         self.μ = None
+
+
+        self.vibrational_line.generate_from_levels(
+            self.level_u.vibrational_level,
+            self.level_l.vibrational_level)
+        self.vibrational_line['μv'] = 0
+        self.vibrational_line.make_vector('μv')
+
+        self.vibrational_spin_line.generate_from_levels(
+            self.level_u.vibrational_spin_level,
+            self.level_l.vibrational_spin_level)
+
         # assert statep.Tref==statepp.Tref, 'statep and statepp Tref do not match..'
         # self.Tref = statep.Tref
         ## determine a name
@@ -1517,6 +1533,7 @@ class VibLine(Optimiser):
         self.μ = np.full((len(self.J_l),len(self.ΔJ),
                           len(self.level_u.vibrational_spin_level),
                           len(self.level_l.vibrational_spin_level)),0.)
+        
 
     def _finalise_construct(self):
         ## initialise arrays
@@ -1550,11 +1567,12 @@ class VibLine(Optimiser):
         self.rotational_line['E_l'] = np.ravel(E_l)
         self.rotational_line['J_u'] = np.ravel(J_u)
         self.rotational_line['J_l'] = np.ravel(J_l)
-        self.rotational_line['ν']
-        self.rotational_line['f']
-        self.rotational_line['isotopologue_l'] = self.level_l.isotopologue
-        self.rotational_line['isotopologue_u'] = self.level_u.isotopologue
-        # print( self.rotational_line[:10]) #  DEBUG
+        for key in self.vibrational_spin_line:
+            if self.vibrational_spin_line.is_scalar(key):
+                self.rotational_line[key] = self.vibrational_spin_line[key]
+            else:
+                self.rotational_line[key] = np.ravel(np.tile(self.vibrational_spin_line[key],len(self.J_l)*len(self.ΔJ)))
+        # self.rotational_line.remove_match(Sij=0)
 
     @auto_construct_method('add_transition_moment')
     def add_transition_moment(self,name=None,μv=1,**extra_qn):
@@ -1566,26 +1584,16 @@ class VibLine(Optimiser):
         ## get all quantum numbers
         qn = quantum_numbers.decode_transition(name)
         qn.update(extra_qn)
-        self.vibrational_line.append(μv=μv,**qn)
         ## get transition moment functions for all ef/Σ
         ## combinations
         ef_u,Σ_u,ef_l,Σ_l,fμrot = _get_linear_transition_moment(qn['S_u'],qn['Λ_u'],qn['s_u'], qn['S_l'],qn['Λ_l'],qn['s_l'],)
-        ## set to None if always zero, and record in line lists
-        for i,j in tools.indices(fμrot):
-            if (fμrot[i,j](10,0)==0.) and (fμrot[i,j](10,1)==0.):
-                ## this is always zero
-                fμrot[i,j] = None
-            else:
-                self.vibrational_spin_line.append(
-                    μv=μv,
-                    ef_u=ef_u[i],Σ_u=Σ_u[i],
-                    ef_l=ef_l[j],Σ_l=Σ_l[j],
-                    **qn)
         ## construct function
         qnu,qnl = quantum_numbers.separate_upper_lower_quantum_numbers(qn)
         iu = tools.find(self.level_u.vibrational_spin_level.match(**qnu))
         il = tools.find(self.level_l.vibrational_spin_level.match(**qnl))
+        ivib = tools.find_unique(self.vibrational_line.match(**qn))
         def construct_function():
+            self.vibrational_line['μv'][ivib] = μv
             for k,l in itertools.product(range(fμrot.shape[0]), range(fμrot.shape[1]),):
                 if fμrot[k,l] is None:
                     continue
@@ -1595,7 +1603,6 @@ class VibLine(Optimiser):
                         μ = 0.
                     self.μ[i,j,iu[k],il[j]] += μ
         return construct_function
-
 
     # # def add_transition_moment(
             # # self,
@@ -2123,7 +2130,6 @@ class VibLine(Optimiser):
 @lru_cache
 def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp):
 
-
     ## check some selection rules
     if ((Λp==0 and Λpp==0 and sp!=spp)
         or (np.abs(Λp-Λpp)>1)
@@ -2139,14 +2145,11 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp):
     efpp = caseapp['qnef']['ef']
     Σp = caseap['qnef']['Σ']
     Σpp = caseapp['qnef']['Σ']
-
-
     
     fμrot = np.full((len(Mefp),len(Mefpp)),None)
     for (ip,qnpef),(ipp,qnppef) in itertools.product(
             enumerate(caseap['qnef'].rows()),
             enumerate(caseapp['qnef'].rows()),):
-
         fi = []                # add +- basis componetns
         for (jp,qnppm),(jpp,qnpppm) in itertools.product(
                 enumerate(caseap['qnpm'].rows()),

@@ -1,7 +1,5 @@
 * To do
  
- - Redefine lines/levels hierarchy
-
  - Add interactions.py
 
  - Add quantum numbers of VibLevel

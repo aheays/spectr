@@ -12,7 +12,6 @@ def test_construct():
 
 def test_construct():
     t = levels.GenericLevel()
-    print('fff', list(t.prototypes.keys()))
     assert t.name == 'generic_level'
     assert len(t.prototypes)>0
     assert list(t.prototypes.keys()) == ['description', 'notes', 'author', 'reference', 'date', 'classname', 'species', 'E', 'Eref']
@@ -26,7 +25,6 @@ def test_assignment():
 
 def test_load():
     t = levels.HomonuclearDiatomicRotationalLevel()
-    print( t.prototypes.keys())
     t.load('data/levels_14N2')
     assert t['species'] == '14N2'
     assert list(t['J']) == [0,1,2,3,4]
