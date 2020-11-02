@@ -199,7 +199,7 @@ class AtmosphericChemistry():
         reaction_names = []
         rates = []
         for reaction in self.reaction_network.get_matching_reactions(**kwargs_get_matching_reactions):
-            rate = reaction.rate
+            rate = copy(reaction.rate)
             reaction_names.append(reaction.name)
             rates.append(rate)
         ## add total
@@ -221,7 +221,7 @@ class AtmosphericChemistry():
 
     def plot_rates(
             self,
-            ykey=None,
+            ykey='z',
             ax=None,
             plot_total=True,    # plot sum of all rates
             plot_kwargs=None,
@@ -236,15 +236,16 @@ class AtmosphericChemistry():
             plot_kwargs = {}
         y = self[ykey]
         rates = self.get_rates(**kwargs_get_rates)
-        summary_value = {key:integrate.trapz(val,self['z']) for key,val in rates.items()}
-        xlabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
         ## normalise perhaps
         if normalise_to_species:
             for key in rates:
                 rates[key] /= self.density[normalise_to_species]
             weight = self.density[normalise_to_species]*self['dz']
-            summary_value = {key:np.sum(val*weight)/np.sum(weight) for key,val in rates.items()}
+            summary_value = {key:np.sum(val*weight)/np.sum(weight) for key,val in rates.items()} # mean value weighted by normalise_to_species density 
             xlabel = f'Rate normalised to the density of {normalise_to_species} (s$^{{-1}}$)'
+        else:
+            summary_value = {key:integrate.trapz(val,self['z']) for key,val in rates.items()} # integrated value
+            xlabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
         ## plot
         for i,name in enumerate(rates):
             t_plot_kwargs = copy(plot_kwargs)
@@ -293,3 +294,6 @@ class AtmosphericChemistry():
         plotting.legend(show_style=True)
         ax.set_title(f'Production and destruction rates of {species}')
         return ax
+
+    # def get_total_column(self,species):
+        
