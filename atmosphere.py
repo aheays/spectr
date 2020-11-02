@@ -190,22 +190,20 @@ class AtmosphericChemistry():
 
     def get_rates(
             self,
-            normalise_to_species=None,
-            sort_method='max anywhere', 
-            nsort=3,          
-            **kwargs_get_matching_reactions
+            sort_method='max anywhere', # maximum at some altitude
+            nsort=3,            # return this many rates 
+            **kwargs_get_matching_reactions 
     ):
         """Return larges-to-smallest reaction rates matching
-        kwargs_get_matching_reactions.  Optionally divide by the
-        density of normalise_to_species."""
+        kwargs_get_matching_reactions. """
         reaction_names = []
         rates = []
         for reaction in self.reaction_network.get_matching_reactions(**kwargs_get_matching_reactions):
             rate = reaction.rate
-            if normalise_to_species is not None:
-                rate /= self.density[normalise_to_species]
             reaction_names.append(reaction.name)
             rates.append(rate)
+        ## add total
+        total = np.sum([t for t in rates],axis=0)
         ## sort
         if sort_method == 'maximum':
             ## list all reactions by their reverse maximum rate 
@@ -213,19 +211,21 @@ class AtmosphericChemistry():
         elif sort_method == 'max anywhere':
             ## return all reactions that are in the top 5 ranking anywhere in their domain
             i = np.argsort(-np.row_stack(rates),0)
-            i = np.unique(i[:nsort,:].flatten())
+            i = np.unique(i[:(nsort),:].flatten()) 
         else:
             raise Exception(f'Unknown {sort_method=}')
-        return {reaction_names[ii]:rates[ii] for ii in i}
+        ## return as dict
+        retval = {'total':total}
+        retval.update({reaction_names[ii]:rates[ii] for ii in i})
+        return retval
 
     def plot_rates(
             self,
             ykey=None,
             ax=None,
-            nplot=None,         # only plot this many rates
-            plot_total=True,
+            plot_total=True,    # plot sum of all rates
             plot_kwargs=None,
-            normalise_to_species=None, # normalise rates to the density fo this species
+            normalise_to_species=None, # normalise rates divided by the density of this species
             **kwargs_get_rates         # for selecting rates to plot
     ):
         """Plot rates matching kwargs_get_rates."""
@@ -235,33 +235,27 @@ class AtmosphericChemistry():
         if plot_kwargs is None:
             plot_kwargs = {}
         y = self[ykey]
-        rates = self.get_rates(normalise_to_species=normalise_to_species,**kwargs_get_rates)
-        ## plot total of all rates
-        if plot_total:
-            total = np.sum(list(rates.values()),0)
-            if normalise_to_species:
-                ## plot mean of normalised total rate
-                weight = self.density[normalise_to_species]*self['dz']
-                summary_value = np.sum(total*weight)/np.sum(weight)
-            else:
-                ## plot integrated total rate
-                summary_value = integrate.trapz(total,self['z'])
-            ax.plot(total,y,color='black',alpha=0.3,linewidth=6, label=f'{summary_value:0.2e} total', **plot_kwargs)
-        ## plot individual rates
-        for i,(name,rate) in enumerate(rates.items()):
-            if nplot is not None and i > nplot:
-                break
-            if normalise_to_species:
-                weight = self.density[normalise_to_species]*self['dz']
-                summary_value = np.sum(rate*weight)/np.sum(weight)
-            else:
-                summary_value = integrate.trapz(rate,self['z'])
-            ax.plot(rate,y, label=f'{summary_value:0.2e} {name:40}', **plot_kwargs)
+        rates = self.get_rates(**kwargs_get_rates)
+        summary_value = {key:integrate.trapz(val,self['z']) for key,val in rates.items()}
+        xlabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
+        ## normalise perhaps
+        if normalise_to_species:
+            for key in rates:
+                rates[key] /= self.density[normalise_to_species]
+            weight = self.density[normalise_to_species]*self['dz']
+            summary_value = {key:np.sum(val*weight)/np.sum(weight) for key,val in rates.items()}
+            xlabel = f'Rate normalised to the density of {normalise_to_species} (s$^{{-1}}$)'
+        ## plot
+        for i,name in enumerate(rates):
+            t_plot_kwargs = copy(plot_kwargs)
+            t_plot_kwargs['label'] = f'{summary_value[name]:0.2e} {name}'
+            if name == 'total':
+                if not plot_total:
+                    continue
+                t_plot_kwargs.update(color='black',alpha=0.3,linewidth=6)
+            ax.plot(rates[name],y,**t_plot_kwargs)
         ax.set_ylabel(ykey)
-        if normalise_to_species is not None:
-            ax.set_xlabel(f'Rate normalised to the density of {normalise_to_species} (s$^{{-1}}$)')
-        else:
-            ax.set_xlabel('Rate (cm$^{-3}$ s$^{-1}$)')
+        ax.set_xlabel(xlabel)
         ax.set_xscale('log')
         ax.set_ylim(y.min(),y.max())
         plotting.legend()
@@ -272,10 +266,10 @@ class AtmosphericChemistry():
             species,
             ykey='z',
             ax=None,
-            normalise=False,
-            nsort=3,
+            normalise=False,    # divide rates by species abundance
+            nsort=3,            # include this many ranked rates at each altitude
     ):
-        """Plot rates matching kwargs_get_matching_reactions."""
+        """Plot destruction and production rates of on especies."""
         if ax is None:
             ax = plotting.plt.gca()
             ax.cla()
