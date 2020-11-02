@@ -161,22 +161,28 @@ def test_dataset_get_key_without_uncertainty():
 
 def test_dataset_construct_get_set_data():
     t = Dataset()
-    assert t.is_scalar()
+    assert len(t) == 0
+
+    t = Dataset(x=[])
+    assert len(t) == 0
+    assert list(t['x']) == []
+
     t = Dataset(x=5)
-    assert t.is_scalar()
+    assert len(t) == 0
     assert t['x'] == 5
+
     t = Dataset(x=['a','b'])
-    assert not t.is_scalar()
     assert list(t['x']) == ['a','b']
+    assert len(t) == 2
+
     t = Dataset(x=['a','b'],y=5)
-    assert not t.is_scalar()
+    assert len(t) == 2
     assert t['y'] == 5
     assert list(t['x']) == ['a','b']
     t = Dataset(
         x=[1.,2.],
         d_x=[0.1,0.2],
     )
-    assert not t.is_scalar()
     assert len(t)==2
     assert list(t['x']) == [1.,2.]
     assert list(t['d_x']) == [0.1,0.2]
@@ -224,10 +230,7 @@ def test_dataset_len_is_scalar():
     t = Dataset()
     t['y'] = ['a','b']
     assert len(t) == 2
-    t = Dataset(y='a')
-    assert t.is_scalar()
     t = Dataset(y='a',x=[1,2])
-    assert not t.is_scalar()
     assert not t.is_scalar('x')
     assert t.is_scalar('y')
 
@@ -262,53 +265,30 @@ def test_dataset_get_copy():
     u = t.copy(('x',),[False,False,True])
     assert list(u['x']) == [3]
 
-def test_dataset_concatenate():
-    t = Dataset()
-    t.concatenate(Dataset())
-    assert t.is_scalar()
-    t = Dataset(x=1)
-    t.concatenate(Dataset(x=1))
-    assert t.is_scalar()
-    assert t['x'] == 1
-    t = Dataset(x=1)
-    t.concatenate(Dataset(x=2))
-    assert t.is_scalar('x')
-    assert t['x'] == 1
-    t = Dataset(x=[1,2])
-    t.concatenate(Dataset(x=[3]))
-    assert not t.is_scalar()
-    assert list(t['x']) == [1,2,3]
-    assert len(t) == 3
-    t = Dataset(x='a',y=[1,2],z=0.5)
-    t.concatenate(Dataset(x='a',y=[3],z=0.6))
-    assert t['x'] == 'a'
-    assert list(t['y']) == [1,2,3]
-    assert not t.is_scalar()
-    assert all(np.abs(np.array(t['z'])-np.array([0.5,0.5,0.6]))<1e-5)
-    assert len(t) == 3
-    t = Dataset(x=[1])
-    t.concatenate(Dataset(x=[2,3]))
-    assert list(t['x']) == [1,2,3]
-    assert len(t) == 3
-    t = Dataset(x=[1])
-    t.concatenate(Dataset(x=[2,3]))
-    assert list(t['x']) == [1,2,3]
-    assert len(t) == 3
-    t = Dataset(x=[1],y='a')
-    u = Dataset(x=[2,3],y=['a','b'])
-    t.concatenate(u)
-    assert list(t['x']) == [1,2,3]
-    assert list(t['y']) == ['a','a','b']
-    assert len(t) == 3
-    t = Dataset()
-    t.concatenate(Dataset(x=5,y=[1,2]))
-    assert len(t) == 2
-    assert t['x'] == 5
+def test_dataset_append():
+    t = Dataset(x=[0])
+    t.append(x=1)
+    assert list(t['x']) == [0,1]
+    assert len(t)==2
+    t = Dataset(x=[0,1,2])
+    t.append(x=1)
+    assert list(t['x']) == [0,1,2,1]
+    assert len(t)==4
+    t = Dataset(x=[0],y=['a'])
+    t.append(x=1,y='b')
+    assert list(t['x']) == [0,1]
+    assert list(t['y']) == ['a','b']
+    assert len(t)==2
+    t = Dataset(x=[0],y='a')
+    t.append(x=1,y='b')
+    assert list(t['x']) == [0,1]
+    assert list(t['y']) == ['a','b']
+    assert len(t)==2
 
 def test_dataset_extend():
     t = Dataset()
     t.extend()
-    assert t.is_scalar()
+    assert len(t)==0
     t = Dataset(x=[1])
     t.extend(x=[2])
     assert list(t['x']) == [1,2]
@@ -330,29 +310,64 @@ def test_dataset_extend():
     assert list(t['y']) == ['a','a','a','b']
     assert len(t) == 4
 
-def test_dataset_append():
-    t = Dataset(x=[0])
+def test_dataset_concatenate():
+    t = Dataset()
+    t.concatenate(Dataset())
+    assert len(t) == 0
+    t = Dataset(x=1)
+    t.concatenate(Dataset(x=1))
+    assert len(t) == 0
+    assert t['x'] == 1
+    t = Dataset(x=1)
+    t.concatenate(Dataset(x=2))
+    assert t.is_scalar('x')
+    assert t['x'] == 1
+    t = Dataset(x=[1,2])
+    t.concatenate(Dataset(x=[3]))
+    assert list(t['x']) == [1,2,3]
+    assert len(t) == 3
+    t = Dataset(x='a',y=[1,2],z=0.5)
+    t.concatenate(Dataset(x='a',y=[3],z=0.6))
+    assert t['x'] == 'a'
+    assert list(t['y']) == [1,2,3]
+    assert len(t) == 3
+    assert all(np.abs(np.array(t['z'])-np.array([0.5,0.5,0.6]))<1e-5)
+    assert len(t) == 3
+    t = Dataset(x=[1])
+    t.concatenate(Dataset(x=[2,3]))
+    assert list(t['x']) == [1,2,3]
+    assert len(t) == 3
+    t = Dataset(x=[1])
+    t.concatenate(Dataset(x=[2,3]))
+    assert list(t['x']) == [1,2,3]
+    assert len(t) == 3
+    t = Dataset(x=[1],y='a')
+    u = Dataset(x=[2,3],y=['a','b'])
+    t.concatenate(u)
+    assert list(t['x']) == [1,2,3]
+    assert list(t['y']) == ['a','a','b']
+    assert len(t) == 3
+    t = Dataset()
+    t.concatenate(Dataset(x=5,y=[1,2]))
+    assert len(t) == 2
+    assert t['x'] == 5
+
+
+
+
+    t = Dataset(x=0)
     t.append(x=1)
-    assert list(t['x']) == [0,1]
-    assert len(t)==2
-    t = Dataset(x=[0])
-    t.append(x=1)
-    assert list(t['x']) == [0,1]
-    assert len(t)==2
-    t = Dataset(x=[0,1,2])
-    t.append(x=1)
-    assert list(t['x']) == [0,1,2,1]
-    assert len(t)==4
-    t = Dataset(x=[0],y=['a'])
+    assert list(t['x']) == [1]
+
+    t = Dataset(x=0,y=['a'])
     t.append(x=1,y='b')
     assert list(t['x']) == [0,1]
     assert list(t['y']) == ['a','b']
-    assert len(t)==2
-    t = Dataset(x=[0],y='a')
-    t.append(x=1,y='b')
-    assert list(t['x']) == [0,1]
-    assert list(t['y']) == ['a','b']
-    assert len(t)==2
+
+    t = Dataset(x=[])
+    t.append(x=1)
+    assert list(t['x']) == [1]
+
 
 def test_dataset_infer():
     t = Dataset(x=1,y=2)
@@ -499,5 +514,5 @@ def test_dataset_load_save_to_file():
     assert list(u['x']) == list(t['x'])
     assert list(u['z']) == list(t['z'])
     assert u['f'] == t['f']
-
+test_dataset_load_save_to_file()
 

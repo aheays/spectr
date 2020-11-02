@@ -283,7 +283,7 @@ class Dataset(optimise.Optimiser):
         self.pop_format_input_function()
         self.add_format_input_function(lambda: 'not implemented')
         self._data = dict()
-        self._length = None
+        self._length = 0
         if not hasattr(self,'prototypes'):
             ## derived classes might set this in class definition, so
             ## do not overwrite here
@@ -302,8 +302,7 @@ class Dataset(optimise.Optimiser):
 
             
     def __len__(self):
-        assert self._length is not None,'Dataset has no length because all data is scalar'
-        return(self._length)
+        return self._length
 
     def __setitem__(self,key,value):
         """Shortcut to set, cannot set uncertainty this way."""
@@ -342,7 +341,7 @@ class Dataset(optimise.Optimiser):
         else:
             ## vector data
             data = Data(value=value,uncertainty=uncertainty,**data_kwargs)
-            if self.is_scalar():
+            if len(self) == 0:
                 ## first array data in self, use this to define the
                 ## length of self
                 self._length = len(data)
@@ -444,7 +443,6 @@ class Dataset(optimise.Optimiser):
 
     def index(self,index):
         """Index all array data in place."""
-        assert not self.is_scalar(),'Cannot index, all data is scalar.'
         for data in self._data.values():
             if isinstance(data,Data):
                 data.index(index)
@@ -653,7 +651,7 @@ class Dataset(optimise.Optimiser):
 
     def sort(self,first_key,*more_keys):
         """Sort rows according to key or keys."""
-        if self.is_scalar() or len(self)==0:
+        if len(self)==0:
             return
         i = np.argsort(self[first_key])
         for key in more_keys:
@@ -806,14 +804,11 @@ class Dataset(optimise.Optimiser):
         for key,val in set_keys_vals.items():
             self[key] = val
 
-    def is_scalar(self,key=None):
+    def is_scalar(self,key):
         """Return boolean whether data for key is scalar or not. If key not
         provided return whether all data is scalara or not."""
-        if key is None:
-            return(self._length is None)
-        else:
-            self.assert_known(key)
-            return(isinstance(self._data[key],Datum))
+        self.assert_known(key)
+        return(isinstance(self._data[key],Datum))
 
     def as_vector(self,key):
         """Return a vectorised version of key if it is scalar, or the data if
@@ -830,11 +825,7 @@ class Dataset(optimise.Optimiser):
                 self.make_vector(key)
             return
         data = self._data[key]
-        if self.is_scalar():
-            value = [data.value]
-            self._length = 1
-        else:
-            value = np.full(len(self),data.value)
+        value = np.full(len(self),data.value)
         if isinstance(data,Datum):
             assert self.permit_reference_breaking or key not in self, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
             self._data[key] = Data(
@@ -863,27 +854,80 @@ class Dataset(optimise.Optimiser):
                 description=data.description,
                 units=data.units)
 
+    # def append(self,**new_keys_vals):
+    #     """Append a single row of data from new scalar values."""
+    #     assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
+    #     if set(self.keys())==set(new_keys_vals.keys()):
+    #         ## all keys are present, add directly to data
+    #         for key,val in new_keys_vals.items():
+    #             if self.is_scalar(key):
+    #                 ## if unchanged scalar data then do nothing, if
+    #                 ## chnaged then vectorise before appending
+    #                 if val == self[key]:
+    #                     continue
+    #                 else:
+    #                     self.make_vector(key)
+    #             self._data[key].append(val)
+    #         self._length += 1
+    #     else:
+    #         ## some keys missing, use internal inferences to align them
+    #         new_dataset = self.__class__()
+    #         for key in new_keys_vals:
+    #             new_dataset[key] = [new_keys_vals[key]]
+    #         self.concatenate(new_dataset)
+
     def append(self,**new_keys_vals):
         """Append a single row of data from new scalar values."""
-        assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
-        if set(self.keys())==set(new_keys_vals.keys()):
-            ## all keys are present, add directly to data
-            for key,val in new_keys_vals.items():
-                if self.is_scalar(key):
-                    ## if unchanged scalar data then do nothing, if
-                    ## chnaged then vectorise before appending
-                    if val == self[key]:
-                        continue
-                    else:
-                        self.make_vector(key)
-                self._data[key].append(val)
-            self._length += 1
-        else:
-            ## some keys missing, use internal inferences to align them
-            new_dataset = self.__class__()
-            for key in new_keys_vals:
-                new_dataset[key] = [new_keys_vals[key]]
-            self.concatenate(new_dataset)
+        for key in self:
+            assert key in new_keys_vals,f'missing {key=}'
+        for key,val in new_keys_vals.items():
+            assert key in self,f'missing {key=}'
+            if self.is_scalar(key):
+                ## if unchanged scalar data then do nothing, if
+                ## chnaged then vectorise before appending
+                if val == self[key]:
+                    continue
+                else:
+                    self.make_vector(key)
+            self._data[key].append(val)
+        self._length += 1
+
+    # def extend(self,**new_keys_vals):
+    #     """Extend data from input vector values (scalar values are
+    #     broadcast)."""
+    #     assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
+    #     new_dataset = self.__class__()
+    #     for key in new_keys_vals:
+    #         new_dataset[key] = new_keys_vals[key]
+    #     self.concatenate(new_dataset)
+
+    def extend(self,**new_keys_vals):
+        """Append a single row of data from new scalar values."""
+        for key in self:
+            assert key in new_keys_vals,f'missing {key=}'
+        newlen = None
+        for key,val in new_keys_vals.items():
+            if not np.issscalar(val):
+                if newlen is None:
+                    newlen = len(val)
+                else:
+                    assert newlen == len(val),f'Inconsistent length for {key=}'
+        for key,val in new_keys_vals.items():
+            assert key in self,f'missing {key=}'
+            ## vectorise scalar data if necessary
+            if self.is_scalar(key) and np.isscalar(val):
+                if val == self[key]:
+                    ## no change in scalar value
+                    continue
+                else:
+                    self.make_vector(key)
+                    val = np.full(newlen,val)
+            elif self.is_scalar(key):
+                self.make_vector(key)
+            elif np.isscalar(val):
+                val = np.full(newlen,val)
+            self._data[key].extend(val)
+        self._length += newlen
 
     def extend(self,**new_keys_vals):
         """Extend data from input vector values (scalar values are
@@ -901,10 +945,10 @@ class Dataset(optimise.Optimiser):
         Dataset is scalar then its existing data is not vectorised
         before concatenation."""
         assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
-        if new_dataset.is_scalar():
+        if len(new_dataset) == 0:
             ## only concatenate if vector data present
             return
-        if self.is_scalar():
+        if len(self) == 0:
             ## just copy everything, keeping scalar data, but maybe
             ## overwritten by new_dataset
             for key in new_dataset:
