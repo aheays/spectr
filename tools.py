@@ -3516,6 +3516,8 @@ def file_to_dict(filename,*args,filetype=None,**kwargs):
         d = txt_to_dict(filename,*args,**kwargs)
     return(d)
 
+
+
 def infer_filetype(filename):
     """Determine type of datafile from the name or possibly its
     contents."""
@@ -3618,6 +3620,10 @@ def file_to_recarray(filename,*args,**kwargs):
     """Convert text file to record array, converts from dictionary
     returned by file_to_dict."""
     return(dict_to_recarray(file_to_dict(filename,*args,**kwargs)))
+
+def file_to_dataset(*args,**kwargs):
+    from . import dataset
+    return dataset.Dataset(**file_to_dict(*args,**kwargs))
 
 # def decompose_ufloat_array(x):
     # """Return arrays of nominal_values and std_devs of a ufloat array."""
