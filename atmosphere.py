@@ -26,7 +26,8 @@ class OneDimensionalAtmosphere(Dataset):
     prototypes['date'] = dict(description="Date data collected or printed" ,kind=str ,infer={})
     prototypes['z'] = dict(description="Height above surface (cm)" ,kind=float ,infer={})
     prototypes['z(km)'] = dict(description="Height above surface (km)" ,kind=float ,infer={'z':lambda z: z*1e-5,})
-    prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind=float ,infer={})
+    prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind=float ,infer={'T':lambda T:T})
+    prototypes['T'] = dict(description="Temperature (K)" ,kind=float ,infer={})
     prototypes['nt'] = dict(description="Total number density (cm-3)" ,kind=float ,infer={})
     prototypes['p'] = dict(description="Pressure (bar)" ,kind=float ,infer={})
     prototypes['Kzz'] = dict(description="Turbulent diffusion constant (cm2.s-1)" ,kind=float ,infer={})
@@ -71,7 +72,7 @@ class AtmosphericChemistry():
             skiprows=2,labels_commented=False)
         for key_from,key_to in (
                 ('p(bar)','p'),
-                ('T(K)','Ttr'),
+                ('T(K)','T'),
                 ('NH(cm-3)','nt'),
                 ('Kzz(cm2s-1)','Kzz'),
                 ('Hz(cm)','z'),
@@ -143,8 +144,15 @@ class AtmosphericChemistry():
             return self.state[key]
         elif key in self.density:
             return self.density[key]
+        elif r:=re.match(r'p\((.+)\)',key):
+            ## match mixing ratio
+            return self.get_mixing_ratio(r.group(1))
         else:
             raise Exception(f'Unknown {key=}')
+
+    def get_mixing_ratio(self,species):
+        return self.density[species]/self.state['nt']
+        
 
     def __len__(self):
         return len(self.state)
@@ -152,15 +160,21 @@ class AtmosphericChemistry():
     def set_density(self,species,density):
         self.density[species] = density
 
-    def plot_vertical(self,ykey,*xkeys,ax=None):
+    def plot_vertical(
+            self,
+            *xkeys,
+            ykey='z(km)',
+            ax=None):
         if ax is None:
             ax = plotting.gca()
         for xkey in xkeys:
             ax.plot(self[xkey],self[ykey],label=xkey)
-        ax.set_xscale('log')
+        if 'T' in xkeys:
+            ax.set_xscale('linear')
+        else:
+            ax.set_xscale('log')
         ax.set_ylim(self[ykey].min(),self[ykey].max())
         ax.set_ylabel(ykey)
-        ax.set_xlabel('density?')
         plotting.legend(ax=ax)
 
     def plot_density(self,xkeys=5,ykey='z(km)',ax=None):
