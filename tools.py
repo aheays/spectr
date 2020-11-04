@@ -6,7 +6,7 @@ from copy import copy
 from pprint import pprint
 import itertools
 
-from scipy import interpolate,constants
+from scipy import interpolate,constants,integrate
 import csv
 import glob as glob_module
 import numpy as np
@@ -2212,25 +2212,25 @@ def array_to_hdf5(filename,*args,**kwargs):
     # x[np.isnan(x)] = 0.
     # return np.cumsum(x,*args,**kwargs)
 
-# def cumtrapz(y,
-             # x=None,               # if None assume unit xstep
-             # direction='forwards', # or backwards
-# ):
-    # """Cumulative integral, with first point equal to zero, same length as
-    # input."""
-    # assert direction in ('forwards','backwards'),f'Bad direction: {repr(direction)}'
-    # if direction=='backwards':
-        # y = y[::-1]
-        # if x is not None: x = x[::-1]
-    # yintegrated = np.concatenate(([0],integrate.cumtrapz(y,x)))
-    # if direction=='backwards': yintegrated = -yintegrated[::-1] # minus sign to account for change in size of dx when going backwards, which is probably not intended
-    # return(yintegrated)
+def cumtrapz(y,
+             x=None,               # if None assume unit xstep
+             direction='forwards', # or backwards
+):
+    """Cumulative integral, with first point equal to zero, same length as
+    input."""
+    assert direction in ('forwards','backwards'),f'Bad direction: {repr(direction)}'
+    if direction=='backwards':
+        y = y[::-1]
+        if x is not None: x = x[::-1]
+    yintegrated = np.concatenate(([0],integrate.cumtrapz(y,x)))
+    if direction=='backwards': yintegrated = -yintegrated[::-1] # minus sign to account for change in size of dx when going backwards, which is probably not intended
+    return(yintegrated)
 
-# def cumtrapz_reverse(y,x):
-    # """Return a cumulative integral ∫y(x) dx from high to low limit."""
-    # x,i = np.unique(x,return_index=True)
-    # y = y[i]
-    # return(integrate.cumtrapz(y[-1::-1],-x[-1::-1])[-1::-1])
+def cumtrapz_reverse(y,x):
+    """Return a cumulative integral ∫y(x) dx from high to low limit."""
+    x,i = np.unique(x,return_index=True)
+    y = y[i]
+    return(integrate.cumtrapz(y[-1::-1],-x[-1::-1])[-1::-1])
 
 
 # def power_spectrum(x,y,make_plot=False,fit_peaks=False,fit_radius=1,**find_peaks_kwargs):
@@ -2670,61 +2670,62 @@ def fit_normal_distribution(x,bins=None,figure=None):
         ax.set_title("Fit in linear space")
     return μ,σ
 
-# def gaussian(x,fwhm=1.,mean=0.,norm='area'):
-    # """
-    # y = gaussian(x[,fwhm,mean]). 
-    # Produces a gaussian with area normalised to one.
-    # If norm='peak' peak is equal to 1.
-    # If norm='sum' sums to 1.
-    # Default fwhm = 1. Default mean = 0.
-    # """
-    # fwhm,mean = float(fwhm),float(mean)
-    # if norm=='area':
-        # ## return 1/fwhm*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-mean)**2*4*np.log(2)/fwhm**2);
-        # return 1/fwhm*0.9394372786996513*np.exp(-(x-mean)**2*2.772588722239781/fwhm**2);
-    # elif norm=='peak':
-        # return np.exp(-(x-mean)**2*4*np.log(2)/fwhm**2)
-    # elif norm=='sum':
-        # t = np.exp(-(x-mean)**2*4*np.log(2)/fwhm**2)
-        # return t/t.sum()
-    # else:
-        # raise Exception('normalisation method '+norm+' not known')
+def gaussian(x,fwhm=1.,mean=0.,norm='area'):
+    """
+    y = gaussian(x[,fwhm,mean]). 
+    Produces a gaussian with area normalised to one.
+    If norm='peak' peak is equal to 1.
+    If norm='sum' sums to 1.
+    Default fwhm = 1. Default mean = 0.
+    """
+    fwhm,mean = float(fwhm),float(mean)
+    if norm=='area':
+        ## return 1/fwhm*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-mean)**2*4*np.log(2)/fwhm**2);
+        return 1/fwhm*0.9394372786996513*np.exp(-(x-mean)**2*2.772588722239781/fwhm**2);
+    elif norm=='peak':
+        return np.exp(-(x-mean)**2*4*np.log(2)/fwhm**2)
+    elif norm=='sum':
+        t = np.exp(-(x-mean)**2*4*np.log(2)/fwhm**2)
+        return t/t.sum()
+    else:
+        raise Exception('normalisation method '+norm+' not known')
 
-# def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=False):
-    # """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate
-    # convolution after a certain number of fwhms. x must be on a
-    # regular grid."""
-    # dx = (x[-1]-x[0])/(len(x)-1)
-    # ## check on regular grid, if not then spline to a new one
-    # t = np.diff(x)
-    # regridded = False
-    # if (t.max()-t.min())>dx/100.:
-        # if regrid_if_necessary:
-            # regridded = True
-            # x_original = x
-            # xstep = t.min()
-            # x = np.linspace(x[0],x[-1],(x[-1]-x[0])/xstep)
-            # y = spline(x_original,y,x)
-        # else:
-            # raise Exception("Data not on a regular x grid")
-    # ## add padding to data
-    # xpad = np.arange(dx,fwhms_to_include*fwhm,dx)
-    # x = np.concatenate((x[0]-xpad[-1::-1],x,x[-1]+xpad))
-    # y = np.concatenate((np.full(xpad.shape,y[0]),y,np.full(xpad.shape,y[-1])))
-    # ## convolve
-    # gx = np.arange(-fwhms_to_include*fwhm,fwhms_to_include*fwhm,dx)
-    # if iseven(len(gx)): gx = gx[0:-1]
-    # gx = gx-gx.mean()
-    # gy = gaussian(gx,fwhm=fwhm,mean=0.,norm='sum')
-    # assert len(y)>len(gy), 'Data vector is shorter than convolving function.'
-    # y = np.convolve(y,gy,mode='same')
-    # ## remove padding
-    # y = y[len(xpad):-len(xpad)]
-    # x = x[len(xpad):-len(xpad)]
-    # ## return to original grid if regridded
-    # if regridded:
-        # y = spline(x,y,x_original)
-    # return y
+def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=False):
+    """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate
+    convolution after a certain number of fwhms. x must be on a
+    regular grid."""
+    dx = (x[-1]-x[0])/(len(x)-1)
+    ## check on regular grid, if not then spline to a new one
+    t = np.diff(x)
+    regridded = False
+    if (t.max()-t.min())>dx/100.:
+        if regrid_if_necessary:
+            regridded = True
+            x_original = x
+            xstep = t.min()
+            x = np.linspace(x[0],x[-1],(x[-1]-x[0])/xstep)
+            y = spline(x_original,y,x)
+        else:
+            raise Exception("Data not on a regular x grid")
+    ## add padding to data
+    xpad = np.arange(dx,fwhms_to_include*fwhm,dx)
+    x = np.concatenate((x[0]-xpad[-1::-1],x,x[-1]+xpad))
+    y = np.concatenate((np.full(xpad.shape,y[0]),y,np.full(xpad.shape,y[-1])))
+    ## convolve
+    gx = np.arange(-fwhms_to_include*fwhm,fwhms_to_include*fwhm,dx)
+    if (len(gx)%2) == 0:        # is even
+        gx = gx[0:-1]
+    gx = gx-gx.mean()
+    gy = gaussian(gx,fwhm=fwhm,mean=0.,norm='sum')
+    assert len(y)>len(gy), 'Data vector is shorter than convolving function.'
+    y = np.convolve(y,gy,mode='same')
+    ## remove padding
+    y = y[len(xpad):-len(xpad)]
+    x = x[len(xpad):-len(xpad)]
+    ## return to original grid if regridded
+    if regridded:
+        y = spline(x,y,x_original)
+    return y
 
 # def convolve_with_gaussian_to_grid(x,y,xout,fwhm):
     # """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate
@@ -4527,16 +4528,48 @@ def fit_spline_to_extrema(
             # ygrid[i] = y[j].sum()/j.sum()
     # return ygrid
 
-# def bin_data(y,n,x=None):
-    # """Reduce the number of points in y by factor, summing
-    # n-neighbours. Any remaining data for len(y) not a multiple of n is
-    # discarded. If x is given, returns the mean value for each bin, and
-    # return (y,x)."""
-    # if x is None:
-        # return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
-    # else:
-        # return np.array(
-            # [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
+def bin_data(y,n,x=None):
+    """Reduce the number of points in y by factor, summing
+    n-neighbours. Any remaining data for len(y) not a multiple of n is
+    discarded. If x is given, returns the mean value for each bin, and
+    return (y,x)."""
+    if x is None:
+        return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
+    else:
+        return np.array(
+            [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
+
+def resample(xin,yin,xout):
+    """One particular way to spline or bin (as appropriate) (x,y) data to
+    a given xout grid. Trapezoidally-integrated value is preserved."""
+    assert np.all(xin==np.unique(xin)),'Input x-data not monotonically increasing.'
+    assert all(yin>=0),'Negative cross section in input data'
+    assert not np.any(np.isnan(yin)),'NaN cross section in input data'
+    assert xout[0]>=xin[0],'Output x minimum less than input.'
+    assert xout[-1]<=xin[-1],'Output x maximum greater than input.'
+    ## integration region boundary points -- edge points and mid
+    ## points of xout
+    xbnd = np.concatenate((xout[0:1],(xout[1:]+xout[:-1])/2,xout[-1:]))
+    ## linear spline data to original and boundary points
+    xfull = np.unique(np.concatenate((xin,xbnd)))
+    yfull = spline(xin,yin,xfull,order=1)
+    ## indentify boundary pointsin full 
+    ibnd = np.searchsorted(xfull,xbnd)
+    ## compute trapezoidal cumulative integral 
+    ycum = np.concatenate(([0],integrate.cumtrapz(yfull,xfull)))
+    ## output cross section points are integrated values between
+    ## bounds
+    yout = (ycum[ibnd[1:]]-ycum[ibnd[:-1]])/(xfull[ibnd[1:]]-xfull[ibnd[:-1]])
+    return yout
+
+def resample_out_of_bounds_to_zero(xin,yin,xout):
+    """Like resample but can handle out of bounds by setting this to
+    zero."""
+    yout = np.zeros(xout.shape,dtype=float)
+    i = (xout>=xin[0])&(xout<=xin[-1])
+    if sum(i)>0:
+        yout[i] = resample(xin,yin,xout[i])
+    return yout
 
 # def locate_peaks(
         # y,x=None,
