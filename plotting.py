@@ -1252,65 +1252,6 @@ def texEscape(s):
     return (re.sub(r'([_${}\\])', r'\\\1', s))
 tex_escape=texEscape # remove one day
 
-# def legend_from_kwargs(*plot_kwargs,ax=None,**legend_kwargs):
-    # """Make an arbitrary legend satisfying plot_kwargs. Labels are taken
-    # from plot_kwargs['label']."""
-    # legend_kwargs.setdefault('loc','best')
-    # legend_kwargs.setdefault('frameon',False)
-    # legend_kwargs.setdefault('framealpha',1)
-    # legend_kwargs.setdefault('edgecolor','black')
-    # legend_kwargs.setdefault('fontsize','medium')
-    # labels = [t.pop('label') for t in plot_kwargs]
-    # leg = plt.legend(
-        # labels=labels,
-        # handles=[ax.plot([],[],**t)[0] for t in  plot_kwargs],
-        # **legend_kwargs)
-    # if ax is None: ax = plt.gca()
-    # ax.add_artist(leg)
- #    return(leg)
-
-# def legend(
-        # *args,                  # passed to plt.legend as handles=args
-        # # fontsize='medium',
-        # ha='left',
-        # ax=None,
-        # **legend_kwargs):
-    # """If no args, then enumerate lines."""
-    # # legend_kwargs.setdefault('labelspacing',0.2)
-    # # legend_kwargs.setdefault('columnspacing',0.5)
-    # legend_kwargs.setdefault('loc','best')
-    # legend_kwargs.setdefault('frameon',False)
-    # legend_kwargs.setdefault('framealpha',1)
-    # legend_kwargs.setdefault('edgecolor','black')
-    # legend_kwargs.setdefault('fontsize','medium')
-    # # legend_kwargs.setdefault('loc','best')
-    # if ax is None: ax = plt.gca()
-    # if not any(ax.get_lines()): return
-    # ## Default labels are _line1, _line2, etc. If no explicit labels
-    # ## are set then use these instead. Need to get rid of underscore
-    # ## so that these will actually appear in legend.
-    # if all([re.match(r'_line[0-9]+',l.get_label()) for l in ax.lines]):
-        # for l in ax.lines:
-            # if re.match(r'_line[0-9]+',l.get_label()):
-                # l.set_label(l.get_label()[1:])
-    # try:
-        # ## try draw with current labels
-        # leg = ax.legend(handles=(args if len(args)>0 else None),**legend_kwargs)
-    # except AttributeError:
-        # ## else invent some labels
-        # leg = ax.legend(np.arange(len(ax.lines)),**legend_kwargs)
-    # except IndexError: 
-        # return
-    # # ## remove frame
-    # # texts = leg.get_texts()
-    # # for t in texts: t.set_fontsize(fontsize)
-    # ## right aligned
-    # if ha=='right':
-        # vp = leg._legend_box._children[-1]._children[0]
-        # for c in vp._children:
-            # c._children.reverse()
-        # vp.align="right"
-    # return(leg)
 
 def legend(
         *plot_kwargs_or_lines,  # can be dicts of plot kwargs including label
@@ -1323,7 +1264,8 @@ def legend(
 ):
     """Make a legend and add to axis. Operates completely outside the
     normal scheme."""
-    if ax is None: ax = plt.gca()
+    if ax is None:
+        ax = plt.gca()
     def _reproduce_line(line): # Makes a new empty line with the properties of the input 'line'
         new_line = plt.Line2D([],[]) #  the new line to fill with properties
         for key in ('alpha','color','fillstyle','label',
@@ -1393,7 +1335,7 @@ def legend(
             text.set_color(color)
     ## add to axis
     # ax.add_artist(leg)
-    return(leg)
+    return leg
 
 legend_from_kwargs = legend
 legend_colored_text = legend
@@ -1937,6 +1879,12 @@ def plot_sticks(x,y,ax=None,**plot_kwargs):
     x = np.reshape(x.transpose(),np.prod(x.shape))                                                                                                                                                              
     y = np.reshape(y.transpose(),np.prod(y.shape))
     ax.plot(x,y,**plot_kwargs)
+
+def plot_cumtrapz(x,y,ax=None,**plot_kwargs):
+    if ax is None:
+        ax = plt.gca()
+    y = tools.cumtrapz(y,x)
+    return ax.plot(x,y,**plot_kwargs)
 
 def hist_with_normal_distribution(
         y,
