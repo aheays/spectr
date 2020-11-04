@@ -37,7 +37,7 @@ def encode_species(name,encoding):
         return name         
     ## try _species_name_translation_functions
     if (encoding in _species_name_translation_dict
-        and name in n_species_name_translation_dict[encoding]):
+        and name in _species_name_translation_dict[encoding]):
         return _species_name_translation_dict[encoding][name]
     ## try _species_name_translation_functions
     if ('standard',encoding) in _species_name_translation_functions:
