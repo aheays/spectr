@@ -57,7 +57,13 @@ class AtmosphericChemistry():
         self.density = self.reaction_network.density = Dataset()
         self.state = self.reaction_network.state = OneDimensionalAtmosphere()
         self.verbose = self.reaction_network.verbose = False
-    
+
+    def calc_rates(self):
+        return self.reaction_network.calc_rates()
+
+    def calc_rate_coefficients(self):
+        return self.reaction_network.calc_rate_coefficients()
+
     def load_ARGO(
             self,
             model_output_directory,
@@ -69,6 +75,8 @@ class AtmosphericChemistry():
         ## load depth.dat physical parameters and species volume density
         data = tools.file_to_dict(
             f'{model_output_directory}/depth.dat',
+            ## f'{model_output_directory}/depth-down.dat',
+            ## f'{model_output_directory}/depth-up.dat',
             skiprows=2,labels_commented=False)
         for key_from,key_to in (
                 ('p(bar)','p'),
@@ -141,12 +149,17 @@ class AtmosphericChemistry():
     def __getitem__(self,key):
         if (self.state.is_known(key)
             or key in self.state.prototypes):
+            ## return state variable
             return self.state[key]
         elif key in self.density:
+            ## return density of species
             return self.density[key]
-        elif r:=re.match(r'p\((.+)\)',key):
-            ## match mixing ratio
+        elif r:=re.match(r'x\((.+)\)',key):
+            ## match mixing ratio of species
             return self.get_mixing_ratio(r.group(1))
+        elif r:=re.match(r'n\((.+)\)',key):
+            ## density of species
+            return self.density[r.group(1)]
         else:
             raise Exception(f'Unknown {key=}')
 
@@ -162,8 +175,8 @@ class AtmosphericChemistry():
 
     def plot_vertical(
             self,
+            ykey,
             *xkeys,
-            ykey='z(km)',
             ax=None):
         if ax is None:
             ax = plotting.gca()
@@ -206,13 +219,13 @@ class AtmosphericChemistry():
             self,
             sort_method='max anywhere', # maximum at some altitude
             nsort=3,            # return this many rates 
-            **kwargs_get_matching_reactions 
+            **kwargs_get_reactions 
     ):
         """Return larges-to-smallest reaction rates matching
-        kwargs_get_matching_reactions. """
+        kwargs_get_reactions. """
         reaction_names = []
         rates = []
-        for reaction in self.reaction_network.get_matching_reactions(**kwargs_get_matching_reactions):
+        for reaction in self.reaction_network.get_reactions(**kwargs_get_reactions):
             rate = copy(reaction.rate)
             reaction_names.append(reaction.name)
             rates.append(rate)
