@@ -124,10 +124,10 @@ def presetRcParams(
         'figure.figsize'       :(papersize['article_single_column_width'],papersize['article_single_column_width']/constants.golden_ratio),
         # 'lines.linewidth'    : 0.5,
         'lines.linewidth'    : 1,
-        'figure.subplot.left'  :0.15,
-        'figure.subplot.right' :0.96,
-        'figure.subplot.bottom':0.19,
-        'figure.subplot.top'   :0.92,
+        'figure.subplot.left'  :0.14,
+        'figure.subplot.right' :0.97,
+        'figure.subplot.bottom':0.20,
+        'figure.subplot.top'   :0.95,
         'figure.subplot.wspace':0.35,
         'figure.subplot.hspace':0.3,
         'legend.fontsize'      :9.,
@@ -405,16 +405,16 @@ def qfig(
             win = fig.canvas.window()
         # toolbar = win.findChild(QtWidgets.QToolBar)
         # toolbar.setVisible(False)
-    ax = fig.gca()
+    # ax = fig.gca()
     def format_coord(x,y):
         if x<1e-5 or x>1e5: xstr = f'{x:0.18e}'
         else:               xstr = f'{x:0.18f}'
         if y<1e-5 or y>1e5: ystr = f'{y:0.18e}'
         else:               ystr = f'{y:0.18f}'
         return(f'x={xstr:<25s} y={ystr:<25s}')
-    ax.format_coord = format_coord
-    if preset_rcparams=='screen':
-        ax.grid(True,color='gray')
+    # ax.format_coord = format_coord
+    # if preset_rcparams=='screen':
+        # ax.grid(True,color='gray')
     return fig
 
 def qax(*qfig_args,**qfig_kwargs):
