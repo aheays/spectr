@@ -489,7 +489,7 @@ class ReactionNetwork:
     def __len__(self):
         return(len(self.reactions))
 
-    def get_matching_reactions(
+    def get_reactions(
             self,
             name=None,
             reactants=None,
@@ -532,9 +532,9 @@ class ReactionNetwork:
             retval.append(reaction)
         return retval
 
-    def get_reaction(self, **kwargs_get_matching_reactions,):
+    def get_reaction(self, **kwargs_get_reactions,):
         """Return a uniquely matching reaction."""
-        retval = self.get_matching_reactions(**kwargs_get_matching_reactions)
+        retval = self.get_reactions(**kwargs_get_reactions)
         if len(retval) == 0:
             raise Exception('No matching reaction found')
         elif len(retval) == 1:
