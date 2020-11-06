@@ -2486,9 +2486,9 @@ def findin_unique(x,y):
     return i[0]
 
 def findin(x,y):
-    """Find indices of x that appear in y, in the order they appear in
-    y. If an element of x cannot be found in y, or if multiple found,
-    an error is raised."""
+    """Find x in y and return a list of the matching y indices. If an
+    element of x cannot be found in y, or if multiple found, an error
+    is raised."""
     x = ensure_iterable(x)
     y = ensure_iterable(y)
     i = np.zeros(len(x),dtype='int')
@@ -2497,6 +2497,14 @@ def findin(x,y):
         if len(ii)!=1:
             raise Exception('Element `'+str(x[j])+'\' should have 1 version, '+str(len(ii))+' found.')
         i[j] = ii
+    return i
+
+def find_nearest(x,y):
+    """Find nearest match of x in y and return a list of the nearest-match
+    y indices. If multiple x match the same y an error is raised."""
+    y = np.asarray(y)
+    i = np.array([np.argmin(abs(y-xi)) for xi in ensure_iterable(x)])
+    assert len(i) == len(np.unique(i)),'Multiple values in x nearest-match the same value in y.'
     return i
 
 def findin_numeric(x,y,tolerance=1e-10):
