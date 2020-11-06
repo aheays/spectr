@@ -70,14 +70,15 @@ class AtmosphericChemistry():
             reaction_network_filename=None,
             load_rate_coefficients=False,
             load_rates=False,
+            depth_iteration=None,     # load an old-depth-#.dat file -- None for the final result
            ):
 
         ## load depth.dat physical parameters and species volume density
-        data = tools.file_to_dict(
-            f'{model_output_directory}/depth.dat',
-            ## f'{model_output_directory}/depth-down.dat',
-            ## f'{model_output_directory}/depth-up.dat',
-            skiprows=2,labels_commented=False)
+        if depth_iteration is None:
+            depth_filename = f'{model_output_directory}/depth.dat'
+        else:
+            depth_filename = f'{model_output_directory}/old-depth-1.dat'
+        data = tools.file_to_dict(depth_filename,skiprows=2,labels_commented=False)
         for key_from,key_to in (
                 ('p(bar)','p'),
                 ('T(K)','T'),
@@ -135,15 +136,14 @@ class AtmosphericChemistry():
                 r = np.unique(tools.make_recarray(t0=t0,t1=t1)) # get rid of dupiliate in a recarray
                 data.extend(p=p,z=z,reaction_number=r['t0'],rate=r['t1'])
             ## put rates into reaction_network
-            assert np.all((np.sort(data.unique('z')))==np.sort(self['z'])) # check z coordinate matches self
-            assert np.max(np.abs(np.sort(data.unique('p'))-np.sort(self['p']))/np.sort(self['p'])) # check p coordinate matches self
+            assert len(np.sort(data.unique('z')))==len(np.sort(self['z'])),'depth.dat and verif.dat height scale lengths differ'
             data.sort('z')
             for r in self.reaction_network.reactions:
                 r.rate = np.full(len(self),np.nan)
                 i = tools.find(data.match(reaction_number=r.coefficients['reaction_number']))
                 if len(i)==0: continue
                 # j = findin_numeric(data['z'][i],self['z'])`
-                j = tools.findin(data['z'][i],self['z'])
+                j = tools.find_nearest(data['z'][i],self['z'])
                 r.rate[j] = data['rate'][i]
                 
     def __getitem__(self,key):
@@ -160,12 +160,17 @@ class AtmosphericChemistry():
         elif r:=re.match(r'n\((.+)\)',key):
             ## density of species
             return self.density[r.group(1)]
+        elif r:=re.match(r'N\((.+)\)',key):
+            ## cumulative column density of species
+            return self.get_column_density(r.group(1))
         else:
             raise Exception(f'Unknown {key=}')
 
     def get_mixing_ratio(self,species):
         return self.density[species]/self.state['nt']
-        
+
+    def get_column_density(self,species):
+        return tools.cumtrapz(self.density[species], self['z'], direction='backwards')
 
     def __len__(self):
         return len(self.state)
@@ -230,7 +235,7 @@ class AtmosphericChemistry():
             reaction_names.append(reaction.name)
             rates.append(rate)
         ## add total
-        total = np.sum([t for t in rates],axis=0)
+        total = np.nansum([t for t in rates],axis=0)
         ## sort
         if sort_method == 'maximum':
             ## list all reactions by their reverse maximum rate 
