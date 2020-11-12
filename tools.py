@@ -2214,23 +2214,24 @@ def array_to_hdf5(filename,*args,**kwargs):
 
 def cumtrapz(y,
              x=None,               # if None assume unit xstep
-             direction='forwards', # or backwards
+             reverse=False,        # or backwards
 ):
     """Cumulative integral, with first point equal to zero, same length as
     input."""
-    assert direction in ('forwards','backwards'),f'Bad direction: {repr(direction)}'
-    if direction=='backwards':
+    if reverse:
         y = y[::-1]
-        if x is not None: x = x[::-1]
+        if x is not None: 
+            x = x[::-1]
     yintegrated = np.concatenate(([0],integrate.cumtrapz(y,x)))
-    if direction=='backwards': yintegrated = -yintegrated[::-1] # minus sign to account for change in size of dx when going backwards, which is probably not intended
-    return(yintegrated)
+    if reverse:
+        yintegrated = -yintegrated[::-1] # minus sign to account for change in size of dx when going backwards, which is probably not intended
+    return yintegrated 
 
-def cumtrapz_reverse(y,x):
-    """Return a cumulative integral ∫y(x) dx from high to low limit."""
-    x,i = np.unique(x,return_index=True)
-    y = y[i]
-    return(integrate.cumtrapz(y[-1::-1],-x[-1::-1])[-1::-1])
+# def cumtrapz_reverse(y,x):
+    # """Return a cumulative integral ∫y(x) dx from high to low limit."""
+    # x,i = np.unique(x,return_index=True)
+    # y = y[i]
+    # return(integrate.cumtrapz(y[-1::-1],-x[-1::-1])[-1::-1])
 
 
 # def power_spectrum(x,y,make_plot=False,fit_peaks=False,fit_radius=1,**find_peaks_kwargs):
@@ -3323,56 +3324,56 @@ def file_to_array(
     # retval = [try_cast_to_numerical(t) for t in retval]
     # return(retval)
 
-# def string_to_array(s,**array_kwargs):
-    # """Convert string of numbers separated by spaces, tabs, commas, bars,
-    # and newlines into an array. Empty elements are replaced with NaN
-    # if tabs are used as separators. If spaces are used then the excess
-    # is removed, including all leading and trailing spaces."""
-    # ## remove all data after an '#'
-    # s,count = re.subn(r' *#[^\n]*\n','\n',s)
-    # ## replace commas and bars with spaces
-    # s,count = re.subn(r'[|,]',' ',s)
-    # ## remove leading and trailing and excess spaces, and leading and
-    # ## trailing newlines
-    # s,count = re.subn(' {2,}',' ',s)
-    # s,count = re.subn(r'^[ \n]+|[ \n]+$','',s)
-    # # s,count = re.subn(r'^\n+|\n+$','',s)
-    # s,count = re.subn(r' *\n *','\n',s)
-    # ## spaces to tabs - split on tabs
-    # s = s.replace(' ','\t')
-    # ## split on \n
-    # s = s.splitlines()
-    # ## strip whitespace
-    # s = [t.strip() for t in s]
-    # ## remove blank lines
-    # s = [t for t in s if len(t)>0]
-    # ## split each line on tab, stripping each
-    # s = [[t0.strip() for t0 in t1.split('\t')] for t1 in s]
-    # ## convert missing values to NaNs
-    # for i in range(len(s)):
-        # if s[i] == []: s[i] = ['NaN']
-        # for j in range(len(s[i])):
-            # if s[i][j] == '': s[i][j] = 'NaN'
-    # ## convert to array of numbers, failing that array of strings
-    # try: 
-        # s = np.array(s,dtype=np.number,**array_kwargs)
-    # except ValueError:
-        # s = np.array(s,dtype=str,**array_kwargs)
-        # ## also try to convert into complex array -- else leave as string
-        # try:
-            # s = np.array(s,dtype=complex,**array_kwargs)
-        # except ValueError:
-            # pass
-            # # # warnings.warn('Nonnumeric value, return string array')
-    # ## if 2 dimensional transpose so that columns in text file are first index
-    # # if s.ndim==2: s=s.transpose()
-    # ## squeeze to smallest possible ndim
-    # # return s.squeeze()
-    # return(s.squeeze())
+def string_to_array(s,**array_kwargs):
+    """Convert string of numbers separated by spaces, tabs, commas, bars,
+    and newlines into an array. Empty elements are replaced with NaN
+    if tabs are used as separators. If spaces are used then the excess
+    is removed, including all leading and trailing spaces."""
+    ## remove all data after an '#'
+    s,count = re.subn(r' *#[^\n]*\n','\n',s)
+    ## replace commas and bars with spaces
+    s,count = re.subn(r'[|,]',' ',s)
+    ## remove leading and trailing and excess spaces, and leading and
+    ## trailing newlines
+    s,count = re.subn(' {2,}',' ',s)
+    s,count = re.subn(r'^[ \n]+|[ \n]+$','',s)
+    # s,count = re.subn(r'^\n+|\n+$','',s)
+    s,count = re.subn(r' *\n *','\n',s)
+    ## spaces to tabs - split on tabs
+    s = s.replace(' ','\t')
+    ## split on \n
+    s = s.splitlines()
+    ## strip whitespace
+    s = [t.strip() for t in s]
+    ## remove blank lines
+    s = [t for t in s if len(t)>0]
+    ## split each line on tab, stripping each
+    s = [[t0.strip() for t0 in t1.split('\t')] for t1 in s]
+    ## convert missing values to NaNs
+    for i in range(len(s)):
+        if s[i] == []: s[i] = ['NaN']
+        for j in range(len(s[i])):
+            if s[i][j] == '': s[i][j] = 'NaN'
+    ## convert to array of numbers, failing that array of strings
+    try: 
+        s = np.array(s,dtype=np.number,**array_kwargs)
+    except ValueError:
+        s = np.array(s,dtype=str,**array_kwargs)
+        ## also try to convert into complex array -- else leave as string
+        try:
+            s = np.array(s,dtype=complex,**array_kwargs)
+        except ValueError:
+            pass
+            # # warnings.warn('Nonnumeric value, return string array')
+    ## if 2 dimensional transpose so that columns in text file are first index
+    # if s.ndim==2: s=s.transpose()
+    ## squeeze to smallest possible ndim
+    # return s.squeeze()
+    return(s.squeeze())
 
-# def string_to_array_transpose(s):
-    # '''return(string_to_array(s).transpose())'''
-    # return(string_to_array(s).transpose())
+def string_to_array_unpack(s):
+    '''return(string_to_array(s).transpose())'''
+    return(string_to_array(s).transpose())
 
 def array_to_string(*arrays,fmt='g',field_sep=' ',record_sep='\n'):
     """Convert array to a string format. Input arrays are concatenatd
