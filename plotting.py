@@ -2332,3 +2332,14 @@ def annotate_spectrum_by_branch(
         retval.append(annotate_spectrum(zlines[xkey],labels=labels,ylevel=ybeg+iz*ystep,**kwargs))
         iz += 1
     return(retval)
+
+def plot_stick_spectrum(x,y,ax=None,**plot_kwargs):
+    assert len(x)==len(y)
+    if ax is None:
+        ax = plt.gca()
+    x = np.row_stack((x,x,x))
+    t = np.zeros(y.shape)
+    y = np.row_stack((t,y,t))
+    x = np.reshape(x.transpose(),np.prod(x.shape))                                                                                                                                                              
+    y = np.reshape(y.transpose(),np.prod(y.shape))
+    ax.plot(x,y,**plot_kwargs)
