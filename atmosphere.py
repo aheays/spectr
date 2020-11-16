@@ -170,7 +170,7 @@ class AtmosphericChemistry():
         return self.density[species]/self.state['nt']
 
     def get_column_density(self,species):
-        return tools.cumtrapz(self.density[species], self['z'], direction='backwards')
+        return tools.cumtrapz(self.density[species], self['z'],reverse=True)
 
     def __len__(self):
         return len(self.state)
