@@ -624,6 +624,7 @@ class P():
             else:
                 self.step = 1e-4
         self.timestamp = time.time()
+        self.set_value_functions = []
 
     def _get_value(self):
         return self._value
@@ -631,6 +632,9 @@ class P():
     def _set_value(self,value):
         self._value = value
         self.timestamp = time.time()
+        for f in self.set_value_functions:
+            print('DEBUG:', )
+            f(value)
 
     value = property(_get_value,_set_value)
 
