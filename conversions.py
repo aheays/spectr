@@ -10,24 +10,7 @@ setattr(constants,'Eh',4.35974417e-18) # Hatree energy, not in scipy.constants
 
 ## relationship between units and canonical SI unit
 canonical_factors = {
-    ## energy
-    'J'         :(1.                    ,'energy'),
-    'K'         :(1/constants.Boltzmann ,'energy'),
-    'cal'       :(1/4.184               ,'energy'),
-    'eV'        :(1/1.602176634e-19     ,'energy'),
-    'erg'       :(1e7                   ,'energy'),
-    'Hartree'   :(1/4.35974434e-18      ,'energy'), # atomic units /hartree
-    'au_energy' :(1/4.35974434e-18      ,'energy'), # atomic units /hartree
-    'kJ.mol-1'  :(constants.Avogadro/1e3,'energy'),
-    'kcal.mol-1':(1/6.9477e-21          ,'energy'),
-    ## frequency
-    'Hz' :(1  ,'frequency'),
-    'kHz':(1e3,'frequency'),
-    'MHz':(1e6,'frequency'),
-    'GHz':(1e9,'frequency'),
-    ## wavenumbers
-    'm-1' :(1   ,'wavenumber'),
-    'cm-1':(1e-2,'wavenumber'),
+
     ## lengths
     'm'           :(1.                ,'length'),  # astronomical units       ,
     'pc'          :(1/3.0857e16       ,'length'),    # parsecs
@@ -42,16 +25,49 @@ canonical_factors = {
     'AU'          :(1/1.496e11        ,'length'),  # astronomical units       ,
     'au'          :(1/5.2917721092e-11,'length'), #  atomic units (Bohr radius, a0),
     'Å'           :(1e+10             ,'length'),
+
+    ## time
+    's':(1.            ,'time'),
+    'm':(1/60          ,'time'),
+    'h':(1/60/60       ,'time'),
+    'd':(1/60/60/24    ,'time'),
+    'w':(1/60/60/24/7  ,'time'),
+    'y':(1/60/60/24/365,'time'),
+
+    ## energy
+    'J'         :(1.                    ,'energy'),
+    'K'         :(1/constants.Boltzmann ,'energy'),
+    'cal'       :(1/4.184               ,'energy'),
+    'eV'        :(1/1.602176634e-19     ,'energy'),
+    'erg'       :(1e7                   ,'energy'),
+    'Hartree'   :(1/4.35974434e-18      ,'energy'), # atomic units /hartree
+    'au_energy' :(1/4.35974434e-18      ,'energy'), # atomic units /hartree
+    'kJ.mol-1'  :(constants.Avogadro/1e3,'energy'),
+    'kcal.mol-1':(1/6.9477e-21          ,'energy'),
+
+    ## frequency
+    'Hz' :(1  ,'frequency'),
+    'kHz':(1e3,'frequency'),
+    'MHz':(1e6,'frequency'),
+    'GHz':(1e9,'frequency'),
+
+    ## wavenumbers
+    'm-1' :(1   ,'wavenumber'),
+    'cm-1':(1e-2,'wavenumber'),
+
     ## mass
     'kg'        :(1.,          'mass')         ,
     'g'         :(1e3,         'mass')         ,
     'solar_mass':(1/1.98855e30,'mass'),
+
     ## velocity
     'm.s-1'     :(1.,          'velocity')         ,
     'km.s-1'    :(1e-3,        'velocity')         ,
+
     ## dipole moment
     'Debye' : (1.,          'dipole moment'),
     'au'    : (1/2.541765,  'dipole moment'),
+
     ## pressure
     'Pa'      :  (1.        ,  'pressure'),
     'kPa'     :  (1e-3      ,  'pressure'),
@@ -66,6 +82,7 @@ canonical_factors = {
     # unit_conversions[('Cm','Debye')] = lambda x: x/3.33564e-30 # 1 Debye is 1e-18.statC.cm-1 -- WARNING: these are not dimensionally similar units!!!
     # unit_conversions[('C','statC')] = lambda x: 3.33564e-10*x # 1 Couloub = sqrt(4πε0/1e9)×stat Coulomb -- WARNING: these are not dimensionally similar units!!!
     # unit_conversions[('statC','C')] = lambda x: 2997924580*x  # 1 stat Couloub = sqrt(1e9/4πε0)×Coulomb -- WARNING: these are not dimensionally similar units!!!
+
     ## area / cross section
     'cm2'   :  (1.        ,  'area'),
     'Mb'    :  (1e+18     ,  'area'),
@@ -75,6 +92,8 @@ canonical_factors = {
 ## pretty contextual
 canonical_conversion_functions = {
     ## photon energy / frequency / wavelength / wavenumber
+    ('frequency' ,'time'      ): lambda x: 1/x, 
+    ('time'      ,'frequency' ): lambda x: 1/x, 
     ('frequency' ,'energy'    ): lambda x: x*constants.h            , 
     ('energy'    ,'frequency' ): lambda x: x/constants.h            ,
     ('wavenumber','energy'    ): lambda x: x*(constants.h*constants.c), 
