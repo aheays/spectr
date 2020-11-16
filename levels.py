@@ -32,7 +32,8 @@ class Base(Dataset):
             name = type(self).__name__
             name = re.sub(r'(.)([A-Z])',r'\1_\2',name).lower()
         Dataset.__init__(self,name=name)
-        self['classname'] = type(self).__name__
+        prototypes['classname']['infer'][()]: lambda: type(self).__name__
+        # self['classname'] = type(self).__name__
         self.permit_nonprototyped_data = False
         self._cache = {}
         for key,val in keys_vals.items():

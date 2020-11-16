@@ -43,15 +43,14 @@ class GenericLine(levels.Base):
     _levels_class = levels.GenericLevel
     _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
                          + ['description','notes','author','reference','date','classname',
-                            'species','ν','Γ','ΓD','f',])
+                            'species','ν','Γ','ΓD','f','σ',])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
     def __init__(self,*args,**kwargs):
         levels.Base.__init__(self,*args,**kwargs)
-        self['classname_l'] = self._levels_class.__name__
-        self['classname_u'] = self._levels_class.__name__
-
-
+        self.prototypes['classname_l']['infer'][()] = lambda: self._levels_class.__name__
+        self.prototypes['classname_u']['infer'][()] = lambda: self._levels_class.__name__
+ 
 
     def plot_spectrum(
             self,
@@ -407,7 +406,7 @@ class HeteronuclearDiatomicRotationalLine(HeteronuclearDiatomicVibrationalLine):
     _init_keys = _unique(
         _expand_level_keys_to_upper_lower(_levels_class)
         + HeteronuclearDiatomicVibrationalLine._init_keys
-        + ['branch', 'ΔJ', 'Γ', 'ΓD', 'f', 'σ', 'S','S296K', 'τ', 'Ae','τa', 'Sij',])
+        + ['branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij',])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
     def load_from_hitran(self,filename):

@@ -39,6 +39,13 @@ class Datum:
             fmt=None,
             missing=None,
     ):
+        ## check if the value is an optimise Parameter, if so set an
+        ## update hook
+        if isinstance(value,optimise.P):
+            def _f(value):
+                self.value = value
+            value.set_value_functions.append(_f)
+        ## determine kind
         if kind is not None:
             self.kind = np.dtype(kind).kind
         elif value is not None:
@@ -136,7 +143,11 @@ class Data:
         elif value is not None and len(value)>0:
             self.kind = np.dtype(type(value[0])).kind
             if self.kind=='i' and uncertainty is not None:
+                ## treat integers with uncertainties as floats
                 self.kind = 'f'
+            elif self.kind=='S':
+                ## convert bytes string to unicodetreat integers with uncertainties as floats
+                self.kind = 'U'
         else:
             self.kind = 'f'
         d = self._kind_defaults[self.kind]
@@ -254,6 +265,15 @@ class Data:
         if self.has_uncertainty():
             self._uncertainty[new_length-1] = uncertainty
 
+        ## check if the value is an optimise Parameter, if so set an
+        ## update hook
+        if isinstance(value,optimise.P):
+            assert self.kind == 'f','Can onlh optimise float.'
+            def _f(value):
+                self._value[new_length-1] = value
+            value.set_value_functions.append(_f)
+
+
     def extend(self,value,uncertainty=None):
         if (not self.has_uncertainty() and uncertainty is not None):
             raise Exception('Existing data has uncertainty and extending data does not')
@@ -322,7 +342,7 @@ class Dataset(optimise.Optimiser):
         """Set a value and possibly its uncertainty. Set is_scalar=True to set
         a scalar Object type that is iterable."""
         assert self.permit_nonprototyped_data or key in self.prototypes, f'New data is not in prototypes: {repr(key)}'
-        assert self.permit_reference_breaking or key not in self, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
+        assert self.permit_reference_breaking or key not in self, f'Attempt to assign {key=} but {self.permit_reference_breaking=}'
         ## if not previously set then get perhaps get a prototype
         if key not in self and key in self.prototypes:
             for tkey,tval in self.prototypes[key].items():
@@ -330,12 +350,7 @@ class Dataset(optimise.Optimiser):
                     continue # not a Data kwarg
                 data_kwargs.setdefault(tkey,copy(tval))
         ## set the data
-        if isinstance(value,optimise.P):
-            ## a parameter, set value and uncertainty to a Datum
-            assert uncertainty is None
-            assert is_scalar is None
-            data = Datum(value=value.value,uncertainty=value.uncertainty,**data_kwargs)
-        elif is_scalar or np.isscalar(value):
+        if is_scalar or np.isscalar(value) or isinstance(value,optimise.P):
             ## a scalar value
             data = Datum(value=value,uncertainty=uncertainty,**data_kwargs)
         else:
@@ -351,6 +366,7 @@ class Dataset(optimise.Optimiser):
         self.unset_inferences(key)
 
     def set_missing(self,key,index=None):
+        """"""
         if key not in self:
             self[key] = 1.     
         if self.is_scalar(key):
@@ -632,9 +648,20 @@ class Dataset(optimise.Optimiser):
         return {key:(self[key] if self.is_scalar(key) else self[key][index]) for key in self}
         
     def rows(self):
+        """Iterate over data row by row, returns as a dictionary of
+        scalar values."""
         for i in range(len(self)):
             yield(self.as_dict(i))
-            
+
+    def matching_row(self,**matching_keys_vals):
+        """Return uniquely-matching row."""
+        i = tools.find(self.match(**matching_keys_vals))
+        if len(i)==0:
+            raise Exception(f'No matching row found: {matching_keys_vals=}')
+        if len(i)>1:
+            raise Exception(f'Multiple matching rows found: {matching_keys_vals=}')
+        return self.as_dict(i[0])
+
     def keys(self):
         return(list(self._data.keys()))
 
@@ -878,8 +905,25 @@ class Dataset(optimise.Optimiser):
 
     def append(self,**new_keys_vals):
         """Append a single row of data from new scalar values."""
+        ## if not data in self, then add new data as length 1 vector
+        ## values and return
+        if len(self.keys()) == 0:
+            for key,val in new_keys_vals.items():
+                self.set(key,[val])
+                # if isinstance(val,optimise.P):
+                    # def _f(value):
+                        # print('DEBUG:', 'eee',value,self._data[key].value[0])
+                        # self._data[key].value[0] = value
+                    # val.set_value_functions.append(_f)
+
+                # self[key] = [val]
+            return
+        ## Raise error if missing vector key in new data, unless
+        ## existing data is scalar, in which case assume it applies to
+        ## the new data
         for key in self:
-            assert key in new_keys_vals,f'missing {key=}'
+            assert key in new_keys_vals or self.is_scalar(key),f'missing vector{key=} in appended data'
+        ## new data
         for key,val in new_keys_vals.items():
             assert key in self,f'missing {key=}'
             if self.is_scalar(key):
@@ -905,10 +949,10 @@ class Dataset(optimise.Optimiser):
         """Append a single row of data from new scalar values."""
         for key in self:
             assert key in new_keys_vals,f'missing {key=}'
-        newlen = None
+        newlen = 0
         for key,val in new_keys_vals.items():
-            if not np.issscalar(val):
-                if newlen is None:
+            if not np.isscalar(val):
+                if newlen == 0:
                     newlen = len(val)
                 else:
                     assert newlen == len(val),f'Inconsistent length for {key=}'
@@ -929,14 +973,14 @@ class Dataset(optimise.Optimiser):
             self._data[key].extend(val)
         self._length += newlen
 
-    def extend(self,**new_keys_vals):
-        """Extend data from input vector values (scalar values are
-        broadcast)."""
-        assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
-        new_dataset = self.__class__()
-        for key in new_keys_vals:
-            new_dataset[key] = new_keys_vals[key]
-        self.concatenate(new_dataset)
+    # def extend(self,**new_keys_vals):
+        # """Extend data from input vector values (scalar values are
+        # broadcast)."""
+        # assert self.permit_reference_breaking, f'Attemp to assign {key=} but {self.permit_reference_breaking=}'
+        # new_dataset = self.__class__()
+        # for key in new_keys_vals:
+            # new_dataset[key] = new_keys_vals[key]
+        # self.concatenate(new_dataset)
 
     def concatenate(self,new_dataset):
         """Concatenate data from another Dataset object to this one. All
