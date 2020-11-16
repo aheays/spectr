@@ -3,6 +3,7 @@ from pytest import raises
 import numpy as np
 
 from spectr.dataset import *
+from spectr.optimise import P
 from spectr.exceptions import InferException
 
 def test_datum_construct():
@@ -284,6 +285,22 @@ def test_dataset_append():
     assert list(t['x']) == [0,1]
     assert list(t['y']) == ['a','b']
     assert len(t)==2
+    t = Dataset(x=[0],y='a')
+    t.append(x=1,)
+    assert list(t['x']) == [0,1]
+    assert t['y'] == 'a'
+    t = Dataset()
+    t.append(x=1,)
+    assert list(t['x']) == [1]
+
+    t = Dataset()
+    p = P(1,False,1e-3)
+    t['x'] = p
+    assert t['x'] == 1
+    p.value = 5
+    assert t['x'] == 5
+
+
 
 def test_dataset_extend():
     t = Dataset()
@@ -309,6 +326,7 @@ def test_dataset_extend():
     assert list(t['x']) == [1,2,2,3]
     assert list(t['y']) == ['a','a','a','b']
     assert len(t) == 4
+test_dataset_extend()
 
 def test_dataset_concatenate():
     t = Dataset()
@@ -490,7 +508,6 @@ def test_dataset_load_save_to_file():
     t.save('tmp/t0.psv',comment='# ')
     u = Dataset()
     u.load('tmp/t0.psv')
-    print('DEBUG:', u)
     assert set(u.keys()) == {'x','f','z'}
     assert list(u['x']) == list(t['x'])
     assert list(u['z']) == list(t['z'])
@@ -514,5 +531,5 @@ def test_dataset_load_save_to_file():
     assert list(u['x']) == list(t['x'])
     assert list(u['z']) == list(t['z'])
     assert u['f'] == t['f']
-test_dataset_load_save_to_file()
 
+test_dataset_load_save_to_file()
