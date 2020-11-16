@@ -1093,10 +1093,13 @@ def subplot(
             if fig.get_figheight()>fig.get_figwidth(): 
                 rows,columns = columns,rows
         elif ncolumns is None and nrows is not None:
-            raise ImplementationError()
-        else:
+            rows = nrows
+            columns = int(np.ceil(float(nsubplots)/float(rows)))
+        elif ncolumns is not None and nrows is None:
             columns = ncolumns
             rows = int(np.ceil(float(nsubplots)/float(columns)))
+        else:
+            raise Exception("Impossible")
         ## adjust old axes to new grid of subplots
         for i in range(0,old_nsubplots):
             i_old,j_old,n_old = fig.axes[i].get_geometry()
