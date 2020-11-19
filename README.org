@@ -1,4 +1,6 @@
 * To do
+
+** viblevel.py 
  
  - Add interactions.py
 
@@ -6,11 +8,20 @@
 
  - Add interactions to VibLevel 
 
- - A simpler implementation of self.permit_reference_breaking?
-   Currently appears in many places in Dataset
+** lines.py / levels.py
 
  - change partition to Q -- uncorporate HITRAN partition functions
    into a database
+
+** dataset2.py
+
+ - Plan for uncertainty/vary/step
+
+ - A simpler implementation of self.permit_reference_breaking?
+   Currently appears in many places in Dataset
+
+ - If setting existing data, then copy into array rather than making a
+   new array?
 
  - Improve Dataset indexing to cases:
    - get_value(key,index) / get_uncertainty(key,index) -- get numpy
@@ -20,7 +31,10 @@
    - [key] -- return entire numpy array of key or scalar value
    - [int] -- return copy of self with all scalar data at int
    - [slice] -- return copy of self reduced to slice
- 
+
+ - Use internal infer data to infer necessary things in extend/append.
+
+** optimise.py
  - optim: add new output of parameters based on
    index/optimiser/function/arg_parameter
  
