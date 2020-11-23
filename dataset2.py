@@ -185,7 +185,6 @@ class Data:
             self._uncertainty[old_length:new_length] = uncertainty
 
             
-
 class Dataset(optimise.Optimiser):
 
     """A collection of scalar or array values, possibly with uncertainties."""
