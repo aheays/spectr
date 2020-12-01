@@ -66,32 +66,32 @@ def get_electronic_state_property(species,label,prop):
         raise Exception(f"Multiple matches get_electronic_state_property: {species=} {label=} {prop=}")
     return data[0][prop]
 
-# # @cachetools.cached(cache=cachetools.LRUCache(1e3))
-# @functools.lru_cache(maxsize=1024)
-# def get_species_data(species):
-    # """Get a dictionary of data for this species."""
-    # data = tools.file_to_recarray(data_directory+'/species.csv',table_name='data')
-    # if species not in data['species']:
-        # raise MissingDataException(f"Species unknown: {repr(species)}")
-    # return(data[data['species']==species])
+# @cachetools.cached(cache=cachetools.LRUCache(1e3))
+@functools.lru_cache(maxsize=1024)
+def get_species_data(species):
+    """Get a dictionary of data for this species."""
+    data = tools.file_to_recarray(data_directory+'/species.csv',table_name='data')
+    if species not in data['species']:
+        raise MissingDataException(f"Species unknown: {repr(species)}")
+    return(data[data['species']==species])
 
 # species_property_dtypes = {'species':'U50','iso_indep':float,'mass':float,
                            # 'reduced_mass':float,'group':'U5','Ihomo':float,'latex':'U50',
                            # 'T0-Te':float,}
 
-# # @cachetools.cached(cache=cachetools.LRUCache(1e3))
-# @tools.vectorise_function
-# def get_species_property(species,prop):
-    # """Get a property fo this species using get_species_data. If an
-    # array of species then return an array of properties. Scalar output, cached."""
-    # d = get_species_data(species)
-    # assert prop in d.dtype.names,f'Property {repr(prop)} of species {repr(species)} not known to database.'
-    # retval = d[prop][0]
-    # ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
-    # if ((np.isreal(retval) and np.isnan(retval))
-        # or retval=='nan'): 
-        # raise MissingDataException(f"Property is unknown: {repr(species)}, {repr(prop)}")
-    # return retval
+# @cachetools.cached(cache=cachetools.LRUCache(1e3))
+@tools.vectorise_function
+def get_species_property(species,prop):
+    """Get a property fo this species using get_species_data. If an
+    array of species then return an array of properties. Scalar output, cached."""
+    d = get_species_data(species)
+    assert prop in d.dtype.names,f'Property {repr(prop)} of species {repr(species)} not known to database.'
+    retval = d[prop][0]
+    ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
+    if ((np.isreal(retval) and np.isnan(retval))
+        or retval=='nan'): 
+        raise MissingDataException(f"Property is unknown: {repr(species)}, {repr(prop)}")
+    return retval
 
 # def get_species_property(species,prop):
     # """Get a property fo this species using get_species_data. If an array

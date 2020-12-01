@@ -22,7 +22,7 @@ def test_AutoDict():
     assert t['y']['b'] == {1:5}
 
 def test_vectorise_function_in_chunks():
-    @tools.vectorise_function_in_chunks
+    @tools.vectorise_function_in_chunks(float)
     def f(x):
         return x**2
     assert f(5) == 25

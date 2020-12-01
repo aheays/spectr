@@ -2,10 +2,10 @@ import pytest
 from spectr import hitran,lines
 
 def test_load_lines():
-    data = hitran.load_lines('data/hitran_data/CO/hitran_linelist.data')
-    print( set(data.dtype.names))
-    assert len(data) == 849
-    assert set(data.dtype.names) == {'asterisk', 'Ierr', 'δair', 'g_u', 'Iref', 'γair', 'γself', 'A', 'g_l', 'nair', 'S', 'Q_l', 'V_u', 'Q_u', 'Iso', 'Mol', 'V_l', 'E_l', 'ν'}
+    data = hitran.load('data/hitran_data/CO/hitran_linelist.data')
+    assert len(data) == 19
+    assert len(data['ν']) == 849
+    assert set(data.keys()) == {'asterisk', 'Ierr', 'δair', 'g_u', 'Iref', 'γair', 'γself', 'A', 'g_l', 'nair', 'S', 'Q_l', 'V_u', 'Q_u', 'Iso', 'Mol', 'V_l', 'E_l', 'ν'}
 
 # def test_load_into_HeteronuclearDiatomic():
     # t = lines.DiatomicCinfv()

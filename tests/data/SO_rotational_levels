@@ -1,9 +1,9 @@
-# description = 'Fitted rovibronic levels.'
-# Eref = 0.0000                 
-# d_Eref = 0.0500                
-# partition_source = "self"
-# S = 1                         
-# species label v   Σ    ef J    Λ  s   Ω   E              Γ         
+description = 'Fitted rovibronic levels.'
+Eref = 0.0000                 
+d_Eref = 0.0500                
+partition_source = "self"
+S = 1                         
+species   label v   Σ    ef J    Λ  s   Ω   E              Γ         
 32S16O    A     1   -1  +1 0    1  0   0   38927.8636513  0         
 32S16O    A     1   -1  +1 1    1  0   0   38929.0247858  0         
 32S16O    A     1   -1  +1 2    1  0   0   38931.3469547  0         

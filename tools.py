@@ -3770,7 +3770,7 @@ def string_to_number_if_possible(s):
         return float(s)
     except ValueError:
         pass
-    return(s)
+    return s 
 
 # def txt_to_recarray(*args,**kwargs):
     # """See txt_to_dict."""
