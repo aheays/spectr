@@ -1149,6 +1149,9 @@ class Dataset(optimise.Optimiser):
                 if legend and 'label' in kwargs:
                     plotting.legend(fontsize='x-small')
                 ax.set_xlabel(xkey)
+                # if isinstance(self[xkey][0],str):
+                    # print('DEBUG:', self[xkey])
+                    # plotting.set_tick_labels_text(self[xkey])
                 ax.grid(True,color='gray',zorder=-5)
                 ax.set_yscale(yscale)
                 ax.set_xscale(xscale)

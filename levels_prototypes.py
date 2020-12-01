@@ -4,6 +4,7 @@ from copy import copy
 import numpy as np 
 
 from . import tools
+from . import database
 from .exceptions import InferException
 
 prototypes = {}
@@ -55,7 +56,9 @@ prototypes['τ'] = dict(description="Total decay lifetime (s)", kind=float, infe
 prototypes['A'] = dict(description="Total decay rate (s-1)", kind=float, infer={('Γ',): lambda Γ: Γ/5.309e-12,})
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin", kind=float,fmt='>0.1f',infer={})
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind=float, infer={('J','SR') : lambda J,SR: J-SR,})
-prototypes['S'] = dict(description="Total electronic spin quantum number", kind=float,infer={})
+prototypes['S'] = dict(description="Total electronic spin quantum number", kind=float,infer={
+    ('species','label'):lambda species,label: database.get_electronic_state_property(species,label,'S'),
+})
 prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum (cm-1).", kind=float,infer={() :lambda : 0.,})
 prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind=float, fmt='0.2f', infer={})
 prototypes['Tex'] = dict(description="Excitation temperature (K)", kind=float, fmt='0.2f', infer={'Teq':lambda Teq:Teq})
