@@ -212,7 +212,12 @@ def dict_to_kwargs(d,keys=None):
     # retval[x==y] = 1
     # return(retval)              # vector case
 
-        
+
+def tanh_transition(x,xa,xb,center,width):
+    """Creates a smooth match between extreme values xa and xb on grid x.
+    Uses a hyperbolic tangent centred at center with the given transition
+    width."""
+    return (np.tanh((x-center)/width)+1)/2*(xb-xa)+xa
 
 def leastsq(func,
             x0,
@@ -984,11 +989,22 @@ def hdf5_to_dict(filename_or_hdf5_object):
     for key in filename_or_hdf5_object.keys():
         ## make a new subdict recursively
         if isinstance(filename_or_hdf5_object[key],h5py.Dataset):
-            retval_dict[str(key)] = filename_or_hdf5_object[key][()]
+            value = filename_or_hdf5_object[key][()]
+            ## convert bytes string to unicode
+            if np.isscalar(value):
+                if isinstance(value,bytes):
+                    value = value.decode()
+            else:
+                ## this is a test for bytes string (kind='S') but for
+                ## some reason sometimes (always?) loads as object
+                ## type
+                if value.dtype.kind in ('S','O'):
+                    value = np.asarray(value,dtype=str)
+            retval_dict[str(key)] = value
         ## add data
         else:
             retval_dict[str(key)] = hdf5_to_dict(filename_or_hdf5_object[key])
-    return(retval_dict)
+    return retval_dict
 
 # def print_hdf5_tree(filename_or_hdf5_object,make_print=True):
     # """Print out a tree of an hdf5 object or file."""
@@ -3412,6 +3428,7 @@ def string_to_file(
         mkdir(dirname(filename))
     with open(filename,mode=mode,encoding=encoding) as f: 
         f.write(string)
+
 # def str2range(string):
     # """Convert string of integers like '1,2,5:7' to an array of
     # values."""
