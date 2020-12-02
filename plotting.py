@@ -553,7 +553,7 @@ def _extra_interaction_on_button_press(event):
             x,y = event.xdata,event.ydata
             point = axes.plot(x,y,marker='x',color='red')[0]
             annotation = plt.annotate(
-                f"({x:0.12g}, {y:0.12g})",
+                f"({x:0.12e}, {y:0.12e})",
                 (x,y),
                 # (1,1), xycoords='axes fraction',
                 verticalalignment='top', horizontalalignment='left',

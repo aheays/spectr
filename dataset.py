@@ -82,12 +82,17 @@ class Dataset(optimise.Optimiser):
             data['description'] = f'Uncertainty of {tkey}'
         ## infer kind
         if 'kind' not in data:
+            ## use data to infer kind
             value = np.asarray(value)
             data['kind'] = value.dtype.kind
+        else:
+            ## get from prototypes -- also convert e.g. float to 'f'
+            ## using np.dtype
+            data['kind'] =  np.dtype(data['kind']).kind
         ## convert bytes string to unicode
         if data['kind'] == 'S':
             self.kind = 'U'
-        ## some other data
+        ## some other prototype data
         for tkey in ('description','fmt','cast',):
             if tkey not in data:
                 data[tkey] = self._kind_defaults[data['kind']][tkey]
