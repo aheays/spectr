@@ -35,7 +35,7 @@ class OneDimensionalAtmosphere(Dataset):
     prototypes['zeta(s-1)'] = dict(description="not implemented" ,kind=float ,infer={})
     prototypes['h'] = dict(description="not implemented" ,kind=float ,infer={})
     prototypes['f+'] = dict(description="not implemented" ,kind=float ,infer={})
-    def _f(z):
+    def _f(self,z):
         """Get height intervals. CURRENTLY NAIVELY COMPUTED!!!!"""
         dz = np.full(z.shape,0.)
         dz[1:-1] = (z[2:]-z[1:-1])/2+(z[1:-1]-z[:-2])/2
