@@ -66,18 +66,18 @@ class AtmosphericChemistry():
 
     def load_ARGO(
             self,
-            model_output_directory,
-            reaction_network_filename=None,
-            load_rate_coefficients=False,
+            model_directory,
+            load_reaction_network= True, # filename to load filename, True to guess filename
+            load_rate_coefficients= True,
             load_rates=False,
-            depth_iteration=None,     # load an old-depth-#.dat file -- None for the final result
+            depth_iteration=None,     # # to load an old-depth-#.dat file -- None for the final result
            ):
 
         ## load depth.dat physical parameters and species volume density
         if depth_iteration is None:
-            depth_filename = f'{model_output_directory}/depth.dat'
+            depth_filename = f'{model_directory}/out/depth.dat'
         else:
-            depth_filename = f'{model_output_directory}/old-depth-1.dat'
+            depth_filename = f'{model_directory}/out/old-depth-{depth_iteration:d}.dat'
         data = tools.file_to_dict(depth_filename,skiprows=2,labels_commented=False)
         for key_from,key_to in (
                 ('p(bar)','p'),
@@ -95,15 +95,19 @@ class AtmosphericChemistry():
                 kinetics.translate_species(key,'STAND','standard'),
                 data[key]*self.state['nt'])
 
-        if reaction_network_filename is not None:
+        if load_reaction_network is not False:
+            if load_reaction_network is True:
+                print('Searching for reaction network file: Stand*')
+                load_reaction_network = tools.glob_unique(f'{model_directory}/Stand*')
+                print(f'found: {load_reaction_network}')
             ## load STAND reaction network
-            self.reaction_network.load_STAND(reaction_network_filename)
+            self.reaction_network.load_STAND(load_reaction_network)
             self.reaction_network.remove_unnecessary_reactions()
     
         if load_rate_coefficients:
             ## Load the rate coefficients from an ARGO
             ## Reactions/Kup.dat or
-            rate_coefficient_filename = f'{model_output_directory}/Reactions/Kup.dat'
+            rate_coefficient_filename = f'{model_directory}/out/Reactions/Kup.dat'
             data = tools.file_to_dict(rate_coefficient_filename, skiprows=2,labels_commented=False)
             if 'down' in rate_coefficient_filename:
                 ## reverse z grid 
@@ -118,7 +122,7 @@ class AtmosphericChemistry():
             ## load rates from the last time step in verif files
             ## loop over height files
             data = Dataset()
-            for filename in tools.glob(f'{model_output_directory}/Reactions/down*verif.dat',):
+            for filename in tools.glob(f'{model_directory}/out/Reactions/down*verif.dat',):
                 ## get data from filename
                 r = re.match(r'.*(?:up|down)-P=(.*)_H=(.*)_verif.dat',filename,)
                 assert r
@@ -219,7 +223,18 @@ class AtmosphericChemistry():
         ax.set_ylabel(ykey)
         ax.set_xlabel('Density (cm-3)')
         plotting.legend(ax=ax)
-
+        
+    def plot(self):
+        """A default plot."""
+        fig = plotting.gcf()
+        fig.clf()
+        plotting.subplot()
+        self.plot_vertical('z','p')
+        plotting.subplot()
+        self.plot_vertical('z','T')
+        plotting.subplot()
+        self.plot_density()
+        
     def get_rates(
             self,
             sort_method='max anywhere', # maximum at some altitude
