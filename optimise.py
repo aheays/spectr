@@ -60,9 +60,6 @@ class Optimiser:
     may return a residual error. Then optimise the parameters with
     respect to these residuals. Can contain suboptimisers which are
     simultaneously optimised and dependencies of this one. """
-
-
-
     
     def __init__(
             self,
@@ -386,13 +383,11 @@ class Optimiser:
                     unique_parameters.append(id(parameter))
             for dataset in optimiser.datasets:
                 if dataset not in unique_datasets:
-                    for v_key in dataset:
-                        if len(v_key)>2 and v_key[:2] == 'v_':
-                            key = v_key[2:]
-                            i = dataset[v_key]
-                            value.extend(dataset[key][i])
-                            uncertainty.extend(dataset['d_'+key][i])
-                            step.extend(dataset['s_'+key][i])
+                    for key in dataset.optimised_keys():
+                        vary = dataset.get_vary(key)
+                        value.extend(dataset[key][vary])
+                        uncertainty.extend(dataset.get_uncertainty(key,vary))
+                        step.extend(dataset.get_differentiation_step(key,vary))
                     unique_datasets.append(dataset)
         return value,step,uncertainty
 
@@ -412,14 +407,15 @@ class Optimiser:
                     unique_parameters.append(parameter)
             for dataset in optimiser.datasets:
                 if dataset not in unique_datasets:
-                    for v_key in dataset:
-                        if len(v_key)>2 and v_key[:2] == 'v_':
-                            key = v_key[2:]
-                            for i in tools.find(dataset[v_key]):
-                                dataset[key][i] = p.pop(0)
-                                if dp is not None:
-                                    dataset['d_'+key][i] = dp.pop(0)
                     unique_datasets.append(dataset)
+                    for key in dataset.optimised_keys():
+                        vary = dataset.get_vary(key)
+                        for i in tools.find(vary):
+                            dataset[key][i] = p.pop(0)
+                            if dp is not None:
+                                dataset.set_uncertainty(key,dp.pop(0),i)
+                            else:
+                                dataset.set_uncertainty(key,np.nan,i)
 
     def has_changed(self):
         """Whether any parameters have changed since this Optimiser was last

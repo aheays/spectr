@@ -57,67 +57,135 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
+    def set(self,key,value,index=None):
+        """Set a value"""
+        if index is None:
+            assert (self.permit_nonprototyped_data
+                    or key in self.prototypes
+                    or self._get_value_key_from_uncertainty(key) is not None # is an uncertainty
+                    ), f'New data is not in prototypes: {repr(key)}'
+            ## delete inferences since data has changed
+            if key in self:
+                self.unset_inferences(key)
+            ## new data
+            data = dict()
+            ## get any prototype data
+            if key in self.prototypes:
+                data.update(self.prototypes[key])
+            ## if a scalar value is given then set as default, and set
+            ## data to this value
+            if np.isscalar(value):
+                data['default'] = value
+                value = np.full(len(self),value)
+            ## uncertainty stuff
+            if (tkey:=self._get_value_key_from_uncertainty(key)) is not None:
+                data['kind'] = 'f'
+                data['description'] = f'Uncertainty of {tkey}'
+            ## infer kind
+            if 'kind' not in data:
+                ## use data to infer kind
+                value = np.asarray(value)
+                data['kind'] = value.dtype.kind
+            else:
+                ## get from prototypes -- also convert e.g. float to 'f'
+                ## using np.dtype
+                data['kind'] =  np.dtype(data['kind']).kind
+            ## convert bytes string to unicode
+            if data['kind'] == 'S':
+                self.kind = 'U'
+            ## some other prototype data
+            for tkey in ('description','fmt','cast',):
+                if tkey not in data:
+                    data[tkey] = self._kind_defaults[data['kind']][tkey]
+            ## set data
+            data['value'] = data['cast'](value)
+            ## initialise inference lists if they do not already exists
+            if 'inferred_from' not in data:
+                data['inferred_from'] = []
+            if 'inferred_to' not in data:
+                data['inferred_to'] = []
+            ## If this is the data set other than defaults then add to set
+            ## length of self and add corresponding data for any defaults
+            ## set.
+            if len(self) == 0 and len(value) > 0:
+                self._length = len(value)
+                for tkey,tdata in self._data.items():
+                    if tkey == key:
+                        continue
+                    assert 'default' in tdata,f'Need default for key={tkey}'
+                    tdata['value'] = tdata['cast'](np.full(len(self),tdata['default']))
+            else:
+                assert len(value) == len(self),f'Length of new data {repr(key)} is {len(data)} and does not match the length of existing data: {len(self)}.'
+            ## set data
+            self._data[key] = data
+        else:
+            assert key in self,f'Cannot set data with index for unknown {key=}'
+            self._data[key]['value'][:self._length][index] = value
+
+    def get(self,key,index=None):
+        if index is not None:
+            return self.get(key)[index]
+        if key not in self._data:
+            self._infer(key)
+        return self._data[key]['value'][:self._length]
+
+    def get_value(self,key,index=None):
+        self._assert_value_key(key)
+        self._assert_value_key(key)
+        return self.get(key,index)
+
+    def set_value(self,key,value,index=None):
+        self._assert_value_key(key)
+        self.set('d_'+key,value,index)
+
+    def get_uncertainty(self,key,index=None):
+        self._assert_value_key(key)
+        if 'd_'+key in self:
+            return self.get('d_'+key,index)
+        else:
+            return None
+
+    def set_uncertainty(self,key,value,index=None):
+        self._assert_value_key(key)
+        self.set('d_'+key,value,index)
+
+    def get_vary(self,key,index=None):
+        self._assert_value_key(key)
+        if 'v_'+key in self:
+            return self.get('v_'+key,index)
+        else:
+            return None
+
+    def set_vary(self,key,value,index=None):
+        self._assert_value_key(key)
+        self.set('v_'+key,value,index)
+
+    def get_differentiation_step(self,key,index=None):
+        self._assert_value_key(key)
+        if 's_'+key in self:
+            return self.get('s_'+key,index)
+        else:
+            return None
+
+    def set_differentiation_step(self,key,value,index=None):
+        self._assert_value_key(key)
+        self['s_'+key] = value
+
+    def __getitem__(self,arg):
+        """If string 'x' return value of 'x'. If "ux" return uncertainty
+        of x. If list of strings return a copy of self restricted to
+        that data. If an index, return an indexed copy of self."""
+        if isinstance(arg,str):
+            return self.get(arg)
+        elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
+            return self.copy(keys=arg)
+        else:
+            return self.copy(index=arg)
+
     def __setitem__(self,key,value):
         """Set a value"""
-        assert (self.permit_nonprototyped_data
-                or key in self.prototypes
-                or self._get_value_key_from_uncertainty(key) is not None # is an uncertainty
-                ), f'New data is not in prototypes: {repr(key)}'
-        ## delete inferences since data has changed
-        if key in self:
-            self.unset_inferences(key)
-        ## new data
-        data = dict()
-        ## get any prototype data
-        if key in self.prototypes:
-            data.update(self.prototypes[key])
-        ## if a scalar value is given then set as default, and set
-        ## data to this value
-        if np.isscalar(value):
-            data['default'] = value
-            value = np.full(len(self),value)
-        ## uncertainty stuff
-        if (tkey:=self._get_value_key_from_uncertainty(key)) is not None:
-            data['kind'] = 'f'
-            data['description'] = f'Uncertainty of {tkey}'
-        ## infer kind
-        if 'kind' not in data:
-            ## use data to infer kind
-            value = np.asarray(value)
-            data['kind'] = value.dtype.kind
-        else:
-            ## get from prototypes -- also convert e.g. float to 'f'
-            ## using np.dtype
-            data['kind'] =  np.dtype(data['kind']).kind
-        ## convert bytes string to unicode
-        if data['kind'] == 'S':
-            self.kind = 'U'
-        ## some other prototype data
-        for tkey in ('description','fmt','cast',):
-            if tkey not in data:
-                data[tkey] = self._kind_defaults[data['kind']][tkey]
-        ## set data
-        data['value'] = data['cast'](value)
-        ## initialise inference lists if they do not already exists
-        if 'inferred_from' not in data:
-            data['inferred_from'] = []
-        if 'inferred_to' not in data:
-            data['inferred_to'] = []
-        ## If this is the data set other than defaults then add to set
-        ## length of self and add corresponding data for any defaults
-        ## set.
-        if len(self) == 0 and len(value) > 0:
-            self._length = len(value)
-            for tkey,tdata in self._data.items():
-                if tkey == key:
-                    continue
-                assert 'default' in tdata,f'Need default for key={tkey}'
-                tdata['value'] = tdata['cast'](np.full(len(self),tdata['default']))
-        else:
-            assert len(value) == len(self),f'Length of new data {repr(key)} is {len(data)} and does not match the length of existing data: {len(self)}.'
-        ## set data
-        self._data[key] = data
-
+        self.set(key,value)
+        
     def clear(self):
         self._data.clear()
 
@@ -235,27 +303,6 @@ class Dataset(optimise.Optimiser):
         if len(keys)==0: return((({},self),)) # nothing to do
         return [(d,self.matches(**d)) for d in self.unique_dicts(*keys)]
 
-    def __getitem__(self,arg,index=None):
-        """If string 'x' return value of 'x'. If "ux" return uncertainty
-        of x. If list of strings return a copy of self restricted to
-        that data. If an index, return an indexed copy of self."""
-        if isinstance(arg,str):
-            if arg not in self._data:
-                self._infer(arg)
-            if index is None:
-                return self._data[arg]['value'][:self._length]
-            else:
-                return self._data[arg]['value'][:self._length][index]
-        elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
-            return(self.copy(keys=arg))
-        else:
-            return(self.copy(index=arg))
-
-    def get_index(self,key,index):
-        """Get key. Index by index if vector data, else return
-        scalar. Somehow fold into __getitem__?"""
-        return self[key][index]
-        
     def _infer(self,key,already_attempted=None):
         """Get data, or try and compute it."""
         if key in self:
@@ -285,7 +332,7 @@ class Dataset(optimise.Optimiser):
                 value = self[key]
                 parameters = [self[t] for t in dependencies]
                 for i,dependency in enumerate(dependencies):
-                    if (tuncertainty:=self._get_uncertainty(dependency)) is not None:
+                    if (tuncertainty:=self.get_uncertainty(dependency)) is not None:
                         diffstep = 1e-10*self[dependency]
                         parameters[i] = self[dependency] + diffstep # shift one
                         dvalue = value - function(self,*parameters)
@@ -293,7 +340,7 @@ class Dataset(optimise.Optimiser):
                         data = self._data[dependency]
                         squared_contribution.append((tuncertainty*dvalue/diffstep)**2)
                 if len(squared_contribution)>0:
-                    self._set_uncertainty(key,np.sqrt(sum(squared_contribution)))
+                    self.set_uncertainty(key,np.sqrt(sum(squared_contribution)))
                 ## if we get this far without an InferException then
                 ## success!.  Record inference dependencies.
                 self._data[key]['inferred_from'].extend(dependencies)
@@ -317,15 +364,14 @@ class Dataset(optimise.Optimiser):
         else:
             return None
 
-    def _get_uncertainty(self,key):
-        if 'd_'+key in self:
-            return self['d_'+key]
+    def _assert_value_key(self,key):
+        if len(key)<3:
+            return True
+        elif key[:2] not in ('s_','d_','v_'):
+            return True
         else:
-            return None
-
-    def _set_uncertainty(self,key,value):
-        self['d_'+key] = value
-
+            raise Exception(f'Not a value key: {key=}')
+        
     def __iter__(self):
         for key in self._data:
             yield key
@@ -354,6 +400,13 @@ class Dataset(optimise.Optimiser):
 
     def keys(self):
         return list(self._data.keys())
+
+    def value_keys(self):
+        return [key for key in self._data.keys()
+                if len(key)<2 or key[:2] not in ['s_','v_','d_']]
+    
+    def optimised_keys(self):
+        return [key for key in self._data.keys() if 'v_'+key in self]
 
     def assert_known(self,*keys):
         for key in keys:
@@ -649,7 +702,7 @@ class Dataset(optimise.Optimiser):
                 y = z[ykey]
                 if label is not None:
                     kwargs.setdefault('label',label)
-                if plot_errorbars and (dkey:=self._get_uncertainty(ykey)) is not None:
+                if plot_errorbars and (dkey:=self.get_uncertainty(ykey)) is not None:
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
                     dy = self[dkey]
@@ -680,37 +733,37 @@ class Dataset(optimise.Optimiser):
             plotting.show()
         return(fig)
 
-    def optimise_value(
-            self,
-            match=None,
-            **parameter_keys_vals
-    ):
-        parameters = self.add_parameter_set(**parameter_keys_vals)
-        cache = {'first':True,}
-        def f():
-            i = (None if match is None else self.match(**match))
-            ## set data
-            for key,p in parameters.items():
-                if i is None:
-                    ## all values
-                    if cache['first'] or self[key] != p.value:
-                        self.set(key,p.value,p.uncertainty)
-                else:
-                    ## some indexed values
-                    if cache['first'] or np.any(self[key][i] != p.value):
-                        value,uncertainty = self.get_value(key),self._get_uncertainty(key)
-                        value[i] = p.value
-                        uncertainty[i] = p.uncertainty
-                        self.set(key,value,uncertainty)
-            cache['first'] = False 
-        self.add_construct_function(f)
-        def f():
-            retval = f'{self.name}.optimise_value('
-            retval += parameters.format_as_kwargs()
-            if match is not None:
-                retval =  ',match='+tools.dict_to_kwargs(match)
-            return retval + ')'
-        self.add_format_input_function(f)
+    # def optimise_value(
+            # self,
+            # match=None,
+            # **parameter_keys_vals
+    # ):
+        # parameters = self.add_parameter_set(**parameter_keys_vals)
+        # cache = {'first':True,}
+        # def f():
+            # i = (None if match is None else self.match(**match))
+            # ## set data
+            # for key,p in parameters.items():
+                # if i is None:
+                    # ## all values
+                    # if cache['first'] or self[key] != p.value:
+                        # self.set(key,p.value,p.uncertainty)
+                # else:
+                    # ## some indexed values
+                    # if cache['first'] or np.any(self[key][i] != p.value):
+                        # value,uncertainty = self.get_value(key),self._get_uncertainty(key)
+                        # value[i] = p.value
+                        # uncertainty[i] = p.uncertainty
+                        # self.set(key,value,uncertainty)
+            # cache['first'] = False 
+        # self.add_construct_function(f)
+        # def f():
+            # retval = f'{self.name}.optimise_value('
+            # retval += parameters.format_as_kwargs()
+            # if match is not None:
+                # retval =  ',match='+tools.dict_to_kwargs(match)
+            # return retval + ')'
+        # self.add_format_input_function(f)
 
     # def optimise_scale(
             # self,
