@@ -616,6 +616,7 @@ class ReactionNetwork:
             16:'R = Reverse Ion-Neutral Termolecular and Thermal Decomposition Reactions',
             17:'EV = Condensation/Evaporation Reactions',
             18:'DP = Unknown, not in Reaction-Guide.txt',
+            44:'ID = Alan Heays test',
             66:'BA = Unknown, not in Reaction-Guide.txt',
             67:'GO = Unknown, not in Reaction-Guide.txt',
             88:'TR = Unknown, not in Reaction-Guide.txt',
@@ -700,6 +701,9 @@ class ReactionNetwork:
                             'type':line['type'],
                             'reaction_number':line['reaction_number'],
                         }))
+                ## skip 
+                elif line['type'] in (44,):
+                    pass
                 else:
                     raise Exception( 'unspecified line type',line['type'])
             ## verify
