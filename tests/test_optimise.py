@@ -1,151 +1,123 @@
 import time
 
 from matplotlib import pyplot as plt
+import numpy as np
 
 from spectr import optimise
 from spectr.optimise import Optimiser,P,auto_construct_method
 from spectr import tools
+from spectr.dataset import Dataset
 
 show_plots =False
 
-# def test_PD_instantiate():
-    # t = optimise.PD()
-    # t = optimise.PD(x=(5,True,1e-2))
-    # assert t['x'] == 5
-    # assert t['x'].value == 5
-    # assert t['x'].vary == True
-    # assert t['x'].step == 1e-2
-
-# def test_ParameterSet_set_get():
-    # t = optimise.ParameterSet()
-    # t['x'] = 5
-    # assert t['x'] == 5
-    # assert t['x'] != 4
-    # t = optimise.ParameterSet()
-    # t['x'] = 5,False,1e-3
-    # x = t['x']
-    # assert x.value == 5
-    # assert x.vary == False 
-    # assert x.step == 1e-3
-    # t = optimise.ParameterSet()
-    # t['x'] = 5
-    # x = t['x']
-    # assert x == 5
-    # t = optimise.ParameterSet()
-    # t['x'] = (5,False,1e-3)
-    # x = t['x']
-    # assert x.value == 5
-    # assert x.vary == False 
-    # assert x.step == 1e-3
-    # t = optimise.ParameterSet(x=5,y=0.1)
-    # x = t['x']
-    # assert x == 5
-    # assert t['y'] == 0.1
-    # t['x'] = 6
-    # assert x.value == 6
-    # assert x.vary == None
-    # assert x.step == 0.0005
-
-# def test_PD_set_print():
-    # t = optimise.PD(x=(5,False,1e-3),y=(0.1,True,1e-10))
-    # print( str(t))
-    # print( repr(t))
-    # assert repr(t)== 'x=(5,False,0.001,nan),y=(0.1,True,1e-10,nan)'
-
-# def test_ParameterSet_set_save():
-    # t = optimise.ParameterSet(x=(5,False,1e-3,'description'),y=(0.1,True,1e-10))
-    # t.save('tmp/parameters.psv')
-
-# def test_timestamps():
-    # t0 = time.time()
-    # t = optimise.PD(x=1)
-    # assert t['x'].timestamp == t.timestamp
-
-def test_instantiate_optimiser():
-    t = optimise.Optimiser()
-
-def test_optimiser_add_parameter():
-    t = optimise.Optimiser()
-    p = t.add_parameter(0.1,True,1e-5)
-    assert len(t.parameters)==1
-    p = t.add_parameter(0.1,True,1e-5)
-    assert len(t.parameters)==2
-
-# def test_optimiser_add_parameter_dict():
+# def test_instantiate_optimiser():
     # t = optimise.Optimiser()
-    # p = t.add_parameter_dict(x=1,y=(0.1,True,1e-5))
-    # assert len(t.parameters)==2
-    # assert t.parameters[0] is p['x']
-    # t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
+
+# def test_P():
+    # x = P(25)
+    # assert x.value == 25
+    # x = P(25,True,1e-3)
+    # assert x.value == 25
+    # assert x.vary == True
+    # assert x.step == 1e-3
+    # assert x*5 == 125
+
+# def test_optimiser_add_parameter():
+    # t = optimise.Optimiser()
+    # p = t.add_parameter(0.1,True,1e-5)
+    # assert len(t.parameters)==1
+    # p = t.add_parameter(0.1,True,1e-5)
     # assert len(t.parameters)==2
 
-# def test_optimiser_get_print_parameter_dataset():
-    # t = optimise.Optimiser()
-    # t.add_parameter(x=1)
-    # t.add_parameter(y=(0.1,True,1e-5))
-    # d = t.get_parameter_dataset()
-    # print(d)
+# def test_optimiser_named_parameter():
+    # t = optimise.Optimiser(x=1)
+    # assert len(t.parameters)==1
+    # assert t['x'] == 1
+    # t = optimise.Optimiser(x=1, y=P(25,True), z=(1,False,1e-3),)
+    # assert len(t.parameters)==3
+    # assert t['x'] == 1
+    # assert t['y'] == 25
+    # assert t['z'] == 1
 
-# def test_suboptimisers_get_parameters():
-    # t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
-    # u = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
-    # t.add_suboptimiser(u)
-    # assert len(u.get_parameters()) == 2
-    # assert len(t.get_parameters()) == 4
-    # u = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
-    # t = optimise.Optimiser('t',u,x=1,y=(0.1,True,1e-5))
-    # assert len(t._suboptimisers) == 1
-    # assert len(t.get_parameters()) == 4
+# # def test_optimiser_get_print_parameter_dataset():
+    # # t = optimise.Optimiser()
+    # # t.add_parameter(x=1)
+    # # t.add_parameter(y=(0.1,True,1e-5))
+    # # d = t.get_parameter_dataset()
+    # # print(d)
 
-# def test_get_all_suboptimisers():
-    # t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
-    # u = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
-    # v = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
-    # t.add_suboptimiser(u)
-    # u.add_suboptimiser(v)
-    # assert len(t._suboptimisers) == 1
-    # assert len(t._get_all_suboptimisers()) == 3
-    # assert len(t.get_parameters()) == 6
-    # t.add_suboptimiser(v)
-    # assert len(t._get_all_suboptimisers()) == 3
-    # assert len(t.get_parameters()) == 6
+def test_suboptimisers_get_parameters():
+    t = optimise.Optimiser()
+    t.add_parameter(1,True,)
+    t.add_parameter(0.1,True,1e-5)
+    u = optimise.Optimiser()
+    u.add_parameter(1,True )
+    u.add_parameter(0.1,True,1e-5)
+    t.add_suboptimiser(u)
+    assert u._get_parameters()[0] == [1.0,0.1]
+    assert u._get_parameters()[1] == [1e-4,1e-5]
+    assert t._get_parameters()[0] == [1.0,0.1,1.0,0.1]
+    assert t._get_parameters()[1] == [1e-4,1e-5,1e-4,1e-5,]
+    u = optimise.Optimiser()
+    u.add_parameter(1,True )
+    u.add_parameter(0.1,True,1e-5)
+    t = optimise.Optimiser('t',u)
+    t.add_parameter(1,True )
+    t.add_parameter(0.1,True,1e-5)
+    assert len(t._suboptimisers) == 1
+    assert len(t._get_parameters()[0]) == 4
 
-# def test_optimiser_construct():
-    # t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
-    # t.add_construct_function(lambda: [1,2,3])
-    # assert len(t._construct_functions) == 1
-    # assert list(t.construct()) == [1,2,3]
-    # t = optimise.Optimiser()
-    # x = t.add_parameter(0.1,False,1e-5)
-    # t.add_construct_function(lambda: x-1)
-    # assert list(t.construct()) == [-0.9]
-    # x.value = 0.2
-    # assert x.value == 0.2
-    # assert list(t.construct()) == [-0.8]
+def test_get_all_suboptimisers():
+    t = optimise.Optimiser()
+    t.add_parameter(1)
+    u = optimise.Optimiser()
+    u.add_parameter(1)
+    v = optimise.Optimiser()
+    v.add_parameter(1)
+    t.add_suboptimiser(u)
+    u.add_suboptimiser(v)
+    assert len(t._suboptimisers) == 1
+    assert len(t._get_all_suboptimisers()) == 3
+    assert len(t._get_parameters()[0]) == 0
+    t.add_suboptimiser(v)
+    assert len(t._get_all_suboptimisers()) == 3
+    assert len(t._get_parameters()[0]) == 0
 
-# def test_optimiser_has_changed():
-    # t = optimise.Optimiser()
-    # pt = t.add_parameter_dict(x=1,y=(0.1,True,1e-5))
-    # assert t.has_changed()
-    # t.construct()
-    # assert not t.has_changed()
-    # t = optimise.Optimiser()
-    # pt = t.add_parameter_dict(x=1,y=(0.1,True,1e-5))
-    # u = optimise.Optimiser()
-    # pu = u.add_parameter_dict(z=1,w=(0.1,True,1e-5))
-    # t.add_suboptimiser(u)
-    # assert t.has_changed()
-    # assert u.has_changed()
-    # t.construct()
-    # assert not t.has_changed()
-    # assert not u.has_changed()
-    # pu['z'] = 5
-    # assert t.has_changed()
-    # assert u.has_changed()
-    # t.construct()
-    # pt['x'] = 2.5
-    # assert t.has_changed()
-    # assert not u.has_changed()
+def test_optimiser_construct():
+    t = optimise.Optimiser()
+    t.add_parameter(1)
+    t.add_parameter(0.1,True,1e-5)
+    t.add_construct_function(lambda: [1,2,3])
+    assert len(t._construct_functions) == 1
+    assert list(t.construct()) == [1,2,3]
+    t = optimise.Optimiser()
+    x = t.add_parameter(0.1,False,1e-5)
+    t.add_construct_function(lambda: x-1)
+    assert list(t.construct()) == [-0.9]
+    x.value = 0.2
+    assert x.value == 0.2
+    assert list(t.construct()) == [-0.8]
+
+def test_optimiser_has_changed():
+    t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
+    assert t.has_changed()
+    t.construct()
+    assert not t.has_changed()
+    t = optimise.Optimiser(x=1,y=(0.1,True,1e-5))
+    u = optimise.Optimiser(z=1,w=(0.1,True,1e-5))
+    t.add_suboptimiser(u)
+    assert t.has_changed()
+    assert u.has_changed()
+    t.construct()
+    assert not t.has_changed()
+    assert not u.has_changed()
+    u['z'] = 5
+    assert t.has_changed()
+    assert u.has_changed()
+    t.construct()
+    t['x'] = 2.5
+    assert t.has_changed()
+    assert not u.has_changed()
 
 def test_optimise():
     t = optimise.Optimiser()
@@ -232,3 +204,18 @@ def test_plot():
     # u.add_construct_function(lambda: tools.randn(30)*3)
     # t.optimise()
     # t.save_to_directory('tmp/test_save_to_directory')
+
+def test_add_dataset():
+    d = Dataset(x=[1,2,3],v_x=[True,True,False,],d_x=np.nan,s_x=1e-3)
+    o = Optimiser()
+    o.add_dataset(d)
+    assert len(o.datasets) == 1
+    p,s,dp = o._get_parameters()
+    assert p == [1,2]
+    assert s == [1e-3,1e-3]
+    assert np.isnan(dp[0]) and np.isnan(dp[1])
+    o._set_parameters([4,5])
+    assert all(d['x'] == [4,5,3])
+    o._set_parameters([4,5],[1,2])
+    assert all(d['d_x'][:2] == [1,2])
+    assert np.isnan(d['d_x'][2])
