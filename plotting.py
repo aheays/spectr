@@ -1263,6 +1263,7 @@ def legend(
         color_text= True,     # color the label text
         show_style=False,      # hide the markers
         in_layout=False,       # constraining tight_layout or not
+        allow_multiple_axes=False,
         **legend_kwargs,        # passed to legend
 ):
     """Make a legend and add to axis. Operates completely outside the
@@ -1337,7 +1338,8 @@ def legend(
                 color = handle.get_color()
             text.set_color(color)
     ## add to axis
-    # ax.add_artist(leg)
+    if allow_multiple_axes:
+        ax.add_artist(leg) 
     return leg
 
 legend_from_kwargs = legend
