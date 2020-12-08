@@ -61,12 +61,14 @@ class AutoDict:
 ## decorators / decorator factories / function tools ##
 #######################################################
 
-def vectorise(vargs=None,dtype=None):
+def vectorise(vargs=None,dtype=None,cache=False):
     """Vectorise a scalar-argument scalar-return value function.  If all
     arguments are scalar return a scalar result. If args is None
     vectorise all arguments. If a list of indices vectorise only those
     arguments."""
     def actual_decorator(function):
+        if cache:
+            function = functools.lru_cache(function)
         def vectorised_function(*args):
             args = list(args)
             ## get list of arg indices that should be vectorised
@@ -77,16 +79,16 @@ def vectorise(vargs=None,dtype=None):
             ## check for scalar args and consistent length for vector
             ## args
             length = None
-            vector_args = [] 
+            vector_args = []
             for i in copy(vector_arg_indices):
-                if np.isscalar(args[i]):
-                    vector_arg_indices.remove(i)
-                else:
+                if isiterable(args[i]):
                     vector_args.append(args[i])
                     if length is None:
                         length = len(args[i])
                     else:
                         assert len(args[i])==length,'Nonconstant length of vector arguments.'
+                else:
+                    vector_arg_indices.remove(i)
             if length is None:
                 ## all scalar, do scalar calc
                 return function(*args)
@@ -105,56 +107,6 @@ def vectorise(vargs=None,dtype=None):
                     else:
                         retval[i] = iretval
             return retval
-        return vectorised_function
-    return actual_decorator
-
-def vectorise_function(function):
-    """Vectorise a scalar-argument scalar-return values function.  If all
-    arguments are scalar return a scalar result."""
-    def vectorised_function(*args):
-        ## check if scalar
-        length = None
-        for arg in args:
-            if not np.isscalar(arg):
-                if length is None:
-                    length = len(arg)
-                else:
-                    assert len(arg)==length,'Nonconstant length of vector arguments.'
-        if length is None:
-            ## all scalar, do scalar calc
-            return function(*args)
-        else:
-            return np.array([
-                function(*[arg if np.isscalar(arg) else arg[i]
-                           for arg in args])
-                for i in range(length)])
-    return vectorised_function
-
-def vectorise_function_in_chunks(dtype=float):
-    """Decorator for looking for groups of common arguments and calculate
-    them only once in a vectorised version of the original function
-    which accepts scalar arguments. If all arguments are scalar return
-    a scalar result. Otherwise return an array of dtype"""
-    ##  Need the inner function so the decorator can have arguments
-    def actual_decorator(function):
-        def vectorised_function(*args):
-            ## check if scalar
-            length = None
-            for arg in args:
-                if not np.isscalar(arg):
-                    assert length is None or len(arg)==length,'Nonconstant lengths.'
-                    length = len(arg)
-                    break
-                else:
-                    ## all scalar, do scalar calc
-                    return function(*args)
-            ## vectorise
-            args = [np.asarray(arg) if np.iterable(arg) else np.full(length,arg) for arg in args]
-            retval = np.empty(len(args[0]),dtype=dtype)
-            for argsi in unique_combinations(*args):
-                i = np.all([args[j]==argsi[j] for j in range(len(args))],axis=0)
-                retval[i] = function(*argsi)
-            return(retval)
         return vectorised_function
     return actual_decorator
 
