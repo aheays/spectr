@@ -223,7 +223,7 @@ class Dataset(optimise.Optimiser):
         original_length = len(self)
         for data in self._data.values():
             data['value'] = data['value'][:original_length][index]
-            self._length = len(data)
+            self._length = len(data['value'])
 
     def copy(self,keys=None,index=None):
         """Get a copy of self with possible restriction to indices and
@@ -266,9 +266,9 @@ class Dataset(optimise.Optimiser):
         or equal to this value"""
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
-            if len(key)>4 and key[-4:] == '_min':
+            if len(key) > 4 and key[-4:] == '_min':
                 i &= (self[key[:-4]] >= val)
-            elif len(key)>4 and key[-4:] == '_max':
+            elif len(key) > 4 and key[-4:] == '_max':
                 i &= (self[key[:-4]] <= val)
             elif np.ndim(val)==0:
                 if val is np.nan:
@@ -351,9 +351,6 @@ class Dataset(optimise.Optimiser):
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted)) # copy of already_attempted so it will not feed back here
                 ## compute value if dependencies successfully inferred
-                for dependency in dependencies: #  DEBUG
-                    print('DEBUG:', dependencies)
-                    print('DEBUG:', self[dependency])
                 self[key] = function(self,*[self[dependency] for dependency in dependencies])
                 ## compute uncertainties by linearisation
                 squared_contribution = []
