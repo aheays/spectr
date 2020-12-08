@@ -49,6 +49,17 @@ def test_vectorise():
     retval = f([1,3],[2,4])
     assert isinstance(retval,np.ndarray)
     assert all(retval == [3,7])
+    @tools.vectorise(cache=True)
+    def f(x,y):
+        return x+y
+    retval = f([1,3,1],[2,4,2])
+    assert retval == [3,7,3]
+    @tools.vectorise(cache=True)
+    def f(x,y):
+        return x+y
+    t = np.full(1000,100)
+    retval = f([1,3,1],[2,4,2])
+    assert retval == [3,7,3]
 
 # def test_vectorise_function_in_chunks():
     # @tools.vectorise_function_in_chunks(float)
