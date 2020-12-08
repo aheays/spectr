@@ -24,7 +24,9 @@ prototypes = {}
 
 ## copy some direct from levels
 for key in (
-        'species', 'mass','reduced_mass','partition_source','partition',
+        'species',
+        'mass','reduced_mass',
+        'partition_source','partition',
         'ΓD',
 ):
     prototypes[key] = copy(levels.prototypes[key])
@@ -58,8 +60,6 @@ prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross
     ('f','α_l'):lambda self,f,α_l: f/1.1296e12*α_l,
     ('S','ν','Teq'):lambda self,S,ν,Teq,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Teq)),})
 # prototypes['σ'] =dict(description="Integrated cross section (cm2.cm-1).", kind='f',  fmt='<10.5e', infer={('τ','column_densitypp'):lambda self,τ,column_densitypp: τ/column_densitypp, ('f','populationpp'):lambda self,f,populationpp: f/1.1296e12*populationpp,})
-
-
 def _f0(self,S296K,species,partition,E_l,Tex,ν):
     """See Eq. 9 of simeckova2006"""
     partition_296K = hitran.get_partition_function(species,296)
@@ -67,41 +67,30 @@ def _f0(self,S296K,species,partition,E_l,Tex,ν):
     return (S296K
             *((np.exp(-E_l/(c*Tex))/partition)*(1-np.exp(-c*ν/Tex)))
             /((np.exp(-E_l/(c*296))/partition_296K)*(1-np.exp(-c*ν/296))))
-prototypes['S'] = dict(description="Spectral line intensity (cm or cm-1/(molecular.cm-2) ", kind='f', fmt='<10.5e', infer={
-    ('S296K','species','partition','E_l','Tex','ν'):_f0,})
+prototypes['S'] = dict(description="Spectral line intensity (cm or cm-1/(molecular.cm-2) ", kind='f', fmt='<10.5e', infer={('S296K','species','partition','E_l','Tex_l','ν'):_f0,})
 prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ( cm-1/(molecular.cm-2) ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.", kind='f', fmt='<10.5e', infer={})
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
 ## former considers the effect of stimulated emission.
-prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission (cm-1)", kind='f', fmt='<10.5e', infer={
-    ('S','Nself_l'):lambda self,S,Nself_l: S*Nself_l,
-},)
-prototypes['τa'] = dict(description="Integrated optical depth from absorption only (cm-1)", kind='f', fmt='<10.5e', infer={
-    ('σ','Nself_l'):lambda self,σ,Nself_l: σ*Nself_l,
-},)
+prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission (cm-1)", kind='f', fmt='<10.5e', infer={('S','Nself_l'):lambda self,S,Nself_l: S*Nself_l,},)
+prototypes['τa'] = dict(description="Integrated optical depth from absorption only (cm-1)", kind='f', fmt='<10.5e', infer={('σ','Nself_l'):lambda self,σ,Nself_l: σ*Nself_l,},)
 prototypes['Ae'] = dict(description="Radiative decay rate (s-1)", kind='f', fmt='<10.5g', infer={
     ('f','ν','g_u','g_l'):lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2),
     ('At','Ad'): lambda self,At,Ad: At-Ad,})
 prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer={})
-prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer={
-    'Teq':lambda self,Tex:Teq,
-})
-prototypes['Ttr'] = dict(description="Translational temperature (K)", kind='f', fmt='0.2f', infer={
-    'Tex':lambda self,Tex:Tex,})
-prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer={
-    ('Jp','Jpp'):lambda self,Jp,Jpp: Jp-Jpp,},)
+prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer={'Teq':lambda self,Tex:Teq,})
+prototypes['Ttr'] = dict(description="Translational temperature (K)", kind='f', fmt='0.2f', infer={'Teq':lambda self,Teq:Teq,})
+prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer={('Jp','Jpp'):lambda self,Jp,Jpp: Jp-Jpp,},)
 prototypes['L'] = dict(description="Optical path length (m)", kind='f', fmt='0.5f', infer={})
-prototypes['γair'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda self,x:abs(x), fmt='<10.5g', infer={},)
-prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda self,x:abs(x), fmt='<10.5g', infer={},)
-prototypes['nair'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda self,x:abs(x), fmt='<10.5g', infer={},)
-prototypes['γself'] = dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind='f', cast=lambda self,x:abs(x), fmt='<10.5g', infer={},)
+prototypes['γair'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer={},)
+prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer={},)
+prototypes['nair'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer={},)
+prototypes['γself'] = dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer={},)
 prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f', infer={})
 prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f', infer={})
-prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer={
-    ('Pself','L','Teq'): lambda self,Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,})
+prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer={('Pself','L','Teq'): lambda self,Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,})
 
-
-## vibratiobanl transition frequencies
+## vibrational transition frequencies
 prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber (cm-1)", kined=float, fmt='>11.4f', infer={('Tvp','Tvpp'): lambda self,Tvp,Tvpp: Tvp-Tvpp, ('λv',): lambda self,λv: convert_units(λv,'nm','cm-1'),})
 prototypes['λv'] = dict(description="Electronic-vibrational transition wavelength (nm)", kind='f', fmt='>11.4f', infer={('νv',): lambda self,νv: convert_units(νv,'cm-1','nm'),},)
 
@@ -166,9 +155,11 @@ prototypes['Γ']['infer']['Γ_u','Γ_l'] = lambda self,Γu,Γl: Γu+Γl
 prototypes['Γ_l']['infer']['Γ','Γ_u'] = lambda self,Γ,Γu: Γ-Γu
 prototypes['Γ_u']['infer']['Γ','Γ_l'] = lambda self,Γ,Γl: Γ-Γl
 prototypes['J_u']['infer']['J_l','ΔJ'] = lambda self,J_l,ΔJ: J_l+ΔJ
-prototypes['Tex']['infer']['Teq'] = lambda self,Teq: Teq
-prototypes['Teq_u']['infer']['Teq'] = lambda self,Teq: Teq
-prototypes['Teq_l']['infer']['Teq'] = lambda self,Teq: Teq
+# prototypes['Teq_u']['infer']['Teq'] = lambda self,Teq: Teq
+# prototypes['Teq_l']['infer']['Teq'] = lambda self,Teq: Teq
+prototypes['partition_source_l']['infer']['partition_source'] = lambda self,x: x
+prototypes['partition_source_u']['infer']['partition_source'] = lambda self,x: x
+prototypes['Tex_u']['infer']['Teq'] = lambda self,Teq: Teq
 prototypes['Nself_u']['infer']['Nself'] = lambda self,Nself: Nself
 prototypes['Nself_l']['infer']['Nself'] = lambda self,Nself: Nself
 prototypes['species_l']['infer']['species'] = lambda self,species: species
@@ -204,7 +195,14 @@ def _expand_level_keys_to_upper_lower(levels_class):
 class GenericLine(levels.Base):
     _levels_class = levels.GenericLevel
     _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
-                         + ['species','ν','Γ','ΓD','f','σ',])
+                         + ['species', 'mass',
+                            'ν',#'λ',
+                            'f','σ','S','S296K',
+                            'γair','δair','nair','γself',
+                            'Pself', 'Pair', 'Nself',
+                            'Teq','Ttr','partition','partition_source',
+                            'Γ','ΓD',
+                            ])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
     def __init__(self,*args,**kwargs):
@@ -352,8 +350,6 @@ class GenericLine(levels.Base):
             ## get a default frequency scale if none provided
             if x is None:
                 x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
-            elif np.isscalar(x):
-                x = np.arange(max(0,self[xkey].min()-10.),self[xkey].max()+10.,x)
             else:
                 x = np.asarray(x)
             ## get spectrum type according to width specified
@@ -511,11 +507,10 @@ class GenericLine(levels.Base):
             'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
         })
         ## get species
-        species,isotopologue = hitran.translate_codes_to_species_isotopologue(data['Mol'],data['Iso'])
-        new['species'],new['isotopologue'] = species,isotopologue
+        i = hitran.molparam.find(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
+        new['species'] =  hitran.molparam['isotopologue'][i]
         ## remove natural abundance weighting
-        for d,i in new.unique_dicts_match('isotopologue'):
-            new['S296K'][i] /=  hitran.molparam.get_unique_value('natural_abundance',**d)
+        new['S296K'] /=  hitran.molparam['natural_abundance'][i]
         ## ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
         ## ## standin for diatomics
         ## kw['v'+'_u'] = data['V_u']
@@ -528,9 +523,7 @@ class GenericLine(levels.Base):
         ##     J_l.append(Jli)
         ## kw['ΔJ'] = np.array(ΔJ,dtype=int)
         ## kw['J'+'_l'] = np.array(J_l,dtype=float)
-        self.concatenate(new)
-
-
+        self.extend(**new)
 
     def generate_from_levels(self,lu,ll):
         for key in lu:
@@ -637,3 +630,4 @@ class HomonuclearDiatomicRotationalLine(HeteronuclearDiatomicRotationalLine):
     # prototypes = {key:copy(prototypes[key]) for key in (
         # list(Base.prototypes)
         # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
+

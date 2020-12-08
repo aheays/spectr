@@ -8,9 +8,11 @@ import numpy as np
 
 from .dataset import Dataset
 from .conversions import convert
+from .tools import vectorise
 from . import tools
 from . import database
-from .exceptions import InferException
+from . import kinetics
+from .exceptions import InferException,MissingDataException
 # from .levels_prototypes import prototypes
 
 
@@ -23,7 +25,22 @@ prototypes['author'] = dict(description="Author of data or printed file" ,kind='
 prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer={})
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer={})
 prototypes['species'] = dict(description="Chemical species" ,kind='U' ,infer={})
-prototypes['mass'] = dict(description="Mass (amu)",kind='f', fmt='<11.4f', infer={('species',): lambda self,species: database.get_mass(species),})
+# prototypes['mass'] = dict(description="Mass (amu)",kind='f', fmt='<11.4f', infer={('species',): lambda self,species: database.get_species_property(species,'mass'),})
+
+@vectorise(vargs=(1,),cache=True)
+def _f0(self,species):
+    return kinetics.get_species(species)['mass']
+@vectorise(vargs=(1,),cache=True)
+def _f1(self,species):
+    try:
+        return database.get_species_property(species,'mass')
+    except MissingDataException as err:
+        raise InferException(str(err))
+prototypes['mass'] = dict(description="Mass (amu)",kind='f', fmt='<11.4f',
+                          infer={
+                              ('species',): _f0,
+                              # ('species',): _f1,
+                          })
 prototypes['reduced_mass'] = dict(description="Reduced mass (amu)", kind='f', fmt='<11.4f', infer={('species','database',): lambda self,species: _get_species_property(species,'reduced_mass')})
 prototypes['E'] = dict(description="Level energy (cm-1)" ,kind='f' ,fmt='<14.7f' ,infer={})
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer={})
@@ -36,8 +53,7 @@ def _f0(self,J):
         return 2*J+1
     else:
         raise InferException('Only valid for classname=HeteronuclearDiatomicRotationalLevel')
-@tools.vectorise_function
-@functools.lru_cache
+@vectorise(cache=True,vargs=(1,2,3))
 def _f1(self,J,Inuclear,sa):
     """Calculate homonuclear diatomic molecule level degeneracy."""
     if self.__class__ is HomonuclearDiatomicRotationalLevel:
@@ -74,11 +90,11 @@ prototypes['Eref'] = dict(description="Reference point of energy scale relative 
 prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer={})
 prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer={'Teq':lambda self,Teq:Teq})
 prototypes['partition_source'] = dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind='U', infer={('database',): lambda self,: 'database',})
-@tools.vectorise_function_in_chunks()
+@vectorise(cache=True,vargs=(1,2,3))
 def _f5(self,partition_source,species,Tex):
-    from . import hitran
-    if partition_source!='HITRAN':
+    if np.any(partition_source != 'HITRAN'):
         raise InferException(f'Partition source not "HITRAN".')
+    from . import hitran
     return hitran.get_partition_function(species,Tex)
 prototypes['partition'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer={('partition_source','species','Tex'):_f5,})
 prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer={('partition','E','g','Tex'): lambda self,partition,E,g,Tex : g*np.exp(-E/(convert(constants.Boltzmann,'J','cm-1')*Tex))/partition,})
@@ -88,7 +104,7 @@ prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=
 prototypes['Λ'] = dict(description="Total orbital angular momentum aligned with internuclear axis", kind='i',infer={})
 prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',infer={})
 prototypes['s'] = dict(description="s=1 for Σ- states and 0 for all other states", kind='i',infer={})
-@tools.vectorise_arguments
+@vectorise(cache=True,vargs=(1,2))
 def _f0(self,ef,J):
     """Calculate σv symmetry"""
     exponent = np.zeros(ef.shape,dtype=int)
@@ -100,7 +116,7 @@ def _f0(self,ef,J):
 prototypes['σv'] = dict(description="Symmetry with respect to σv reflection.", kind='i',infer={('ef','J'):_f0,})
 prototypes['gu'] = dict(description="Symmetry with respect to reflection through a plane perpendicular to the internuclear axis.", kind='i',infer={})
 prototypes['sa'] = dict(description="Symmetry with respect to nuclear exchange, s=symmetric, a=antisymmetric.", kind='i',infer={('σv','gu'):lambda self,σv,gu: σv*gu,})
-@tools.vectorise_arguments
+@vectorise(cache=True,vargs=(1,2,3))
 def _f0(self,S,Λ,s):
     """Calculate gu symmetry for 1Σ- and 1Σ+ states only."""
     if np.any(S!=0) or np.any(Λ!=0):
@@ -243,7 +259,13 @@ class Base(Dataset):
 
 class GenericLevel(Base):
     """A generic level."""
-    _init_keys = Base._init_keys + ['species','E','Eref','Γ','ΓD',]
+    _init_keys = Base._init_keys + [
+        'species',
+        'E','Eref',
+        'Γ','ΓD',
+        'g',
+        'partition_source','Tex','partition',
+    ]
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 class HeteronuclearDiatomicElectronicLevel(Base):
