@@ -10,13 +10,14 @@ import periodictable
 from .dataset import Dataset
 from . import tools
 from . import database
+from .exceptions import MissingDataException
 
 
 #############
 ## species ##
 #############
 
-@tools.vectorise_function
+@tools.vectorise()
 def decode_species(name,encoding):
     """Decode into standard name format from a foreign format."""
     if encoding == 'standard':
@@ -30,7 +31,7 @@ def decode_species(name,encoding):
         return _species_name_translation_functions[(encoding,'standard')](name)
     raise Exception(f"Could not decode {name=} from {encoding=}")
 
-@tools.vectorise_function
+@tools.vectorise()
 def encode_species(name,encoding):
     """Encode from standard name into a foreign format."""
     if encoding=='standard':
@@ -200,7 +201,10 @@ class Species:
         ## determine if name is for a species or an isotopologue
         if '[' in name or ']' in name:
             self.isotopologue = name
-            self.species = database.get_species_property(self.isotopologue,'iso_indep')
+            try:
+                self.species = database.get_species_property(self.isotopologue,'iso_indep')
+            except MissingDataException:
+                self.species = re.sub(r'\[[0-9]*([A-Z-az])\]',r'\1',name)
         else:
             self.species = name
             self.isotopologue = database.get_species_property(self.species,'iso_main')
@@ -241,13 +245,13 @@ class Species:
         if self._isotopes is not None:
             pass
         else:
-            self._isotopes = set()
-            for part in re.split(r'\[([0-9]+[A-Z][a-z]?[0-9]*)\]',self.isotopologue):
-                if r:= re.match('^([0-9]+[A-Z][a-z]?)([0-9]*)',part):
-                    isotope = r.group(1)
-                    multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
-                    for i in range(multiplicity):
-                        self._isotopes.append(isotope)
+            self._isotopes = []
+            for part in re.split(r'(\[[0-9]+[A-Z][a-z]?[0-9]*\][0-9]*)',self.isotopologue):
+                if r:= re.match('^\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
+                    mass_number,element,multiplicity = r.groups()
+                    for i in range(1 if multiplicity=='' else int(multiplicity)):
+                        self._isotopes.append((element,int(mass_number)))
+            self._isotopes.sort()
         return self._isotopes
 
     def _get_nelectrons(self):
@@ -259,6 +263,13 @@ class Species:
                 self._nelectrons += getattr(periodictable,element).number # add electrons attributable to each nucleus
             self._nelectrons -= self['charge'] # account for ionisation
         return self._nelectrons
+
+    def _get_mass(self):
+        if self._mass is None:
+            self._mass = 0.
+            for element,mass_number in self['isotopes']:
+                self._mass += getattr(periodictable,element)[mass_number].mass
+        return self._mass
 
     def __str__(self):
         if self.isotopologue is None:
@@ -289,6 +300,8 @@ class Species:
             return self._get_isotopes()
         elif key == 'nelectrons':
             return self._get_nelectrons()
+        elif key == 'mass':
+            return self._get_mass()
         else:
             if self.isotopologue is None:
                 raise NotImplementedError(f'Properties only implemented for isotopologues')
@@ -341,6 +354,7 @@ _reaction_coefficient_formulae = {
     'NIST_3rd_body_hack'     :lambda c,p: 1e19*c['A']*(p['Ttr']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['Ttr']),
     'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['Ttr'])*p['I'],c['λ']),
     'kooij'                  :lambda c,p: c['α']*(p['Ttr']/300.)**c['β']*np.exp(-c['γ']/p['Ttr']), # α[cm-3], T[K], β[], γ[K]
+    'impact_test_2020-12-07' :lambda c,p: p['Ttr']*0 ,
     # 'kooij'                  :lambda c,p: np.full(p['T'].shape,c['α'])
 } 
 
@@ -497,6 +511,7 @@ class ReactionNetwork:
             not_reactants=None,
             not_products=None,
             coefficients=None,
+            formula=None,
     ):
         """Return a list of reactions with this reactant."""
         retval = []
@@ -528,6 +543,10 @@ class ReactionNetwork:
                 if any([(key not in reaction.coefficients
                          or reaction.coefficients[key] != coefficients[key])
                         for key in coefficients]):
+                    continue
+            if formula is not None:
+                ## additional match by formula type
+                if reaction.formula != formula:
                     continue
             retval.append(reaction)
         return retval
@@ -569,7 +588,7 @@ class ReactionNetwork:
                     warnings.warn(f'Reaction appears {len(i)} times'+'\n    '+'\n    '.join([
                     repr(self.reactions[j]) for j in i]))
 
-    def load_STAND(self,filename):
+    def load_stand(self,filename):
         """Load encoded reactions and coefficients from a file."""
         def get_line():
             line = fid.readline()
@@ -703,7 +722,15 @@ class ReactionNetwork:
                         }))
                 ## skip 
                 elif line['type'] in (44,):
-                    pass
+                    self.append(Reaction(
+                        formula='impact_test_2020-12-07',
+                        reactants=line['reactants'],products=line['products'],
+                        coefficients={
+                            'surface_flux':line['α'],
+                            'total_column':line['β'],
+                            'reaction_number':line['reaction_number'],
+                            'reaction_number':line['reaction_number'],'type':line['type'],
+                        }))
                 else:
                     raise Exception( 'unspecified line type',line['type'])
             ## verify
