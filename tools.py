@@ -61,6 +61,53 @@ class AutoDict:
 ## decorators / decorator factories / function tools ##
 #######################################################
 
+def vectorise(vargs=None,dtype=None):
+    """Vectorise a scalar-argument scalar-return value function.  If all
+    arguments are scalar return a scalar result. If args is None
+    vectorise all arguments. If a list of indices vectorise only those
+    arguments."""
+    def actual_decorator(function):
+        def vectorised_function(*args):
+            args = list(args)
+            ## get list of arg indices that should be vectorised
+            if vargs is None:
+                vector_arg_indices = list(range(len(args)))
+            else:
+                vector_arg_indices = list(vargs)
+            ## check for scalar args and consistent length for vector
+            ## args
+            length = None
+            vector_args = [] 
+            for i in copy(vector_arg_indices):
+                if np.isscalar(args[i]):
+                    vector_arg_indices.remove(i)
+                else:
+                    vector_args.append(args[i])
+                    if length is None:
+                        length = len(args[i])
+                    else:
+                        assert len(args[i])==length,'Nonconstant length of vector arguments.'
+            if length is None:
+                ## all scalar, do scalar calc
+                return function(*args)
+            else:
+                ## compute for each vectorised arg combination
+                if dtype is None:
+                    retval = []
+                else:
+                    retval = np.empty(length,dtype=dtype)
+                for i in range(length):
+                    for j,k in enumerate(vector_arg_indices):
+                        args[k] = vector_args[j][i]
+                    iretval = function(*args)
+                    if dtype is None:
+                        retval.append(iretval)
+                    else:
+                        retval[i] = iretval
+            return retval
+        return vectorised_function
+    return actual_decorator
+
 def vectorise_function(function):
     """Vectorise a scalar-argument scalar-return values function.  If all
     arguments are scalar return a scalar result."""
@@ -431,15 +478,15 @@ def expand_path(path):
     import os
     return os.path.expanduser(path)
 
-# def tmpfile():
-    # """Create a secure named temporary file which will be
-    # automatically deleted. Object is returned."""
-    # return tempfile.NamedTemporaryFile()
+def tmpfile():
+    """Create a secure named temporary file which will be
+    automatically deleted. Object is returned."""
+    return tempfile.NamedTemporaryFile()
 
-# def tmpdir():
-    # """Create a temporary directory which will not be
-    # automatically deleted. Pathname is returned."""
-    # return tempfile.mkdtemp()
+def tmpdir():
+    """Create a temporary directory which will not be
+    automatically deleted. Pathname is returned."""
+    return tempfile.mkdtemp()
 
 # def cp(src,dest):
     # return(shutil.copy(expand_path(src),expand_path(dest)))
@@ -2322,7 +2369,6 @@ def unique_combinations(*args):
     args that are unique. Elements of args must be hashable."""
     return(set(zip(*args)))
 
-
 # def unique_array_combinations(*arrs,return_mask=False):
     # """All are iterables of the same length. Finds row-wise combinations of
     # args that are unique. Elements of args must be hashable."""
@@ -3810,7 +3856,7 @@ def txt_to_dict(
     last_line_in_first_block_of_commented_lines = None
     first_block_commented_lines_passed = False
     number_of_columns = None
-    for i,line  in enumerate(filename.readlines()):
+    for i,line in enumerate(filename.readlines()):
         if i<skiprows: continue
         line = line.strip()     # remove leading/trailing whitespace
         if ignore_blank_lines and len(line)==0: continue
