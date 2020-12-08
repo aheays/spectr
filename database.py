@@ -56,12 +56,12 @@ electronic_states = TinyDB(f'{data_directory}/electronic_states.json')
     # elif len(retval)>1:
         # raise Exception('Non-unique matches found for species and label: '+repr(species)+' '+repr(label))
 
-@tools.vectorise_function
+@tools.vectorise()
 def get_electronic_state_property(species,label,prop):
     """Get a quantum number defining a particular electronic state by label."""
     data = electronic_states.search((Query().species==species)&(Query().label==label))
     if len(data) == 0:
-        raise MissingDataExceptionsingDataException(f"Cannot get_electronic_state_property: {species=} {label=} {prop=}")
+        raise MissingDataException(f"Cannot get_electronic_state_property: {species=} {label=} {prop=}")
     if len(data) > 1:
         raise Exception(f"Multiple matches get_electronic_state_property: {species=} {label=} {prop=}")
     return data[0][prop]
@@ -80,11 +80,12 @@ def get_species_data(species):
                            # 'T0-Te':float,}
 
 # @cachetools.cached(cache=cachetools.LRUCache(1e3))
-@tools.vectorise_function
+@tools.vectorise()
 def get_species_property(species,prop):
     """Get a property fo this species using get_species_data. If an
     array of species then return an array of properties. Scalar output, cached."""
     d = get_species_data(species)
+    print('DEBUG:', 'fff')
     assert prop in d.dtype.names,f'Property {repr(prop)} of species {repr(species)} not known to database.'
     retval = d[prop][0]
     ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
