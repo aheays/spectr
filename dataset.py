@@ -136,7 +136,7 @@ class Dataset(optimise.Optimiser):
 
     def set_value(self,key,value,index=None):
         self._assert_value_key(key)
-        self.set('d_'+key,value,index)
+        self.set(key,value,index)
 
     def get_uncertainty(self,key,index=None):
         self._assert_value_key(key)
@@ -207,19 +207,15 @@ class Dataset(optimise.Optimiser):
             self._data[key]['inferred_to'].remove(inferred_to)
             self.unset(inferred_to)
 
-    def get_unique_value(self,key,**matching_keys_vals):
-        """Return value of key that is the uniquely matches
-        matching_keys_vals."""
-        i = tools.find(self.match(**matching_keys_vals))
-        assert len(i)==1,f'Non-unique matches for {matching_keys_vals=}'
-        return self.get_value(key,i)
-
-    def add_prototype(self,key,**kwargs):
-        self.prototypes[key] = dict(**kwargs)
+    def set_prototype(self,key,kind,**kwargs):
+        """Set prototype data."""
+        assert kind in self._kind_defaults,'Unknown kind: {kind=}'
+        self.prototypes[key] = dict(kind=kind,infer={},**kwargs)
+        for tkey,tval in self._kind_defaults[kind].items():
+            self.prototypes[key].setdefault(tkey,tval)
 
     def add_infer_function(self,key,dependencies,function):
-        if key not in self.prototypes:
-            self.add_prototype(key,infer={})
+        assert key in self.prototypes
         self.prototypes[key]['infer'][dependencies] = function
 
     def index(self,index):
@@ -240,6 +236,28 @@ class Dataset(optimise.Optimiser):
                 retval[key] = self[key]
             else:
                 retval[key] = deepcopy(self[key][index])
+        return retval
+
+    def find(self,**matching_keys_vals):
+        """Return an array of indices matching key_vals."""
+        length = 0
+        for val in matching_keys_vals.values():
+            if not np.isscalar(val):
+                if length == 0:
+                    length = len(val)
+                else:
+                    assert len(val) == length
+        retval = np.empty(length,dtype=int)
+        for j in range(length):
+            i = tools.find(
+                self.match(
+                    **{key:(val if np.isscalar(val) else val[j])
+                       for key,val in matching_keys_vals.items()}))
+            if len(i)==0:
+                raise Exception(f'No matching row found: {matching_keys_vals=}')
+            if len(i)>1:
+                raise Exception(f'Multiple matching rows found: {matching_keys_vals=}')
+            retval[j] = i
         return retval
 
     def match(self,**keys_vals):
@@ -303,6 +321,13 @@ class Dataset(optimise.Optimiser):
         if len(keys)==0: return((({},self),)) # nothing to do
         return [(d,self.matches(**d)) for d in self.unique_dicts(*keys)]
 
+    def get_unique_value(self,key,**matching_keys_vals):
+        """Return value of key that is the uniquely matches
+        matching_keys_vals."""
+        i = tools.find(self.match(**matching_keys_vals))
+        assert len(i)==1,f'Non-unique matches for {matching_keys_vals=}'
+        return self.get_value(key,i)
+
     def _infer(self,key,already_attempted=None):
         """Get data, or try and compute it."""
         if key in self:
@@ -326,6 +351,9 @@ class Dataset(optimise.Optimiser):
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted)) # copy of already_attempted so it will not feed back here
                 ## compute value if dependencies successfully inferred
+                for dependency in dependencies: #  DEBUG
+                    print('DEBUG:', dependencies)
+                    print('DEBUG:', self[dependency])
                 self[key] = function(self,*[self[dependency] for dependency in dependencies])
                 ## compute uncertainties by linearisation
                 squared_contribution = []
@@ -560,6 +588,15 @@ class Dataset(optimise.Optimiser):
                 setattr(self,key,val)
             else:
                 self[key] = val
+
+    def load_from_string(self,string,delimiter='|'):
+        """Load data from a string."""
+        ## Write a temporary file and then uses the regular file load
+        tmpfile = tools.tmpfile()
+        tmpfile.write(string.encode())
+        tmpfile.flush()
+        tmpfile.seek(0)
+        self.load(tmpfile.name,delimiter='|')
 
     def append(self,**kwargs):
         """Append a single row of data from kwarg scalar values."""
