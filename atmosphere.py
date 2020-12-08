@@ -29,6 +29,7 @@ class OneDimensionalAtmosphere(Dataset):
     prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind=float ,infer={'T':lambda self,T:T})
     prototypes['T'] = dict(description="Temperature (K)" ,kind=float ,infer={})
     prototypes['nt'] = dict(description="Total number density (cm-3)" ,kind=float ,infer={})
+    prototypes['Nt'] = dict(description="Total number column density (cm-2)" ,kind=float ,infer={('z','nt'):lambda self,z,nt: tools.cumtrapz(nt,z,reverse=True),})
     prototypes['p'] = dict(description="Pressure (bar)" ,kind=float ,infer={})
     prototypes['Kzz'] = dict(description="Turbulent diffusion constant (cm2.s-1)" ,kind=float ,infer={})
     prototypes['Hz'] = dict(description="Local scale height (cm1)" ,kind=float ,infer={})
@@ -64,20 +65,20 @@ class AtmosphericChemistry():
     def calc_rate_coefficients(self):
         return self.reaction_network.calc_rate_coefficients()
 
-    def load_ARGO(
+    def load_argo(
             self,
             model_directory,
             load_reaction_network= True, # filename to load filename, True to guess filename
             load_rate_coefficients= True,
             load_rates=False,
-            depth_iteration=None,     # # to load an old-depth-#.dat file -- None for the final result
+            iteration=None,     # # to load an old-depth-#.dat file -- None for the final result
            ):
 
         ## load depth.dat physical parameters and species volume density
-        if depth_iteration is None:
+        if iteration is None:
             depth_filename = f'{model_directory}/out/depth.dat'
         else:
-            depth_filename = f'{model_directory}/out/old-depth-{depth_iteration:d}.dat'
+            depth_filename = f'{model_directory}/out/old-depth-{iteration:d}.dat'
         data = tools.file_to_dict(depth_filename,skiprows=2,labels_commented=False)
         for key_from,key_to in (
                 ('p(bar)','p'),
@@ -101,7 +102,7 @@ class AtmosphericChemistry():
                 load_reaction_network = tools.glob_unique(f'{model_directory}/Stand*')
                 print(f'found: {load_reaction_network}')
             ## load STAND reaction network
-            self.reaction_network.load_STAND(load_reaction_network)
+            self.reaction_network.load_stand(load_reaction_network)
             self.reaction_network.remove_unnecessary_reactions()
     
         if load_rate_coefficients:
@@ -186,18 +187,24 @@ class AtmosphericChemistry():
             self,
             ykey,
             *xkeys,
-            ax=None):
+            ax=None,
+            plot_legend=True,
+            **plot_kwargs,
+    ):
         if ax is None:
             ax = plotting.gca()
-        for xkey in xkeys:
-            ax.plot(self[xkey],self[ykey],label=xkey)
+        for ixkey,xkey in enumerate(xkeys):
+            kw = {'color':plotting.newcolor(ixkey),}
+            kw.update(plot_kwargs)
+            ax.plot(self[xkey],self[ykey],label=xkey,**kw)
         if 'T' in xkeys:
             ax.set_xscale('linear')
         else:
             ax.set_xscale('log')
         ax.set_ylim(self[ykey].min(),self[ykey].max())
         ax.set_ylabel(ykey)
-        plotting.legend(ax=ax)
+        if plot_legend:
+            plotting.legend(ax=ax,allow_multiple_axes=True)
 
     def plot_density(self,xkeys=5,ykey='z(km)',ax=None):
         """Plot density of speices. If xkeys is an integer then plot that many
