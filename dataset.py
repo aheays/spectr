@@ -42,8 +42,6 @@ class Dataset(optimise.Optimiser):
             ## derived classes might set this in class definition, so
             ## do not overwrite here
             self.prototypes = {}
-        # self._inferences = AutoDict([])
-        # self._inferred_from = AutoDict([])
         self.permit_nonprototyped_data =  True
         self.permit_reference_breaking = True
         # self.permit_missing = True # add missing data if required
@@ -59,11 +57,20 @@ class Dataset(optimise.Optimiser):
 
     def set(self,key,value,index=None):
         """Set a value"""
+        self._modify_time = time.time()
         if index is None:
-            assert (self.permit_nonprototyped_data
-                    or key in self.prototypes
-                    or self._get_value_key_from_uncertainty(key) is not None # is an uncertainty
-                    ), f'New data is not in prototypes: {repr(key)}'
+            ## if its a parameter
+            if isinstance(value,optimise.P):
+                self.set('d_'+key,value.uncertainty)
+                self.set('s_'+key,value.step)
+                self.set('v_'+key,value.vary)
+                value = value.value
+            if not self.permit_nonprototyped_data and key not in self.prototypes:
+                if self._get_value_key_without_prefix(key) is not None:
+                    ## is an uncertainty, vary, stepsize or something
+                    pass
+                else:
+                    raise Exceptoin(f'New data is not in prototypes: {repr(key)}')
             ## delete inferences since data has changed
             if key in self:
                 self.unset_inferences(key)
@@ -77,10 +84,17 @@ class Dataset(optimise.Optimiser):
             if np.isscalar(value):
                 data['default'] = value
                 value = np.full(len(self),value)
-            ## uncertainty stuff
-            if (tkey:=self._get_value_key_from_uncertainty(key)) is not None:
-                data['kind'] = 'f'
-                data['description'] = f'Uncertainty of {tkey}'
+            ## this is an uncertainty of another key
+            if (tkey:=self._get_value_key_without_prefix(key)) is not None:
+                if tkey == 'd_':
+                    data['kind'] = 'f'
+                    data['description'] = f'Uncertainty of {tkey}'
+                elif tkey == 'v_':
+                    data['kind'] = 'b'
+                    data['description'] = f'Optimise {tkey}'
+                elif tkey == 's_':
+                    data['kind'] = 'f'
+                    data['description'] = f'Differentiation stepsize for {tkey}'
             ## infer kind
             if 'kind' not in data:
                 ## use data to infer kind
@@ -206,6 +220,9 @@ class Dataset(optimise.Optimiser):
             self._data[inferred_to]['inferred_from'].remove(key)
             self._data[key]['inferred_to'].remove(inferred_to)
             self.unset(inferred_to)
+
+    def is_inferred_from(self,key_to,key_from):
+        return key_from in self._data[key_to]['inferred_from']
 
     def set_prototype(self,key,kind,**kwargs):
         """Set prototype data."""
@@ -386,6 +403,13 @@ class Dataset(optimise.Optimiser):
         if len(key) > 2 and key[:2] == 'd_':
             return key[2:]
             assert self.permit_nonprototyped_data or key[2:] in self.prototypes,f'Uncertain key with non-prototyped value key: {key=}'
+        else:
+            return None
+
+    def _get_value_key_without_prefix(self,key):
+        """Get value key from uncertainty key, or return None."""
+        if len(key) > 2 and key[:2] in ('s_','d_','v_'):
+            return key[2:]
         else:
             return None
 

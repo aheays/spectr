@@ -2,6 +2,7 @@ import time
 
 from matplotlib import pyplot as plt
 import numpy as np
+from pytest import approx
 
 from spectr import optimise
 from spectr.optimise import Optimiser,P,auto_construct_method
@@ -195,21 +196,10 @@ def test_plot():
     if show_plots:
         plt.show()
 
-# def test_save_to_directory():
-    # t = optimise.Optimiser('t')
-    # u = optimise.Optimiser('u')
-    # t.add_suboptimiser(u)
-    # u.description = 'A description.'
-    # t.add_construct_function(lambda: tools.randn(30))
-    # u.add_construct_function(lambda: tools.randn(30)*3)
-    # t.optimise()
-    # t.save_to_directory('tmp/test_save_to_directory')
-
-def test_add_dataset():
-    d = Dataset(x=[1,2,3],v_x=[True,True,False,],d_x=np.nan,s_x=1e-3)
+def test_dataset_parameters():
     o = Optimiser()
-    o.add_dataset(d)
-    assert len(o.datasets) == 1
+    d = Dataset(x=[1.0,2.0,3.0],v_x=[True,True,False,],d_x=np.nan,s_x=1e-3)
+    o.add_suboptimiser(d)
     p,s,dp = o._get_parameters()
     assert p == [1,2]
     assert s == [1e-3,1e-3]
@@ -219,3 +209,20 @@ def test_add_dataset():
     o._set_parameters([4,5],[1,2])
     assert all(d['d_x'][:2] == [1,2])
     assert np.isnan(d['d_x'][2])
+    def _f():
+        return d['x']-np.array([2,3,4])
+    o.add_construct_function(_f)
+    o.optimise()
+    assert d['x'][0] == approx(2)
+    assert d['x'][1] == approx(3)
+    assert d['x'][2] == 3
+
+# def test_save_to_directory():
+    # t = optimise.Optimiser('t')
+    # u = optimise.Optimiser('u')
+    # t.add_suboptimiser(u)
+    # u.description = 'A description.'
+    # t.add_construct_function(lambda: tools.randn(30))
+    # u.add_construct_function(lambda: tools.randn(30)*3)
+    # t.optimise()
+    # t.save_to_directory('tmp/test_save_to_directory')
