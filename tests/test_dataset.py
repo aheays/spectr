@@ -77,7 +77,7 @@ def test_dataset_permit_nonprototyped_data():
     t.permit_nonprototyped_data = True
     t['x'] = [5]
     t.permit_nonprototyped_data = False
-    with raises(AssertionError):
+    with raises(Exception):
         t['y'] = [5]
 
 def test_dataset_index():

@@ -348,7 +348,6 @@ def nanrms(x):
     """Calculate rms, ignoring NaN data."""
     return np.sqrt(np.nanmean(np.array(x)**2))
 
-
 def randn(shape=None):
     """Return a unit standard deviation normally distributed random
     float, or array of given shape if provided."""

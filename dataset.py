@@ -58,19 +58,25 @@ class Dataset(optimise.Optimiser):
     def set(self,key,value,index=None):
         """Set a value"""
         self._modify_time = time.time()
+        ## if value is a parameter
+        if isinstance(value,optimise.P):
+            self.set('d_'+key,value.uncertainty,index)
+            self.set('s_'+key,value.step,index)
+            self.set('v_'+key,value.vary,index)
+            value = value.value
+        ## delete inferences since data has changed
+        if key in self:
+            self.unset_inferences(key)
+        ## set data differently depending on whether an index is
+        ## provided
         if index is None:
-            ## if its a parameter
-            if isinstance(value,optimise.P):
-                self.set('d_'+key,value.uncertainty)
-                self.set('s_'+key,value.step)
-                self.set('v_'+key,value.vary)
-                value = value.value
+            ## decide whether to permit if non-prototyped
             if not self.permit_nonprototyped_data and key not in self.prototypes:
                 if self._get_value_key_without_prefix(key) is not None:
                     ## is an uncertainty, vary, stepsize or something
                     pass
                 else:
-                    raise Exceptoin(f'New data is not in prototypes: {repr(key)}')
+                    raise Exception(f'New data is not in prototypes: {repr(key)}')
             ## new data
             data = dict()
             ## get any prototype data
@@ -132,9 +138,6 @@ class Dataset(optimise.Optimiser):
         else:
             assert key in self,f'Cannot set data with index for unknown {key=}'
             self._data[key]['value'][:self._length][index] = self._data[key]['cast'](value)
-        ## delete inferences since data has changed
-        if key in self:
-            self.unset_inferences(key)
 
     def get(self,key,index=None):
         if index is not None:
@@ -144,46 +147,45 @@ class Dataset(optimise.Optimiser):
         return self._data[key]['value'][:self._length]
 
     def get_value(self,key,index=None):
-        self._assert_value_key(key)
-        self._assert_value_key(key)
+        assert self.is_value_key(key),'Not a value key'
         return self.get(key,index)
 
     def set_value(self,key,value,index=None):
-        self._assert_value_key(key)
+        assert self.is_value_key(key),'Not a value key'
         self.set(key,value,index)
 
     def get_uncertainty(self,key,index=None):
-        self._assert_value_key(key)
+        assert self.is_value_key(key),'Not a value key'
         if 'd_'+key in self:
             return self.get('d_'+key,index)
         else:
             return None
 
     def set_uncertainty(self,key,value,index=None):
-        self._assert_value_key(key)
+        assert self.is_value_key(key),'Not a value key'
         self.set('d_'+key,value,index)
 
     def get_vary(self,key,index=None):
-        self._assert_value_key(key)
+        assert self.is_value_key(key),'Not a value key'
         if 'v_'+key in self:
             return self.get('v_'+key,index)
         else:
             return None
 
     def set_vary(self,key,value,index=None):
-        self._assert_value_key(key)
+        assert self.is_value_key(key),'Not a value key'
         self.set('v_'+key,value,index)
 
     def get_differentiation_step(self,key,index=None):
-        self._assert_value_key(key)
+        assert self.is_value_key(key),'Not a value key'
         if 's_'+key in self:
             return self.get('s_'+key,index)
         else:
             return None
 
     def set_differentiation_step(self,key,value,index=None):
-        self._assert_value_key(key)
-        self['s_'+key] = value
+        assert self.is_value_key(key),'Not a value key'
+        self.set('s_'+key,value,index)
 
     def __getitem__(self,arg):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
@@ -398,28 +400,27 @@ class Dataset(optimise.Optimiser):
         else:
             raise InferException(f"Could not infer key: {repr(key)}")
 
-    def _get_value_key_from_uncertainty(self,key):
-        """Get value key from uncertainty key, or return None."""
-        if len(key) > 2 and key[:2] == 'd_':
-            return key[2:]
-            assert self.permit_nonprototyped_data or key[2:] in self.prototypes,f'Uncertain key with non-prototyped value key: {key=}'
-        else:
-            return None
+    # def _get_value_key_from_uncertainty(self,key):
+        # """Get value key from uncertainty key, or return None."""
+        # if len(key) > 2 and key[:2] == 'd_':
+            # return key[2:]
+            # assert self.permit_nonprototyped_data or key[2:] in self.prototypes,f'Uncertain key with non-prototyped value key: {key=}'
+        # else:
+            # return None
 
     def _get_value_key_without_prefix(self,key):
         """Get value key from uncertainty key, or return None."""
-        if len(key) > 2 and key[:2] in ('s_','d_','v_'):
-            return key[2:]
+        if r:=re.match(r'^(s_|d_|v_)(.+)$',key):
+            return r.group(1)
         else:
             return None
 
-    def _assert_value_key(self,key):
-        if len(key)<3:
-            return True
-        elif key[:2] not in ('s_','d_','v_'):
+    def is_value_key(self,key):
+        value_key = self._get_value_key_without_prefix(key)
+        if value_key is None:
             return True
         else:
-            raise Exception(f'Not a value key: {key=}')
+            return False 
         
     def __iter__(self):
         for key in self._data:
@@ -451,8 +452,7 @@ class Dataset(optimise.Optimiser):
         return list(self._data.keys())
 
     def value_keys(self):
-        return [key for key in self._data.keys()
-                if len(key)<2 or key[:2] not in ['s_','v_','d_']]
+        return [key for key in self._data.keys() if self.is_value_key(key)]
     
     def optimised_keys(self):
         return [key for key in self._data.keys() if 'v_'+key in self]
@@ -789,61 +789,4 @@ class Dataset(optimise.Optimiser):
         if show:
             plotting.show()
         return(fig)
-
-    # def optimise_value(
-            # self,
-            # match=None,
-            # **parameter_keys_vals
-    # ):
-        # parameters = self.add_parameter_set(**parameter_keys_vals)
-        # cache = {'first':True,}
-        # def f():
-            # i = (None if match is None else self.match(**match))
-            # ## set data
-            # for key,p in parameters.items():
-                # if i is None:
-                    # ## all values
-                    # if cache['first'] or self[key] != p.value:
-                        # self.set(key,p.value,p.uncertainty)
-                # else:
-                    # ## some indexed values
-                    # if cache['first'] or np.any(self[key][i] != p.value):
-                        # value,uncertainty = self.get_value(key),self._get_uncertainty(key)
-                        # value[i] = p.value
-                        # uncertainty[i] = p.uncertainty
-                        # self.set(key,value,uncertainty)
-            # cache['first'] = False 
-        # self.add_construct_function(f)
-        # def f():
-            # retval = f'{self.name}.optimise_value('
-            # retval += parameters.format_as_kwargs()
-            # if match is not None:
-                # retval =  ',match='+tools.dict_to_kwargs(match)
-            # return retval + ')'
-        # self.add_format_input_function(f)
-
-    # def optimise_scale(
-            # self,
-            # key,                # to scale
-            # scale=1,              # optimisable parameter
-            # reset=False, # if True then reset to scale original value every iteration, otherwise scaling may be cumulative
-            # match=None,
-    # ):
-        # """Scale (or optimise) values of key."""
-        # p = self.add_parameter('scale_value', ensure_iterable(scale),)
-        # cache = {}
-        # def f():
-            # if len(cache)==0:
-                # cache['i'] = self.match(**limit_to_matches)
-                # if reset:
-                    # cache['original_value'] = self[key][cache['i']]
-            # i = cache['i']
-            # if reset:
-                # self[key][i] = cache['original_value']*p.p
-            # else:
-                # self[key][i] *= p.p 
-            # self.unset_inferences(key)
-        # self.construct_functions.append(f)
-        # self.format_input_functions.append(
-            # lambda: f'{self.name}.scale_value({repr(key)},scale={repr(p)},reset={int(reset)},{my.dict_to_kwargs(limit_to_matches)})')
 
