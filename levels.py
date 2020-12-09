@@ -265,6 +265,7 @@ class GenericLevel(Base):
         'Γ','ΓD',
         'g',
         'partition_source','Tex','partition',
+        'Nself',
     ]
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 

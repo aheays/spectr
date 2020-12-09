@@ -197,7 +197,7 @@ class GenericLine(levels.Base):
     _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
                          + ['species', 'mass',
                             'ν',#'λ',
-                            'f','σ','S','S296K',
+                            'f','σ','S','S296K','τ',
                             'γair','δair','nair','γself',
                             'Pself', 'Pair', 'Nself',
                             'Teq','Ttr','partition','partition_source',
@@ -434,7 +434,7 @@ class GenericLine(levels.Base):
                 ## column density.
                 if self.verbose:
                     print('calculate_spectrum: using cached transmission spectrum')
-                y = cache['y']/cache['Nself_l']*self['Nself_l']
+                y = cache['y']/cache['Nself_l']*self['Nself_l'][0]
             elif (False and ykey == 'I'     # emission -- UNSTABLE definition
                   and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}
                   and np.sum(i) == len(i)            # all data has changed
@@ -468,7 +468,7 @@ class GenericLine(levels.Base):
             ## save these for rescale column density shortcuts
             if (ykey == 'τ'     # absorption
                 and self.is_inferred_from('τ','S') and self.is_inferred_from('τ','Nself_l')): # τ is computed from absorption strength 
-                cache['Nself_l'],cache['S'] = copy(self['Nself_l']),copy(self['S'])
+                cache['Nself_l'],cache['S'] = copy(self['Nself_l'][0]),copy(self['S'])
             if False and (ykey == 'I' and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}):
                 cache['column_densityp'] = copy(self['column_densityp'])
                 cache['Ae'] = copy(self['Ae'])
