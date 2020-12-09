@@ -13,24 +13,17 @@
  - change partition to Q -- uncorporate HITRAN partition functions
    into a database
 
-** dataset2.py
+** dataset.py
 
- - Plan for uncertainty/vary/step
+ - infer functions as (dependencies,function)  rather than
+   dependencies:function to permit multiple functions with the same
+   dependencies that may fail internally
 
  - A simpler implementation of self.permit_reference_breaking?
    Currently appears in many places in Dataset
 
  - If setting existing data, then copy into array rather than making a
    new array?
-
- - Improve Dataset indexing to cases:
-   - get_value(key,index) / get_uncertainty(key,index) -- get numpy
-     arrays
-     - Change get_value and get_uncertainty to value and uncertainty?
-   - copy(keys,index) -- get copy of self with these limits
-   - [key] -- return entire numpy array of key or scalar value
-   - [int] -- return copy of self with all scalar data at int
-   - [slice] -- return copy of self reduced to slice
 
  - Use internal infer data to infer necessary things in extend/append.
 
