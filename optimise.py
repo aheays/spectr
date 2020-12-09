@@ -409,7 +409,7 @@ class Optimiser:
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get_vary(key)
                     for i in tools.find(vary):
-                        optimiser[key][i] = p.pop(0)
+                        optimiser.set_value(key,p.pop(0),i)
                         if dp is not None:
                             optimiser.set_uncertainty(key,dp.pop(0),i)
                         else:
