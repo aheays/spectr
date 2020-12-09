@@ -505,49 +505,52 @@ class ReactionNetwork:
 
     def get_reactions(
             self,
-            name=None,
-            reactants=None,
-            products=None,
-            not_reactants=None,
-            not_products=None,
-            coefficients=None,
-            formula=None,
+            name=None,            # exact match of name
+            reactants=None, # must be exact reactant list 
+            products=None,  # must be exact product list  
+            with_reactants=None,       # must be in reactant list
+            with_products=None,        # must be in product list  
+            without_reactants=None,   # must not be in reactant list 
+            without_products=None,    # must not be in product list  
+            coefficients=None,    # dictionary of matching coefficients
+            formula=None,         # formula type
     ):
         """Return a list of reactions with this reactant."""
         retval = []
+        if reactants is not None:
+            reactants = sorted(reactants)
+        if products is not None:
+            products = sorted(products)
         for reaction in self.reactions:
-            if name is None:
-                ## match reactants/products
-                if reactants is not None:
-                    reactants = tools.ensure_iterable(reactants)
-                    if any([t not in reaction.reactants for t in reactants]):
-                        continue
-                if products is not None:
-                    products = tools.ensure_iterable(products)
-                    if any([t not in reaction.products for t in products]):
-                        continue
-                if not_reactants is not None:
-                    not_reactants = tools.ensure_iterable(not_reactants)
-                    if any([t in reaction.reactants for t in not_reactants]):
-                        continue
-                if not_products is not None:
-                    not_products = tools.ensure_iterable(not_products)
-                    if any([t in reaction.products for t in not_products]):
-                        continue
-            else:
-                ## match by name
-                if reaction.name != name:
-                    continue    
-            if coefficients is not None:
-                ## additional matching by coefficients
-                if any([(key not in reaction.coefficients
+            if name is not None and reaction.name != name:
+                continue    
+            if (with_reactants is not None
+                and any([t not in reaction.reactants
+                         for t in tools.ensure_iterable(with_reactants)])):
+                continue
+            if (with_products is not None
+                and any([t not in reaction.products
+                         for t in tools.ensure_iterable(with_products)])):
+                continue
+            if (without_reactants is not None
+                and any([t in reaction.reactants
+                     for t in tools.ensure_iterable(without_reactants)])):
+                continue
+            if (without_products is not None
+                and any([t in reaction.products
+                     for t in tools.ensure_iterable(without_products)])):
+                continue
+            if reactants is not None and sorted(reaction.reactants) != reactants:
+                continue
+            if products is not None and sorted(reaction.products) != products:
+                continue
+            if (coefficients is not None
+                and any([(key not in reaction.coefficients
                          or reaction.coefficients[key] != coefficients[key])
-                        for key in coefficients]):
-                    continue
-            if formula is not None:
-                ## additional match by formula type
-                if reaction.formula != formula:
-                    continue
+                        for key in coefficients])):
+                continue
+            if formula is not None and reaction.formula != formula:
+                continue
             retval.append(reaction)
         return retval
 
