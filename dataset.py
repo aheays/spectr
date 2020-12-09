@@ -71,9 +71,6 @@ class Dataset(optimise.Optimiser):
                     pass
                 else:
                     raise Exceptoin(f'New data is not in prototypes: {repr(key)}')
-            ## delete inferences since data has changed
-            if key in self:
-                self.unset_inferences(key)
             ## new data
             data = dict()
             ## get any prototype data
@@ -134,7 +131,10 @@ class Dataset(optimise.Optimiser):
             self._data[key] = data
         else:
             assert key in self,f'Cannot set data with index for unknown {key=}'
-            self._data[key]['value'][:self._length][index] = value
+            self._data[key]['value'][:self._length][index] = self._data[key]['cast'](value)
+        ## delete inferences since data has changed
+        if key in self:
+            self.unset_inferences(key)
 
     def get(self,key,index=None):
         if index is not None:
@@ -760,10 +760,9 @@ class Dataset(optimise.Optimiser):
                 y = z[ykey]
                 if label is not None:
                     kwargs.setdefault('label',label)
-                if plot_errorbars and (dkey:=self.get_uncertainty(ykey)) is not None:
+                if plot_errorbars and (dy:=self.get_uncertainty(ykey)) is not None:
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
-                    dy = self[dkey]
                     ax.errorbar(x,y,dy,**kwargs)
                     ## plot zero/undefined uncertainty data as filled symbols
                     i = np.isnan(dy)|(dy==0)
