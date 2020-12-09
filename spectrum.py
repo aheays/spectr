@@ -20,6 +20,7 @@ class Experiment(Optimiser):
             self,
             name='experiment',
             filename=None,
+            x=None,y=None,
             xbeg=None,xend=None,
     ):
         optimise.Optimiser.__init__(self,name)
@@ -36,7 +37,10 @@ class Experiment(Optimiser):
         self.experimental_parameters = {} # a dictionary containing any additional known experimental parameters
         if filename is not None:
             self.set_spectrum_from_file(filename,xbeg,xend)
-        self.add_save_to_directory_function(lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
+        if x is not None and y is not None:
+            self.set_spectrum(x,y,xbeg,xend)
+        self.add_save_to_directory_function(
+            lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
 
     def set_spectrum(self,x,y,xbeg=None,xend=None):
         """Set x and y as the experimental spectrum. With various safety
@@ -460,6 +464,7 @@ class Model(Optimiser):
             use_multiprocessing=None, use_cache= None,
             **line_parameters
     ):
+        self.add_suboptimiser(lines)
         ## update lines data and recompute optical depth if
         ## necessary
         cache = {}
@@ -472,13 +477,15 @@ class Model(Optimiser):
                 return
             ## recompute spectrum if is necessary for somem reason
             if (cache == {}    # currently no spectrum computed
+                or True        #  DEBUG
                 or self.timestamp < lines.timestamp # lines has changed
                 or any([self.timestamp < t.timestamp for t in line_parameters.values() if isinstance(t,P)]) # optimise_keys_vals has changed
-                or not (len(cache['x']) == len(self.x)) # experimental domain has changed
-                or not np.all( cache['x'] == self.x )): # experimental domain has changed
+                ## or not (len(cache['x']) == len(self.x)) # experimental domain has changed
+                ## or not np.all( cache['x'] == self.x ) # experimental domain has changed
+                ):
                 ## update optimise_keys_vals that have changed
                 for key,val in line_parameters.items():
-                    if cache == {} or lines[key] != val: # has been changed elsewhere, or the parameter has changed, or first use
+                    if cache == {} or np.all(lines[key] != val): # has been changed elsewhere, or the parameter has changed, or first use
                         lines[key] = val
                 x,y = lines.calculate_spectrum(
                     x=self.x,
@@ -488,10 +495,10 @@ class Model(Optimiser):
                     ymin=τmin,
                     ΓG='ΓD',
                     ΓL='Γ',
-                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
+                    ## gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
                     gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
                     voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
-                    # use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
+                    ## use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                     use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else 4),
                     use_cache=(use_cache if use_cache is not None else True),
                 )
@@ -506,6 +513,13 @@ class Model(Optimiser):
         """Shortcut"""
         return self.add_absorption_lines(lines=hitran.get_lines(species),**kwargs)
                 
+    @auto_construct_method('add_noise')
+    def add_noise(self,rms=1):
+        """Add normally distributed noise with given rms."""
+        def f():
+            self.y += rms*tools.randn(len(self.y))
+        return f
+
     def add_emission_lines(
             self,
             lines,
@@ -1406,8 +1420,11 @@ class Model(Optimiser):
                 ax.plot(x,y,ls='',marker='o',color='red',markersize=6)
                 ax.annotate(line['name'],(x,1.1*y),ha='center',va='top',color='gray',fontsize='x-small',rotation=90,zorder=-5)
         ## finalise plot
-        if plot_title and 'filename' in self.experiment.experimental_parameters:
-            if title == 'auto': title = tools.basename(self.experiment.experimental_parameters['filename'])
+        if (plot_title
+            and hasattr(self.experiment,'experimental_parameters')
+            and 'filename' in self.experiment.experimental_parameters):
+            if title == 'auto':
+                title = tools.basename(self.experiment.experimental_parameters['filename'])
             t = ax.set_title(title,fontsize='x-small')
             t.set_in_layout(False)
         if plot_legend:
