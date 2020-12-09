@@ -332,7 +332,7 @@ class AtmosphericChemistry():
         ## production rates
         self.plot_rates(
             ykey=ykey, ax=ax, plot_total= True,
-            products=species,
+            with_products=species,
             plot_kwargs={'linestyle':'-'},
             normalise_to_species=(species if normalise else None),
             nsort=nsort,
@@ -340,7 +340,7 @@ class AtmosphericChemistry():
         ## destruction
         self.plot_rates(
             ykey=ykey, ax=ax, plot_total= True,
-            reactants=species,
+            with_reactants=species,
             plot_kwargs={'linestyle':':',},
             normalise_to_species=(species if normalise else None),
             nsort=nsort
