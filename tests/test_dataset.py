@@ -374,4 +374,35 @@ def test_vary():
     t = Dataset(x=[1,2,3],f=5)
     t['v_x'] = False 
     assert all(t['v_x'] == [False,False,False,])
-    
+
+def test_rows():
+    x = Dataset(x=[1,2,3],y=[4,5,6])
+    for i,d in enumerate(x.rows()):
+        assert d['x'] == x['x'][i]
+        assert d['y'] == x['y'][i]
+
+def test_row_data():
+    x = Dataset(x=[1,2,3],y=[4,5,6])
+    for i,d in enumerate(x.row_data()):
+        print( d )
+        assert d[0] == x['x'][i]
+        assert d[1] == x['y'][i]
+
+def test_find_common():
+    x = Dataset(x=[1,2,3],y=[1,2,3])
+    y = Dataset(x=[3,1,2],y=[4,5,6])
+    i,j = find_common(x,y,'x')
+    assert all(i == [0,1,2])
+    assert all(j == [1,2,0])
+    x = Dataset(x=[1,2,3],z=['a','b','c'],y=[1,2,3],)
+    y = Dataset(x=[3,1,2],z=['c','a','d'],y=[4,5,6],)
+    i,j = find_common(x,y,'x','z')
+    assert all(i == [0,2])
+    assert all(j == [1,0])
+
+def test_get_common():
+    x = Dataset(x=[1,2,3],z=['a','b','c'],y=[1,2,3],)
+    y = Dataset(x=[3,1,2],z=['c','a','d'],y=[4,5,6],)
+    x,y = get_common(x,y,'x','z')
+    assert all(x['y'] == [1,3])
+    assert all(y['y'] == [5,4])

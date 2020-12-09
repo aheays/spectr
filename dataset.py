@@ -426,18 +426,31 @@ class Dataset(optimise.Optimiser):
         for key in self._data:
             yield key
 
-    def as_dict(self,index=None):
+    def as_dict(self,keys=None,index=None):
         """Data in row index as a dict of scalars."""
+        if keys is None:
+            keys = self.keys()
         if index is None:
-            return {key:self[key]for key in self}
+            return {key:self[key]for key in keys}
         else:
-            return {key:self[key][index] for key in self}
+            return {key:self[key][index] for key in keys}
         
-    def rows(self):
+    def rows(self,keys=None):
         """Iterate over data row by row, returns as a dictionary of
         scalar values."""
+        if keys is None:
+            keys = self.keys()
         for i in range(len(self)):
-            yield(self.as_dict(i))
+            yield(self.as_dict(keys=keys,index=i))
+
+    def row_data(self,keys=None,index=None):
+        """Iterate rows, returning data in a tuple."""
+        if keys is None:
+            keys = self.keys()
+        if index is None:
+            index = slice(0,len(self))
+        for t in zip(*[self[key][index] for key in keys]):
+            yield t
 
     def matching_row(self,**matching_keys_vals):
         """Return uniquely-matching row."""
@@ -790,3 +803,59 @@ class Dataset(optimise.Optimiser):
             plotting.show()
         return(fig)
 
+def find_common(x,y,*keys,verbose=False):
+    """Return indices of two Datasets that have uniquely matching
+    combinations of keys."""
+    ## if empty list then nothing to be done
+    if len(x)==0 or len(y)==0:
+        return(np.array([]),np.array([]))
+    # ## Make a list of default keys if not provided as inputs. If a
+    # ## Level or Transition object (through a hack) then use
+    # ## defining_qn, else use all set keys known to both.
+    # if len(keys)==0:
+        # if hasattr(x,'defining_qn'):
+            # keys = [t for t in x.defining_qn if x.is_known(t) and y.is_known(t)]
+        # else:
+            # keys = [t for t in x.keys() if x.is_known(t) and y.is_known(t)]
+    if verbose:
+        print('keys:',keys)
+    x.assert_known(keys)
+    y.assert_known(keys)
+    ## sort by first calculating a hash of sort keys
+    xhash = np.array([hash(t) for t in x.row_data(keys=keys)])
+    yhash = np.array([hash(t) for t in y.row_data(keys=keys)])
+    ## get sorted hashes, checking for uniqueness
+    xhash,ixhash = np.unique(xhash,return_index=True)
+    assert len(xhash) == len(x), f'Non-unique combinations of keys in x: {repr(keys)}'
+    yhash,iyhash = np.unique(yhash,return_index=True)
+    assert len(yhash) == len(y), f'Non-unique combinations of keys in y: {repr(keys)}'
+    ## use np.searchsorted to find one set of hashes in the other
+    iy = np.arange(len(yhash))
+    ix = np.searchsorted(xhash,yhash)
+    ## remove y beyond max of x
+    i = ix<len(xhash)
+    ix,iy = ix[i],iy[i]
+    ## requires removing hashes that have no searchsorted partner
+    i = yhash[iy]==xhash[ix]
+    ix,iy = ix[i],iy[i]
+    ## undo the effect of the sorting above
+    ix,iy = ixhash[ix],iyhash[iy]
+    ## sort by index of first array -- otherwise sorting seems to be arbitrary
+    i = np.argsort(ix)
+    ix,iy = ix[i],iy[i]
+    return ix,iy
+
+def get_common(x,y,*keys,**limit_to_matches):
+    """A short cut to find the common levels of a Dynamic_Recarrays object
+    and return subset copies that are sorted to match each other."""
+    if limit_to_matches is not None:
+        x = x.matches(**limit_to_matches)
+        y = y.matches(**limit_to_matches)
+    i,j = find_common(x,y,*keys)
+    # if len(i)==0:
+        # ## No matches return copy, but empty of data
+        # return(
+            # x[np.full(len(x),False)] if len(x)>0 else x[:],
+            # y[np.full(len(y),False)] if len(y)>0 else y[:],
+        # ) 
+    return x[i],y[j]
