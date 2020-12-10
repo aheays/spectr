@@ -61,8 +61,6 @@ class Dataset(optimise.Optimiser):
         ## if value is a parameter
         if isinstance(value,optimise.P):
             self.set('d_'+key,value.uncertainty,index)
-            self.set('s_'+key,value.step,index)
-            self.set('v_'+key,value.vary,index)
             value = value.value
         ## delete inferences since data has changed
         if key in self:
@@ -103,10 +101,11 @@ class Dataset(optimise.Optimiser):
                 ## use data to infer kind
                 value = np.asarray(value)
                 data['kind'] = value.dtype.kind
-            else:
-                ## get from prototypes -- also convert e.g. float to 'f'
-                ## using np.dtype
-                data['kind'] =  np.dtype(data['kind']).kind
+            # else:
+                # ## get from prototypes -- also convert e.g. float to 'f'
+                # ## using np.dtype
+                # data['kind'] =  np.dtype(data['kind']).kind
+                # print('DEBUG:', data['kind'])
             ## convert bytes string to unicode
             if data['kind'] == 'S':
                 self.kind = 'U'

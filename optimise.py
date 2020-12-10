@@ -5,6 +5,7 @@ import os
 # import sys
 
 import numpy as np
+from numpy import nan
 
 # from . import dataset
 from . import tools
@@ -278,6 +279,10 @@ class Optimiser:
         self.add_format_input_function(lambda: f'{self.name}.print_input({repr(match_lines_regexp) if match_lines_regexp is not None else ""})')
         print(self.format_input(match_lines_regexp=match_lines_regexp))
 
+    def save_input(self,filename=None,match_lines_regexp=None):
+        """Save recreated input function to a file."""
+        tools.string_to_file(filename,self.format_input(match_lines_regexp))
+
     def __str__(self):
         # return self.get_parameter_dataset().format()
         return self.format_input()
@@ -386,6 +391,8 @@ class Optimiser:
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get_vary(key)
                     value.extend(optimiser[key][vary])
+                    if optimiser.get_uncertainty(key,vary) is None:
+                        optimiser.set_uncertainty(key,nan)
                     uncertainty.extend(optimiser.get_uncertainty(key,vary))
                     step.extend(optimiser.get_differentiation_step(key,vary))
         return value,step,uncertainty

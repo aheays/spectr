@@ -472,7 +472,7 @@ class GenericLine(levels.Base):
             if False and (ykey == 'I' and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}):
                 cache['column_densityp'] = copy(self['column_densityp'])
                 cache['Ae'] = copy(self['Ae'])
-        return(x,y)
+        return x,y
 
     def get_levels(self,upper_or_lower):
         """Get all data corresponding to 'upper' or 'lower' level in

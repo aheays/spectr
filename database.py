@@ -85,7 +85,6 @@ def get_species_property(species,prop):
     """Get a property fo this species using get_species_data. If an
     array of species then return an array of properties. Scalar output, cached."""
     d = get_species_data(species)
-    print('DEBUG:', 'fff')
     assert prop in d.dtype.names,f'Property {repr(prop)} of species {repr(species)} not known to database.'
     retval = d[prop][0]
     ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.

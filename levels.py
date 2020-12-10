@@ -264,7 +264,7 @@ class GenericLevel(Base):
         'E','Eref',
         'Γ','ΓD',
         'g',
-        'partition_source','Tex','partition',
+        'Teq','Tex','partition_source','partition','α',
         'Nself',
     ]
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
@@ -289,12 +289,12 @@ class HeteronuclearDiatomicVibrationalLevel(Base):
         'Bv_μscaled',]
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-
 class HeteronuclearDiatomicRotationalLevel(Base):
     """Rotational levels of a heteronuclear diatomic molecule."""
     _init_keys = _unique(HeteronuclearDiatomicVibrationalLevel._init_keys + [
-        'E','J','g','pm','Γ','N','S',
-        'Teq','Tex','partition_source','partition','α','Nself',
+        'J','pm','N','S',
+        'Teq',
+        'α',
         'σv','sa','ef','Fi','Ω','Σ','SR',])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
     default_zkeys = ('label','v','Σ','ef')
@@ -311,6 +311,16 @@ class HomonuclearDiatomicRotationalLevel(HeteronuclearDiatomicRotationalLevel):
     _init_keys = _unique(HeteronuclearDiatomicRotationalLevel._init_keys + ['Inuclear','gu',])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
+class LinearTriatomic(Base):
+    """Rotational levels of a linear triatomic.  Constructed to load
+    linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
+    _init_keys = GenericLevel._init_keys + [
+        'label', 'S',
+        'v1','v2','v3','l2',    # vibrational coordinates
+        'J',
+    ])
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    default_zkeys = ('label','v1','v2','v3','l2',)
 
 # # class TriatomicDinfh(Base):
     # # """Rotational levels of a triatomic molecule in the D∞h point group."""

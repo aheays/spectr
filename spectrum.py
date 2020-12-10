@@ -314,16 +314,16 @@ class Model(Optimiser):
             residual *= self.residual_weighting
         return residual
 
+    @auto_construct_method('interpolate')
     def interpolate(self,dx):
         """When calculating model set to dx grid (or less to achieve
         overlap with experimental points."""
-        self.add_format_input_function(lambda:f'{self.name}.interpolate({dx})')
         def f():
             xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
             self._interpolate_factor = int(np.ceil(xstep/dx))
             self.x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*self._interpolate_factor)
             self.y = np.zeros(self.x.shape,dtype=float) # delete current y!!
-        self.add_construct_function(f)
+        return f
 
     def add_absorption_cross_section_from_file(
             self,
@@ -790,26 +790,22 @@ class Model(Optimiser):
             self.y += float(intensity)
         return f 
 
-    def add_intensity_spline(self,x=50,y=0,vary=True,step=None,order=3):
-        """Shift by a spline defined function."""
-        if np.isscalar(x):
-            self.experiment.construct()
-            x = np.arange(self.experiment.x[0]-x,self.experiment.x[-1]+x*1.01,x) # default to a list of x with spacing given by x
-        if np.isscalar(y):
-            y = y*np.ones(len(x)) # default y to list of hge same length
-        if step is None:
-            if self.experiment.y is not None:
-                step = self.experiment.y.max()*1e-3
-            else:
-                step = 1e-3
-        x,y = np.array(x),np.array(y)
-        p = self.add_parameter_list('add_intensity_spline_',y,vary,step) # add to optimsier
-        self.add_format_input_function(
-            lambda: f"{self.name}.add_intensity_spline(vary={repr(vary)},x={repr(list(x))},y={repr(p.parameter_values())},step={repr(step)},order={repr(order)})") # new input line
+    def auto_add_intensity_spline(self,xstep=1000.,y=1.):
+        """Quickly add an evenly-spaced intensity spline."""
+        self.experiment.construct()
+        knots = [(x,P(y,True)) for x in
+                 np.arange(self.experiment.x[0]-xstep,self.experiment.x[-1]+xstep*1.01,xstep)]
+        self.add_intensity_spline(knots=knots)
+
+    @auto_construct_method('add_intensity_spline')
+    def add_intensity_spline(self,knots=None,order=3):
+        """Add intensity points defined by a spline."""
         def f():
+            x = np.array([float(xi) for xi,yi in knots])
+            y = np.array([float(yi) for xi,yi in knots])
             i = (self.x>=np.min(x))&(self.x<=np.max(x))
-            self.y[i] += tools.spline(x,p.parameter_values(),self.x[i],order=order)
-        self.add_construct_function(f) # multiply spline during construct
+            self.y[i] += tools.spline(x,y,self.x[i],order=order)
+        return f
 
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
         # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
