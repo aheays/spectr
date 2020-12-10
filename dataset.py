@@ -1,5 +1,6 @@
 import re
 import time
+import ast
 from copy import copy,deepcopy
 from pprint import pprint
 
@@ -28,13 +29,15 @@ class Dataset(optimise.Optimiser):
 
     def __init__(
             self,
-            name='dataset',
+            name=None,
             load_from_filename=None,
-            description='',
+            description=None,
             **kwargs):
+        self.classname = self.__class__.__name__
+        if name is None:
+            name = self.classname.lower()
         optimise.Optimiser.__init__(self,name=name)
         self.description = description # A string describing this dataset
-        self.classname = self.__class__.__name__
         self.pop_format_input_function()
         self.add_format_input_function(lambda: 'not implemented')
         self._data = dict()
@@ -491,7 +494,13 @@ class Dataset(optimise.Optimiser):
             i = i[np.argsort(self[key][i])]
         self.index(i)
 
-    def format(self,keys=None,delimiter=' | ',automatically_add_uncertainties=True):
+    def format(
+            self,
+            keys=None,
+            delimiter=' | ',
+            automatically_add_uncertainties=True,
+            unique_values_in_header=True,
+    ):
         """Format data into a string representation."""
         if len(self)==0:
             return ''
@@ -512,7 +521,7 @@ class Dataset(optimise.Optimiser):
             header.append(f'description = {repr(self.description)}')
         columns = []
         for key in keys:
-            if len(tval:=self.unique(key)) == 1:
+            if unique_values_in_header and len(tval:=self.unique(key)) == 1:
                 header.append(f'{key} = {repr(tval[0])}')
             else:
                 ## two passes required on all data to align column
@@ -543,11 +552,18 @@ class Dataset(optimise.Optimiser):
             keys = self.keys()
         if re.match(r'.*\.npz',filename):
             ## numpy archive
-            np.savez(filename, **{key:self[key] for key in keys})
+            data = {key:self[key] for key in keys}
+            for attrkey in ('classname','description'):
+                if (attrval:=getattr(self,attrkey)) is not None:
+                    data[attrkey] = attrval
+            np.savez(filename,**data)
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
-            d = {key:self[key] for key in keys}
-            tools.dict_to_hdf5(filename,d)
+            data = {key:self[key] for key in keys}
+            for attrkey in ('classname','description'):
+                if (attrval:=getattr(self,attrkey)) is not None:
+                    data[attrkey] = attrval
+            tools.dict_to_hdf5(filename,data)
         else:
             ## text file
             if re.match(r'.*\.csv',filename):
@@ -596,13 +612,7 @@ class Dataset(optimise.Optimiser):
                 for iline,line in enumerate(fid):
                     if r:=re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line):
                         key,val = r.groups()
-                        if r:=re.match(r'"(.*)"|\'(.*)\'',val):
-                            ## value is a string
-                            val = r.group(1)
-                        else:
-                            ## else try cast as number
-                            val = tools.string_to_number_if_possible(val)
-                        data[key] = val
+                        data[key] = ast.literal_eval(val)
                     else:
                         ## end of header
                         break
@@ -863,3 +873,21 @@ def get_common(x,y,*keys,**limit_to_matches):
             # y[np.full(len(y),False)] if len(y)>0 else y[:],
         # ) 
     return x[i],y[j]
+
+def load(filename):
+    """Load a Dataset or one of its subclasses."""
+    ## load once, determine classname, then load again into correct
+    ## class if not Dataset
+    d = Dataset()
+    d.load(filename)
+    if d.classname != 'Dataset':
+        from . import lines,levels
+        for module in (levels,lines):
+            if hasattr(module,d.classname):
+                d = getattr(module,d.classname)()
+                d.load(filename)
+                break
+    return d
+
+
+    

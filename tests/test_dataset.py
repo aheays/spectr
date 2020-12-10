@@ -2,6 +2,7 @@ import pytest
 from pytest import raises,approx
 import numpy as np
 
+from spectr import dataset
 from spectr.dataset import *
 from spectr.optimise import P
 from spectr.exceptions import InferException
@@ -400,6 +401,11 @@ def test_find_common():
     assert all(i == [0,2])
     assert all(j == [1,0])
 
+def test_class_and_description_attributes():
+    x = Dataset(description='abc', x=[1,2,3],z=['a','b','c'],y=[3,3,3],)
+    assert x.description == 'abc'
+    assert x.classname == 'Dataset'
+
 def test_get_common():
     x = Dataset(x=[1,2,3],z=['a','b','c'],y=[1,2,3],)
     y = Dataset(x=[3,1,2],z=['c','a','d'],y=[4,5,6],)
@@ -407,9 +413,5 @@ def test_get_common():
     assert all(x['y'] == [1,3])
     assert all(y['y'] == [5,4])
 
-def test_class_and_description_attributes():
-    x = Dataset(description='abc', x=[1,2,3],z=['a','b','c'],y=[3,3,3],)
-    assert x.description == 'abc'
-    assert x.classname == 'Dataset'
-    print( x)
-    assert False
+def test_load():
+    x = dataset.load('data/test_load.psv')

@@ -19,7 +19,6 @@ from .exceptions import InferException,MissingDataException
 prototypes = {}
 
 # prototypes['classname'] = dict( description="Type of levels of lines object.",kind='U' ,infer={})
-prototypes['description'] = dict( description="",kind='U' ,infer={})
 prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer={})
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer={})
 prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer={})
@@ -101,6 +100,11 @@ prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', 
 prototypes['Nself'] = dict(description="Column density (cm2)",kind='f',fmt='<11.3e', infer={})
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer={})
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer={})
+prototypes['v1'] = dict(description="Vibrational quantum number for mode 1", kind='i',infer={})
+prototypes['v2'] = dict(description="Vibrational quantum number for mode 2", kind='i',infer={})
+prototypes['v3'] = dict(description="Vibrational quantum number for mode 3", kind='i',infer={})
+prototypes['v4'] = dict(description="Vibrational quantum number for mode 4", kind='i',infer={})
+prototypes['l2'] = dict(description="Vibrational angular momentum 2", kind='i',infer={})
 prototypes['Λ'] = dict(description="Total orbital angular momentum aligned with internuclear axis", kind='i',infer={})
 prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',infer={})
 prototypes['s'] = dict(description="s=1 for Σ- states and 0 for all other states", kind='i',infer={})
@@ -237,17 +241,11 @@ class Base(Dataset):
     _init_keys = []
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
     
-    def __init__(self,name=None,**keys_vals,):
+    def __init__(self,name=None,description=None,**keys_vals,):
         """Default_name is decoded to give default values. Kwargs ca be
         scalar data, further default values of vector data, or if vetors
         themselves will populate data arrays."""
-        if name is None:
-            name = type(self).__name__
-            name = re.sub(r'(.)([A-Z])',r'\1_\2',name).lower()
-        Dataset.__init__(self,name=name)
-        # prototypes['classname']['infer'][()]: lambda: type(self).__name__
-        # self['classname'] = type(self).__name__
-        self.description = None
+        Dataset.__init__(self,name=name,description=description)
         self.permit_nonprototyped_data = False
         self._cache = {}
         for key,val in keys_vals.items():
@@ -310,16 +308,16 @@ class HomonuclearDiatomicRotationalLevel(HeteronuclearDiatomicRotationalLevel):
     _init_keys = _unique(HeteronuclearDiatomicRotationalLevel._init_keys + ['Inuclear','gu',])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-# class LinearTriatomic(Base):
-    # """Rotational levels of a linear triatomic.  Constructed to load
-    # linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
-    # _init_keys = GenericLevel._init_keys + [
-        # 'label', 'S',
-        # 'v1','v2','v3','l2',    # vibrational coordinates
-        # 'J',
-    # ])
-    # prototypes = {key:copy(prototypes[key]) for key in _init_keys}
-    # default_zkeys = ('label','v1','v2','v3','l2',)
+class LinearTriatomicLevel(GenericLevel):
+    """Rotational levels of a linear triatomic.  Constructed to load
+    linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
+    _init_keys = GenericLevel._init_keys + [
+        'label', 'S',
+        'v1','v2','v3','l2',    # vibrational coordinates
+        'J',
+    ]
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    default_zkeys = ('label','v1','v2','v3','l2',)
 
 # # class TriatomicDinfh(Base):
     # # """Rotational levels of a triatomic molecule in the D∞h point group."""

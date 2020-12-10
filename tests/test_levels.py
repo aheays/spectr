@@ -70,8 +70,6 @@ def test_level_degeneracy():
     t = levels.HeteronuclearDiatomicRotationalLevel(species='14N15N',label='X',v=0,S=0,Λ=0,s=0,J=[0,1,2,3])
     assert all(t['g'] == [1,3,5,7])
     t = levels.HomonuclearDiatomicRotationalLevel(species='14N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,J=[0,1,2,3])
-    print('DEBUG:', t['J'])
-    print('DEBUG:', t['g'])
     assert list(t['g']) == [6,9,30,21]
     # t = levels.HomonuclearDiatomicRotationalLevel(species='15N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=0.5, J=[0,1,2,3],)
     # assert list(t['g']) == [1,9,5,21]

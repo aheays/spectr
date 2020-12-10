@@ -197,6 +197,7 @@ class GenericLine(levels.Base):
     _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
                          + ['species', 'mass',
                             'ν',#'λ',
+                            'ΔJ',
                             'f','σ','S','S296K','τ',
                             'γair','δair','nair','γself',
                             'Pself', 'Pair', 'Nself',
@@ -205,8 +206,8 @@ class GenericLine(levels.Base):
                             ])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-    def __init__(self,*args,**kwargs):
-        levels.Base.__init__(self,*args,**kwargs)
+    # def __init__(self,*args,**kwargs):
+        # levels.Base.__init__(self,*args,**kwargs)
 
     def plot_spectrum(
             self,
@@ -624,6 +625,60 @@ class HomonuclearDiatomicRotationalLine(HeteronuclearDiatomicRotationalLine):
         _expand_level_keys_to_upper_lower(_levels_class)
         + HeteronuclearDiatomicRotationalLine._init_keys)
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+
+# class TriatomicDinfh(Base):
+
+    # prototypes = {key:copy(prototypes[key]) for key in (
+        # list(Base.prototypes)
+        # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
+
+class LinearTriatomicLine(GenericLine):
+    _levels_class = levels.LinearTriatomicLevel
+    _init_keys = _unique(
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + GenericLine._init_keys)
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+
+    def load_from_hitran(self,filename):
+        """Load HITRAN .data."""
+        data = hitran.load(filename)
+        ## interpret into transition quantities common to all transitions
+        new = self.__class__(**{
+            'ν':data['ν'],
+            ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
+            'S296K':data['S'],
+            'E_l':data['E_l'],
+            'g_u':data['g_u'],
+            'g_l':data['g_l'],
+            'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+            'nair':data['nair'],
+            'δair':data['δair'],
+            'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+        })
+        ## get species
+        i = hitran.molparam.find(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
+        new['species'] =  hitran.molparam['isotopologue'][i]
+        ## remove natural abundance weighting
+        new['S296K'] /=  hitran.molparam['natural_abundance'][i]
+        ## interpret quantum numbers -- see rothman2005
+        new['v1_u'] = [t[7:9] for t in data['V_u']]
+        new['v2_u'] = [t[9:11] for t in data['V_u']]
+        new['l2_u'] = [t[11:13] for t in data['V_u']]
+        new['v3_u'] = [t[13:15] for t in data['V_u']]
+        new['v1_l'] = [t[7:9] for t in data['V_l']]
+        new['v2_l'] = [t[9:11] for t in data['V_l']]
+        new['l2_l'] = [t[11:13] for t in data['V_l']]
+        new['v3_l'] = [t[13:15] for t in data['V_l']]
+        branches = {'P':-1,'Q':0,'R':+1}
+        ΔJ,J_l = [],[]
+        for Q_l in data['Q_l']:
+            branchi,Jli = Q_l[5],Q_l[6:] 
+            ΔJ.append(branches[branchi])
+            J_l.append(Jli)
+        new['ΔJ'] = np.array(ΔJ,dtype=int)
+        new['J'+'_l'] = np.array(J_l,dtype=float)
+        # ## add data to self
+        self.extend(**new)
 
 # class TriatomicDinfh(Base):
 
