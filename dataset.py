@@ -517,7 +517,7 @@ class Dataset(optimise.Optimiser):
             keys = tkeys
         ## collect table data
         header = [f'classname = {repr(self.classname)}']
-        if self.description != '':
+        if self.description is not None:
             header.append(f'description = {repr(self.description)}')
         columns = []
         for key in keys:
