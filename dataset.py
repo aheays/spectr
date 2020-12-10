@@ -26,13 +26,15 @@ class Dataset(optimise.Optimiser):
         'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object',},
     }
 
-
     def __init__(
             self,
             name='dataset',
             load_from_filename=None,
+            description='',
             **kwargs):
         optimise.Optimiser.__init__(self,name=name)
+        self.description = description # A string describing this dataset
+        self.classname = self.__class__.__name__
         self.pop_format_input_function()
         self.add_format_input_function(lambda: 'not implemented')
         self._data = dict()
@@ -505,7 +507,10 @@ class Dataset(optimise.Optimiser):
                     tkeys.append(self.uncertainty_prefix + key)
             keys = tkeys
         ## collect table data
-        header,columns = [],[]
+        header = [f'classname = {repr(self.classname)}']
+        if self.description != '':
+            header.append(f'description = {repr(self.description)}')
+        columns = []
         for key in keys:
             if len(tval:=self.unique(key)) == 1:
                 header.append(f'{key} = {repr(tval[0])}')
@@ -617,7 +622,7 @@ class Dataset(optimise.Optimiser):
                         data[to_key] = data.pop(from_key)
         ## Set data in self and selected attributes
         for key,val in data.items():
-            if key in ('description',):
+            if key in ('classname','description',):
                 setattr(self,key,val)
             else:
                 self[key] = val

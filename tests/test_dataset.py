@@ -406,3 +406,10 @@ def test_get_common():
     x,y = get_common(x,y,'x','z')
     assert all(x['y'] == [1,3])
     assert all(y['y'] == [5,4])
+
+def test_class_and_description_attributes():
+    x = Dataset(description='abc', x=[1,2,3],z=['a','b','c'],y=[3,3,3],)
+    assert x.description == 'abc'
+    assert x.classname == 'Dataset'
+    print( x)
+    assert False
