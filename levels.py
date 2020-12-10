@@ -116,7 +116,6 @@ def _f0(self,ef,J):
 prototypes['σv'] = dict(description="Symmetry with respect to σv reflection.", kind='i',infer={('ef','J'):_f0,})
 prototypes['gu'] = dict(description="Symmetry with respect to reflection through a plane perpendicular to the internuclear axis.", kind='i',infer={})
 prototypes['sa'] = dict(description="Symmetry with respect to nuclear exchange, s=symmetric, a=antisymmetric.", kind='i',infer={('σv','gu'):lambda self,σv,gu: σv*gu,})
-@vectorise(cache=True,vargs=(1,2,3))
 def _f0(self,S,Λ,s):
     """Calculate gu symmetry for 1Σ- and 1Σ+ states only."""
     if np.any(S!=0) or np.any(Λ!=0):
@@ -311,16 +310,16 @@ class HomonuclearDiatomicRotationalLevel(HeteronuclearDiatomicRotationalLevel):
     _init_keys = _unique(HeteronuclearDiatomicRotationalLevel._init_keys + ['Inuclear','gu',])
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
-class LinearTriatomic(Base):
-    """Rotational levels of a linear triatomic.  Constructed to load
-    linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
-    _init_keys = GenericLevel._init_keys + [
-        'label', 'S',
-        'v1','v2','v3','l2',    # vibrational coordinates
-        'J',
-    ])
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
-    default_zkeys = ('label','v1','v2','v3','l2',)
+# class LinearTriatomic(Base):
+    # """Rotational levels of a linear triatomic.  Constructed to load
+    # linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
+    # _init_keys = GenericLevel._init_keys + [
+        # 'label', 'S',
+        # 'v1','v2','v3','l2',    # vibrational coordinates
+        # 'J',
+    # ])
+    # prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    # default_zkeys = ('label','v1','v2','v3','l2',)
 
 # # class TriatomicDinfh(Base):
     # # """Rotational levels of a triatomic molecule in the D∞h point group."""

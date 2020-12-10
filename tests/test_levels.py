@@ -14,7 +14,16 @@ def test_construct():
     t = levels.GenericLevel()
     assert t.name == 'generic_level'
     assert len(t.prototypes)>0
-    assert list(t.prototypes.keys()) == [ 'species', 'E', 'Eref','Γ','ΓD',]
+    assert list(t.prototypes.keys()) == [
+        'species',
+        'E','Eref',
+        'Γ','ΓD',
+        'g',
+        'Teq','Tex','partition_source','partition','α',
+        'Nself',
+        # 'species', 'E', 'Eref','Γ','ΓD',
+    ]
+
 
 def test_assignment():
     t = levels.GenericLevel(name='ddd')
@@ -61,7 +70,8 @@ def test_level_degeneracy():
     t = levels.HeteronuclearDiatomicRotationalLevel(species='14N15N',label='X',v=0,S=0,Λ=0,s=0,J=[0,1,2,3])
     assert all(t['g'] == [1,3,5,7])
     t = levels.HomonuclearDiatomicRotationalLevel(species='14N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,J=[0,1,2,3])
+    print('DEBUG:', t['J'])
+    print('DEBUG:', t['g'])
     assert list(t['g']) == [6,9,30,21]
     # t = levels.HomonuclearDiatomicRotationalLevel(species='15N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=0.5, J=[0,1,2,3],)
     # assert list(t['g']) == [1,9,5,21]
-test_level_degeneracy()

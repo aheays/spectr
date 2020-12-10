@@ -30,7 +30,7 @@ def test_species_sort():
     assert y > x
 
 def test_species_mass():
-    assert Species('[14N]2')['mass'] == 28.006147
+    assert Species('[14N]2')['mass'] == approx(28.006147)
     assert Species('[14N]2')['reduced_mass'] == 7.0015372
 
 # def test_species_element():
