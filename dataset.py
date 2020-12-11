@@ -254,6 +254,7 @@ class Dataset(optimise.Optimiser):
         if keys is None:
             keys = self.keys()
         retval = self.__class__() # new version of self
+        retval.permit_nonprototyped_data = self.permit_nonprototyped_data
         for key in keys:
             if index is None:
                 retval[key] = self[key]
@@ -743,7 +744,7 @@ class Dataset(optimise.Optimiser):
             xkey = 'index'
         if zkeys is None:
             zkeys = self.default_zkeys
-        zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey] # remove xkey and ykeys from zkeys
+        zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
         ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
         ymin = {}
         self.assert_known(xkey,*ykeys,*zkeys)
@@ -787,7 +788,7 @@ class Dataset(optimise.Optimiser):
                 y = z[ykey]
                 if label is not None:
                     kwargs.setdefault('label',label)
-                if plot_errorbars and (dy:=self.get_uncertainty(ykey)) is not None:
+                if plot_errorbars and (dy:=z.get_uncertainty(ykey)) is not None:
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
                     ax.errorbar(x,y,dy,**kwargs)
