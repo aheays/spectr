@@ -13,6 +13,7 @@ from .optimise import *
 from . import plotting
 from . import tools
 from . import hitran
+from . import bruker
 
 class Experiment(Optimiser):
     
@@ -82,7 +83,9 @@ class Experiment(Optimiser):
 
     def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
-        x,y,d = tools.load_bruker_opus_spectrum(filename)
+        opusdata = bruker.OpusData(filename)
+        x,y = opusdata.get_spectrum()
+        d = opusdata.data
         self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
         self.experimental_parameters['filename'] = filename
         if 'Fourier Transformation' in d:
@@ -1007,19 +1010,19 @@ class Model(Optimiser):
         ## get apodisation_function and interpolation_factor 
         if apodisation_function is not None:
             pass
-        elif 'apodisation_function' in self.experimental_parameters:
-            apodisation_function = self.experimental_parameters['apodisation_function']
+        elif 'apodisation_function' in self.experiment.experimental_parameters:
+            apodisation_function = self.experiment.experimental_parameters['apodisation_function']
         else:
             raise Exception('apodisation_function not provided and not found in experimental_parameters.')
-        # if 'interpolation_factor' not in self.experimental_parameters:
-            # warnings.warn("interpolation_factor not found in experimental_parameters, assuming it is 1")
+        # if 'interpolation_factor' not in self.experiment.experimental_parameters:
+            # warnings.warn("interpolation_factor not found in experiment.experimental_parameters, assuming it is 1")
             # interpolation_factor = 1.
         cache = {'interpolation_factor':interpolation_factor,}
         def f():
             if cache['interpolation_factor'] is None:
                 interpolation_factor = (self._interpolate_factor if self._interpolate_factor else 1)
-                if 'interpolation_factor' in self.experimental_parameters:
-                    interpolation_factor *= self.experimental_parameters['interpolation_factor']
+                if 'interpolation_factor' in self.experiment.experimental_parameters:
+                    interpolation_factor *= self.experiment.experimental_parameters['interpolation_factor']
             else:
                 interpolation_factor = cache['interpolation_factor']
             ft = fft.dct(self.y) # get Fourier transform
@@ -1076,13 +1079,13 @@ class Model(Optimiser):
             xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
             ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
             ## generate sinc to convolve with
-            if ('interpolation_factor' not in self.experimental_parameters
+            if ('interpolation_factor' not in self.experiment.experimental_parameters
                 and not warned_already):
                 warnings.warn("interpolation_factor not found in experimental_parameters, assuming it is 1")
                 warned_already = True 
             interpolation_factor = (self._interpolate_factor if self._interpolate_factor else 1)
-            if 'interpolation_factor' in self.experimental_parameters:
-                interpolation_factor *= self.experimental_parameters['interpolation_factor']
+            if 'interpolation_factor' in self.experiment.experimental_parameters:
+                interpolation_factor *= self.experiment.experimental_parameters['interpolation_factor']
             assert interpolation_factor%1 == 0,'Blackman-Harris convolution only valid for integer interpolation_factor (current: {interpolation_factor{)'
             interpolation_factor = int(interpolation_factor)
             if terms == 3:
@@ -1144,7 +1147,7 @@ class Model(Optimiser):
         """Convolve with SOLEIL instrument function."""
         ## get automatically set values if not given explicitly
         if sinc_fwhm is None:
-            sinc_fwhm = (self.experimental_parameters['sinc_FWHM'],None,1e-3)
+            sinc_fwhm = (self.experiment.experimental_parameters['sinc_FWHM'],None,1e-3)
         if gaussian_fwhm is None:
             gaussian_fwhm = (0.1,None,1e-3)
         p = self.add_parameter_set(
@@ -1155,7 +1158,7 @@ class Model(Optimiser):
             signum_magnitude=signum_magnitude,
             step_default={'sinc_fwhm':1e-3, 'gaussian_fwhm':1e-3,
                           'lorentzian_fwhm':1e-3, 'signum_magnitude':1e-4,},)
-        if abs(self.experimental_parameters['sinc_FWHM']-p['sinc_fwhm'])>(1e-5*p['sinc_fwhm']):
+        if abs(self.experiment.experimental_parameters['sinc_FWHM']-p['sinc_fwhm'])>(1e-5*p['sinc_fwhm']):
             warnings.warn('sinc FWHM does not match SOLEIL data file header')
         ## rewrite input line
         def f():
@@ -1234,7 +1237,7 @@ class Model(Optimiser):
         magnitude, copy shifted down is scaled by -magnitude. This is to deal
         with periodic errors aliasing the spectrum due to periodic
         vibrations."""
-        filename = self.experimental_parameters['filename']
+        filename = self.experiment.experimental_parameters['filename']
         x,y,header = load_SOLEIL_spectrum_from_file(filename)
         yshifted ={'left':None,'right':None}
         p = self.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
