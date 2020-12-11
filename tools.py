@@ -1882,10 +1882,10 @@ def array_to_hdf5(filename,*args,**kwargs):
     """Column stack arrays in args and save in an hdf5 file. In a
     single data set named 'data'. Overwrites existing files."""
     filename = expand_path(filename)
-    kwargs.setdefault('compression',"gzip")
-    kwargs.setdefault('compression_opts',9)
+    ## kwargs.setdefault('compression',"gzip") # slow
+    ## kwargs.setdefault('compression_opts',9) # slow
     if os.path.exists(filename):
-        assert not os.path.isdir(filename),'Wont overwrite directory: '+filename
+        assert not os.path.isdir(filename),'Will not overwrite directory: '+filename
         os.unlink(filename)
     f = h5py.File(filename,'w')
     f.create_dataset('data',data=np.column_stack(args),**kwargs)
