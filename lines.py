@@ -638,6 +638,11 @@ class LinearTriatomicLine(GenericLine):
         _expand_level_keys_to_upper_lower(_levels_class)
         + GenericLine._init_keys)
     prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    default_zkeys=(
+        'species',
+        'label_u','v1_u','v2_u','v3_u','l2_u',
+        'label_l','v1_l','v2_l','v3_l','l2_l',
+        )
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
