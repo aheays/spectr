@@ -502,7 +502,7 @@ class Model(Optimiser):
                     gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
                     voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
                     ## use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else 4),
+                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                     use_cache=(use_cache if use_cache is not None else True),
                 )
                 cache['x'] = copy(self.x)
