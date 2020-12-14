@@ -101,6 +101,7 @@ class Dataset(optimise.Optimiser):
                     data['kind'] = 'f'
                     data['description'] = f'Uncertainty of {tkey}'
                     data['units'] = self.get_units(tkey)
+                    data['fmt'] = '0.1e'
                 elif prefix == 'v':
                     data['kind'] = 'b'
                     data['description'] = f'Optimise {tkey}'
@@ -108,6 +109,7 @@ class Dataset(optimise.Optimiser):
                     data['kind'] = 'f'
                     data['description'] = f'Differentiation stepsize for {tkey}'
                     data['units'] = self.get_units(tkey)
+                    data['fmt'] = '0.1e'
             ## infer kind
             if 'kind' not in data:
                 ## use data to infer kind
@@ -492,8 +494,6 @@ class Dataset(optimise.Optimiser):
 
     def sort(self,*sort_keys):
         """Sort rows according to key or keys."""
-        # if len(self)==0:
-            # return
         i = np.argsort(self[sort_keys[0]])
         for key in sort_keys[1:]:
             i = i[np.argsort(self[key][i])]
@@ -505,10 +505,12 @@ class Dataset(optimise.Optimiser):
             delimiter=' | ',
             automatically_add_uncertainties=True,
             unique_values_in_header=True,
+            include_description=True,
     ):
         """Format data into a string representation."""
         if len(self)==0:
             return ''
+        ## determine which keys to include in formatted table
         if keys is None:
             keys = self.keys()
         if automatically_add_uncertainties:
@@ -520,14 +522,24 @@ class Dataset(optimise.Optimiser):
                 if self._get_uncertainty(key) is not None:
                     tkeys.append(self.uncertainty_prefix + key)
             keys = tkeys
-        ## collect table data
-        header = [f'classname = {repr(self.classname)}']
+        ## construct header before table
+        header = []
+        if include_description:
+            ## include description of keys
+            lines = []
+            for key,data in self._data.items():
+                line = f'{key:10}: {data["description"]}'
+                if data['units'] is not None:
+                    line += f' [{data["units"]}]'
+                header.append(line)
+        ## attributes
+        header.append(f'classname = {repr(self.classname)}')
         if self.description is not None:
             header.append(f'description = {repr(self.description)}')
         columns = []
         for key in keys:
             if unique_values_in_header and len(tval:=self.unique(key)) == 1:
-                header.append(f'{key} = {repr(tval[0])}')
+                header.append(f'{key:10} = {repr(tval[0])}')
             else:
                 ## two passes required on all data to align column
                 ## widths
@@ -544,12 +556,6 @@ class Dataset(optimise.Optimiser):
 
     def __str__(self):
         return self.format(self.keys())
-
-    def format_description(self):
-        """Get a string listing data keys and descriptions."""
-        return '\n'.join([
-            f'# {data.key}: {data.description}'
-            for data in self._data.values()]) 
 
     def save(self,filename,keys=None,**format_kwargs,):
         """Save some or all data to a text file."""
@@ -615,7 +621,11 @@ class Dataset(optimise.Optimiser):
             ## load header
             with open(filename,'r') as fid:
                 for iline,line in enumerate(fid):
-                    if r:=re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line):
+                    if r:=re.match(r'^ *'+comment+f' *([^: ]+) *: *(.+) *',line):
+                        ## a description line
+                        pass
+                    elif r:=re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line):
+                        ## a unique value encoded in the header
                         key,val = r.groups()
                         data[key] = ast.literal_eval(val)
                     else:
@@ -871,12 +881,6 @@ def get_common(x,y,*keys,**limit_to_matches):
         x = x.matches(**limit_to_matches)
         y = y.matches(**limit_to_matches)
     i,j = find_common(x,y,*keys)
-    # if len(i)==0:
-        # ## No matches return copy, but empty of data
-        # return(
-            # x[np.full(len(x),False)] if len(x)>0 else x[:],
-            # y[np.full(len(y),False)] if len(y)>0 else y[:],
-        # ) 
     return x[i],y[j]
 
 def load(filename):

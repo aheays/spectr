@@ -431,5 +431,9 @@ def test_units():
     assert all(x.get('x',units='nm') == [1e9,2e9,3e9])
     x['d_x'] = [0.1,0.2,0.3]
     assert all(x.get('d_x',units='nm') == [0.1e9,0.2e9,0.3e9])
-    print( x)
-    assert False 
+
+def test_format_description():
+    x = Dataset()
+    x.set('x',[1,2,3],kind='f',units='m',description='This is x',fmt='0.3f')
+    x.set('d_x',[0.1,0.1,0.3])
+
