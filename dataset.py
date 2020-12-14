@@ -10,6 +10,7 @@ from numpy import nan
 from . import tools
 from .tools import AutoDict
 from .exceptions import InferException
+from .conversions import convert
 from . import optimise
 
 class Dataset(optimise.Optimiser):
@@ -60,7 +61,7 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
-    def set(self,key,value,index=None):
+    def set(self,key,value,index=None,**prototype_kwargs):
         """Set a value"""
         self._modify_time = time.time()
         ## if value is a parameter
@@ -75,7 +76,7 @@ class Dataset(optimise.Optimiser):
         if index is None:
             ## decide whether to permit if non-prototyped
             if not self.permit_nonprototyped_data and key not in self.prototypes:
-                if self._get_value_key_without_prefix(key) is not None:
+                if not self.is_value_key(key):
                     ## is an uncertainty, vary, stepsize or something
                     pass
                 else:
@@ -85,32 +86,33 @@ class Dataset(optimise.Optimiser):
             ## get any prototype data
             if key in self.prototypes:
                 data.update(self.prototypes[key])
+            ## apply prototype kwargs
+            for tkey,tval in prototype_kwargs.items():
+                data[tkey] = tval
             ## if a scalar value is given then set as default, and set
             ## data to this value
             if np.isscalar(value):
                 data['default'] = value
                 value = np.full(len(self),value)
-            ## this is an uncertainty of another key
-            if (tkey:=self._get_value_key_without_prefix(key)) is not None:
-                if tkey == 'd_':
+            ## this is an uncertainty/vary/stepsize of another key
+            if not self.is_value_key(key):
+                prefix,tkey = self._get_value_key_without_prefix(key)
+                if prefix == 'd':
                     data['kind'] = 'f'
                     data['description'] = f'Uncertainty of {tkey}'
-                elif tkey == 'v_':
+                    data['units'] = self.get_units(tkey)
+                elif prefix == 'v':
                     data['kind'] = 'b'
                     data['description'] = f'Optimise {tkey}'
-                elif tkey == 's_':
+                elif prefix == 's':
                     data['kind'] = 'f'
                     data['description'] = f'Differentiation stepsize for {tkey}'
+                    data['units'] = self.get_units(tkey)
             ## infer kind
             if 'kind' not in data:
                 ## use data to infer kind
                 value = np.asarray(value)
                 data['kind'] = value.dtype.kind
-            # else:
-                # ## get from prototypes -- also convert e.g. float to 'f'
-                # ## using np.dtype
-                # data['kind'] =  np.dtype(data['kind']).kind
-                # print('DEBUG:', data['kind'])
             ## convert bytes string to unicode
             if data['kind'] == 'S':
                 self.kind = 'U'
@@ -118,13 +120,17 @@ class Dataset(optimise.Optimiser):
             for tkey in ('description','fmt','cast',):
                 if tkey not in data:
                     data[tkey] = self._kind_defaults[data['kind']][tkey]
+            ## infer function dict,initialise inference lists, and units if needed
+            for tkey,tval in (
+                    ('infer',{}),
+                    ('inferred_from',[]),
+                    ('inferred_to',[]),
+                    ('units',None),
+            ):
+                if tkey not in data:
+                    data[tkey] = tval
             ## set data
             data['value'] = data['cast'](value)
-            ## initialise inference lists if they do not already exists
-            if 'inferred_from' not in data:
-                data['inferred_from'] = []
-            if 'inferred_to' not in data:
-                data['inferred_to'] = []
             ## If this is the data set other than defaults then add to set
             ## length of self and add corresponding data for any defaults
             ## set.
@@ -143,12 +149,15 @@ class Dataset(optimise.Optimiser):
             assert key in self,f'Cannot set data with index for unknown {key=}'
             self._data[key]['value'][:self._length][index] = self._data[key]['cast'](value)
 
-    def get(self,key,index=None):
+    def get(self,key,index=None,units=None):
         if index is not None:
             return self.get(key)[index]
         if key not in self._data:
             self._infer(key)
-        return self._data[key]['value'][:self._length]
+        retval = self._data[key]['value'][:self._length]
+        if units is not None:
+            retval = convert(retval,self.get_units(key),units)
+        return retval
 
     def get_value(self,key,index=None):
         assert self.is_value_key(key),'Not a value key'
@@ -191,6 +200,9 @@ class Dataset(optimise.Optimiser):
         assert self.is_value_key(key),'Not a value key'
         self.set('s_'+key,value,index)
 
+    def get_units(self,key):
+        return self._data[key]['units']
+        
     def __getitem__(self,arg):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
@@ -405,23 +417,15 @@ class Dataset(optimise.Optimiser):
         else:
             raise InferException(f"Could not infer key: {repr(key)}")
 
-    # def _get_value_key_from_uncertainty(self,key):
-        # """Get value key from uncertainty key, or return None."""
-        # if len(key) > 2 and key[:2] == 'd_':
-            # return key[2:]
-            # assert self.permit_nonprototyped_data or key[2:] in self.prototypes,f'Uncertain key with non-prototyped value key: {key=}'
-        # else:
-            # return None
-
     def _get_value_key_without_prefix(self,key):
         """Get value key from uncertainty key, or return None."""
-        if r:=re.match(r'^(s_|d_|v_)(.+)$',key):
-            return r.group(1)
+        if r:=re.match(r'^(.)_(.+)$',key):
+            return r.groups()
         else:
-            return None
+            return None,None
 
     def is_value_key(self,key):
-        value_key = self._get_value_key_without_prefix(key)
+        prefix,value_key = self._get_value_key_without_prefix(key)
         if value_key is None:
             return True
         else:

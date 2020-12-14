@@ -415,3 +415,21 @@ def test_get_common():
 
 def test_load():
     x = dataset.load('data/test_load.psv')
+
+def test_units():
+    x = Dataset(x=[1,2,3])
+    assert x.get_units('x') is None
+    x.set_prototype('x','f', units='m')
+    x = Dataset()
+    x.set('x',[1,2,3],units='m')
+    assert x.get_units('x') == 'm'
+    x = Dataset()
+    x.set_prototype('x','f', units='m')
+    x['x'] = [1,2,3]
+    assert x.get_units('x') == 'm'
+    assert all(x.get('x') == [1,2,3])
+    assert all(x.get('x',units='nm') == [1e9,2e9,3e9])
+    x['d_x'] = [0.1,0.2,0.3]
+    assert all(x.get('d_x',units='nm') == [0.1e9,0.2e9,0.3e9])
+    print( x)
+    assert False 
