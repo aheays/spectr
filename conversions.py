@@ -28,7 +28,7 @@ canonical_factors = {
 
     ## time
     's':(1.            ,'time'),
-    'm':(1/60          ,'time'),
+    'min':(1/60          ,'time'),
     'h':(1/60/60       ,'time'),
     'd':(1/60/60/24    ,'time'),
     'w':(1/60/60/24/7  ,'time'),
