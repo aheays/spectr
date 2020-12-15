@@ -335,7 +335,7 @@ class AtmosphericChemistry():
         destruction_mean_loss_rate = destruction_column_rate/integrate.trapz(self.get_density(species),self['z'])
         destruction_mean_lifetime = 1/destruction_mean_loss_rate
         lines = [
-            f'species                                     : {species}',
+            f'species                                 : {species}',
             f'column mixing ratio             (number): {column_mixing_ratio:10.3e}',
             f'total column production rate  (s-1.cm-2): {production_column_rate:10.3e}',
             f'total column destruction rate (s-1.cm-2): {destruction_column_rate:10.3e}',
