@@ -37,34 +37,31 @@ def test_dataset_construct_get_set_data():
     assert list(t['x']) == [1.,2.]
     assert list(t['d_x']) == [0.1,0.2]
 
-def test_dataset_set_defaults():
-    ## set default
-    t = Dataset()
-    t['y'] = 'a'
-    assert len(t) == 0
-    assert set(t.keys()) == set(['y'])
-    ## set vector then set default
-    t = Dataset()
-    t['x'] = [1,2]
-    t['y'] = 'a'
-    assert len(t) == 2
-    assert all(t['x'] == [1,2])
-    assert all(t['y'] == ['a','a'])
-    assert set(t.keys()) == set(['x','y'])
-    ## set default only, then set vector 
-    t = Dataset()
-    t['y'] = 'a'
-    t['x'] = [1,2]
-    assert len(t) == 2
-    assert all(t['x'] == [1,2])
-    assert all(t['y'] == ['a','a'])
-    assert set(t.keys()) == set(['x','y'])
-    ## set in init
+def test_defaults():
+    ## set and use a default
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
+    assert not t.has_default('x')
+    with raises(Exception): t.append(y='d')
+    t.set_default(x=5)
+    assert t.has_default('x')
+    assert t.get_default('x') == 5
+    t.append(y='d')
+    assert all(t['x'] == [1,2,3,5])
+    t.extend(y=['e','f'])
+    assert all(t['x'] == [1,2,3,5,5,5])
+    ## set default at instantiation
+    t = Dataset(y='a')
+    assert t.has_default('y')
+    assert t.get_default('y') == 'a'
+    t.extend(x=[1,2])
+    assert t.has_default('y')
+    assert t.get_default('y') == 'a'
     t = Dataset(x=[1,2],y='a')
+    assert t.has_default('y')
+    assert t.get_default('y') == 'a'
     assert len(t) == 2
     assert all(t['x'] == [1,2])
     assert all(t['y'] == ['a','a'])
-    assert set(t.keys()) == set(['x','y'])
 
 def test_dataset_prototypes():
     t = Dataset()

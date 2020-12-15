@@ -44,6 +44,7 @@ class Dataset(optimise.Optimiser):
         self._data = dict()
         self._length = 0
         self._over_allocate_factor = 2
+        self._defaults = {}
         if not hasattr(self,'prototypes'):
             ## derived classes might set this in class definition, so
             ## do not overwrite here
@@ -53,8 +54,16 @@ class Dataset(optimise.Optimiser):
         # self.permit_missing = True # add missing data if required
         # self.uncertainty_prefix = 'd_' # a single letter to prefix uncertainty keys
         self.verbose = False
+        ## set default from scalar values in kwargs data from vector
+        ## values
+        scalar_kwargs,vector_kwargs = {},{}
         for key,val in kwargs.items():
-            self[key] = val
+            if tools.isiterable(val):
+                vector_kwargs[key] = val
+            else:
+                scalar_kwargs[key] = val
+        self.set_default(**scalar_kwargs)
+        self.extend(**vector_kwargs)
         if load_from_filename is not None:
             self.load(load_from_filename)
             
@@ -92,7 +101,6 @@ class Dataset(optimise.Optimiser):
             ## if a scalar value is given then set as default, and set
             ## data to this value
             if np.isscalar(value):
-                data['default'] = value
                 value = np.full(len(self),value)
             ## this is an uncertainty/vary/stepsize of another key
             if not self.is_value_key(key):
@@ -141,8 +149,8 @@ class Dataset(optimise.Optimiser):
                 for tkey,tdata in self._data.items():
                     if tkey == key:
                         continue
-                    assert 'default' in tdata,f'Need default for key={tkey}'
-                    tdata['value'] = tdata['cast'](np.full(len(self),tdata['default']))
+                    assert tkey in self._defaults, f'Need default for key={tkey}'
+                    tdata['value'] = tdata['cast'](np.full(len(self),self._defaults[tkey]))
             else:
                 assert len(value) == len(self),f'Length of new data {repr(key)} is {len(data)} and does not match the length of existing data: {len(self)}.'
             ## set data
@@ -204,7 +212,24 @@ class Dataset(optimise.Optimiser):
 
     def get_units(self,key):
         return self._data[key]['units']
+
+    def has_default(self,key):
+        if key in self._defaults:
+            return True
+        else:
+            return False 
         
+    def set_default(self,**keys_values):
+        """Set a value that will be used if otherwise missing"""
+        for key,value in keys_values.items():
+            if not self.is_known(key):
+                self[key] = value
+            self._defaults[key] = value
+
+    def get_default(self,key):
+        """Set a value that will be used if otherwise missing"""
+        return self._defaults[key]
+
     def __getitem__(self,arg):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
@@ -669,7 +694,7 @@ class Dataset(optimise.Optimiser):
         """Extend self with data given as kwargs."""
         ## ensure enough data is provided
         for key in self:
-            assert key in kwargs or 'default' in self._data[key], f'Key not in extending data and has no default: {key=}'
+            assert key in kwargs or key in self._defaults, f'Key not in extending data and has no default: {key=}'
         ## get length of new data
         new_data_length = 0
         for key,val in kwargs.items():
@@ -689,7 +714,7 @@ class Dataset(optimise.Optimiser):
         ## include default values if needed
         for key in self:
             if key not in kwargs:
-                kwargs[key] = np.full(new_data_length,self._data[key]['default'])
+                kwargs[key] = np.full(new_data_length,self._defaults[key])
         ## add data
         if len(self) == 0:
             ## currently no data -- simply set extending values
@@ -710,7 +735,6 @@ class Dataset(optimise.Optimiser):
                         t = np.empty(len(self._data[key]['value']),dtype=f'<U{new_str_len*self._over_allocate_factor}')
                         t[:len(self)] = self._data[key]['value'][:len(self)]
                         self._data[key]['value'] = t
-
                 ## reallocate and lengthen value array if necessary
                 if total_length > len(self._data[key]['value']):
                     self._data[key]['value'] = np.concatenate((
