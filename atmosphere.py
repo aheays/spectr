@@ -98,9 +98,11 @@ class AtmosphericChemistry():
 
         if load_reaction_network is not False:
             if load_reaction_network is True:
-                print('Searching for reaction network file: Stand*')
+                if self.verbose:
+                    print('Searching for reaction network file: Stand*')
                 load_reaction_network = tools.glob_unique(f'{model_directory}/Stand*')
-                print(f'found: {load_reaction_network}')
+                if self.verbose:
+                    print(f'found: {load_reaction_network}')
             ## load STAND reaction network
             self.reaction_network.load_stand(load_reaction_network)
             self.reaction_network.remove_unnecessary_reactions()
@@ -182,6 +184,9 @@ class AtmosphericChemistry():
 
     def set_density(self,species,density):
         self.density[species] = density
+
+    def get_density(self,species):
+        return self.density[species]
 
     def plot_vertical(
             self,
@@ -315,6 +320,29 @@ class AtmosphericChemistry():
         ax.set_ylim(y.min(),y.max())
         plotting.legend()
         return ax
+
+    def summarise_species(self,species,doprint=True):
+        """MAY NOT COUNT MULTIPLE PRODUCTS OF THE SAME SPECIES CORRECTLY"""
+        column_mixing_ratio = integrate.trapz(self.get_density(species),self['z']) / integrate.trapz(self['nt'],self['z'])
+        ## production summary
+        production_reactions = self.reaction_network.get_reactions(with_products=(species,)) 
+        production_rate = np.sum([t.rate for t in production_reactions],0)
+        production_column_rate = integrate.trapz(production_rate,self['z'])
+        ## destruction summary
+        destruction_reactions = self.reaction_network.get_reactions(with_reactants=(species,)) 
+        destruction_rate = np.sum([t.rate for t in destruction_reactions],0)
+        destruction_column_rate = integrate.trapz(destruction_rate,self['z'])
+        destruction_mean_loss_rate = destruction_column_rate/integrate.trapz(self.get_density(species),self['z'])
+        destruction_mean_lifetime = 1/destruction_mean_loss_rate
+        lines = [
+            f'species                                     : {species}',
+            f'column mixing ratio             (number): {column_mixing_ratio:10.3e}',
+            f'total column production rate  (s-1.cm-2): {production_column_rate:10.3e}',
+            f'total column destruction rate (s-1.cm-2): {destruction_column_rate:10.3e}',
+            f'mean destruction rate              (s-1): {destruction_mean_loss_rate:10.3e}',
+            f'mean destruction lifetime           (yr): {convert(destruction_mean_lifetime,"s","yr"):10.3e}',
+            ]
+        print('\n'.join(lines))
 
     def plot_production_destruction(
             self,
