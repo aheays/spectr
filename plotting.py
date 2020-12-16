@@ -953,7 +953,14 @@ def newcolor(index=None,reset=None,linecolors=None):
 
 
 _newlinestyle_nextstyle=0
-linestyles=('solid','dashed','dotted','dashdot')
+linestyles=(
+    'solid',
+    'dashed',
+    'dotted',
+    'dashdot',
+    (0,(3,2,1,2,1,2)),          # -..
+    (0,(1,2,3,2,3,2)),          # --.
+)
 def newlinestyle(index=None,reset=None):
     """Retuns a style string, different to the last one, from the list
     linestyles. If reset is set, returns to first element of
