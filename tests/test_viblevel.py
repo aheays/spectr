@@ -12,30 +12,31 @@ from spectr import viblevel
 
 make_plot = False 
 
-# def test_viblevel_init():
-    # viblevel.VibLevel('test','14N2')
+def test_viblevel_init():
+    viblevel.VibLevel('test','[14N]2')
 
-# def test_viblevel():
-    # t = viblevel.VibLevel('test','[14N]2')
-    # t.add_level(name='X.3Σ+u(v=0)',Tv=1000,Bv=1)
-    # t.add_level(name='A.3Πu(v=0)',Tv=3000,Bv=1.2,Av=100)
-    # t.construct()
-    # # print( len(t.rotational_level))
-    # # print( len(t.vibrational_spin_level))
-        # # # print( t.vibrational_level)
-    # # # print( t.vibrational_spin_level)
-    # # # print( t.rotational_level[:5])
-    # # from spectr import plotting
-    # # fig = plotting.qfig(1)
-    # # ax = fig.gca()
-    # # ax.plot(t.E)
-    # # # t.rotational_level.plot('J','E',ax=ax)
-    # # # for i in range(t.H.shape[1]):
-        # # # # ax.plot(t.J,t.H[:,i,i],label=str(i))
-        # # # ax.plot(t.J,t.Hp[:,i].real,label=str(i))
-    # # # plotting.legend()
-    # # plotting.show()
-    # # # assert False
+def test_viblevel():
+    t = viblevel.VibLevel('test','[14N]2')
+    t.add_level(name='X.3Σ+u(v=0)',Tv=1000,Bv=1)
+    t.add_level(name='A.3Πu(v=0)',Tv=3000,Bv=1.2,Av=100)
+    t.construct()
+    print( len(t.rotational_level))
+    print( len(t.vibrational_spin_level))
+        # print( t.vibrational_level)
+    # print( t.vibrational_spin_level)
+    # print( t.rotational_level[:5])
+    from spectr import plotting
+    fig = plotting.qfig(1)
+    ax = fig.gca()
+    ax.plot(t.E)
+    # t.rotational_level.plot('J','E',ax=ax)
+    # for i in range(t.H.shape[1]):
+        # # ax.plot(t.J,t.H[:,i,i],label=str(i))
+        # ax.plot(t.J,t.Hp[:,i].real,label=str(i))
+    # plotting.legend()
+    plotting.show()
+    # assert False
+test_viblevel()
 
 # def test_vibline():
     # import time ; timer = time.time() # DEBUG

@@ -4,6 +4,7 @@ from functools import lru_cache
 import itertools
 
 import numpy as np
+from numpy import nan
 import sympy
 from scipy import linalg
 
@@ -39,22 +40,28 @@ class VibLevel(Optimiser):
         self.species = t.species
         self.isotopologue = t.isotopologue
         self.point_group = t['point_group']
+        tkwargs = {
+            'Eref':Eref,
+            'permit_auto_defaults':True,
+            'permit_nonprototyped_data':False,
+        }
         if self.point_group == 'D∞h':
-            self.rotational_level = levels.HomonuclearDiatomicRotationalLevel()
-            self.vibrational_level = levels.HomonuclearDiatomicVibrationalLevel()
-            self.vibrational_spin_level = levels.HomonuclearDiatomicRotationalLevel() # could make HomonuclearDiatomicVibrationalSpinLevel
+            self.rotational_level = levels.HomonuclearDiatomicRotationalLevel(**tkwargs)
+            self.vibrational_level = levels.HomonuclearDiatomicVibrationalLevel(**tkwargs)
+            self.vibrational_spin_level = levels.HomonuclearDiatomicRotationalLevel(**tkwargs) # could make HomonuclearDiatomicVibrationalSpinLevel
         elif self.point_group == 'C∞v':
-            self.rotational_level = levels.HeteronuclearDiatomicRotationalLevel()
-            self.vibrational_level = levels.HeteronuclearDiatomicVibrationalLevel()
-            self.vibrational_spin_level = levels.HeteronuclearDiatomicRotationalLevel() # could make HeteronuclearDiatomicVibrationalSpinLevel
+            self.rotational_level = levels.HeteronuclearDiatomicRotationalLevel(**tkwargs)
+            self.vibrational_level = levels.HeteronuclearDiatomicVibrationalLevel(**tkwargs)
+            self.vibrational_spin_level = levels.HeteronuclearDiatomicRotationalLevel(**tkwargs) # could make HeteronuclearDiatomicVibrationalSpinLevel
         else:
             raise Exception(f"Not implemented: {self.point_group=}")
+
         # self.states = []          # Vibronic_State objects
         # self.interactions = []            # Vibronic_Interaction objects
         # self._vibronic_spin_manifolds = [] #  for the benefit of get_vibrational_level
         # self._vibronic_interactions = [] #  for the benefit of get_vibrational_interactions
         # self.ef = (ef if ef is not None else ('e','f'))    # set this to restrict parity to ('e',) or ('f',)
-        self.Eref = Eref                                   # energy refernce relative to Te
+        # self.Eref = Eref                                   # energy refernce relative to Te
         # self.Tbeg,self.Tend = Tbeg,Tend
         ## get a good default J range
         species_object = get_species(species)
@@ -91,9 +98,6 @@ class VibLevel(Optimiser):
         self.eigvals = None
         self.eigvects = None
         ## a Level object containing data, better access through level property
-        if Eref is not None:
-            self.rotational_level['Eref'] = Eref # set Eref if provided as input argument
-        self.rotational_level.permit_new_keys  = True
         self._exp = None # an array of experimental data matching the model data in shape
         ## the optimiser
         Optimiser.__init__(self,name=self.name)
@@ -180,6 +184,7 @@ class VibLevel(Optimiser):
             ## add to rotational and vibrational level
             if cache['first_run']:
                 for efi,Σi in zip(ef,Σ):
+                    print('DEBUG:', len(self.rotational_level))
                     self.rotational_level.extend(J=self.J,ef=efi,Σ=Σi,**kwargs)
                 cache['first_run'] = False
                 

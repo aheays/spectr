@@ -31,8 +31,12 @@ class Dataset(optimise.Optimiser):
     def __init__(
             self,
             name=None,
-            load_from_filename=None,
-            description=None,
+            load_from_filename = None,
+            description = None,
+            permit_nonprototyped_data = True,
+            permit_reference_breaking = True,
+            permit_auto_defaults = False,
+            prototypes = None,  # a dictionary of prototypes
             **kwargs):
         self.classname = self.__class__.__name__
         if name is None:
@@ -45,26 +49,23 @@ class Dataset(optimise.Optimiser):
         self._length = 0
         self._over_allocate_factor = 2
         self._defaults = {}
-        if not hasattr(self,'prototypes'):
-            ## derived classes might set this in class definition, so
-            ## do not overwrite here
-            self.prototypes = {}
-        self.permit_nonprototyped_data =  True # allow the addition of data not in self.prototypes
-        self.permit_reference_breaking = True  # not implemented -- I think
-        self.permit_auto_defaults = False         # set default values if necessary automatically
+        self._prototypes = {}
+        self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self._prototypes
+        self.permit_reference_breaking = permit_reference_breaking  # not implemented -- I think
+        self.permit_auto_defaults = permit_auto_defaults         # set default values if necessary automatically
         # self.permit_missing = True # add missing data if required
-        # self.uncertainty_prefix = 'd_' # a single letter to prefix uncertainty keys
         self.verbose = False
-        ## set default from scalar values in kwargs data from vector
-        ## values
-        scalar_kwargs,vector_kwargs = {},{}
+        ## init prototypes if included as kwargs
+        if prototypes is not None:
+            for key,val in prototypes.items():
+                self.set_prototype(key,**val)
+        ## set scalar values in kwargs to default values, vector
+        ## values to data
         for key,val in kwargs.items():
             if tools.isiterable(val):
-                vector_kwargs[key] = val
+                self[key] = val
             else:
-                scalar_kwargs[key] = val
-        self.set_default(**scalar_kwargs)
-        self.extend(**vector_kwargs)
+                self.set_default(key,val)
         if load_from_filename is not None:
             self.load(load_from_filename)
             
@@ -76,7 +77,7 @@ class Dataset(optimise.Optimiser):
         self._modify_time = time.time()
         ## if value is a parameter
         if isinstance(value,optimise.P):
-            self.set('d_'+key,value.uncertainty,index)
+            self.set('unc_'+key,value.uncertainty,index)
             value = value.value
         ## delete inferences since data has changed
         if key in self:
@@ -85,7 +86,7 @@ class Dataset(optimise.Optimiser):
         ## provided
         if index is None:
             ## decide whether to permit if non-prototyped
-            if not self.permit_nonprototyped_data and key not in self.prototypes:
+            if not self.permit_nonprototyped_data and not self.has_prototype(key):
                 if not self.is_value_key(key):
                     ## is an uncertainty, vary, stepsize or something
                     pass
@@ -94,8 +95,8 @@ class Dataset(optimise.Optimiser):
             ## new data
             data = dict()
             ## get any prototype data
-            if key in self.prototypes:
-                data.update(self.prototypes[key])
+            if key in self._prototypes:
+                data.update(self._prototypes[key])
             ## apply prototype kwargs
             for tkey,tval in prototype_kwargs.items():
                 data[tkey] = tval
@@ -106,15 +107,15 @@ class Dataset(optimise.Optimiser):
             ## this is an uncertainty/vary/stepsize of another key
             if not self.is_value_key(key):
                 prefix,tkey = self._get_value_key_without_prefix(key)
-                if prefix == 'd':
+                if prefix == 'unc':
                     data['kind'] = 'f'
                     data['description'] = f'Uncertainty of {tkey}'
                     data['units'] = self.get_units(tkey)
                     data['fmt'] = '0.1e'
-                elif prefix == 'v':
+                elif prefix == 'vary':
                     data['kind'] = 'b'
                     data['description'] = f'Optimise {tkey}'
-                elif prefix == 's':
+                elif prefix == 'step':
                     data['kind'] = 'f'
                     data['description'] = f'Differentiation stepsize for {tkey}'
                     data['units'] = self.get_units(tkey)
@@ -150,7 +151,7 @@ class Dataset(optimise.Optimiser):
                 for tkey,tdata in self._data.items():
                     if tkey == key:
                         continue
-                    assert tkey in self._defaults, f'Need default for key={tkey}'
+                    assert tkey in self._defaults, f'Need default for key {tkey}'
                     tdata['value'] = tdata['cast'](np.full(len(self),self._defaults[tkey]))
             else:
                 assert len(value) == len(self),f'Length of new data {repr(key)} is {len(data)} and does not match the length of existing data: {len(self)}.'
@@ -180,36 +181,36 @@ class Dataset(optimise.Optimiser):
 
     def get_uncertainty(self,key,index=None):
         assert self.is_value_key(key),'Not a value key'
-        if 'd_'+key in self:
-            return self.get('d_'+key,index)
+        if 'unc_'+key in self:
+            return self.get('unc_'+key,index)
         else:
             return None
 
     def set_uncertainty(self,key,value,index=None):
         assert self.is_value_key(key),'Not a value key'
-        self.set('d_'+key,value,index)
+        self.set('unc_'+key,value,index)
 
     def get_vary(self,key,index=None):
         assert self.is_value_key(key),'Not a value key'
-        if 'v_'+key in self:
-            return self.get('v_'+key,index)
+        if 'vary_'+key in self:
+            return self.get('vary_'+key,index)
         else:
             return None
 
     def set_vary(self,key,value,index=None):
         assert self.is_value_key(key),'Not a value key'
-        self.set('v_'+key,value,index)
+        self.set('vary_'+key,value,index)
 
     def get_differentiation_step(self,key,index=None):
         assert self.is_value_key(key),'Not a value key'
-        if 's_'+key in self:
-            return self.get('s_'+key,index)
+        if 'step_'+key in self:
+            return self.get('step_'+key,index)
         else:
             return None
 
     def set_differentiation_step(self,key,value,index=None):
         assert self.is_value_key(key),'Not a value key'
-        self.set('s_'+key,value,index)
+        self.set('step_'+key,value,index)
 
     def get_units(self,key):
         return self._data[key]['units']
@@ -275,28 +276,27 @@ class Dataset(optimise.Optimiser):
 
     def has_prototype(self,key):
         """Test if has prototype data."""
-        if key in self.prototypes:
+        if key in self._prototypes:
             return True
         else:
             return False
 
-    def set_prototype(self,key,kind,**kwargs):
+    def set_prototype(self,key,kind,infer=None,**kwargs):
         """Set prototype data."""
-        assert kind in self._kind_defaults,'Unknown kind: {kind=}'
-        self.prototypes[key] = dict(kind=kind,infer={},**kwargs)
+        assert kind in self._kind_defaults,f'Unknown kind: {repr(kind)}'
+        if infer is None:
+            infer = {}
+        self._prototypes[key] = dict(kind=kind,infer=infer,**kwargs)
         for tkey,tval in self._kind_defaults[kind].items():
-            self.prototypes[key].setdefault(tkey,tval)
+            self._prototypes[key].setdefault(tkey,tval)
 
-    def get_prototype(self,key,value=None):
+    def get_prototype(self,key=None,value=None):
         """Get prototype as a dictionary or a particular value."""
-        if value is None:
-            return self.prototypes[key]
-        else:
-            return self.prototypes[key][value]
+        return self._prototypes[key][value]
 
     def add_infer_function(self,key,dependencies,function):
-        assert key in self.prototypes
-        self.prototypes[key]['infer'][dependencies] = function
+        assert key in self._prototypes
+        self._prototypes[key]['infer'][dependencies] = function
 
     def index(self,index):
         """Index all array data in place."""
@@ -419,10 +419,10 @@ class Dataset(optimise.Optimiser):
         if key in already_attempted:
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key)
-        if key not in self.prototypes:
+        if key not in self._prototypes:
             raise InferException(f"No prototype for {key=}")
         ## loop through possible methods of inferences.
-        for dependencies,function in self.prototypes[key]['infer'].items():
+        for dependencies,function in self._prototypes[key]['infer'].items():
             if isinstance(dependencies,str):
                 ## sometimes dependencies end up as a string instead of a list of strings
                 dependencies = (dependencies,)
@@ -464,17 +464,21 @@ class Dataset(optimise.Optimiser):
 
     def _get_value_key_without_prefix(self,key):
         """Get value key from uncertainty key, or return None."""
-        if r:=re.match(r'^(.)_(.+)$',key):
-            return r.groups()
+        if '_' in key:
+            return key.split('_',1)
         else:
             return None,None
 
     def is_value_key(self,key):
-        prefix,value_key = self._get_value_key_without_prefix(key)
-        if value_key is None:
-            return True
+        """Test if a value rather than uncertainty etc."""
+        if '_' in key:
+            prefix,rest = key.split('_',1)
+            if prefix in ('unc','vary','step') and self.has_prototype(rest):
+                return False
+            else:
+                return True
         else:
-            return False 
+            return True
         
     def __iter__(self):
         for key in self._data:
@@ -522,7 +526,7 @@ class Dataset(optimise.Optimiser):
         return [key for key in self._data.keys() if self.is_value_key(key)]
     
     def optimised_keys(self):
-        return [key for key in self._data.keys() if 'v_'+key in self]
+        return [key for key in self._data.keys() if 'vary_'+key in self]
 
     def assert_known(self,*keys):
         for key in keys:
@@ -692,6 +696,8 @@ class Dataset(optimise.Optimiser):
         for key,val in data.items():
             if key in ('classname','description',):
                 setattr(self,key,val)
+            elif not tools.isiterable(val):
+                self.set_default(key,val)
             else:
                 self[key] = val
 
@@ -956,3 +962,4 @@ def load(filename):
 
 
     
+

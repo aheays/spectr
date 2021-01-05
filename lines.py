@@ -19,6 +19,7 @@ from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
 from .levels import _unique
+from .dataset import Dataset
 
 prototypes = {}
 
@@ -186,28 +187,42 @@ def _get_key_without_level_suffix(upper_or_lower,key):
 
 def _expand_level_keys_to_upper_lower(levels_class):
     retval = []
-    for key,val in levels_class.prototypes.items():
+    for key in levels_class._init_keys:
         retval.append(key+'_l')
         retval.append(key+'_u')
     return retval
 
-
 class GenericLine(levels.Base):
     _levels_class = levels.GenericLevel
-    _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
-                         + ['species', 'mass',
-                            'ν',#'λ',
-                            'ΔJ',
-                            'f','σ','S','S296K','τ',
-                            'γair','δair','nair','γself',
-                            'Pself', 'Pair', 'Nself',
-                            'Teq','Ttr','partition','partition_source',
-                            'Γ','ΓD',
-                            ])
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    _init_keys = _unique(
+        _expand_level_keys_to_upper_lower(_levels_class)
+        + [
+            'species', 'mass',
+            'ν',#'λ',
+            'ΔJ',
+            'f','σ','S','S296K','τ',
+            'γair','δair','nair','γself',
+            'Pself', 'Pair', 'Nself',
+            'Teq','Ttr','partition','partition_source',
+            'Γ','ΓD',
+        ])
 
-    # def __init__(self,*args,**kwargs):
-        # levels.Base.__init__(self,*args,**kwargs)
+
+    def __init__(self,name=None,description=None,**kwargs):
+        """Default_name is decoded to give default values. Kwargs ca be
+        scalar data, further default values of vector data, or if vetors
+        themselves will populate data arrays."""
+        Dataset.__init__(
+            self,
+            name=name,
+            description=description,
+            permit_nonprototyped_data = False,
+            prototypes = {key:prototypes[key] for key in self._init_keys},
+            **kwargs)
+        self._cache = {}
+        self.pop_format_input_function()
+        self.automatic_format_input_function(limit_to_args=('name',))
+
 
     def plot_spectrum(
             self,

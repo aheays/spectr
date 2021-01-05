@@ -7,14 +7,14 @@ show_plots = False
 def test_construct():
     t = levels.Base()
     assert t.name == 'base'
-    assert len(t.prototypes)>0
-    assert list(t.prototypes.keys()) == ['description','notes','author','reference','date','classname',]
+    assert len(t._prototypes)>0
+    assert list(t._prototypes.keys()) == ['description','notes','author','reference','date','classname',]
 
 def test_construct():
     t = levels.GenericLevel()
-    assert t.name == 'generic_level'
-    assert len(t.prototypes)>0
-    assert list(t.prototypes.keys()) == [
+    # assert t.name == 'generic_level'
+    assert len(t._prototypes) > 0
+    assert list(t._prototypes.keys()) == [
         'species',
         'E','Eref',
         'Γ','ΓD',
@@ -23,7 +23,6 @@ def test_construct():
         'Nself',
         # 'species', 'E', 'Eref','Γ','ΓD',
     ]
-
 
 def test_assignment():
     t = levels.GenericLevel(name='ddd')
@@ -37,7 +36,6 @@ def test_load():
     t.load('data/levels_14N2')
     assert all(t['species'] == ['14N2','14N2','14N2','14N2','14N2'])
     assert list(t['J']) == [0,1,2,3,4]
-
     t = levels.HeteronuclearDiatomicRotationalLevel()
     t.load('data/SO_rotational_levels')
     assert t.unique('species') == ['32S16O']
@@ -50,9 +48,8 @@ def test_plot():
 
 def test_load_HomonuclearDiatomicRotationalLevel():
     t = levels.HomonuclearDiatomicRotationalLevel(
-        species='14N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,
-        J=[0,1,2,3],)
-    assert set(t.prototypes) == set([ 'species', 'Eref', 'label', 'Λ',
+        species='14N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,J=[0,1,2,3])
+    assert set(t._prototypes) == set([ 'species', 'Eref', 'label', 'Λ',
                                   's', 'LSsign', 'v', 'Γv', 'τv', 'Atv', 'Adv', 'Aev', 'ηdv', 'ηev',
                                   'Tv', 'Bv', 'Dv', 'Hv', 'Lv', 'Av', 'ADv', 'AHv', 'λv', 'λDv',
                                   'λHv', 'γv', 'γDv', 'γHv', 'ov', 'oDv', 'oHv', 'oLv', 'pv', 'qv',
@@ -71,5 +68,5 @@ def test_level_degeneracy():
     assert all(t['g'] == [1,3,5,7])
     t = levels.HomonuclearDiatomicRotationalLevel(species='14N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,J=[0,1,2,3])
     assert list(t['g']) == [6,9,30,21]
-    # t = levels.HomonuclearDiatomicRotationalLevel(species='15N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=0.5, J=[0,1,2,3],)
-    # assert list(t['g']) == [1,9,5,21]
+    t = levels.HomonuclearDiatomicRotationalLevel(species='15N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=0.5, J=[0,1,2,3],)
+    assert list(t['g']) == [1,9,5,21]

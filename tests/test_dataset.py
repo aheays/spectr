@@ -32,20 +32,20 @@ def test_dataset_construct_get_set_data():
     t = Dataset(x=['a','b'])
     assert len(t) == 2
     assert list(t['x']) == ['a','b']
-    t = Dataset(x=[1.,2.], d_x=[0.1,0.2],)
+    t = Dataset(x=[1.,2.], unc_x=[0.1,0.2],)
     assert len(t)==2
     assert list(t['x']) == [1.,2.]
-    assert list(t['d_x']) == [0.1,0.2]
+    assert list(t['unc_x']) == [0.1,0.2]
 
 def test_defaults():
     ## set and use a default
     t = Dataset(x=[1,2,3],y=['a','b','c'])
     assert not t.has_default('x')
-    with raises(Exception): t.append(y='d')
+    with raises(Exception): t.append(y='unc')
     t.set_default(x=5)
     assert t.has_default('x')
     assert t.get_default('x') == 5
-    t.append(y='d')
+    t.append(y='unc')
     assert all(t['x'] == [1,2,3,5])
     t.extend(y=['e','f'])
     assert all(t['x'] == [1,2,3,5,5,5])
@@ -70,7 +70,6 @@ def test_dataset_prototypes():
     assert isinstance(t['x'][0],float)
     assert t._data['x']['description'] == "X is a thing."
     assert t.has_prototype('x')
-    assert t.get_prototype('x')['description'] == "X is a thing."
     assert t.get_prototype('x','description') == "X is a thing."
 
 def test_auto_defaults():
@@ -234,34 +233,34 @@ def test_dataset_infer_autoremove_inferences():
 
 def test_dataset_infer_with_uncertainties():
     t = Dataset()
-    t['x'],t['d_x']= [1.],[0.1]
-    t['y'],t['d_y'] = [2.],[0.2]
+    t['x'],t['unc_x']= [1.],[0.1]
+    t['y'],t['unc_y'] = [2.],[0.2]
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y'),lambda self,x,y:x+y)
     assert t['z'] == [3]
-    assert t['d_z'] == approx(np.sqrt(0.1**2+0.2**2))
+    assert t['unc_z'] == approx(np.sqrt(0.1**2+0.2**2))
     t = Dataset()
-    t['x'],t['d_x']= [1.],[0.1]
+    t['x'],t['unc_x']= [1.],[0.1]
     t['y'] = [2.]
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y'),lambda self,x,y:x+y)
     assert t['z'] == [3]
-    assert abs(t['d_z'] - np.sqrt(0.1**2))/t['d_z'] < 1e-5
+    assert abs(t['unc_z'] - np.sqrt(0.1**2))/t['unc_z'] < 1e-5
     t = Dataset()
-    t['y'],t['d_y'] = [2.],[0.2]
-    t['p'],t['d_p'] = [3.],[0.3]
+    t['y'],t['unc_y'] = [2.],[0.2]
+    t['p'],t['unc_p'] = [3.],[0.3]
     t.set_prototype('z','f')
     t.add_infer_function('z',('y','p'),lambda self,y,p:y*p)
     assert t['z'] == [2*3]
-    assert t['d_z'] == approx(np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)
+    assert t['unc_z'] == approx(np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)
     t = Dataset()
-    t['x'],t['d_x'] = [1.],[0.1]
-    t['y'],t['d_y'] = [2.],[0.2]
-    t['p'],t['d_p'] = [3.],[0.3]
+    t['x'],t['unc_x'] = [1.],[0.1]
+    t['y'],t['unc_y'] = [2.],[0.2]
+    t['p'],t['unc_p'] = [3.],[0.3]
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y','p'),lambda self,x,y,p:x+y*p)
     assert t['z'] == 1+2*3
-    assert abs(t['d_z'] - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/t['d_z'] < 1e-5
+    assert abs(t['unc_z'] - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/t['unc_z'] < 1e-5
 
 def test_dataset_match_matches():
     t = Dataset(x=[1,2,2,3],y=[4,4,4,4])
@@ -373,8 +372,8 @@ def test_uncertainty():
     t.set_uncertainty('x',0.1)
     assert all(t.get_uncertainty('x') == [0.1,0.1,0.1])
     t = Dataset(x=[1,2,3],f=5)
-    t['d_x'] = 0.1
-    assert all(t['d_x'] == [0.1,0.1,0.1])
+    t['unc_x'] = 0.1
+    assert all(t['unc_x'] == [0.1,0.1,0.1])
     t = Dataset(x=[1,2,3],f=5)
     t.set_uncertainty('x',0.1)
     t.set_uncertainty('x',0.2,[0,2])
@@ -385,16 +384,16 @@ def test_differentiation_step():
     t.set_differentiation_step('x',0.1)
     assert all(t.get_differentiation_step('x') == [0.1,0.1,0.1])
     t = Dataset(x=[1,2,3],f=5)
-    t['s_x'] = 0.1
-    assert all(t['s_x'] == [0.1,0.1,0.1])
+    t['step_x'] = 0.1
+    assert all(t['step_x'] == [0.1,0.1,0.1])
 
 def test_vary():
     t = Dataset(x=[1,2,3],f=5)
     t.set_vary('x',[True,True,False])
     assert all(t.get_vary('x') == [True,True,False])
     t = Dataset(x=[1,2,3],f=5)
-    t['v_x'] = False 
-    assert all(t['v_x'] == [False,False,False,])
+    t['vary_x'] = False 
+    assert all(t['vary_x'] == [False,False,False,])
 
 def test_rows():
     x = Dataset(x=[1,2,3],y=[4,5,6])
@@ -416,7 +415,7 @@ def test_find_common():
     assert all(i == [0,1,2])
     assert all(j == [1,2,0])
     x = Dataset(x=[1,2,3],z=['a','b','c'],y=[1,2,3],)
-    y = Dataset(x=[3,1,2],z=['c','a','d'],y=[4,5,6],)
+    y = Dataset(x=[3,1,2],z=['c','a','unc'],y=[4,5,6],)
     i,j = find_common(x,y,'x','z')
     assert all(i == [0,2])
     assert all(j == [1,0])
@@ -449,11 +448,11 @@ def test_units():
     assert x.get_units('x') == 'm'
     assert all(x.get('x') == [1,2,3])
     assert all(x.get('x',units='nm') == [1e9,2e9,3e9])
-    x['d_x'] = [0.1,0.2,0.3]
-    assert all(x.get('d_x',units='nm') == [0.1e9,0.2e9,0.3e9])
-
+    x['unc_x'] = [0.1,0.2,0.3]
+    assert all(x.get('unc_x',units='nm') == [0.1e9,0.2e9,0.3e9])
+test_units()
 def test_format_description():
     x = Dataset()
     x.set('x',[1,2,3],kind='f',units='m',description='This is x',fmt='0.3f')
-    x.set('d_x',[0.1,0.1,0.3])
+    x.set('unc_x',[0.1,0.1,0.3])
 
