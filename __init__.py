@@ -5,7 +5,7 @@ import shutil
 
 ## nonstandard library
 import numpy as np
-from numpy import nan
+from numpy import array,nan
 from scipy import integrate
 
 ## import subpackages of this library
