@@ -21,11 +21,11 @@ class Dataset(optimise.Optimiser):
 
     ## perhaps better as instance variable?
     _kind_defaults = {
-        'f': {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt'   :'+12.8e','description':'float' ,},
-        'i': {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt'   :'d'     ,'description':'int'   ,},
-        'b': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt'   :''      ,'description':'bool'  ,},
-        'U': {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt'   :'s'     ,'description':'str'   ,},
-        'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object',},
+        'f': {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt'   :'+12.8e','description':'float' ,'auto_default':nan,},
+        'i': {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt'   :'d'     ,'description':'int'   ,'auto_default':-999,},
+        'b': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt'   :''      ,'description':'bool'  ,'auto_default':True,},
+        'U': {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt'   :'s'     ,'description':'str'   ,'auto_default':'',},
+        'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','auto_default':None,},
     }
 
     def __init__(
@@ -49,8 +49,9 @@ class Dataset(optimise.Optimiser):
             ## derived classes might set this in class definition, so
             ## do not overwrite here
             self.prototypes = {}
-        self.permit_nonprototyped_data =  True
-        self.permit_reference_breaking = True
+        self.permit_nonprototyped_data =  True # allow the addition of data not in self.prototypes
+        self.permit_reference_breaking = True  # not implemented -- I think
+        self.permit_auto_defaults = False         # set default values if necessary automatically
         # self.permit_missing = True # add missing data if required
         # self.uncertainty_prefix = 'd_' # a single letter to prefix uncertainty keys
         self.verbose = False
@@ -127,7 +128,7 @@ class Dataset(optimise.Optimiser):
             if data['kind'] == 'S':
                 self.kind = 'U'
             ## some other prototype data
-            for tkey in ('description','fmt','cast',):
+            for tkey in ('description','fmt','cast','auto_default',):
                 if tkey not in data:
                     data[tkey] = self._kind_defaults[data['kind']][tkey]
             ## infer function dict,initialise inference lists, and units if needed
@@ -214,14 +215,17 @@ class Dataset(optimise.Optimiser):
         return self._data[key]['units']
 
     def has_default(self,key):
+        """Test for existence of a default value."""
         if key in self._defaults:
             return True
         else:
             return False 
         
-    def set_default(self,**keys_values):
+    def set_default(self,key=None,value=None,**more_keys_values):
         """Set a value that will be used if otherwise missing"""
-        for key,value in keys_values.items():
+        if key is not None:
+            more_keys_values[key] = value
+        for key,value in more_keys_values.items():
             if not self.is_known(key):
                 self[key] = value
             self._defaults[key] = value
@@ -269,12 +273,26 @@ class Dataset(optimise.Optimiser):
     def is_inferred_from(self,key_to,key_from):
         return key_from in self._data[key_to]['inferred_from']
 
+    def has_prototype(self,key):
+        """Test if has prototype data."""
+        if key in self.prototypes:
+            return True
+        else:
+            return False
+
     def set_prototype(self,key,kind,**kwargs):
         """Set prototype data."""
         assert kind in self._kind_defaults,'Unknown kind: {kind=}'
         self.prototypes[key] = dict(kind=kind,infer={},**kwargs)
         for tkey,tval in self._kind_defaults[kind].items():
             self.prototypes[key].setdefault(tkey,tval)
+
+    def get_prototype(self,key,value=None):
+        """Get prototype as a dictionary or a particular value."""
+        if value is None:
+            return self.prototypes[key]
+        else:
+            return self.prototypes[key][value]
 
     def add_infer_function(self,key,dependencies,function):
         assert key in self.prototypes
@@ -692,9 +710,16 @@ class Dataset(optimise.Optimiser):
 
     def extend(self,**kwargs):
         """Extend self with data given as kwargs."""
-        ## ensure enough data is provided
+        ## ensure enough data is provided in kwargs, or if possible
+        ## get from defaults or auto_defaults
         for key in self:
-            assert key in kwargs or key in self._defaults, f'Key not in extending data and has no default: {key=}'
+            if key not in kwargs:
+                if self.has_default(key):
+                    kwargs[key] = self.get_default(key)
+                elif self.permit_auto_defaults and self.has_prototype(key):
+                    kwargs[key] = self.get_prototype(key,'auto_default')
+                else:
+                    raise Exception(f'Key not in extending data and has no default or auto_default: {repr(key)}')
         ## get length of new data
         new_data_length = 0
         for key,val in kwargs.items():
@@ -723,7 +748,14 @@ class Dataset(optimise.Optimiser):
         else:
             total_length = len(self) + new_data_length
             for key,val in kwargs.items():
-                assert key in self, f'Unknown extending key: {key=}'
+                ## check extending data is already in self -- if not
+                ## then set existing data with an autodefault if
+                ## use_auto_defaults is true
+                if key not in self:
+                    if self.permit_auto_defaults and self.has_prototype(key):
+                        self.set_default(key,self.get_prototype(key,'auto_default'))
+                    else:
+                        raise Exception(f'Key not in existing: {repr(key)}')
                 ## increase unicode dtype length if new strings are
                 ## longer than the current
                 if self._data[key]['kind'] == 'U':

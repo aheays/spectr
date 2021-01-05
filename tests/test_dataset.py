@@ -69,6 +69,29 @@ def test_dataset_prototypes():
     t['x'] = [5]
     assert isinstance(t['x'][0],float)
     assert t._data['x']['description'] == "X is a thing."
+    assert t.has_prototype('x')
+    assert t.get_prototype('x')['description'] == "X is a thing."
+    assert t.get_prototype('x','description') == "X is a thing."
+
+def test_auto_defaults():
+    t = Dataset(x=[1,2,3])
+    t.set_prototype('x','f')
+    t.set_prototype('y','f')
+    assert np.isnan(t.get_prototype('x','auto_default'))
+    t.permit_auto_defaults = False
+    t.extend(x=[1,3,4])
+    with raises(Exception):
+        t.append(x=5,y=2)
+    t = Dataset(x=[1,2,3])
+    t.set_prototype('x','f')
+    t.set_prototype('y','f')
+    t.permit_auto_defaults = True
+    t.extend(x=[1,3,4])
+    t.append(x=5,y=2)
+    print( t)
+    assert all(t['x'] == [1,2,3,1,3,4,5])
+    assert t['y'][-1] == 2
+    assert all([np.isnan(tt) for tt in t['y'][:-1]])
 
 def test_dataset_permit_nonprototyped_data():
     t = Dataset()
