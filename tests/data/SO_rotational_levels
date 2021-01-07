@@ -1,6 +1,6 @@
 description = 'Fitted rovibronic levels.'
 Eref = 0.0000                 
-unc_Eref = 0.0500                
+d_Eref = 0.0500                
 partition_source = "self"
 S = 1                         
 species   label v   Σ    ef J    Λ  s   Ω   E              Γ         

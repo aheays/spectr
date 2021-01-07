@@ -9,7 +9,7 @@ show_plots =False
 
 def test_construct():
     t = lines.GenericLine()
-    # assert t.name == 'generic_line'
+    assert t.name == 'generic_line'
 
 def test_assignment():
     t = lines.GenericLine(name='ddd')
@@ -27,9 +27,9 @@ def test_infer_with_level_keys():
     assert t['ν'] == [50.]
     t = lines.GenericLine(ν=[100],E_u=[150])
     assert t['E_l'] == [50.]
-    t = lines.GenericLine(E_l=[100],unc_E_l=[0.5],E_u=[150],unc_E_u=[0.2])
+    t = lines.GenericLine(E_l=[100],d_E_l=[0.5],E_u=[150],d_E_u=[0.2])
     assert t['ν'] == [50.]
-    assert t['unc_ν'] == [approx(np.sqrt(0.5**2+0.2**2))]
+    assert t['d_ν'] == [approx(np.sqrt(0.5**2+0.2**2))]
 
 def test_load_lines():
     t = lines.GenericLine()

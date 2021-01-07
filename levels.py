@@ -239,19 +239,20 @@ class Base(Dataset):
     """Common stuff for for lines and levels."""
 
     _init_keys = []
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
     
-    def __init__(self,name=None,**kwargs):
+    def __init__(self,name=None,description=None,**keys_vals,):
         """Default_name is decoded to give default values. Kwargs ca be
         scalar data, further default values of vector data, or if vetors
         themselves will populate data arrays."""
-        Dataset.__init__(
-            self,
-            name=name,
-            prototypes = {key:prototypes[key] for key in self._init_keys},
-            **kwargs)
+        Dataset.__init__(self,name=name,description=description)
+        self.permit_nonprototyped_data = False
         self._cache = {}
+        for key,val in keys_vals.items():
+            self[key] = val
         self.pop_format_input_function()
         self.automatic_format_input_function(limit_to_args=('name',))
+
 
 class GenericLevel(Base):
     """A generic level."""
@@ -263,10 +264,11 @@ class GenericLevel(Base):
         'Teq','Tex','partition_source','partition','α',
         'Nself',
     ]
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 class HeteronuclearDiatomicElectronicLevel(Base):
     _init_keys = GenericLevel._init_keys +['label', 'Λ','s','S','LSsign',]
-    _prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 class HeteronuclearDiatomicVibrationalLevel(Base):
     _init_keys =  HeteronuclearDiatomicElectronicLevel._init_keys + [
@@ -282,7 +284,7 @@ class HeteronuclearDiatomicVibrationalLevel(Base):
         'pDv','qDv',
         'Tvreduced','Tvreduced_common',
         'Bv_μscaled',]
-    _prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 class HeteronuclearDiatomicRotationalLevel(Base):
     """Rotational levels of a heteronuclear diatomic molecule."""
@@ -291,20 +293,20 @@ class HeteronuclearDiatomicRotationalLevel(Base):
         'Teq',
         'α',
         'σv','sa','ef','Fi','Ω','Σ','SR',])
-    _prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
     default_zkeys = ('label','v','Σ','ef')
 
 class HomonuclearDiatomicElectronicLevel(HeteronuclearDiatomicElectronicLevel):
     _init_keys = _unique(HeteronuclearDiatomicElectronicLevel._init_keys + ['Inuclear','gu',])
-    _prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 class HomonuclearDiatomicVibrationalLevel(HeteronuclearDiatomicVibrationalLevel):
     _init_keys = _unique(HeteronuclearDiatomicVibrationalLevel._init_keys + ['Inuclear','gu',])
-    _prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 class HomonuclearDiatomicRotationalLevel(HeteronuclearDiatomicRotationalLevel):
     _init_keys = _unique(HeteronuclearDiatomicRotationalLevel._init_keys + ['Inuclear','gu',])
-    _prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
 
 class LinearTriatomicLevel(GenericLevel):
     """Rotational levels of a linear triatomic.  Constructed to load
@@ -314,14 +316,14 @@ class LinearTriatomicLevel(GenericLevel):
         'v1','v2','v3','l2',    # vibrational coordinates
         'J',
     ]
-    _prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
     default_zkeys = ('label','v1','v2','v3','l2',)
 
 # # class TriatomicDinfh(Base):
     # # """Rotational levels of a triatomic molecule in the D∞h point group."""
 
-    # # _prototypes = deepcopy(Base.prototypes)
-    # # _prototypes.update({
+    # # prototypes = deepcopy(Base.prototypes)
+    # # prototypes.update({
         # # 'ν1':dict(description='Vibrational quantum number symmetric stretching' ,kind='i',fmt='<3d',infer={}),
         # # 'ν2':dict(description='Vibrational quantum number bending' ,kind='i',fmt='<3d',infer={}),
         # # 'ν3':dict(description='Vibrational quantum number asymmetric stretching' ,kind='i',fmt='<3d',infer={}),
