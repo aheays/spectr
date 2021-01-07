@@ -193,14 +193,21 @@ contains
           !! compute outwards solution to join point
           ijoin = int((iinner+iouter)/2)
           chi = 0.0
-          call compute_single_channel_renormalised_numerov(mu,dR,V(ibeg:ijoin),E,chi(ibeg:ijoin),ijoin-ibeg+1)
-          !! compute inwards solution to join point, scale to match outwards
-          !! solution at the join point
+          call compute_single_channel_renormalised_numerov(mu,dR,V(ibeg:ijoin),E,chi(ibeg:ijoin),ijoin-ibeg+1+1)
+          !! compute inwards solution to join point
           do i=iend,ijoin,-1
              xarr(iend-i+1) = V(i)
           end do
           call compute_single_channel_renormalised_numerov(mu,dR,xarr,E,yarr,iend-ijoin+1)
-          x = chi(ijoin)/yarr(iend-ijoin+1)      !factor rescale inwards solution to match outwards at joing point
+          !! Compute the factor needed to rescale inwards solution to
+          !! match outwards at join point. The two cases are to avoid
+          !! a comparison at a node where the wavefunction is zero.
+          if (abs(chi(ijoin)).gt.abs(chi(ijoin+1))) then
+             x = chi(ijoin)/yarr(iend-ijoin+1)
+          else
+             x = chi(ijoin+1)/yarr(iend-ijoin+1-1)
+          end if
+          !! rescale inwards solution
           do i=iend,ijoin,-1
              chi(i) = yarr(iend-i+1)*x
           end do

@@ -50,15 +50,17 @@ canonical_factors = {
     'kHz':(1e3,'frequency'),
     'MHz':(1e6,'frequency'),
     'GHz':(1e9,'frequency'),
+    'radians':(2*constants.pi  ,'frequency'),
 
     ## wavenumbers
     'm-1' :(1   ,'wavenumber'),
     'cm-1':(1e-2,'wavenumber'),
 
     ## mass
-    'kg'        :(1.,          'mass')         ,
-    'g'         :(1e3,         'mass')         ,
-    'solar_mass':(1/1.98855e30,'mass'),
+    'kg'        :(1                      ,'mass'),
+    'g'         :(1e3                    ,'mass'),
+    'solar_mass':(1/1.98855e30           ,'mass'),
+    'amu'       :(1/constants.atomic_mass,'mass'),
 
     ## velocity
     'm.s-1'     :(1.,          'velocity')         ,
