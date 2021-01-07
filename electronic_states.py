@@ -8,6 +8,7 @@ from numpy import nan,array
 # import sympy
 # from scipy import linalg
 
+from .fortran_tools import fortran_tools
 # from . import levels,lines
 # from . import quantum_numbers
 # from . import tools
@@ -15,8 +16,8 @@ from numpy import nan,array
 # from .kinetics import get_species,Species
 
 
-
 def calc_unbound_wavefunction(R,Rstep,V,μ,E,method='fortran'):
+    """Multi-channel unbound wavefunction at energy E."""
     N = V.shape[0]
     n = V.shape[1]
     ## get coupled wavefunctions 
@@ -96,7 +97,7 @@ def find_single_channel_bound_levels_in_energy_range(
     E = np.zeros(1000,dtype=float)
     χ = np.zeros((1000,len(V)),dtype=float,order='F')
     nfound = np.array([0],dtype=int)
-    _fortran_tools.find_single_channel_bound_levels(v,E,χ,nfound,V,dR,μ,Emin,Emax,ΔE,δE,len(V))
+    fortran_tools.find_single_channel_bound_levels(v,E,χ,nfound,V,dR,μ,Emin,Emax,ΔE,δE,len(V))
     nfound = int(nfound)
     v,E,χ = v[:nfound],E[:nfound],χ[:nfound,:]
     return(v,E,χ)  

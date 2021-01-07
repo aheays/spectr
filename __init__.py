@@ -5,10 +5,11 @@ import shutil
 
 ## nonstandard library
 import numpy as np
-from numpy import nan
+from numpy import array,nan
 from scipy import integrate
 
 ## import subpackages of this library
+from .fortran_tools import fortran_tools
 from . import tools
 from . import plotting
 from . import optimise
@@ -21,6 +22,7 @@ from . import kinetics
 from . import atmosphere
 from . import hitran
 from . import bruker
+from . import electronic_states
 
 ## import more explicitly for interactive use
 from .dataset import Dataset
