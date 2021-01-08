@@ -1,21 +1,21 @@
 import functools
+from functools import lru_cache
 import warnings
 from pprint import pprint
 
+
 import numpy as np
 from scipy import constants
+import periodictable
 from tinydb import TinyDB, Query
-
-
-
-
-
 
 from . import tools
 from .exceptions import MissingDataException
 
 ## module data and caches
 from .kinetics import get_species
+
+
 
 
 
@@ -326,6 +326,17 @@ def get_species_property(species,prop):
         # linelist.remove(linelist['ν']>νend)
     # return(linelist)
 
+@lru_cache
+def get_isotopes(element_name):
+    """Return an ordered list of mass numbers and fractional abundances of
+    element given as a string name."""
+    element = getattr(periodictable,element_name)
+    isotopes = [(mass_number,element[mass_number].abundance/100.)
+                for mass_number in element.isotopes]
+    isotopes = tuple(sorted(isotopes,key=lambda x: -x[1]))
+    return isotopes
 
-
-
+@lru_cache
+def get_atomic_mass(element_name,mass_number):
+    """Return the atomic mass of a particular elemental isotope."""
+    return getattr(periodictable,element_name)[mass_number].mass

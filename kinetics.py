@@ -194,30 +194,25 @@ def get_species(name):
         _get_species_cache[name] = Species(name)
     return(_get_species_cache[name])
 
+
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
 
     def __init__(self,name):
-        ## determine if name is for a species or an isotopologue
-        if '[' in name or ']' in name:
-            self.isotopologue = name
-            try:
-                self.species = database.get_species_property(self.isotopologue,'iso_indep')
-            except MissingDataException:
-                self.species = re.sub(r'\[[0-9]*([A-Z-az])\]',r'\1',name)
-        else:
-            self.species = name
-            self.isotopologue = database.get_species_property(self.species,'iso_main')
-        # self._reduced_elements = None            # keys are names of elements, values are multiplicity in ONE molecule
-        self._elements = None   # set of elements, possibly repeated
-        self._isotopes = None   # set of elements, possibly repeated
-        # self._element_species = None            # list of elements as Species objects
+        # ## determine if name is for a species or an isotopologue
+        # print('DEBUG:', name)
+        # if '[' in name or ']' in name:
+            # self.isotopologue = name
+            # try:
+                # self.species = database.get_species_property(self.isotopologue,'iso_indep')
+            # except MissingDataException:
+                # self.species = re.sub(r'\[[0-9]*([A-Z-az])\]',r'\1',name)
+        # else:
+            # self.species = name
+            # self.isotopologue = database.get_species_property(self.species,'iso_main')
+        self._name = name
         self._charge = None     # net charge
         self._nelectrons = None # number of electrnos
-        self._mass = None            # amu
-        self._reduced_mass = None   # reduced mass (amu)
-        # self._nonisotopic_name = None # with mass symbols removed, e.g., '[32S][16O]' to 'SO'
-
 
     def _get_charge(self):
         if self._charge is None:
@@ -241,18 +236,6 @@ class Species:
             self._elements.sort()
         return self._elements
 
-    def _get_isotopes(self):
-        if self._isotopes is not None:
-            pass
-        else:
-            self._isotopes = []
-            for part in re.split(r'(\[[0-9]+[A-Z][a-z]?[0-9]*\][0-9]*)',self.isotopologue):
-                if r:= re.match('^\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
-                    mass_number,element,multiplicity = r.groups()
-                    for i in range(1 if multiplicity=='' else int(multiplicity)):
-                        self._isotopes.append((element,int(mass_number)))
-            self._isotopes.sort()
-        return self._isotopes
 
     def _get_nelectrons(self):
         if self._nelectrons is None:
@@ -263,13 +246,6 @@ class Species:
                 self._nelectrons += getattr(periodictable,element).number # add electrons attributable to each nucleus
             self._nelectrons -= self['charge'] # account for ionisation
         return self._nelectrons
-
-    def _get_mass(self):
-        if self._mass is None:
-            self._mass = 0.
-            for element,mass_number in self['isotopes']:
-                self._mass += getattr(periodictable,element)[mass_number].mass
-        return self._mass
 
     def __str__(self):
         if self.isotopologue is None:
@@ -292,22 +268,62 @@ class Species:
 
     @lru_cache
     def __getitem__(self,key):
-        if key == 'charge':
+        """Access these properties by index rather than attributes in order
+        for simple caching.  -- move other get_ methods to here someday"""
+        if key == 'name':
+            return self._name
+        elif key == 'charge':
             return self._get_charge()
         elif key == 'elements':
-            return self._get_elements()
+            elements = tuple(t[0] for t in self['isotopes'])
+            return elements
         elif key == 'isotopes':
-            return self._get_isotopes()
+            ## match elemental or isotopolgue components with multiplicity,
+            ## e.g., H2 → H2, OH → O + H, [12C][16O]2 → [12C] + [16O]2
+            isotopes = []
+            for part in re.split(r'([A-Z][a-z]?[0-9]*|\[[0-9]+[A-Z][a-z]?\][0-9]*)',self['name']):
+                if part=='':
+                    continue
+                if r:= re.match('^([A-Z][a-z]?)([0-9]*)',part):
+                    ## an element
+                    element = r.group(1)
+                    multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
+                    mass_number = database.get_isotopes(element)[0][0]
+                elif r:= re.match('^\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
+                    ## an isotope
+                    mass_number,element,multiplicity = r.groups()
+                for i in range(1 if multiplicity=='' else int(multiplicity)):
+                    isotopes.append((element,int(mass_number)))
+            isotopes = tuple(sorted(isotopes))
+            return isotopes
         elif key == 'nelectrons':
             return self._get_nelectrons()
         elif key == 'mass':
-            return self._get_mass()
+            return sum([database.get_atomic_mass(element,mass_number)
+                        for element,mass_number in self['isotopes']])
+        elif key == 'reduced_mass':
+            if len(self['isotopes']) != 2:
+                raise Exception("Can only compute reduced mass for diatomic species.")
+            m1 = database.get_atomic_mass(*self['isotopes'][0])
+            m2 = database.get_atomic_mass(*self['isotopes'][1])
+            return m1*m2/(m1+m2)
+        elif key == 'chemical_name':
+            return ''.join(self['elements'])
+        elif key == 'isotopologue':
+            return ''.join([f'[{t[1]}{t[0]}]' for t in self['isotopes']])
         else:
             if self.isotopologue is None:
                 raise NotImplementedError(f'Properties only implemented for isotopologues')
             return database.get_species_property(self.isotopologue,key)
-        
-
+    
+    name = property(lambda self: self['name'])
+    elements = property(lambda self: self['elements'])
+    isotopes = property(lambda self: self['isotopes'])
+    chemical_name = property(lambda self: self['chemical_name'])
+    isotopologue = property(lambda self: self['isotopologue'])
+    species = property(lambda self: self.name)
+    mass = property(lambda self: self['mass'])
+    reduced_mass = property(lambda self: self['reduced_mass'])
     
 ########################
 ## Chemical reactions ##
