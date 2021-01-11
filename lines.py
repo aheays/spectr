@@ -3,6 +3,7 @@ from copy import copy,deepcopy
 from pprint import pprint
 
 import numpy as np
+from numpy import nan,array
 from scipy import constants
 
 # from . import *
@@ -18,7 +19,7 @@ from .conversions import convert
 from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
-from .levels import _unique
+from .dataset import Dataset
 
 prototypes = {}
 
@@ -26,7 +27,8 @@ prototypes = {}
 for key in (
         'species',
         'mass','reduced_mass',
-        'partition_source','partition',
+        # 'partition_source',
+        'partition',
         'ΓD',
 ):
     prototypes[key] = copy(levels.prototypes[key])
@@ -90,12 +92,44 @@ prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0
 prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f', infer={})
 prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer={('Pself','L','Teq'): lambda self,Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,})
 
+def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
+    """Compute partition function from data in self."""
+    if self.partition_source != 'self':
+        raise InferException(f'Partition source not "self".')
+
+    retval = np.full(len(species),0.)
+    for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
+
+        i = tools.find(i)
+        kT = convert(constants.Boltzmann,'J','cm-1')*Texi
+
+        k = []
+        for qn,j in tools.unique_combinations_mask(
+                *[self[key+'_u'][i] for key in self._levels_class.defining_qn]):
+            k.append(tools.find(j)[0])
+        retval[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
+
+        k = []
+        for qn,j in tools.unique_combinations_mask(
+                *[self[key+'_l'][i] for key in self._levels_class.defining_qn]):
+            k.append(tools.find(j)[0])
+        retval[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
+
+    return retval
+
+prototypes['partition'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer={
+    # ('species','Tex'):_f5,
+    ('species','Tex','E_u','E_l','g_u','g_l'):_f3,
+})
+
+
+
 ## vibrational transition frequencies
-prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber (cm-1)", kined=float, fmt='>11.4f', infer={('Tvp','Tvpp'): lambda self,Tvp,Tvpp: Tvp-Tvpp, ('λv',): lambda self,λv: convert_units(λv,'nm','cm-1'),})
+prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber (cm-1)", kind='f', fmt='>11.4f', infer={('Tvp','Tvpp'): lambda self,Tvp,Tvpp: Tvp-Tvpp, ('λv',): lambda self,λv: convert_units(λv,'nm','cm-1'),})
 prototypes['λv'] = dict(description="Electronic-vibrational transition wavelength (nm)", kind='f', fmt='>11.4f', infer={('νv',): lambda self,νv: convert_units(νv,'cm-1','nm'),},)
 
 ## transition strengths
-prototypes['M']   = dict(description="Pointer to electronic transition moment (au).", kind=object, infer={})
+prototypes['M']   = dict(description="Pointer to electronic transition moment (au).", kind='O', infer={})
 prototypes['Mv']   = dict(description="Electronic transition moment for this vibronic level (au).", kind='f', fmt='<10.5e', infer={('μ','FCfactor'): lambda self,μ,FCfactor: μ/np.sqrt(FCfactor),})
 prototypes['μv']  = dict(description="Electronic-vibrational transition moment (au)", kind='f',  fmt='<10.5e', infer={('M','χp','χpp','R'): lambda self,M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),},) # could infer from S but then sign would be unknown
 prototypes['μ']   = dict(description="Electronic-vibrational-rotational transition moment (au)", kind='f',  fmt='<10.5e', infer={('M','χp','χpp','R'): lambda self,M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),},) # could infer from S but then sign would be unknown
@@ -118,7 +152,9 @@ def _f1(self,f,SJ,Jpp,Λp,Λpp):
 prototypes['fv'] = dict(description="Band f-value (dimensionless)", kind='f',  fmt='<10.5e', infer={('Sv','ν','Λp','Λpp'):  lambda self,Sv,ν,Λp,Λpp :  band_strength_to_band_fvalue(Sv,ν, Λp,Λpp), ('Sv','νv','Λp','Λpp'): lambda self,Sv,νv,Λp,Λpp:  band_strength_to_band_fvalue(Sv,νv,Λp,Λpp), ('f','SJ','Jpp','Λp','Λpp'): _f1,})
 prototypes['Aev'] =dict(description="Einstein A coefficient / emission rate averaged over a band (s-1).", kind='f',  fmt='<10.5e', infer={('Sv','ν' ,'Λp','Λpp'): lambda self,Sv,ν ,Λp,Λpp: band_strength_to_band_emission_rate(Sv,ν ,Λp,Λpp), ('Sv','νv','Λp','Λpp'): lambda self,Sv,νv,Λp,Λpp: band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp),},) 
 prototypes['σv'] =dict(description="Integrated cross section of an entire band (cm2.cm-1).", kind='f',  fmt='<10.5e', infer={('fv',):lambda self,fv: band_fvalue_to_band_cross_section(fv),},)
-prototypes['Sij'] =dict(description="Line strength (au)", kind='f',  fmt='<10.5e', infer={('Sv','SJ'): lambda self,Sv,SJ:  Sv*SJ, ('f','ν','Jpp'): lambda self,f,ν,Jpp: f/3.038e-6/ν*(2*Jpp+1), ('Ae','ν','Jp'): lambda self,Ae,ν,Jp: Ae/(2.026e-6*ν**3/(2*Jp+1)),})
+prototypes['Sij'] =dict(description="Line strength (au)", kind='f',  fmt='<10.5e', infer={
+    ('μ',): lambda self,μ: μ**2,
+    ('Sv','SJ'): lambda self,Sv,SJ:  Sv*SJ, ('f','ν','Jpp'): lambda self,f,ν,Jpp: f/3.038e-6/ν*(2*Jpp+1), ('Ae','ν','Jp'): lambda self,Ae,ν,Jp: Ae/(2.026e-6*ν**3/(2*Jp+1)),})
 prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate (s-1).", kind='f',  fmt='<10.5e', infer={('f','ν','Jp','Jpp'): lambda self,f,ν,Jp,Jpp: f*0.666886/(2*Jp+1)*(2*Jpp+1)*ν**2, ('Sij','ν','Jp'): lambda self,Sij,ν,Jp: Sij*2.026e-6*ν**3/(2*Jp+1),},)
 prototypes['FCfactor'] =dict(description="Franck-Condon factor (dimensionless)", kind='f',  fmt='<10.5e', infer={('χp','χpp','R'): lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)]),},)
 prototypes['Rcentroid'] =dict(description="R-centroid (Å)", kind='f',  fmt='<10.5e', infer={('χp','χpp','R','FCfactor'): lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)]),},)
@@ -155,24 +191,33 @@ prototypes['Γ']['infer']['Γ_u','Γ_l'] = lambda self,Γu,Γl: Γu+Γl
 prototypes['Γ_l']['infer']['Γ','Γ_u'] = lambda self,Γ,Γu: Γ-Γu
 prototypes['Γ_u']['infer']['Γ','Γ_l'] = lambda self,Γ,Γl: Γ-Γl
 prototypes['J_u']['infer']['J_l','ΔJ'] = lambda self,J_l,ΔJ: J_l+ΔJ
-# prototypes['Teq_u']['infer']['Teq'] = lambda self,Teq: Teq
-# prototypes['Teq_l']['infer']['Teq'] = lambda self,Teq: Teq
-prototypes['partition_source_l']['infer']['partition_source'] = lambda self,x: x
-prototypes['partition_source_u']['infer']['partition_source'] = lambda self,x: x
-prototypes['Tex_u']['infer']['Teq'] = lambda self,Teq: Teq
+prototypes['Teq_u']['infer']['Teq'] = lambda self,Teq: Teq
+prototypes['Teq_l']['infer']['Teq'] = lambda self,Teq: Teq
+prototypes['Tex_u']['infer']['Tex'] = lambda self,Tex: Tex
+prototypes['Tex_l']['infer']['Tex'] = lambda self,Tex: Tex
+# prototypes['partition_source_l']['infer']['partition_source'] = lambda self,x: x
+# prototypes['partition_source_u']['infer']['partition_source'] = lambda self,x: x
+prototypes['Tex']['infer']['Teq'] = lambda self,Teq: Teq
 prototypes['Nself_u']['infer']['Nself'] = lambda self,Nself: Nself
 prototypes['Nself_l']['infer']['Nself'] = lambda self,Nself: Nself
 prototypes['species_l']['infer']['species'] = lambda self,species: species
 prototypes['species_u']['infer']['species'] = lambda self,species: species
+prototypes['species']['infer']['species_u'] = lambda self,species_l: species_l
+prototypes['species']['infer']['species_u'] = lambda self,species_u: species_u
+
 prototypes['ΔJ']['infer']['J_u','J_l'] = lambda self,J_u,J_l: J_u-J_l
-prototypes['partition']['infer']['partition_l'] = lambda self,partition_l:partition_l
-prototypes['partition']['infer']['partition_u'] = lambda self,partition_u:partition_u
+# prototypes['partition']['infer']['partition_l'] = lambda self,partition_l:partition_l
+# prototypes['partition']['infer']['partition_u'] = lambda self,partition_u:partition_u
 prototypes['partition_l']['infer']['partition'] = lambda self,partition:partition
 prototypes['partition_u']['infer']['partition'] = lambda self,partition:partition
 
 
 
-
+def _collect_prototypes(*keys):
+    """Take a list and return unique element.s"""
+    keys = tools.unique(keys,preserve_ordering= True)
+    retval = {key:prototypes[key] for key in keys}
+    return retval
 
 level_suffix = {'upper':'_u','lower':'_l'}
 
@@ -186,28 +231,24 @@ def _get_key_without_level_suffix(upper_or_lower,key):
 
 def _expand_level_keys_to_upper_lower(levels_class):
     retval = []
-    for key,val in levels_class.prototypes.items():
+    for key in levels_class._prototypes:
         retval.append(key+'_l')
         retval.append(key+'_u')
     return retval
 
-
 class GenericLine(levels.Base):
     _levels_class = levels.GenericLevel
-    _init_keys = _unique(_expand_level_keys_to_upper_lower(_levels_class)
-                         + ['species', 'mass',
-                            'ν',#'λ',
-                            'ΔJ',
-                            'f','σ','S','S296K','τ',
-                            'γair','δair','nair','γself',
-                            'Pself', 'Pair', 'Nself',
-                            'Teq','Ttr','partition','partition_source',
-                            'Γ','ΓD',
-                            ])
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
-
-    # def __init__(self,*args,**kwargs):
-        # levels.Base.__init__(self,*args,**kwargs)
+    _prototypes = _collect_prototypes(
+            'species', 'mass',
+            'ν',#'λ',
+            'ΔJ',
+            'f','σ','S','S296K','τ','Ae',
+            'γair','δair','nair','γself',
+            'Pself', 'Pair', 'Nself',
+            'Teq','Ttr','partition',
+            'Γ','ΓD',
+        *_expand_level_keys_to_upper_lower(_levels_class)
+    )
 
     def plot_spectrum(
             self,
@@ -215,6 +256,8 @@ class GenericLine(levels.Base):
             xkey='ν',
             ykey='σ',
             zkeys=None,         # None or list of keys to plot as separate lines
+            ΓG='ΓD', ΓL='Γ',
+            dx=None,
             ax=None,
             **plot_kwargs # can be calculate_spectrum or plot kwargs
     ):
@@ -225,10 +268,10 @@ class GenericLine(levels.Base):
             ax = plt.gca()
         if zkeys==None:
             if ykey == 'transmission': # special case
-                x,y = self.calculate_spectrum(x,ykey='τ',xkey=xkey)
+                x,y = self.calculate_spectrum(x,ykey='τ',xkey=xkey,ΓG=ΓG,ΓL=ΓL,dx=dx)
                 y = np.exp(-y)
             else:
-                x,y = self.calculate_spectrum(x,ykey=ykey,xkey=xkey)
+                x,y = self.calculate_spectrum(x,ykey=ykey,xkey=xkey,ΓG=ΓG,ΓL=ΓL,dx=dx)
                 line = ax.plot(x,y,**plot_kwargs)[0]
         else:
             for iz,(qn,t) in enumerate(self.unique_dicts_matches(*zkeys)):
@@ -270,6 +313,7 @@ class GenericLine(levels.Base):
             ΓL='Γ',        # a key or for Lorentzian widths (i.e., "Γ"), a constant numeric value, or None to neglect Lorentzian entirely
             nfwhmG=20,         # how many Gaussian FWHMs to include in convolution
             nfwhmL=100,         # how many Lorentzian FWHMs to compute
+            dx=None,
             nx=10000,     # number of grid points used if x not give
             ymin=None,     # minimum value of ykey before a line is ignored, None for use all lines
             gaussian_method='python', #'fortran stepwise', 'fortran', 'python'
@@ -350,7 +394,10 @@ class GenericLine(levels.Base):
             ##
             ## get a default frequency scale if none provided
             if x is None:
-                x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
+                if dx is not None:
+                    x = np.arange(max(0,self[xkey].min()-10.),self[xkey].max()+10.,dx)
+                else:
+                    x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
             else:
                 x = np.asarray(x)
             ## get spectrum type according to width specified
@@ -475,21 +522,33 @@ class GenericLine(levels.Base):
                 cache['Ae'] = copy(self['Ae'])
         return x,y
 
-    def get_levels(self,upper_or_lower):
+    def get_level(self, u_or_l, reduce_to=None,):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
+        assert u_or_l in ('u','l')
         levels = self._levels_class()
-        assert upper_or_lower in ('upper','lower'),f'upper_or_lower must be "upper" or "lower", not {repr(upper_or_lower)}'
         for key in self.keys():
-            if (level_key:=_get_key_without_level_suffix(upper_or_lower,key)) is not None:
-                levels[level_key] = self[key]
+            if len(key)>2 and key[-2:]==('_'+u_or_l):
+                levels[key[:-2]] = self[key]
+        if reduce_to == None:
+            pass
+        else:
+            keys = [key for key in levels.defining_qn if levels.is_known(key)]
+            new_levels = self._levels_class()
+            for values,i in tools.unique_combinations_mask(*[levels[key] for key in keys]):
+                i = tools.find(i)
+                if reduce_to == 'first':
+                    new_levels.extend(**levels[i[0:1]])
+                else:
+                    raise ImplementationError()
+            levels = new_levels
         return levels
 
-    def get_upper_levels(self):
-        return self.get_levels('upper')
+    # def get_upper_level(self):
+        # return self.get_level('u')
 
-    def get_lower_levels(self):
-        return self.get_levels('lower')
+    # def get_lower_level(self):
+        # return self.get_level('l')
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -526,43 +585,36 @@ class GenericLine(levels.Base):
         ## kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.extend(**new)
 
-    def generate_from_levels(self,lu,ll):
-        for key in lu:
-            if lu.is_scalar(key):
-                self[key+'_u'] = lu[key]
-            else:
-                self[key+'_u'] = np.ravel(np.tile(lu.as_vector(key),len(ll)))
-        for key in ll:
-            if ll.is_scalar(key):
-                self[key+'_l'] = ll[key]
-            else:
-                self[key+'_l'] = np.ravel(np.repeat(ll.as_vector(key),len(lu)))
-
+    def generate_from_levels(self,level_upper,level_lower):
+        """Combeiong all combination of upper and lower levels into a line list."""
+        for key in level_upper:
+            self[key+'_u'] = np.ravel(np.tile(level_upper[key],len(level_lower)))
+        for key in level_lower:
+            self[key+'_l'] = np.ravel(np.repeat(level_lower[key],len(level_upper)))
 
 
 class HeteronuclearDiatomicElectronicLine(GenericLine):
     _levels_class = levels.HeteronuclearDiatomicElectronicLevel
-    _init_keys = _unique(
-        _expand_level_keys_to_upper_lower(_levels_class)
-        + GenericLine._init_keys
-        + ['Teq', 'Tex', 'Ttr', 'partition_source', 'partition', 'L', 'γair', 'δair', 'γself', 'nair', 'Pself', 'Pair', 'Nself',])
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    _prototypes = _collect_prototypes(
+        *_expand_level_keys_to_upper_lower(_levels_class),
+        *GenericLine._prototypes,
+        *['Teq', 'Tex', 'Ttr', 'L',
+         'γair', 'δair', 'γself', 'nair', 'Pself', 'Pair', 'Nself',]
+    )
 
 class HeteronuclearDiatomicVibrationalLine(HeteronuclearDiatomicElectronicLine):
     _levels_class = levels.HeteronuclearDiatomicVibrationalLevel
-    _init_keys = _unique(
-        _expand_level_keys_to_upper_lower(_levels_class)
-        + HeteronuclearDiatomicElectronicLine._init_keys
-        + ['ν','νv','μv',])
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    _prototypes = _collect_prototypes(
+        *_expand_level_keys_to_upper_lower(_levels_class),
+        *HeteronuclearDiatomicElectronicLine._prototypes,
+        'ν','νv','μv',)
 
 class HeteronuclearDiatomicRotationalLine(HeteronuclearDiatomicVibrationalLine):
     _levels_class = levels.HeteronuclearDiatomicRotationalLevel
-    _init_keys = _unique(
-        _expand_level_keys_to_upper_lower(_levels_class)
-        + HeteronuclearDiatomicVibrationalLine._init_keys
-        + ['branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij',])
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    _prototypes = _collect_prototypes(
+        *_expand_level_keys_to_upper_lower(_levels_class),
+        *HeteronuclearDiatomicVibrationalLine._prototypes,
+        'branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ')
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -607,37 +659,27 @@ class HeteronuclearDiatomicRotationalLine(HeteronuclearDiatomicVibrationalLine):
 
 class HomonuclearDiatomicElectronicLine(HeteronuclearDiatomicElectronicLine):
     _levels_class = levels.HomonuclearDiatomicElectronicLevel
-    _init_keys = _unique(
-        _expand_level_keys_to_upper_lower(_levels_class)
-        + HeteronuclearDiatomicElectronicLine._init_keys)
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    _prototypes = _collect_prototypes(
+        *_expand_level_keys_to_upper_lower(_levels_class),
+        *HeteronuclearDiatomicElectronicLine._prototypes)
 
 class HomonuclearDiatomicVibrationalLine(HeteronuclearDiatomicVibrationalLine):
     _levels_class = levels.HomonuclearDiatomicVibrationalLevel
-    _init_keys = _unique(
-        _expand_level_keys_to_upper_lower(_levels_class)
-        + HeteronuclearDiatomicVibrationalLine._init_keys)
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    _prototypes = _collect_prototypes(
+        *_expand_level_keys_to_upper_lower(_levels_class),
+        *HeteronuclearDiatomicVibrationalLine._prototypes)
 
 class HomonuclearDiatomicRotationalLine(HeteronuclearDiatomicRotationalLine):
     _levels_class = levels.HomonuclearDiatomicRotationalLevel
-    _init_keys = _unique(
-        _expand_level_keys_to_upper_lower(_levels_class)
-        + HeteronuclearDiatomicRotationalLine._init_keys)
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
-
-# class TriatomicDinfh(Base):
-
-    # prototypes = {key:copy(prototypes[key]) for key in (
-        # list(Base.prototypes)
-        # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
+    _prototypes = _collect_prototypes(
+        *_expand_level_keys_to_upper_lower(_levels_class),
+        *HeteronuclearDiatomicRotationalLine._prototypes)
 
 class LinearTriatomicLine(GenericLine):
     _levels_class = levels.LinearTriatomicLevel
-    _init_keys = _unique(
-        _expand_level_keys_to_upper_lower(_levels_class)
-        + GenericLine._init_keys)
-    prototypes = {key:copy(prototypes[key]) for key in _init_keys}
+    _prototypes = _collect_prototypes(
+        *_expand_level_keys_to_upper_lower(_levels_class),
+        *GenericLine._prototypes)
     default_zkeys=(
         'species',
         'label_u','v1_u','v2_u','v3_u','l2_u',
