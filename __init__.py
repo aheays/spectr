@@ -23,6 +23,7 @@ from . import atmosphere
 from . import hitran
 from . import bruker
 from . import electronic_states
+from . import viblevel
 
 ## import more explicitly for interactive use
 from .dataset import Dataset
