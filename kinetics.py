@@ -311,10 +311,16 @@ class Species:
             return ''.join(self['elements'])
         elif key == 'isotopologue':
             return ''.join([f'[{t[1]}{t[0]}]' for t in self['isotopes']])
+        elif key == 'point_group':
+            if len(self.isotopes) != 2:
+                raise Exception("Can only compute reduced mass for diatomic species.")
+            ## Homonumclear or heteronuclear diatomic
+            if self.isotopes[0] == self.isotopes[1]:
+                return 'D∞h'
+            else:
+                return 'C∞v'
         else:
-            if self.isotopologue is None:
-                raise NotImplementedError(f'Properties only implemented for isotopologues')
-            return database.get_species_property(self.isotopologue,key)
+                raise Exception(f"Unknown speices property: {key}")
     
     name = property(lambda self: self['name'])
     elements = property(lambda self: self['elements'])
@@ -324,6 +330,8 @@ class Species:
     species = property(lambda self: self.name)
     mass = property(lambda self: self['mass'])
     reduced_mass = property(lambda self: self['reduced_mass'])
+    point_group = property(lambda self: self['point_group'])
+    
     
 ########################
 ## Chemical reactions ##
