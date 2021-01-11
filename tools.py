@@ -932,7 +932,7 @@ def repmat(x,repeats):
 def file_to_array_unpack(*args,**kwargs):
     """Same as file_to_array but unpack data by default."""
     kwargs.setdefault('unpack',True)
-    return(file_to_array(*args,**kwargs))
+    return file_to_array(*args,**kwargs)
 
 # def txt_to_array_via_hdf5(path,**kwargs):
     # """Loads ASCII text to an array, converting to hdf5 on the way
@@ -2321,14 +2321,21 @@ def unique_combinations(*args):
     return(set(zip(*args)))
 
 # def unique_array_combinations(*arrs,return_mask=False):
-    # """All are iterables of the same length. Finds row-wise combinations of
-    # args that are unique. Elements of args must be hashable."""
-    # ra = np.rec.fromarrays(arrs)
-    # unique_values = np.unique(ra)
-    # if return_mask:
-        # return([(t,ra==t) for t in unique_values])
-    # else:
-        # return(unique_values)
+#     """All are iterables of the same length. Finds row-wise combinations of
+#     args that are unique. Elements of args must be hashable."""
+#     ra = np.rec.fromarrays(arrs)
+#     unique_values = np.unique(ra)
+#     if return_mask:
+#         return([(t,ra==t) for t in unique_values])
+#     else:
+#         return(unique_values)
+
+def unique_combinations_mask(*arrs):
+    """All are iterables of the same length. Finds row-wise combinations of
+    args that are unique. Elements of args must be hashable."""
+    ra = np.rec.fromarrays(arrs)
+    unique_values = np.unique(ra)
+    return [(t,ra==t) for t in unique_values]
 
 def sortall(x,*others,reverse=False):
     """Sort x and return sorted. Also return others sorted according
