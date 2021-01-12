@@ -3,7 +3,7 @@ from pytest import raises,approx
 import numpy as np
 
 from spectr import dataset
-from spectr.dataset import *
+from spectr.dataset2 import *
 from spectr.optimise import P
 from spectr.exceptions import InferException
 
@@ -37,6 +37,31 @@ def test_dataset_construct_get_set_data():
     assert list(t['x']) == [1.,2.]
     assert list(t['unc_x']) == [0.1,0.2]
 
+def test_uncertainties():
+    t = Dataset()
+    t.set('x',[1.,2.,3])
+    t.set_uncertainty('x',0.1)
+    assert all(t.get_uncertainty('x') == [0.1,0.1,0.1])
+    t = Dataset(x=[1.,2,3],f=5)
+    t.set_uncertainty('x',0.1)
+    assert all(t.get_uncertainty('x') == [0.1,0.1,0.1])
+    t = Dataset(x=[1,2,3],f=5)
+    t['unc_x'] = 0.1
+    assert all(t['unc_x'] == [0.1,0.1,0.1])
+    t = Dataset(x=[1.,2,3],f=5)
+    t.set_uncertainty('x',0.1)
+    t.set_uncertainty('x',0.2,[0,2])
+    assert all(t.get_uncertainty('x') == [0.2,0.1,0.2 ])
+
+def test_dataset_prototypes():
+    t = Dataset()
+    t.set_prototype('x',kind='f',description="X is a thing.",)
+    t['x'] = [5]
+    assert isinstance(t['x'][0],float)
+    assert t._data['x']['description'] == "X is a thing."
+    assert t.has_prototype('x')
+    assert t.get_prototype('x','description') == "X is a thing."
+
 def test_defaults():
     ## set and use a default
     t = Dataset(x=[1,2,3],y=['a','b','c'])
@@ -63,20 +88,11 @@ def test_defaults():
     assert all(t['x'] == [1,2])
     assert all(t['y'] == ['a','a'])
 
-def test_dataset_prototypes():
-    t = Dataset()
-    t.set_prototype('x',kind='f',description="X is a thing.",)
-    t['x'] = [5]
-    assert isinstance(t['x'][0],float)
-    assert t._data['x']['description'] == "X is a thing."
-    assert t.has_prototype('x')
-    assert t.get_prototype('x','description') == "X is a thing."
-
 def test_auto_defaults():
     t = Dataset(x=[1,2,3])
     t.set_prototype('x','f')
     t.set_prototype('y','f')
-    assert np.isnan(t.get_prototype('x','auto_default'))
+    assert np.isnan(t.get_prototype('x','default'))
     t.permit_auto_defaults = False
     t.extend(x=[1,3,4])
     with raises(Exception):
@@ -87,7 +103,6 @@ def test_auto_defaults():
     t.permit_auto_defaults = True
     t.extend(x=[1,3,4])
     t.append(x=5,y=2)
-    print( t)
     assert all(t['x'] == [1,2,3,1,3,4,5])
     assert t['y'][-1] == 2
     assert all([np.isnan(tt) for tt in t['y'][:-1]])
@@ -233,34 +248,44 @@ def test_dataset_infer_autoremove_inferences():
 
 def test_dataset_infer_with_uncertainties():
     t = Dataset()
-    t['x'],t['unc_x']= [1.],[0.1]
-    t['y'],t['unc_y'] = [2.],[0.2]
+    t['x'] = [1.]
+    t['y'] = [2.]
+    t.set_uncertainty('x',[0.1])
+    t.set_uncertainty('y',[0.2])
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y'),lambda self,x,y:x+y)
     assert t['z'] == [3]
-    assert t['unc_z'] == approx(np.sqrt(0.1**2+0.2**2))
+    assert t.get_uncertainty('z') == approx(np.sqrt(0.1**2+0.2**2))
     t = Dataset()
-    t['x'],t['unc_x']= [1.],[0.1]
+    t['x'] = [1.]
+    t.set_uncertainty('x',[0.1])
     t['y'] = [2.]
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y'),lambda self,x,y:x+y)
     assert t['z'] == [3]
-    assert abs(t['unc_z'] - np.sqrt(0.1**2))/t['unc_z'] < 1e-5
+    dz = t.get_uncertainty('z')
+    assert abs(dz - np.sqrt(0.1**2))/dz < 1e-5
     t = Dataset()
-    t['y'],t['unc_y'] = [2.],[0.2]
-    t['p'],t['unc_p'] = [3.],[0.3]
+    t['y'] = [2.]
+    t['p'] = [3.]
+    t.set_uncertainty('y',[0.2])
+    t.set_uncertainty('p',[0.3])
     t.set_prototype('z','f')
     t.add_infer_function('z',('y','p'),lambda self,y,p:y*p)
     assert t['z'] == [2*3]
-    assert t['unc_z'] == approx(np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)
+    assert t.get_uncertainty('z') == approx(np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)
     t = Dataset()
-    t['x'],t['unc_x'] = [1.],[0.1]
-    t['y'],t['unc_y'] = [2.],[0.2]
-    t['p'],t['unc_p'] = [3.],[0.3]
+    t['x'] = [1.]
+    t['y'] = [2.]
+    t['p'] = [3.]
+    t.set_uncertainty('x',[0.1])
+    t.set_uncertainty('y',[0.2])
+    t.set_uncertainty('p',[0.3])
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y','p'),lambda self,x,y,p:x+y*p)
     assert t['z'] == 1+2*3
-    assert abs(t['unc_z'] - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/t['unc_z'] < 1e-5
+    dz = t.get_uncertainty('z')
+    assert abs(dz - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/dz < 1e-5
 
 def test_dataset_match_matches():
     t = Dataset(x=[1,2,2,3],y=[4,4,4,4])
@@ -366,18 +391,7 @@ def test_load_from_string():
     assert all(t['a'] == [1,3,1])
     assert all(t['c'] == ['c','d','e'])
     assert all(t['d'] == ['1','1','xxx'])
-    
-def test_uncertainty():
-    t = Dataset(x=[1,2,3],f=5)
-    t.set_uncertainty('x',0.1)
-    assert all(t.get_uncertainty('x') == [0.1,0.1,0.1])
-    t = Dataset(x=[1,2,3],f=5)
-    t['unc_x'] = 0.1
-    assert all(t['unc_x'] == [0.1,0.1,0.1])
-    t = Dataset(x=[1,2,3],f=5)
-    t.set_uncertainty('x',0.1)
-    t.set_uncertainty('x',0.2,[0,2])
-    assert all(t.get_uncertainty('x') == [0.2,0.1,0.2 ])
+
 
 def test_differentiation_step():
     t = Dataset(x=[1,2,3],f=5)
@@ -404,7 +418,6 @@ def test_rows():
 def test_row_data():
     x = Dataset(x=[1,2,3],y=[4,5,6])
     for i,d in enumerate(x.row_data()):
-        print( d )
         assert d[0] == x['x'][i]
         assert d[1] == x['y'][i]
 
@@ -437,7 +450,7 @@ def test_load():
 
 def test_units():
     x = Dataset(x=[1,2,3])
-    assert x.get_units('x') is None
+    assert not x.has_units('x')
     x.set_prototype('x','f', units='m')
     x = Dataset()
     x.set('x',[1,2,3],units='m')
@@ -448,9 +461,9 @@ def test_units():
     assert x.get_units('x') == 'm'
     assert all(x.get('x') == [1,2,3])
     assert all(x.get('x',units='nm') == [1e9,2e9,3e9])
-    x['unc_x'] = [0.1,0.2,0.3]
-    assert all(x.get('unc_x',units='nm') == [0.1e9,0.2e9,0.3e9])
-test_units()
+    x.set_uncertainty('x',[0.1,0.2,0.3])
+    assert all(x.get_uncertainty('x',units='nm') == [0.1e9,0.2e9,0.3e9])
+
 def test_format_description():
     x = Dataset()
     x.set('x',[1,2,3],kind='f',units='m',description='This is x',fmt='0.3f')

@@ -19,16 +19,15 @@ from .conversions import convert
 from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
-from .dataset import Dataset
+from .dataset2 import Dataset
 
 prototypes = {}
 
 ## copy some direct from levels
 for key in (
-        'species',
+        'species','point_group',
         'mass','reduced_mass',
-        # 'partition_source',
-        'partition',
+        'Z',
         'ΓD',
 ):
     prototypes[key] = copy(levels.prototypes[key])
@@ -62,14 +61,14 @@ prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross
     ('f','α_l'):lambda self,f,α_l: f/1.1296e12*α_l,
     ('S','ν','Teq'):lambda self,S,ν,Teq,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Teq)),})
 # prototypes['σ'] =dict(description="Integrated cross section (cm2.cm-1).", kind='f',  fmt='<10.5e', infer={('τ','column_densitypp'):lambda self,τ,column_densitypp: τ/column_densitypp, ('f','populationpp'):lambda self,f,populationpp: f/1.1296e12*populationpp,})
-def _f0(self,S296K,species,partition,E_l,Tex,ν):
+def _f0(self,S296K,species,Z,E_l,Tex,ν):
     """See Eq. 9 of simeckova2006"""
-    partition_296K = hitran.get_partition_function(species,296)
+    Z296K = hitran.get_partition_function(species,296)
     c = convert(constants.Boltzmann,'J','cm-1') # hc/kB
     return (S296K
-            *((np.exp(-E_l/(c*Tex))/partition)*(1-np.exp(-c*ν/Tex)))
-            /((np.exp(-E_l/(c*296))/partition_296K)*(1-np.exp(-c*ν/296))))
-prototypes['S'] = dict(description="Spectral line intensity (cm or cm-1/(molecular.cm-2) ", kind='f', fmt='<10.5e', infer={('S296K','species','partition','E_l','Tex_l','ν'):_f0,})
+            *((np.exp(-E_l/(c*Tex))/Z)*(1-np.exp(-c*ν/Tex)))
+            /((np.exp(-E_l/(c*296))/Z296K)*(1-np.exp(-c*ν/296))))
+prototypes['S'] = dict(description="Spectral line intensity (cm or cm-1/(molecular.cm-2) ", kind='f', fmt='<10.5e', infer={('S296K','species','Z','E_l','Tex_l','ν'):_f0,})
 prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ( cm-1/(molecular.cm-2) ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.", kind='f', fmt='<10.5e', infer={})
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
@@ -94,30 +93,31 @@ prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11
 
 def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
     """Compute partition function from data in self."""
-    if self.partition_source != 'self':
-        raise InferException(f'Partition source not "self".')
-
-    retval = np.full(len(species),0.)
+    if self.Zsource != 'self':
+        raise InferException(f'Zsource not "self".')
+    Z = np.full(len(species),0.)
+    ## calculate separately for all (species,Tex) combinations
     for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
-
         i = tools.find(i)
         kT = convert(constants.Boltzmann,'J','cm-1')*Texi
-
+        
+        ## sum for all unique upper levels
         k = []
         for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_u'][i] for key in self._levels_class.defining_qn]):
-            k.append(tools.find(j)[0])
-        retval[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
+                *[self[key+'_u'][i] for key in self._levels_class._defining_qn]):
+            k.append((i[j])[0])
+        Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
 
+        ## sum for all unique lower levels
         k = []
         for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_l'][i] for key in self._levels_class.defining_qn]):
-            k.append(tools.find(j)[0])
-        retval[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
+                *[self[key+'_l'][i] for key in self._levels_class._defining_qn]):
+            k.append((i[j])[0])
+        Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
 
-    return retval
+    return Z
 
-prototypes['partition'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer={
+prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer={
     # ('species','Tex'):_f5,
     ('species','Tex','E_u','E_l','g_u','g_l'):_f3,
 })
@@ -152,7 +152,7 @@ def _f1(self,f,SJ,Jpp,Λp,Λpp):
 prototypes['fv'] = dict(description="Band f-value (dimensionless)", kind='f',  fmt='<10.5e', infer={('Sv','ν','Λp','Λpp'):  lambda self,Sv,ν,Λp,Λpp :  band_strength_to_band_fvalue(Sv,ν, Λp,Λpp), ('Sv','νv','Λp','Λpp'): lambda self,Sv,νv,Λp,Λpp:  band_strength_to_band_fvalue(Sv,νv,Λp,Λpp), ('f','SJ','Jpp','Λp','Λpp'): _f1,})
 prototypes['Aev'] =dict(description="Einstein A coefficient / emission rate averaged over a band (s-1).", kind='f',  fmt='<10.5e', infer={('Sv','ν' ,'Λp','Λpp'): lambda self,Sv,ν ,Λp,Λpp: band_strength_to_band_emission_rate(Sv,ν ,Λp,Λpp), ('Sv','νv','Λp','Λpp'): lambda self,Sv,νv,Λp,Λpp: band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp),},) 
 prototypes['σv'] =dict(description="Integrated cross section of an entire band (cm2.cm-1).", kind='f',  fmt='<10.5e', infer={('fv',):lambda self,fv: band_fvalue_to_band_cross_section(fv),},)
-prototypes['Sij'] =dict(description="Line strength (au)", kind='f',  fmt='<10.5e', infer={
+prototypes['Sij'] =dict(description=" strength (au)", kind='f',  fmt='<10.5e', infer={
     ('μ',): lambda self,μ: μ**2,
     ('Sv','SJ'): lambda self,Sv,SJ:  Sv*SJ, ('f','ν','Jpp'): lambda self,f,ν,Jpp: f/3.038e-6/ν*(2*Jpp+1), ('Ae','ν','Jp'): lambda self,Ae,ν,Jp: Ae/(2.026e-6*ν**3/(2*Jp+1)),})
 prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate (s-1).", kind='f',  fmt='<10.5e', infer={('f','ν','Jp','Jpp'): lambda self,f,ν,Jp,Jpp: f*0.666886/(2*Jp+1)*(2*Jpp+1)*ν**2, ('Sij','ν','Jp'): lambda self,Sij,ν,Jp: Sij*2.026e-6*ν**3/(2*Jp+1),},)
@@ -195,8 +195,6 @@ prototypes['Teq_u']['infer']['Teq'] = lambda self,Teq: Teq
 prototypes['Teq_l']['infer']['Teq'] = lambda self,Teq: Teq
 prototypes['Tex_u']['infer']['Tex'] = lambda self,Tex: Tex
 prototypes['Tex_l']['infer']['Tex'] = lambda self,Tex: Tex
-# prototypes['partition_source_l']['infer']['partition_source'] = lambda self,x: x
-# prototypes['partition_source_u']['infer']['partition_source'] = lambda self,x: x
 prototypes['Tex']['infer']['Teq'] = lambda self,Teq: Teq
 prototypes['Nself_u']['infer']['Nself'] = lambda self,Nself: Nself
 prototypes['Nself_l']['infer']['Nself'] = lambda self,Nself: Nself
@@ -206,48 +204,35 @@ prototypes['species']['infer']['species_u'] = lambda self,species_l: species_l
 prototypes['species']['infer']['species_u'] = lambda self,species_u: species_u
 
 prototypes['ΔJ']['infer']['J_u','J_l'] = lambda self,J_u,J_l: J_u-J_l
-# prototypes['partition']['infer']['partition_l'] = lambda self,partition_l:partition_l
-# prototypes['partition']['infer']['partition_u'] = lambda self,partition_u:partition_u
-prototypes['partition_l']['infer']['partition'] = lambda self,partition:partition
-prototypes['partition_u']['infer']['partition'] = lambda self,partition:partition
+prototypes['Z_l']['infer']['Z'] = lambda self,Z:Z
+prototypes['Z_u']['infer']['Z'] = lambda self,Z:Z
 
-
-
-def _collect_prototypes(*keys):
+def _collect_prototypes(*keys,levels_class=None):
     """Take a list and return unique element.s"""
-    keys = tools.unique(keys,preserve_ordering= True)
-    retval = {key:prototypes[key] for key in keys}
-    return retval
-
-level_suffix = {'upper':'_u','lower':'_l'}
-
-def _get_key_without_level_suffix(upper_or_lower,key):
-    suffix = level_suffix[upper_or_lower]
-    if len(key) <= len(suffix):
-        return None
-    if key[-len(suffix):] != suffix:
-        return None
-    return key[:-len(suffix)]
-
-def _expand_level_keys_to_upper_lower(levels_class):
-    retval = []
+    keys = list(keys)
     for key in levels_class._prototypes:
-        retval.append(key+'_l')
-        retval.append(key+'_u')
-    return retval
+        keys.append(key+'_l')
+        keys.append(key+'_u')
+    retval_protoypes = {key:prototypes[key] for key in keys}
+    defining_qn = tuple(
+        [key+'_l' for key in levels_class._defining_qn]
+        +[key+'_u' for key in levels_class._defining_qn]
+        )
+    return retval_protoypes,defining_qn
 
-class GenericLine(levels.Base):
-    _levels_class = levels.GenericLevel
-    _prototypes = _collect_prototypes(
-            'species', 'mass',
-            'ν',#'λ',
-            'ΔJ',
-            'f','σ','S','S296K','τ','Ae',
-            'γair','δair','nair','γself',
-            'Pself', 'Pair', 'Nself',
-            'Teq','Ttr','partition',
-            'Γ','ΓD',
-        *_expand_level_keys_to_upper_lower(_levels_class)
+class Generic(levels.Base):
+    _levels_class = levels.Generic
+    _prototypes,_defining_qn = _collect_prototypes(
+        'species', 'point_group','mass',
+        'ν',
+        # 'λ',
+        'ΔJ',
+        'f','σ','S','S296K','τ','Ae',
+        'γair','δair','nair','γself',
+        'Pself', 'Pair', 'Nself',
+        'Teq','Ttr','Z',
+        'Γ','ΓD',
+        levels_class = _levels_class
     )
 
     def plot_spectrum(
@@ -522,7 +507,7 @@ class GenericLine(levels.Base):
                 cache['Ae'] = copy(self['Ae'])
         return x,y
 
-    def get_level(self, u_or_l, reduce_to=None,):
+    def _get_level(self, u_or_l, reduce_to=None,):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
         assert u_or_l in ('u','l')
@@ -544,11 +529,11 @@ class GenericLine(levels.Base):
             levels = new_levels
         return levels
 
-    # def get_upper_level(self):
-        # return self.get_level('u')
+    def get_upper_level(self,reduce_to=None):
+        return self._get_level('u',reduce_to)
 
-    # def get_lower_level(self):
-        # return self.get_level('l')
+    def get_lower_level(self,reduce_to=None):
+        return self._get_level('l',reduce_to)
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -593,28 +578,25 @@ class GenericLine(levels.Base):
             self[key+'_l'] = np.ravel(np.repeat(level_lower[key],len(level_upper)))
 
 
-class HeteronuclearDiatomicElectronicLine(GenericLine):
-    _levels_class = levels.HeteronuclearDiatomicElectronicLevel
-    _prototypes = _collect_prototypes(
-        *_expand_level_keys_to_upper_lower(_levels_class),
-        *GenericLine._prototypes,
-        *['Teq', 'Tex', 'Ttr', 'L',
-         'γair', 'δair', 'γself', 'nair', 'Pself', 'Pair', 'Nself',]
+class Diatomic(Generic):
+
+    _levels_class = levels.Diatomic
+    _prototypes,_defining_qn = _collect_prototypes(
+        'species', 'point_group','mass',
+        'ν','νv',
+        'μv',
+        # 'λ','λv',
+        'ΔJ',
+        'f','σ','S','S296K','τ','Ae',
+        'γair','δair','nair','γself',
+        'Pself', 'Pair', 'Nself',
+        'Teq','Ttr','Z',
+        'Γ','ΓD',
+        'Teq', 'Tex', 'Ttr', 'L',
+        'γair', 'δair', 'γself', 'nair', 'Pself', 'Pair', 'Nself',
+        'branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ',
+        levels_class = _levels_class
     )
-
-class HeteronuclearDiatomicVibrationalLine(HeteronuclearDiatomicElectronicLine):
-    _levels_class = levels.HeteronuclearDiatomicVibrationalLevel
-    _prototypes = _collect_prototypes(
-        *_expand_level_keys_to_upper_lower(_levels_class),
-        *HeteronuclearDiatomicElectronicLine._prototypes,
-        'ν','νv','μv',)
-
-class HeteronuclearDiatomicRotationalLine(HeteronuclearDiatomicVibrationalLine):
-    _levels_class = levels.HeteronuclearDiatomicRotationalLevel
-    _prototypes = _collect_prototypes(
-        *_expand_level_keys_to_upper_lower(_levels_class),
-        *HeteronuclearDiatomicVibrationalLine._prototypes,
-        'branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ')
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -657,79 +639,62 @@ class HeteronuclearDiatomicRotationalLine(HeteronuclearDiatomicVibrationalLine):
         kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.extend(**kw)
 
-class HomonuclearDiatomicElectronicLine(HeteronuclearDiatomicElectronicLine):
-    _levels_class = levels.HomonuclearDiatomicElectronicLevel
-    _prototypes = _collect_prototypes(
-        *_expand_level_keys_to_upper_lower(_levels_class),
-        *HeteronuclearDiatomicElectronicLine._prototypes)
 
-class HomonuclearDiatomicVibrationalLine(HeteronuclearDiatomicVibrationalLine):
-    _levels_class = levels.HomonuclearDiatomicVibrationalLevel
-    _prototypes = _collect_prototypes(
-        *_expand_level_keys_to_upper_lower(_levels_class),
-        *HeteronuclearDiatomicVibrationalLine._prototypes)
+# class LinearTriatomic(Generic):
+    # _levels_class = levels.LinearTriatomic
+    # _prototypes = _collect_prototypes(
+        # *_expand_level_keys_to_upper_lower(_levels_class),
+        # *GenericLine._prototypes)
+    # default_zkeys=(
+        # 'species',
+        # 'label_u','v1_u','v2_u','v3_u','l2_u',
+        # 'label_l','v1_l','v2_l','v3_l','l2_l',
+        # )
 
-class HomonuclearDiatomicRotationalLine(HeteronuclearDiatomicRotationalLine):
-    _levels_class = levels.HomonuclearDiatomicRotationalLevel
-    _prototypes = _collect_prototypes(
-        *_expand_level_keys_to_upper_lower(_levels_class),
-        *HeteronuclearDiatomicRotationalLine._prototypes)
+    # def load_from_hitran(self,filename):
+        # """Load HITRAN .data."""
+        # data = hitran.load(filename)
+        # ## interpret into transition quantities common to all transitions
+        # new = self.__class__(**{
+            # 'ν':data['ν'],
+            # ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
+            # 'S296K':data['S'],
+            # 'E_l':data['E_l'],
+            # 'g_u':data['g_u'],
+            # 'g_l':data['g_l'],
+            # 'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+            # 'nair':data['nair'],
+            # 'δair':data['δair'],
+            # 'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
+        # })
+        # ## get species
+        # i = hitran.molparam.find(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
+        # new['species'] =  hitran.molparam['isotopologue'][i]
+        # ## remove natural abundance weighting
+        # new['S296K'] /=  hitran.molparam['natural_abundance'][i]
+        # ## interpret quantum numbers -- see rothman2005
+        # new['v1_u'] = [t[7:9] for t in data['V_u']]
+        # new['v2_u'] = [t[9:11] for t in data['V_u']]
+        # new['l2_u'] = [t[11:13] for t in data['V_u']]
+        # new['v3_u'] = [t[13:15] for t in data['V_u']]
+        # new['v1_l'] = [t[7:9] for t in data['V_l']]
+        # new['v2_l'] = [t[9:11] for t in data['V_l']]
+        # new['l2_l'] = [t[11:13] for t in data['V_l']]
+        # new['v3_l'] = [t[13:15] for t in data['V_l']]
+        # branches = {'P':-1,'Q':0,'R':+1}
+        # ΔJ,J_l = [],[]
+        # for Q_l in data['Q_l']:
+            # branchi,Jli = Q_l[5],Q_l[6:] 
+            # ΔJ.append(branches[branchi])
+            # J_l.append(Jli)
+        # new['ΔJ'] = np.array(ΔJ,dtype=int)
+        # new['J'+'_l'] = np.array(J_l,dtype=float)
+        # # ## add data to self
+        # self.extend(**new)
 
-class LinearTriatomicLine(GenericLine):
-    _levels_class = levels.LinearTriatomicLevel
-    _prototypes = _collect_prototypes(
-        *_expand_level_keys_to_upper_lower(_levels_class),
-        *GenericLine._prototypes)
-    default_zkeys=(
-        'species',
-        'label_u','v1_u','v2_u','v3_u','l2_u',
-        'label_l','v1_l','v2_l','v3_l','l2_l',
-        )
+# # class TriatomicDinfh(Base):
 
-    def load_from_hitran(self,filename):
-        """Load HITRAN .data."""
-        data = hitran.load(filename)
-        ## interpret into transition quantities common to all transitions
-        new = self.__class__(**{
-            'ν':data['ν'],
-            ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
-            'S296K':data['S'],
-            'E_l':data['E_l'],
-            'g_u':data['g_u'],
-            'g_l':data['g_l'],
-            'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
-            'nair':data['nair'],
-            'δair':data['δair'],
-            'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
-        })
-        ## get species
-        i = hitran.molparam.find(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
-        new['species'] =  hitran.molparam['isotopologue'][i]
-        ## remove natural abundance weighting
-        new['S296K'] /=  hitran.molparam['natural_abundance'][i]
-        ## interpret quantum numbers -- see rothman2005
-        new['v1_u'] = [t[7:9] for t in data['V_u']]
-        new['v2_u'] = [t[9:11] for t in data['V_u']]
-        new['l2_u'] = [t[11:13] for t in data['V_u']]
-        new['v3_u'] = [t[13:15] for t in data['V_u']]
-        new['v1_l'] = [t[7:9] for t in data['V_l']]
-        new['v2_l'] = [t[9:11] for t in data['V_l']]
-        new['l2_l'] = [t[11:13] for t in data['V_l']]
-        new['v3_l'] = [t[13:15] for t in data['V_l']]
-        branches = {'P':-1,'Q':0,'R':+1}
-        ΔJ,J_l = [],[]
-        for Q_l in data['Q_l']:
-            branchi,Jli = Q_l[5],Q_l[6:] 
-            ΔJ.append(branches[branchi])
-            J_l.append(Jli)
-        new['ΔJ'] = np.array(ΔJ,dtype=int)
-        new['J'+'_l'] = np.array(J_l,dtype=float)
-        # ## add data to self
-        self.extend(**new)
-
-# class TriatomicDinfh(Base):
-
-    # prototypes = {key:copy(prototypes[key]) for key in (
-        # list(Base.prototypes)
-        # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
+    # # prototypes = {key:copy(prototypes[key]) for key in (
+        # # list(Base.prototypes)
+        # # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
 

@@ -8,9 +8,9 @@ from scipy import constants
 import numpy as np
 from numpy import nan,array
 
-from .dataset import Dataset
+from .dataset2 import Dataset
 from .conversions import convert
-from .tools import vectorise
+from .tools import vectorise,cache
 from . import tools
 from . import database
 from . import kinetics
@@ -26,6 +26,11 @@ prototypes['author'] = dict(description="Author of data or printed file" ,kind='
 prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer={})
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer={})
 prototypes['species'] = dict(description="Chemical species" ,kind='U' ,infer={})
+
+@vectorise(cache=True,vargs=(1,))
+def _f0(self,species):
+    return kinetics.get_species(species).point_group
+prototypes['point_group']  = dict(description="Symmetry point group of species.", kind='U',fmt='s', infer={('species',): _f0,})
 # prototypes['mass'] = dict(description="Mass (amu)",kind='f', fmt='<11.4f', infer={('species',): lambda self,species: database.get_species_property(species,'mass'),})
 
 @vectorise(vargs=(1,),cache=True)
@@ -48,20 +53,18 @@ prototypes['J'] = dict(description="Total angular momentum quantum number exclud
 prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer={('mass','Ttr','ν'): lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,})
 
 
-def _f0(self,J):
+@vectorise(cache=True,vargs=(1,))
+def _f0(self,point_group):
     """Calculate heteronuclear diatomic molecule level degeneracy."""
-    if self.__class__ is HeteronuclearDiatomicRotationalLevel:
-        return 2*J+1
+    if point_group in ('K','C∞v'):
+        return 1.
     else:
-        raise InferException('Only valid for ')
+        raise InferException
 
 @vectorise(cache=True,vargs=(1,2,3))
-def _f1(self,J,Inuclear,sa):
+def _f1(self,point_group,Inuclear,sa):
     """Calculate homonuclear diatomic molecule level degeneracy."""
-    if self.classname in (
-            'HomonuclearDiatomicRotationalLevel',
-            'HomonuclearDiatomicRotationalLine',
-            ):
+    if point_group in ('D∞h'):
         ## get total number of even or odd exchange combinations
         ntotal = (2*Inuclear+1)**2
         neven = 2*Inuclear+1 + (ntotal-(2*Inuclear+1))/2
@@ -69,32 +72,27 @@ def _f1(self,J,Inuclear,sa):
         if Inuclear%1==0:
             ## fermion
             if sa==+1:
-                return (2*J+1)*neven
+                return neven
             else:
-                return (2*J+1)*nodd
+                return nodd
         else:
             ## boson
             if sa==+1:
-                return (2*J+1)*nodd
+                return nodd
             else:
-                return (2*J+1)*neven
+                return neven
     else:
-        raise InferException(f'Only valid for HomonuclearDiatomicRotationalLevel')
+        raise InferException()
 
-prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' ,
-                       infer={
-                           ('J',):_f0, 
-                           ('J','Inuclear','sa'):_f1,
-                              })
+prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)." , kind='i' , infer={('point_group',):_f0, ('point_group','Inuclear','sa'):_f1,})
+prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer={('J','gnuclear'): lambda self,J,gnuclear: (2*J+1)*gnuclear,})
 prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer={})
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind='f', fmt='<10.5g', infer={('A',):lambda self,τ: 5.309e-12*A,})
 prototypes['τ'] = dict(description="Total decay lifetime (s)", kind='f', infer={ ('A',): lambda self,A: 1/A,})       
 prototypes['A'] = dict(description="Total decay rate (s-1)", kind='f', infer={('Γ',): lambda self,Γ: Γ/5.309e-12,})
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin", kind='f',fmt='>0.1f',infer={})
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind='f', infer={('J','SR') : lambda self,J,SR: J-SR,})
-prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',infer={
-    ('species','label'):lambda self,species,label: database.get_electronic_state_property(species,label,'S'),
-})
+prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',infer={('species','label'):lambda self,species,label: database.get_electronic_state_property(species,label,'S'),})
 prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum (cm-1).", kind='f',infer={() :lambda self,: 0.,})
 prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer={})
 prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer={'Teq':lambda self,Teq:Teq})
@@ -102,27 +100,27 @@ prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt
 
 @vectorise(cache=True,vargs=(1,2,3))
 def _f5(self,species,Tex):
-    if self.partition_source != 'HITRAN':
-        raise InferException(f'Partition source not "HITRAN".')
+    if self.Zsource != 'HITRAN':
+        raise InferException(f'Zsource not "HITRAN".')
     from . import hitran
     return hitran.get_partition_function(species,Tex)
 
 def _f3(self,species,Tex,E,g):
     """Compute partition function from data in self."""
-    if self.partition_source != 'self':
-        raise InferException(f'Partition source not "self".')
+    if self.Zsource != 'self':
+        raise InferException(f'Zsource not "self".')
     retval = np.full(species.shape,nan)
     for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
         kT = convert(constants.Boltzmann,'J','cm-1')*Texi
         retval[i] = np.sum(g[i]*np.exp(-E[i]/kT))
     return retval
 
-prototypes['partition'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer={
+prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer={
     ('species','Tex','E','g'):_f3,
     # ('species','Tex'):_f5,
 })
 
-prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer={('partition','E','g','Tex'): lambda self,partition,E,g,Tex : g*np.exp(-E/(convert(constants.Boltzmann,'J','cm-1')*Tex))/partition,})
+prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer={('Z','E','g','Tex'): lambda self,Z,E,g,Tex : g*np.exp(-E/(convert(constants.Boltzmann,'J','cm-1')*Tex))/Z,})
 prototypes['Nself'] = dict(description="Column density (cm2)",kind='f',fmt='<11.3e', infer={})
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer={})
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer={})
@@ -258,8 +256,6 @@ prototypes['dBv_μscaled'] = dict(description='Uncertainty in Bv_μscaled (1σ, 
 
 
 def _collect_prototypes(*keys):
-    """Take a list and return unique element.s"""
-    keys = tools.unique(keys,preserve_ordering=True)
     retval = {key:prototypes[key] for key in keys}
     return retval
 
@@ -275,26 +271,33 @@ class Base(Dataset):
         self._cache = {}
         self.pop_format_input_function()
         self.automatic_format_input_function(limit_to_args=('name',))
+        self.default_zkeys = self._defining_qn
 
-class GenericLevel(Base):
+
+class Generic(Base):
     """A generic level."""
     _prototypes = _collect_prototypes(
-        *Base._prototypes,
         'species',
+        'point_group',
         'E','Eref',
         'Γ','ΓD',
-        'g',
-        'Teq','Tex','partition','α',
-        'Nself',)
+        'g','gnuclear',
+        'Teq','Tex','Z','α',
+        'Nself',
+    )
+    _defining_qn = ('species',)
     
-class HeteronuclearDiatomicElectronicLevel(GenericLevel):
+class Diatomic(Base):
     _prototypes = _collect_prototypes(
-        *GenericLevel._prototypes,
-        'label', 'Λ','s','S','LSsign',)
-
-class HeteronuclearDiatomicVibrationalLevel(GenericLevel):
-    _prototypes = _collect_prototypes(
-        *HeteronuclearDiatomicElectronicLevel._prototypes,
+        'species',
+        'point_group',
+        'E','Eref',
+        'Γ','ΓD',
+        'Inuclear',
+        'g','gnuclear',
+        'Teq','Tex','Z','α',
+        'Nself',
+        'label', 'Λ','s','S','LSsign','gu',
         'v',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
@@ -306,35 +309,20 @@ class HeteronuclearDiatomicVibrationalLevel(GenericLevel):
         'pv','qv',
         'pDv','qDv',
         'Tvreduced','Tvreduced_common',
-        'Bv_μscaled',)
-
-class HeteronuclearDiatomicRotationalLevel(GenericLevel):
-    """Rotational levels of a heteronuclear diatomic molecule."""
-    _prototypes = _collect_prototypes(*HeteronuclearDiatomicVibrationalLevel._prototypes,
+        'Bv_μscaled',
         'J','pm','N','S',
         'Teq',
         'α',
-        'σv','sa','ef','Fi','Ω','Σ','SR',)
-    default_zkeys = ('label','v','Σ','ef')
-
-class HomonuclearDiatomicElectronicLevel(HeteronuclearDiatomicElectronicLevel):
-    _prototypes = _collect_prototypes(*HeteronuclearDiatomicElectronicLevel._prototypes,
-                                      'Inuclear','gu',)
-
-class HomonuclearDiatomicVibrationalLevel(HeteronuclearDiatomicVibrationalLevel):
-    _prototypes = _collect_prototypes(*HeteronuclearDiatomicVibrationalLevel._prototypes,
-                                      'Inuclear','gu',)
-
-class HomonuclearDiatomicRotationalLevel(HeteronuclearDiatomicRotationalLevel):
-    _prototypes = _collect_prototypes(*HeteronuclearDiatomicRotationalLevel._prototypes, 'Inuclear','gu',)
-    defining_qn = ('species','label','v','Σ','ef','J')
-
-class LinearTriatomicLevel(GenericLevel):
-    """Rotational levels of a linear triatomic.  Constructed to load
-    linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
-    _prototypes = _collect_prototypes(*GenericLevel._prototypes,
-        'label', 'S',
-        'v1','v2','v3','l2',    # vibrational coordinates
-        'J',
+        'σv','sa','ef','Fi','Ω','Σ','SR',
     )
-    default_zkeys = ('label','v1','v2','v3','l2',)
+    _defining_qn = ('species','label','v','Σ','ef','J')
+
+# class LinearTriatomic(Generic):
+    # """Rotational levels of a linear triatomic.  Constructed to load
+    # linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
+    # _prototypes = _collect_prototypes(*Generic._prototypes,
+        # 'label', 'S',
+        # 'v1','v2','v3','l2',    # vibrational coordinates
+        # 'J',
+    # )
+    # default_zkeys = ('label','v1','v2','v3','l2',)

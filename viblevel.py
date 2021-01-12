@@ -12,7 +12,7 @@ from . import levels,lines
 from . import quantum_numbers
 from . import tools
 from .dataset import Dataset
-from .tools import find
+from .tools import find,cache
 from .optimise import Optimiser,P,auto_construct_method
 from .kinetics import get_species,Species
 
@@ -44,16 +44,9 @@ class VibLevel(Optimiser):
             'permit_auto_defaults':True, 
             'permit_nonprototyped_data':False,
         }
-        if self.species.point_group == 'D∞h':
-            self.rotational_level = levels.HomonuclearDiatomicRotationalLevel(**tkwargs)
-            self.vibrational_level = levels.HomonuclearDiatomicVibrationalLevel(**tkwargs)
-            self.vibrational_spin_level = levels.HomonuclearDiatomicRotationalLevel(**tkwargs) # could make HomonuclearDiatomicVibrationalSpinLevel
-        elif self.species.point_group == 'C∞v':
-            self.rotational_level = levels.HeteronuclearDiatomicRotationalLevel(**tkwargs)
-            self.vibrational_level = levels.HeteronuclearDiatomicVibrationalLevel(**tkwargs)
-            self.vibrational_spin_level = levels.HeteronuclearDiatomicRotationalLevel(**tkwargs) # could make HeteronuclearDiatomicVibrationalSpinLevel
-        else:
-            raise Exception(f"Not implemented: {self.point_group=}")
+        self.rotational_level = levels.Diatomic(**tkwargs)
+        self.vibrational_level = levels.Diatomic(**tkwargs)
+        self.vibrational_spin_level = levels.Diatomic(**tkwargs) 
 
         # self.states = []          # Vibronic_State objects
         # self.interactions = []            # Vibronic_Interaction objects
@@ -158,12 +151,16 @@ class VibLevel(Optimiser):
         """Diagonlise J-blocks, add to rotational_level"""
         ## cache this
         self.rotational_level.clear()
-        self.iallowed = {}
-        for J in self.J:
-            self.iallowed[J] = self.vibrational_spin_level['Ω']<=J
-            self.rotational_level.extend(
-                J=J,E=np.nan,
-                **self.vibrational_spin_level[self.iallowed[J]])
+        # self.iallowed = {}
+        # for J in self.J:
+        #     self.iallowed[J] = self.vibrational_spin_level['Ω']<=J
+        #     self.rotational_level.extend(
+        #         J=J,E=np.nan,
+        #         **self.vibrational_spin_level[self.iallowed[J]])
+        self.rotational_level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
+        for key in self.vibrational_spin_level:
+            self.rotational_level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
+        self.rotational_level['E'] = nan
         self.c = {}
         self.E = {}
         ibeg = 0
@@ -184,9 +181,9 @@ class VibLevel(Optimiser):
             self.E[J] = eigvals.real
             self.c[J] = eigvects
             ## add allowed level to rotational_level
-            iend = ibeg+np.sum(iallowed)
-            self.rotational_level['E'][ibeg:iend] = eigvals.real[iallowed]
-            ibeg = iend
+            # iend = ibeg+np.sum(iallowed)
+            # ibeg = ien
+        self.rotational_level['E'] = np.concatenate(list(self.E.values()))
         
     @auto_construct_method('add_level')
     def add_level(self,name='level',**kwargs):
@@ -1469,27 +1466,20 @@ class VibLine(Optimiser):
             'permit_auto_defaults':True, 
             'permit_nonprototyped_data':False,
         }
-        if self.species.point_group == 'D∞h':
-            self.rotational_line = lines.HomonuclearDiatomicRotationalLine(**tkwargs)
-            self.vibrational_line = lines.HomonuclearDiatomicVibrationalLine(**tkwargs)
-            self.vibrational_spin_line = lines.HomonuclearDiatomicRotationalLine(**tkwargs) # could make HomonuclearDiatomicVibrationalSpinLine
-        elif self.species.point_group == 'C∞v':
-            self.rotational_line = lines.HeteronuclearDiatomicRotationalLine(**tkwargs)
-            self.vibrational_line = lines.HeteronuclearDiatomicVibrationalLine(**tkwargs)
-            self.vibrational_spin_line = lines.HeteronuclearDiatomicRotationalLine(**tkwargs) # could make HeteronuclearDiatomicVibrationalSpinLine
-        else:
-            raise Exception(f"Not implemented: {self.point_group=}")
+        self.rotational_line = lines.Diatomic(**tkwargs)
+        self.vibrational_line = lines.Diatomic(**tkwargs)
+        self.vibrational_spin_line = lines.Diatomic(**tkwargs)
         self.μ = None
 
 
-        self.vibrational_line.generate_from_levels(
-            self.level_u.vibrational_level,
-            self.level_l.vibrational_level)
-        self.vibrational_line['μv'] = 0
+        # self.vibrational_line.generate_from_levels(
+            # self.level_u.vibrational_level,
+            # self.level_l.vibrational_level)
+        # self.vibrational_line['μv'] = 0
 
-        self.vibrational_spin_line.generate_from_levels(
-            self.level_u.vibrational_spin_level,
-            self.level_l.vibrational_spin_level)
+        # self.vibrational_spin_line.generate_from_levels(
+            # self.level_u.vibrational_spin_level,
+            # self.level_l.vibrational_spin_level)
 
         # assert statep.Tref==statepp.Tref, 'statep and statepp Tref do not match..'
         # self.Tref = statep.Tref
@@ -1653,25 +1643,29 @@ class VibLine(Optimiser):
                 μ0 = self.μ0[iJ_l,iΔJ,:,:]
                 c_l = self.level_l.c[J_l]
                 c_u = self.level_u.c[J_u]
-                iallowed_l = self.level_l.iallowed[J_l]
-                iallowed_u = self.level_u.iallowed[J_u]
+                # iallowed_l = self.level_l.iallowed[J_l]
+                # iallowed_u = self.level_u.iallowed[J_u]
                 ## get mixed line strengths
                 μ = np.dot(c_u,np.dot(μ0,np.transpose(c_l)))
-                μ = μ[iallowed_u,:][:,iallowed_l]
+                # μ = μ[iallowed_u,:][:,iallowed_l]
 
-                iallowed_l = self.level_l.iallowed[J_l]
-                iallowed_u = self.level_u.iallowed[J_u]
-                nallowed_l = np.sum(iallowed_l)
-                nallowed_u = np.sum(iallowed_u)
-                kw_l = self.level_l.vibrational_spin_level[iallowed_l].as_dict()
-                kw_u = self.level_u.vibrational_spin_level[iallowed_u].as_dict()
-                kw_l['E'] = self.level_l.E[J_l][iallowed_l]
-                kw_u['E'] = self.level_u.E[J_u][iallowed_u]
+                # iallowed_l = self.level_l.iallowed[J_l]
+                # iallowed_u = self.level_u.iallowed[J_u]
+                # nallowed_l = np.sum(iallowed_l)
+                # nallowed_u = np.sum(iallowed_u)
+                # kw_l = self.level_l.vibrational_spin_level[iallowed_l].as_dict()
+                # kw_u = self.level_u.vibrational_spin_level[iallowed_u].as_dict()
+                # kw_l['E'] = self.level_l.E[J_l][iallowed_l]
+                # kw_u['E'] = self.level_u.E[J_u][iallowed_u]
+                kw_l = self.level_l.vibrational_spin_level.as_dict()
+                kw_u = self.level_u.vibrational_spin_level.as_dict()
+                kw_l['E'] = self.level_l.E[J_l]
+                kw_u['E'] = self.level_u.E[J_u]
                 self.rotational_line.extend(
                     J_l=J_l,J_u=J_u,
                     μ=np.ravel(μ),
-                    **{key+'_u':np.tile(val,nallowed_l) for key,val in kw_u.items()},
-                    **{key+'_l':np.repeat(val,nallowed_u) for key,val in kw_l.items()},
+                    **{key+'_u':np.tile(val,len(self.level_l.vibrational_spin_level)) for key,val in kw_u.items()},
+                    **{key+'_l':np.repeat(val,len(self.level_u.vibrational_spin_level)) for key,val in kw_l.items()},
                 )
 
                 
@@ -1696,6 +1690,7 @@ class VibLine(Optimiser):
                 if fμ[i,j] is not None:
                     fμ[i,j]=lambda J,ΔJ,f=fμ[i,j]: f(J,ΔJ)*μv
         ## compute μ0
+        cache = {}
         def construct_function():
             for i,(ef_ui,Σ_ui) in enumerate(zip(ef_u,Σ_u)):
                 for j,(ef_li,Σ_li) in enumerate(zip(ef_l,Σ_l)):
@@ -1703,9 +1698,8 @@ class VibLine(Optimiser):
                     row_l,i_l = self.level_l.vibrational_spin_level.matching_row(ef=ef_li,Σ=Σ_li,**qn_l,return_index=True)
                     if fμ[i,j] is None:
                         continue
-                    for iJ_l,J_l in enumerate(self.J_l):
-                        for iΔJ,ΔJ in enumerate(self.ΔJ):
-                            self.μ0[iJ_l,iΔJ,i_u,i_l] = fμ[i,j](J_l,ΔJ)
+                    for iΔJ,ΔJ in enumerate(self.ΔJ):
+                        self.μ0[:,iΔJ,i_u,i_l] = fμ[i,j](self.J_l,ΔJ)
         return construct_function
 
     # def add_transition_moment(
@@ -2278,14 +2272,14 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp):
             ## this computes every part of the linestrength apart
             ## from the adjustable transition moment, with a cache
             ## for speed
-            @lru_cache
             def fij(Jpp,ΔJ,
                     Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'],
                     Λp=qnppm['Λ'],Λpp=qnpppm['Λ'],
                     μsign=float(μsign), c=float(c)):
-                if Jpp+ΔJ<0:
-                    return 0.
-                return(
+                retval = np.full(len(Jpp),nan)
+                i = (Jpp>=qnpppm['Ω'])|((Jpp+ΔJ)>=qnppm['Ω'])
+                Jpp = Jpp[i]
+                retval[i] = (
                     c       # contribution to ef-basis state
                     *np.sqrt((2*Jpp+1)*(2*(Jpp+ΔJ)+1)) # see hansson2005 eq. 13
                     *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
@@ -2293,8 +2287,9 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp):
                     *μsign # transition moment phase factor (+1 or -1)
                     *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') # Wigner 3J line strength factor vectorised over Jpp
                 )
+                return retval
             fi.append(fij)
-        fμrot[ip,ipp] = lambda Jpp,ΔJ,fi=fi: sum([fij(Jpp,ΔJ) for fij in fi])
+        fμrot[ip,ipp] = lambda Jpp,ΔJ,fi=fi: np.sum([fij(Jpp,ΔJ) for fij in fi])
     return efp,Σp,efpp,Σpp,fμrot
 
     # ## for each ΔΩ e/f transition compute the contribution signed
