@@ -9,6 +9,7 @@ import periodictable
 
 from .dataset import Dataset
 from . import tools
+from .tools import cache
 from . import database
 from .exceptions import MissingDataException
 
@@ -186,13 +187,9 @@ def _f(name):
 _species_name_translation_functions[('standard','latex')] = _f
 
 
-_get_species_cache = {}
+@cache
 def get_species(name):
-    """Get species from name, assume immutable and potentially
-    cached."""
-    if name not in _get_species_cache:
-        _get_species_cache[name] = Species(name)
-    return(_get_species_cache[name])
+    return Species(name)
 
 
 class Species:
@@ -284,14 +281,16 @@ class Species:
             for part in re.split(r'([A-Z][a-z]?[0-9]*|\[[0-9]+[A-Z][a-z]?\][0-9]*)',self['name']):
                 if part=='':
                     continue
-                if r:= re.match('^([A-Z][a-z]?)([0-9]*)',part):
+                if r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
                     ## an element
                     element = r.group(1)
                     multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
                     mass_number = database.get_isotopes(element)[0][0]
-                elif r:= re.match('^\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
+                elif r:= re.match(r'^\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
                     ## an isotope
                     mass_number,element,multiplicity = r.groups()
+                else:
+                    raise Exception(f'Could not determine isotope from part {repr(part)} of name {repr(self.name)}')
                 for i in range(1 if multiplicity=='' else int(multiplicity)):
                     isotopes.append((element,int(mass_number)))
             isotopes = tuple(sorted(isotopes))
