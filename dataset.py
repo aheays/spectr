@@ -251,6 +251,7 @@ class Dataset(optimise.Optimiser):
         self.set(key,value)
         
     def clear(self):
+        self._length = 0
         self._data.clear()
 
     def unset(self,key):
