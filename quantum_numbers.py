@@ -998,7 +998,7 @@ def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
     # if np.isnan(retval): retval=0.
     # return(retval)
 
-@functools.lru_cache(maxsize=2**20)
+# @functools.lru_cache(maxsize=2**20)
 def wigner3j(j1,j2,j3,m1,m2,m3,
              # method='sympy',  # symbolic calc with sympy
              # method='sympy_numeric',  # numericisation of symbolic calc from sympy
