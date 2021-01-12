@@ -61,6 +61,8 @@ class AutoDict:
 ## decorators / decorator factories / function tools ##
 #######################################################
 
+cache = functools.lru_cache
+
 def vectorise(vargs=None,dtype=None,cache=False):
     """Vectorise a scalar-argument scalar-return value function.  If all
     arguments are scalar return a scalar result. If args is None
