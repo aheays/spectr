@@ -39,8 +39,9 @@ class Dataset(optimise.Optimiser):
             prototypes = None,  # a dictionary of prototypes
             **kwargs):
         self.classname = self.__class__.__name__
+        ## default name is snake version of camel object name
         if name is None:
-            name = self.classname.lower()
+            name = re.sub(r'(?<!^)(?=[A-Z])', '_', self.__class__.__name__).lower()
         optimise.Optimiser.__init__(self,name=name)
         self.description = description # A string describing this dataset
         self.pop_format_input_function()
@@ -271,6 +272,14 @@ class Dataset(optimise.Optimiser):
 
     def set_prototype(self,key,kind,infer=None,**kwargs):
         """Set prototype data."""
+        if kind is str:
+            kind = 'U'
+        elif kind is float:
+            kind = 'f'
+        elif kind is bool:
+            kind = 'b'
+        elif kind is object:
+            kind = 'O'
         if infer is None:
             infer = {}
         self._prototypes[key] = dict(kind=kind,infer=infer,**kwargs)
