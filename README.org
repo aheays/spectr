@@ -2,7 +2,7 @@
 
 ** viblevel.py 
  
- - Add interactions.py
+ - Add interactions 
 
  - Add quantum numbers of VibLevel
 
@@ -25,9 +25,11 @@
  - If setting existing data, then copy into array rather than making a
    new array?
 
- - Use internal infer data to infer necessary things in extend/append.
+ - Use internal infer data to infer necessary things in extend/append
+   without creating an entire Dataset object
 
 ** optimise.py
+
  - optim: add new output of parameters based on
    index/optimiser/function/arg_parameter
  

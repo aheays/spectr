@@ -24,6 +24,7 @@ from . import hitran
 from . import bruker
 from . import electronic_states
 from . import viblevel
+from . import cross_section
 
 ## import more explicitly for interactive use
 from .dataset import Dataset

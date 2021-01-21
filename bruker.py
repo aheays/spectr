@@ -8,6 +8,7 @@ class OpusData:
 
     def __init__(self,filename):
         """Load a binary Bruker Opus file into a dictionary."""
+        self.filename = filename
         self.data = brukeropusreader.read_file(expand_path(filename))
 
     def has_spectrum(self):
@@ -30,13 +31,31 @@ class OpusData:
         y = self.data['ScRf'][:parameters['NPT']] # for some reason the data in the datablock can be too long
         return x,y
     
-    # def plot(self, ykeys=('spectrum','background'), ax=None, **plot_kwargs):
-        # if ax is None:
-            # fig = qfig()
-            # ax = fig.gca()
-            # for ykey in tools.ensure_iterable(ykeys):
-                # print('DEBUG:', 'Not finished')
-           #  
+    def plot(
+            self,
+            plot_spectrum=True,
+            plot_background=True,
+            ax=None, 
+            **plot_kwargs):
+        """Plot data."""
+        if ax is None:
+            ax = plt.gca()
+        if plot_spectrum:
+            if self.has_background():
+                kwargs = copy(plot_kwargs)
+                kwargs.setdefault('color',newcolor(1))
+                kwargs.setdefault('label','background')
+                ax.plot(*self.get_spectrum(),**kwargs)
+            else:
+                print(f'No background in file: {self.filename}')    
+            if self.has_spectrum():
+                kwargs = copy(plot_kwargs)
+                kwargs.setdefault('color',newcolor(0))
+                kwargs.setdefault('label','spectrum')
+                ax.plot(*self.get_spectrum(),**kwargs)
+            else:
+                print(f'No spectrum in file: {self.filename}')    
+            
         
         
     # def load_spectrum(filename,datablock='ScSm'):

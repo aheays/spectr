@@ -19,11 +19,11 @@ from . import plotting
 class OneDimensionalAtmosphere(Dataset):
 
     prototypes = {}
-    prototypes['description'] = dict( description="",kind='s' ,infer={})
-    prototypes['notes'] = dict(description="Notes regarding this line" , kind='s' ,infer={})
-    prototypes['author'] = dict(description="Author of data or printed file" ,kind='s' ,infer={})
-    prototypes['reference'] = dict(description="Published reference" ,kind='s' ,infer={})
-    prototypes['date'] = dict(description="Date data collected or printed" ,kind='s' ,infer={})
+    prototypes['description'] = dict( description="",kind=str ,infer={})
+    prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer={})
+    prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer={})
+    prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer={})
+    prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer={})
     prototypes['z'] = dict(description="Height above surface (cm)" ,kind='f' ,infer={})
     prototypes['z(km)'] = dict(description="Height above surface (km)" ,kind='f' ,infer={'z':lambda self,z: z*1e-5,})
     prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind='f' ,infer={'T':lambda self,T:T})
@@ -46,8 +46,11 @@ class OneDimensionalAtmosphere(Dataset):
     prototypes['dz'] = dict(description="Depth of grid cell (cm)." ,kind='f' ,infer={'z':_f})
 
     def __init__(self):
-        Dataset.__init__(self)
-        self.permit_nonprototyped_data = False
+        Dataset.__init__(
+            self,
+            prototypes=self.prototypes,
+            permit_nonprototyped_data = False,
+        )
 
 
 class AtmosphericChemistry():
@@ -173,6 +176,10 @@ class AtmosphericChemistry():
         else:
             raise Exception(f'Unknown {key=}')
 
+    def get_species(self):
+        """Get a list of all chemical species."""
+        return list(self.density.keys())
+
     def get_mixing_ratio(self,species):
         return self.density[species]/self.state['nt']
 
@@ -187,6 +194,28 @@ class AtmosphericChemistry():
 
     def get_density(self,species):
         return self.density[species]
+
+    def get_surface_density(self,*speciess):
+        """Return dictionary of surface density ordered from most abundant
+        species. THIS IS READ FROM THE LOWEST GRID STEP FO THE OUTPUT
+        FILE, AND IS THEN SLIGHTLY DIFFERENT FROM THE INPUT DATA IN
+        COND_INITIAL."""
+        if len(speciess) == 0:
+            speciess = self.density.keys()
+        surface_density = np.array([self.get_density(species)[0] for species in speciess])
+        retval = {speciess[i]:surface_density[i] for i in np.argsort(-surface_density)}
+        return retval
+
+    def get_surface_mixing_ratio(self,*speciess):
+        """Return dictionary of mixing ratios ordered from most abundant
+        species. THIS IS READ FROM THE LOWEST GRID STEP FO THE OUTPUT
+        FILE, AND IS THEN SLIGHTLY DIFFERENT FROM THE INPUT DATA IN
+        COND_INITIAL."""
+        if len(speciess) == 0:
+            speciess = self.density.keys()
+        surface_density = np.array([self.get_mixing_ratio(species)[0] for species in speciess])
+        retval = {speciess[i]:surface_density[i] for i in np.argsort(-surface_density)}
+        return retval
 
     def plot_vertical(
             self,
@@ -305,8 +334,12 @@ class AtmosphericChemistry():
         else:
             summary_value = {key:integrate.trapz(val,self['z']) for key,val in rates.items()} # integrated value
             xlabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
+        ## sort species to plot by their descending summary value
+        names = list(rates)
+        j = np.argsort(list(summary_value.values()))[::-1]
+        names = [names[i] for i in j]
         ## plot
-        for i,name in enumerate(rates):
+        for i,name in enumerate(names):
             t_plot_kwargs = copy(plot_kwargs)
             t_plot_kwargs['label'] = f'{summary_value[name]:0.2e} {name}'
             if name == 'total':

@@ -12,6 +12,7 @@ from . import tools
 from . import levels
 from . import lineshapes
 from . import tools
+from .tools import file_to_dict,vectorise,cache
 from . import hitran
 from . import database
 from . import plotting
@@ -19,7 +20,7 @@ from .conversions import convert
 from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
-from .dataset2 import Dataset
+from .dataset import Dataset
 
 prototypes = {}
 
@@ -100,25 +101,31 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
     for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
         i = tools.find(i)
         kT = convert(constants.Boltzmann,'J','cm-1')*Texi
-        
         ## sum for all unique upper levels
         k = []
         for qn,j in tools.unique_combinations_mask(
                 *[self[key+'_u'][i] for key in self._levels_class._defining_qn]):
             k.append((i[j])[0])
         Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
-
         ## sum for all unique lower levels
         k = []
         for qn,j in tools.unique_combinations_mask(
                 *[self[key+'_l'][i] for key in self._levels_class._defining_qn]):
             k.append((i[j])[0])
         Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
-
     return Z
 
+@vectorise(cache=True,vargs=(1,2))
+def _f5(self,species,Tex):
+    if self.Zsource != 'HITRAN':
+        raise InferException(f'Zsource not "HITRAN".')
+    from . import hitran
+    return hitran.get_partition_function(species,Tex)
+
+
+
 prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer={
-    # ('species','Tex'):_f5,
+    ('species','Tex'):_f5,
     ('species','Tex','E_u','E_l','g_u','g_l'):_f3,
 })
 
@@ -230,7 +237,7 @@ class Generic(levels.Base):
         'f','σ','S','S296K','τ','Ae',
         'γair','δair','nair','γself',
         'Pself', 'Pair', 'Nself',
-        'Teq','Ttr','Z',
+        'Teq','Tex','Ttr','Z',
         'Γ','ΓD',
         levels_class = _levels_class
     )
@@ -325,19 +332,23 @@ class Generic(levels.Base):
                 return(np.array([]),np.array([]))
             else:
                 return(x,np.zeros(x.shape))
-        ## check frequencies, strengthgs, widths are as expected
+        ## check frequencies, strengths, widths are as expected
         self.assert_known(xkey,ykey)
         assert np.all(~np.isnan(self[xkey])),f'NaN values in xkey: {repr(xkey)}'
         assert np.all(~np.isnan(self[ykey])),f'NaN values in ykey: {repr(ykey)}'
         if ΓG is None:
+            ## no Gaussian linewidth
             pass
         elif isinstance(ΓG,str):
+            ## use this key for Gaussian width
             self.assert_known(ΓG)
             assert np.all(~np.isnan(self[ΓG])),f'NaN values in ΓG key: {repr(xkey)}'
             ΓG = self[ΓG]
         elif np.isscalar:
+            ## constant Gaussian width
             ΓG = np.full(len(self),ΓG,dtype=float)
         else:
+            ## a list of Gaussian widths
             ΓG = np.asarray(ΓG,dtype=float)
             assert np.all(~np.isnan(ΓG)),f'NaN values in provided ΓG array'
             assert len(ΓG)==len(self),'Provided ΓG array wrong length'
@@ -639,6 +650,25 @@ class Diatomic(Generic):
         kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.extend(**kw)
 
+    def load_from_duo(self,filename,intensity_type):
+        """Load an output line list computed by DUO (yurchenko2016)."""
+        data = file_to_dict(
+            filename,
+            labels=('index_u','index_l','intensity','ν'))
+        if len(data)==0:
+            print(f'warning: no data found in {repr(filename)}')
+            return
+        data.pop('index_u')
+        data.pop('index_l')
+        if intensity_type == 'absorption':
+            data['f'] = data.pop('intensity')
+        elif intensity_type == 'emission':
+            data['Ae'] = data.pop('intensity')
+        elif intensity_type == 'partition':
+            data['α'] = data.pop('intensity')
+        else:
+            raise Exception(f'intensity_type must be "absorption" or "emission" or "partition"')
+        self.extend(**data)
 
 # class LinearTriatomic(Generic):
     # _levels_class = levels.LinearTriatomic

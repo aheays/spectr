@@ -8,9 +8,9 @@ from scipy import constants
 import numpy as np
 from numpy import nan,array
 
-from .dataset2 import Dataset
+from .dataset import Dataset
 from .conversions import convert
-from .tools import vectorise,cache
+from .tools import vectorise,cache,file_to_dict
 from . import tools
 from . import database
 from . import kinetics
@@ -98,7 +98,7 @@ prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', 
 prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer={'Teq':lambda self,Teq:Teq})
 # prototypes['partition_source'] = dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind='U', infer={('database',): lambda self,: 'database',})
 
-@vectorise(cache=True,vargs=(1,2,3))
+# @vectorise(cache=True,vargs=(1,2))
 def _f5(self,species,Tex):
     if self.Zsource != 'HITRAN':
         raise InferException(f'Zsource not "HITRAN".')
@@ -117,7 +117,7 @@ def _f3(self,species,Tex,E,g):
 
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer={
     ('species','Tex','E','g'):_f3,
-    # ('species','Tex'):_f5,
+    ('species','Tex'):_f5,
 })
 
 prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer={('Z','E','g','Tex'): lambda self,Z,E,g,Tex : g*np.exp(-E/(convert(constants.Boltzmann,'J','cm-1')*Tex))/Z,})
@@ -141,6 +141,7 @@ def _f0(self,ef,J):
     σv = np.full(ef.shape,+1,dtype=int)
     σv[exponent%2==1] = -1
     return σv
+prototypes['i'] = dict(description="Total parity.", kind='i',infer={})
 prototypes['σv'] = dict(description="Symmetry with respect to σv reflection.", kind='i',infer={('ef','J'):_f0,})
 prototypes['gu'] = dict(description="Symmetry with respect to reflection through a plane perpendicular to the internuclear axis.", kind='i',infer={})
 prototypes['sa'] = dict(description="Symmetry with respect to nuclear exchange, s=symmetric, a=antisymmetric.", kind='i',infer={('σv','gu'):lambda self,σv,gu: σv*gu,})
@@ -287,6 +288,8 @@ class Generic(Base):
     )
     _defining_qn = ('species',)
     
+    
+
 class Diatomic(Base):
     _prototypes = _collect_prototypes(
         'species',
@@ -297,7 +300,9 @@ class Diatomic(Base):
         'g','gnuclear',
         'Teq','Tex','Z','α',
         'Nself',
-        'label', 'Λ','s','S','LSsign','gu',
+        'label', 'Λ','s','S','LSsign',
+        'i','gu', 'σv','sa','ef', 
+        'Fi','Ω','Σ','SR',
         'v',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
@@ -313,9 +318,62 @@ class Diatomic(Base):
         'J','pm','N','S',
         'Teq',
         'α',
-        'σv','sa','ef','Fi','Ω','Σ','SR',
     )
     _defining_qn = ('species','label','v','Σ','ef','J')
+
+    def load_from_duo(self,filename):
+        """Load an output level list computed by DUO (yurchenko2016)."""
+        data = file_to_dict(filename)
+        if len(data) == 11:
+            for icolumn,key in enumerate(('index','E','g','J','s','ef','label','v','Λ','Σ','Ω',)):
+                data[key] = data.pop(f'column{icolumn}')
+        elif len(data) == 12:
+            for icolumn,key in enumerate(('index','E','g','J','E_residual','s','ef','label','v','Λ','Σ','Ω',)):
+                data[key] = data.pop(f'column{icolumn}')
+            data.pop('E_residual') # not currently used
+        if len(data)==0:
+            print(f'warning: no data found in {repr(filename)}')
+            return
+        ## get Λ/Σ/Ω sign conventions to match mine: Λ is +, Σ + or -,
+        ## Ω is absolute
+        i = data['Λ'] < 0
+        data['Σ'][i] *= -1
+        data['Λ'] = np.abs(data['Λ'])
+        data['Ω'] = np.abs(data['Ω'])
+        ## translate +/- to +1/-1
+        i = data['s']=='-'
+        data['s'] = np.full(len(data['s']),+1,dtype=int)
+        data['s'][i] = -1
+        ## translate e/f to +1/-1
+        i = data['ef']=='f'
+        data['ef'] = np.full(len(data['ef']),+1,dtype=int)
+        data['ef'][i] = -1
+        data.pop('index')
+        self.extend(**data)
+
+    def load_from_spectra(self,filename):
+        """Old filetype. Incomplete"""
+        data = file_to_dict(filename)
+        ## keys to translate
+        for key_old,key_new in (
+                ('T','E'),
+                ('Tref','Eref'),
+                ):
+            if key_old in data:
+                assert key_new not in data
+                data[key_new] = data.pop(key_old)
+        ## data to modify
+        if 'ef' in data:
+            i = data['ef']=='f'
+            data['ef'] = np.full(len(data['ef']),+1,dtype=int)
+            data['ef'][i] = -1
+        ## data to ignore
+        for key in (
+                'level_transition_type',
+                'partition_source',
+                ):
+            data.pop(key)
+        self.extend(**data)
 
 # class LinearTriatomic(Generic):
     # """Rotational levels of a linear triatomic.  Constructed to load
