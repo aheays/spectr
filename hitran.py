@@ -9,9 +9,11 @@ from .tools import *
 from .dataset import Dataset
 
 
-
 @tools.vectorise(cache=True)
-def get_partition_function(species_or_isotopologue,temperature):
+def get_partition_function(
+        species_or_isotopologue,
+        temperature,
+):
     """Use hapi to get a partition function.  Uses main isotopologue if
     not given."""
     from hapi import hapi
@@ -131,7 +133,6 @@ def load(filename):
         # raise Exception(f'unknown spectrum type: {spectrum_type}')
 
 
-## downloaded from https://hitran.org/docs/iso-meta/ 2020-10-15
 
 @functools.lru_cache
 def get_lines(species_or_isotopologue):
@@ -147,6 +148,7 @@ def get_lines(species_or_isotopologue):
     return l
 
 
+## downloaded from https://hitran.org/docs/iso-meta/ 2020-10-15
 molparam = Dataset()
 molparam.load_from_string('''
 species_ID| global_isotopologue_ID| local_isotopologue_ID| chemical_species| isotopologue   | AFGL_code| natural_abundance| molar_mass   | Q_296K  | gi
