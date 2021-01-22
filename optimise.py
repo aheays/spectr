@@ -100,9 +100,9 @@ class Optimiser:
         self.description = description
         self._construct_time = time.time() # when last constructed
         self._modify_time = time.time()    # when model was last modified in some way
-        self.named_parameters = {}
+        self._named_parameters = {}         # addresable as optimiser[key]
         for key,val in named_parameters.items():
-            self.named_parameters[key] = self.add_parameter(val)
+            self._named_parameters[key] = self.add_parameter(val)
         ## make an input line
         kwargs = dict(
             name=self.name,
@@ -181,10 +181,10 @@ class Optimiser:
         return parameter
 
     def __getitem__(self,key):
-        return self.named_parameters[key]
+        return self._named_parameters[key]
 
     def __setitem__(self,key,val):
-        self.named_parameters[key].value = val
+        self._named_parameters[key].value = val
 
     def add_construct_function(self,*functions):
         """Add one or more functions that are called each iteration when the
@@ -404,7 +404,7 @@ class Optimiser:
                     if optimiser.get_uncertainty(key,vary) is None:
                         optimiser.set_uncertainty(key,nan)
                     uncertainty.extend(optimiser.get_uncertainty(key,vary))
-                    step.extend(optimiser.get_differentiation_step(key,vary))
+                    step.extend(optimiser.get_step(key,vary))
         return value,step,uncertainty
 
     def _set_parameters(self,p,dp=None):
@@ -426,7 +426,7 @@ class Optimiser:
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get_vary(key)
                     for i in tools.find(vary):
-                        optimiser.set_value(key,p.pop(0),i)
+                        optimiser.set(key,p.pop(0),i)
                         if dp is not None:
                             optimiser.set_uncertainty(key,dp.pop(0),i)
                         else:

@@ -232,9 +232,25 @@ class Experiment(Optimiser):
             ax.set_title(f'noise distribution\n{self.name}')
 
     def plot(self,ax=None):
+        """Plot spectrum."""
         self.construct()
+        ## reuse current axes if not specified
         if ax is None:
             ax = plt.gca()
+            ax.cla()
+            def format_coord(x,y):
+                if x<1e-5 or x>=1e10:
+                    xstr = f'{x:0.18e}'
+                else:
+                    xstr = f'{x:0.18f}'
+                if y<1e-5 or y>1e5:
+                    ystr = f'{y:0.18e}'
+                else:
+                    ystr = f'{y:0.18f}'
+                return(f'x={xstr:<25s} y={ystr:<25s}')
+            ax.format_coord = format_coord
+            ax.grid(True,color='gray')
+            plotting.simple_tick_labels(ax=ax)
         ax.plot(self.x,self.y)
 
 class Model(Optimiser):
@@ -486,10 +502,14 @@ class Model(Optimiser):
                 ## or not (len(cache['x']) == len(self.x)) # experimental domain has changed
                 ## or not np.all( cache['x'] == self.x ) # experimental domain has changed
                 ):
-                ## update optimise_keys_vals that have changed
+                ## update optimise_keys_vals that have changed -- if
+                ## optimised also set uncertainty
                 for key,val in line_parameters.items():
                     if cache == {} or np.all(lines[key] != val): # has been changed elsewhere, or the parameter has changed, or first use
-                        lines[key] = val
+                        if isinstance(val,P):
+                            lines.set(key,val.value,uncertainty=val.uncertainty)
+                        else:
+                            lines[key] = val
                 x,y = lines.calculate_spectrum(
                     x=self.x,
                     ykey='τ',
@@ -829,25 +849,26 @@ class Model(Optimiser):
     @auto_construct_method('convolve_with_gaussian')
     def convolve_with_gaussian(self,width=1,fwhms_to_include=100):
         """Convolve with gaussian."""
-        # p = self.add_parameter_set('convolve_with_gaussian',width=width)
-        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_gaussian({p.format_as_kwargs()})')
-        ## check if there is a risk that subsampling will ruin the convolution
         def f():
             x,y = self.x,self.y
-            if self.verbose and abs(width)<3*np.diff(self.xexp).min(): warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            if width == 0:
+                ## nothing to be done
+                return
+            abswidth = abs(width)
+            if self.verbose and abswidth<3*np.diff(self.xexp).min(): 
+                warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1)
-            padding = np.arange(dx,fwhms_to_include*abs(width)+dx,dx)
+            padding = np.arange(dx,fwhms_to_include*abswidth+dx,dx)
             xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
             ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
             ## generate gaussian to convolve with
-            xconv = np.arange(-fwhms_to_include*abs(width),fwhms_to_include*abs(width),dx)
+            xconv = np.arange(-fwhms_to_include*abswidth,fwhms_to_include*abswidth,dx)
             if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-            yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abs(width)**2) # peak normalised gaussian
+            yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abswidth**2) # peak normalised gaussian
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
             self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        # self.add_construct_function(f)
         return f
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
@@ -1272,11 +1293,10 @@ class Model(Optimiser):
         
     def plot(
             self,
-            fig=None,
             ax=None,
-            plot_optical_depth=False,
-            plot_experiment= True,
+            fig=None,
             plot_model= True,
+            plot_experiment= True,
             plot_residual= True,
             plot_labels=False,
             plot_branch_heads=False,
@@ -1286,15 +1306,13 @@ class Model(Optimiser):
             label_match_qn=None,
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
-            # annotate_reference_lines=['32S16O',],
             plot_title= True,
             title='auto',
-            plot_legend=False,
+            plot_legend= True,
             plot_contaminants=True, # whether or not to label locations of reference contaminants
             # contaminants_to_plot=('default',), # what contaminant to label
             contaminants_to_plot=None, # what contaminant to label
             linewidth=1,
-            colors=plotting.linecolors_screen,
             shift_residual=0.,
             xlabel=None,ylabel=None,
             invert_model=False,
@@ -1302,32 +1320,6 @@ class Model(Optimiser):
             **limit_to_qn,
     ):
         """Plot experimental and model spectra."""
-        ## make a figure
-        plotting.presetRcParams('a4landscape')
-        # tools.presetRcParams('screen')
-        from cycler import cycler
-        plt.rcParams.update({
-            'figure.autolayout':False,
-            'axes.prop_cycle'    : cycler('color',colors),
-            'lines.linewidth': linewidth, 'lines.markersize': 10.0, 'lines.markeredgewidth': 0, 'patch.edgecolor': 'none',
-            'grid.alpha' : 1.0, 'grid.color' : 'gray', 'grid.linestyle' : ':',
-            'axes.titlesize'       :14., 'axes.labelsize'       :14.,
-            'xtick.labelsize'      :12., 'ytick.labelsize'      :12.,
-            'legend.fontsize'      :12., 'legend.handlelength'  :1, 'legend.handletextpad' :0.4, 'legend.labelspacing'  :0., 'legend.numpoints'     :1,
-            'font.size'            :14., 'font.family'          :'serif', 'text.usetex'          :False, 'mathtext.fontset'     :'cm',
-            'xtick.minor.top': True, 'xtick.minor.bottom': True, 'xtick.minor.visible': True , 'xtick.top': True , 'xtick.bottom': True ,
-            'ytick.minor.right': True, 'ytick.minor.left': True, 'ytick.minor.visible': True , 'ytick.right': True , 'ytick.left': True ,
-            'toolbar': 'toolbar2',
-            'path.simplify'      :  True, # whether or not to speed up plots by joining line segments
-            'path.simplify_threshold' :1, # how much to do so
-            'agg.path.chunksize': 10000,  # antialisin speed up -- does not seem to do anything over path.simplify
-        })
-        def format_coord(x,y):
-            if x<1e-5 or x>=1e10: xstr = f'{x:0.18e}'
-            else:               xstr = f'{x:0.18f}'
-            if y<1e-5 or y>1e5: ystr = f'{y:0.18e}'
-            else:               ystr = f'{y:0.18f}'
-            return(f'x={xstr:<25s} y={ystr:<25s}')
         ## get axes if not specified
         if ax is not None:
             fig = ax.figure
@@ -1338,12 +1330,22 @@ class Model(Optimiser):
                 fig = plt.figure(fig)
             fig.clf()
             ax = fig.gca()
+            def format_coord(x,y):
+                if x<1e-5 or x>=1e10:
+                    xstr = f'{x:0.18e}'
+                else:
+                    xstr = f'{x:0.18f}'
+                if y<1e-5 or y>1e5:
+                    ystr = f'{y:0.18e}'
+                else:
+                    ystr = f'{y:0.18f}'
+                return(f'x={xstr:<25s} y={ystr:<25s}')
             ax.format_coord = format_coord
-        self.add_format_input_function(lambda: f'{self.name}.plot_spectrum(fig={repr(fig.number)},label_key={repr(label_key)},plot_labels={repr(plot_labels)},plot_optical_depth={repr(plot_optical_depth)},plot_experiment={repr(plot_experiment)},plot_model={repr(plot_model)},plot_residual={repr(plot_residual)})')
+        self.add_format_input_function(lambda: f'{self.name}.plot_spectrum(fig={repr(fig.number)},label_key={repr(label_key)},plot_labels={repr(plot_labels)},plot_experiment={repr(plot_experiment)},plot_model={repr(plot_model)},plot_residual={repr(plot_residual)})')
         ymin,ymax = np.inf,-np.inf
         xmin,xmax = np.inf,-np.inf
         ## plot intensity and residual
-        if plot_experiment and self.yexp is not None:
+        if plot_experiment and self.experiment is not None and self.yexp is not None:
             # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
             ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
@@ -1360,11 +1362,6 @@ class Model(Optimiser):
             ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
             ax.plot(self.xexp,self.residual+shift_residual,color=plotting.newcolor(2),zorder=-1,label='Exp-Mod residual error',) # plot fit residual
-        ## plot optical depth of model and individual lines (approx)
-        # if plot_optical_depth:
-            # yscale = (ymax-ymin)/self.optical_depths['total'].max()
-            # ax.plot(self.x,ymin-self.optical_depths['total']*yscale,color=plotting.newcolor(3),label='τ',zorder=5) # plot optical depth of model
-            # ymin -= ymax
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
@@ -1530,15 +1527,16 @@ class Model(Optimiser):
 # class Fit(Optimiser):
     # def __init__(
             # self,
+            # experiment,
+            # model,
             # name=None,
-            # model=None,
-            # experiment=None,
             # residual_weighting=None,
             # verbose=None,
-            # xbeg=None,xend=None,
+            # xbeg=None,
+            # xend=None,
     # ):
-        # self.model = model
         # self.experiment = experiment
+        # self.model = model
         # self.xbeg = xbeg
         # self.xend = xend
         # self.residual = None
@@ -1549,16 +1547,17 @@ class Model(Optimiser):
         # self.pop_format_input_function()
         # self.add_suboptimiser(self.model)
         # self.add_suboptimiser(self.experiment)
-        # self.add_construct_function(self._get_residual)
+        # self.add_construct_function(self.get_residual)
 
-    # def _get_residual(self):
+    # def get_residual(self):
+        # ## limit to xbeg → xend
         # i = np.full(True,self.experiment.x.shape)
         # if self.xbeg is not None:
             # i &= self.experiment.x>=self.xbeg
         # if self.xend is not None:
             # i &= self.experiment.x<=self.xend
         # ymod = self.model.get_spectrum(self.experiment.x[i])
-        # self.residual = self.experiment.yexp
+        # self.residual = self.experiment.yexp - ymod
         # if self.residual_weighting is not None:
             # self.residual *= self.residual_weighting
         # return self.residual

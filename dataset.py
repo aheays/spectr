@@ -13,6 +13,8 @@ from .exceptions import InferException
 from .conversions import convert
 from . import optimise
 
+
+
 class Dataset(optimise.Optimiser):
 
     """A collection of scalar or array values, possibly with uncertainties."""
@@ -28,6 +30,8 @@ class Dataset(optimise.Optimiser):
         'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','default':None,},
     }
 
+    attributes = ('classname','description')
+
     def __init__(
             self,
             name=None,
@@ -38,6 +42,9 @@ class Dataset(optimise.Optimiser):
             permit_auto_defaults = False,
             prototypes = None,  # a dictionary of prototypes
             **kwargs):
+        ## deal with attributes
+        for key in self.attributes:
+            setattr(self,key,None)
         self.classname = self.__class__.__name__
         ## default name is snake version of camel object name
         if name is None:
@@ -72,13 +79,25 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
-    def set(self,key,value,index=None,**prototype_kwargs):
+    def set(
+            self,
+            key,
+            value,
+            index=None,
+            uncertainty=None,
+            vary=None,
+            step=None,
+            **prototype_kwargs
+    ):
         """Set a value"""
         self._modify_time = time.time()
-        # ## if value is a parameter
-        # if isinstance(value,optimise.P):
-            # self.set('unc_'+key,value.uncertainty,index)
-            # value = value.value
+        if isinstance(value,optimise.P):
+            ## if value is a parameter -- then set value /
+            ## uncertainty/ and vary from it
+            self.set(key,value=value.value,
+                     uncertainty=value.uncertainty,vary=value.vary,step=value.step,
+                     index=index,**prototype_kwargs)
+            return
         ## delete inferences since data has changed
         if key in self:
             self.unset_inferences(key)
@@ -103,22 +122,6 @@ class Dataset(optimise.Optimiser):
             ## if a scalar value is given
             if np.isscalar(value):
                 value = np.full(len(self),value)
-            ## this is an uncertainty/vary/stepsize of another key
-            # if not self.is_value_key(key):
-                # prefix,tkey = self._get_value_key_without_prefix(key)
-                # if prefix == 'unc':
-                    # data['kind'] = 'f'
-                    # data['description'] = f'Uncertainty of {tkey}'
-                    # data['units'] = self.get_units(tkey)
-                    # data['fmt'] = '0.1e'
-                # elif prefix == 'vary':
-                    # data['kind'] = 'b'
-                    # data['description'] = f'Optimise {tkey}'
-                # elif prefix == 'step':
-                    # data['kind'] = 'f'
-                    # data['description'] = f'Differentiation stepsize for {tkey}'
-                    # data['units'] = self.get_units(tkey)
-                    # data['fmt'] = '0.1e'
             ## infer kind
             if 'kind' not in data:
                 ## use data to infer kind
@@ -164,6 +167,13 @@ class Dataset(optimise.Optimiser):
             if key not in self:
                 raise Exception(f'Cannot set data with index for unknown {key=}')
             self._data[key]['value'][:self._length][index] = self._data[key]['cast'](value)
+        ## set uncertainty / variability / differentiation stepsize
+        if uncertainty is not None:
+            self.set_uncertainty(key,uncertainty,index=index)
+        if vary is not None:
+            self.set_vary(key,vary,index=index)
+        if step is not None:
+            self.set_step(key,step,index=index)
 
     def get(self,key,index=None,units=None):
         if index is not None:
@@ -175,10 +185,9 @@ class Dataset(optimise.Optimiser):
             retval = convert(retval,self.get_units(key),units)
         return retval
 
-    def has_uncertainty(self,key):
-        return 'uncertainty' in self._data[key]
-
     def get_uncertainty(self,key,index=None,units=None):
+        if 'uncertainty' not in self._data[key]:
+            return None
         if index is not None:
             return self.get_uncertainty(key,units=units)[index]
         retval = self._data[key]['uncertainty'][:self._length]
@@ -199,33 +208,26 @@ class Dataset(optimise.Optimiser):
                     raise Exception()
                 self._data[key]['uncertainty'] = np.asarray(value,dtype=float)
 
-    def get_vary(self,key,index=None):
-        assert self.is_value_key(key),'Not a value key'
-        if 'vary_'+key in self:
-            return self.get('vary_'+key,index)
-        else:
+    def get_step(self,key,index=None):
+        if 'step' not in self._data[key]:
             return None
-
-    def set_vary(self,key,value,index=None):
-        assert self.is_value_key(key),'Not a value key'
-        self.set('vary_'+key,value,index)
-
-    def get_differentiation_step(self,key,index=None):
         if index is not None:
-            return get_differentiation_step(key)[index] 
-        return self._data[key]['differentiation_step'][:len(self)]
+            return self.get_step(key)[index] 
+        return self._data[key]['step'][:len(self)]
 
-    def set_differentiation_step(self,key,step,index=None):
+    def set_step(self,key,step,index=None):
         if index is not None:
-            get_differentiation_step(key)[index] = step
+            get_step(key)[index] = step
         if np.isscalar(step):
-            self._data[key]['differentiation_step'] = np.full(len(self),step,dtype=float)
+            self._data[key]['step'] = np.full(len(self),step,dtype=float)
         else:
             if len(step) != len(self):
                 raise Exception()
-            self._data[key]['differentiation_step'] = np.asarray(step,dtype=float)
+            self._data[key]['step'] = np.asarray(step,dtype=float)
 
     def get_vary(self,key,index=None):
+        if 'vary' not in self._data[key]:
+            return None
         if index is not None:
             return get_vary(key)[index] 
         return self._data[key]['vary'][:len(self)]
@@ -240,19 +242,14 @@ class Dataset(optimise.Optimiser):
                 raise Exception()
             self._data[key]['vary'] = np.asarray(vary,dtype=bool)
 
-    def has_units(self,key):
-        return 'units' in self._data[key]
-
     def get_units(self,key):
+        if 'units' not in self._data[key]:
+            return None
         return self._data[key]['units']
 
     def get_description(self,key):
         return self._data[key]['description']
 
-    def has_default(self,key):
-        """Test for existence of a default value."""
-        return 'default' in self._data[key]
-        
     def set_default(self,key=None,value=None,**more_keys_values):
         """Set a value that will be used if otherwise missing"""
         if key is not None:
@@ -264,11 +261,9 @@ class Dataset(optimise.Optimiser):
 
     def get_default(self,key):
         """Set a value that will be used if otherwise missing"""
+        if 'default' not in self._data[key]:
+            return None
         return self._data[key]['default']
-
-    def has_prototype(self,key):
-        """Test if has prototype data."""
-        return key in self._prototypes
 
     def set_prototype(self,key,kind,infer=None,**kwargs):
         """Set prototype data."""
@@ -286,12 +281,11 @@ class Dataset(optimise.Optimiser):
         for tkey,tval in self._kind_defaults[kind].items():
             self._prototypes[key].setdefault(tkey,tval)
 
-    def get_prototype(self,key,value=None):
-        """Get prototype as a dictionary or a particular value."""
-        if value is None:
-            return self._prototypes[key]
-        else:
-            return self._prototypes[key][value]
+    def get_prototype(self,key):
+        """Get prototype as a dictionary."""
+        if key not in self._prototypes:
+            return None
+        return self._prototypes[key]
 
     def get_kind(self,key):
         return self._data[key]['kind']
@@ -300,7 +294,7 @@ class Dataset(optimise.Optimiser):
         return list(self._data.keys())
 
     def optimised_keys(self):
-        return [key for key in self._data.keys() if 'vary_'+key in self]
+        return [key for key in self.keys() if self.get_vary(key) is not None]
 
     def assert_known(self,*keys):
         for key in keys:
@@ -499,8 +493,7 @@ class Dataset(optimise.Optimiser):
                 value = self[key]
                 parameters = [self[t] for t in dependencies]
                 for i,dependency in enumerate(dependencies):
-                    if self.has_uncertainty(dependency):
-                        tuncertainty = self.get_uncertainty(dependency)
+                    if (tuncertainty:=self.get_uncertainty(dependency)) is not None:
                         diffstep = 1e-10*self[dependency]
                         parameters[i] = self[dependency] + diffstep # shift one
                         dvalue = value - function(self,*parameters)
@@ -531,17 +524,6 @@ class Dataset(optimise.Optimiser):
             return key.split('_',1)
         else:
             return None,None
-
-    def is_value_key(self,key):
-        """Test if a value rather than uncertainty etc."""
-        if '_' in key:
-            prefix,rest = key.split('_',1)
-            if prefix in ('unc','vary','step') and self.has_prototype(rest):
-                return False
-            else:
-                return True
-        else:
-            return True
         
     def __iter__(self):
         for key in self._data:
@@ -597,55 +579,71 @@ class Dataset(optimise.Optimiser):
             self,
             keys=None,
             delimiter=' | ',
-            automatically_add_uncertainties=True,
+            format_uncertainty=True,
+            format_vary=True,
+            format_step= True,
             unique_values_in_header=True,
             include_description=True,
     ):
         """Format data into a string representation."""
         if len(self)==0:
             return ''
-        ## determine which keys to include in formatted table
         if keys is None:
             keys = self.keys()
-        if automatically_add_uncertainties:
-            tkeys = []
-            for key in keys:
-                tkeys.append(key)
-                if key in tkeys:
-                    continue
-                if self._get_uncertainty(key) is not None:
-                    tkeys.append(self.uncertainty_prefix + key)
-            keys = tkeys
-        ## construct header before table
-        header = []
-        if include_description:
-            ## include description of keys
-            lines = []
-            # for key,data in self._data.items():
-            #     line = f'{key:10}: {data["description"]}'
-            #     if data['units'] is not None:
-            #         line += f' [{data["units"]}]'
-            #     header.append(line)
-            for key in self:
-                line = f'{key:10}: {self.get_description(key)}'
-                if self.has_units(key):
-                    line += f' [{self.get_units(key)}]'
-                header.append(line)
-        ## attributes
-        header.append(f'classname = {repr(self.classname)}')
-        if self.description is not None:
-            header.append(f'description = {repr(self.description)}')
+        ## data to store in header
+        ## collect columns of data -- maybe reducing to unique values
         columns = []
+        header_values = {}
         for key in keys:
-            if unique_values_in_header and len(tval:=self.unique(key)) == 1:
-                header.append(f'{key:10} = {repr(tval[0])}')
+            if (unique_values_in_header
+                and len(tval:=self.unique(key)) == 1
+                and ( (not format_uncertainty) or self.get_uncertainty(key) is None)
+                and ( (not format_vary) or self.get_vary(key) is None)
+                and ( (not format_step) or self.get_step(key) is None)
+                ):
+                header_values[key] = format(tval[0],self._data[key]['fmt'])
             else:
                 ## two passes required on all data to align column
                 ## widths
-                vals = [format(t,self._data[key]['fmt'])
-                        for t in self._data[key]['value'][:len(self)]]
+                vals = [format(t,self._data[key]['fmt']) for t in self.get(key)]
                 width = str(max(len(key),np.max([len(t) for t in vals])))
                 columns.append([format(key,width)]+[format(t,width) for t in vals])
+                ## add uncertinaties / vary /step
+                if format_uncertainty and self.get_uncertainty(key) is not None:
+                    vals = [format(t,"0.1e") for t in self.get_uncertainty(key)]
+                    width = str(max(len(key+'_unc'),np.max([len(t) for t in vals])))
+                    columns.append([format(key+'_unc',width)]+[format(t,width) for t in vals])
+                if format_vary and self.get_vary(key) is not None:
+                    vals = [repr(t) for t in self.get_vary(key)]
+                    width = str(max(len(key+'_vary'),np.max([len(t) for t in vals])))
+                    columns.append([format(key+'_vary',width)]+[format(t,width) for t in vals])
+                if format_step and self.get_step(key) is not None:
+                    vals = [format(t,"0.1e") for t in self.get_step(key)]
+                    width = str(max(len(key+'_step'),np.max([len(t) for t in vals])))
+                    columns.append([format(key+'_step',width)]+[format(t,width) for t in vals])
+        ## construct header before table
+        header = []
+        ## add attributes to header
+        for key in self.attributes:
+            val = getattr(self,key)
+            if val is not None:
+                header.append(f'{key:12} = {repr(val)}')
+        if include_description:
+            ## include description of keys
+            for key in self:
+                line = f'{key:12}'
+                if key in header_values:
+                    line += f' = {header_values[key]:20}'
+                else:
+                    line += f'{"":23}'    
+                line += f' # {self.get_description(key)}'
+                if (units:=self.get_units(key)) is not None:
+                    line += f' [{units}]'
+                header.append(line)
+        else:
+            for key,val in header_values.items():
+                header.append(f'{key:10} = {val}')
+        ## make full formatted string
         retval = ''
         if header != []:
             retval = '\n'.join(header)+'\n'
@@ -654,7 +652,14 @@ class Dataset(optimise.Optimiser):
         return retval
 
     def __str__(self):
-        return self.format(self.keys(),include_description=False)
+        return self.format(
+            delimiter=' | ',
+            format_uncertainty=True,
+            format_vary=True,
+            format_step=True,
+            unique_values_in_header=True,
+            include_description=False,
+        )
 
     def save(self,filename,keys=None,**format_kwargs,):
         """Save some or all data to a text file."""
@@ -663,16 +668,16 @@ class Dataset(optimise.Optimiser):
         if re.match(r'.*\.npz',filename):
             ## numpy archive
             data = {key:self[key] for key in keys}
-            for attrkey in ('classname','description'):
-                if (attrval:=getattr(self,attrkey)) is not None:
-                    data[attrkey] = attrval
+            for key in self.attributes:
+                if (val:=getattr(self,key)) is not None:
+                    data[key] = val
             np.savez(filename,**data)
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
             data = {key:self[key] for key in keys}
-            for attrkey in ('classname','description'):
-                if (attrval:=getattr(self,attrkey)) is not None:
-                    data[attrkey] = attrval
+            for key in self.attributes:
+                if (val:=getattr(self,key)) is not None:
+                    data[key] = val
             tools.dict_to_hdf5(filename,data)
         else:
             ## text file
@@ -720,7 +725,7 @@ class Dataset(optimise.Optimiser):
             ## load header
             with open(filename,'r') as fid:
                 for iline,line in enumerate(fid):
-                    if r:=re.match(r'^ *'+comment+f' *([^: ]+) *: *(.+) *',line):
+                    if r:=re.match(r'^ *'+comment+f' *([^# ]+) *# *(.+) *',line):
                         ## a description line
                         pass
                     elif r:=re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line):
@@ -766,77 +771,6 @@ class Dataset(optimise.Optimiser):
         """Append a single row of data from kwarg scalar values."""
         self.extend(**{key:[val] for key,val in kwargs.items()})
 
-
-    # def extend(self,**kwargs):
-    #     """Extend self with data given as kwargs."""
-    #     ## ensure enough data is provided in kwargs, or if possible
-    #     ## get from defaults or auto_defaults
-    #     for key in self:
-    #         if key not in kwargs:
-    #             if self.has_default(key):
-    #                 kwargs[key] = self.get_default(key)
-    #             # elif self.permit_auto_defaults and self.has_prototype(key):
-    #                 # kwargs[key] = self.get_prototype(key,'auto_default')
-    #             else:
-    #                 raise Exception(f'Key not in extending data and has no default or auto_default: {repr(key)}')
-    #     ## get length of new data
-    #     new_data_length = 0
-    #     for key,val in kwargs.items():
-    #         if np.isscalar(val):
-    #             pass
-    #         elif new_data_length == 0:
-    #             new_data_length = len(val)
-    #         else:
-    #             assert new_data_length == len(val),f'Inconsistent length for {key=}'
-    #     ## test if any data to extend with
-    #     if new_data_length == 0:
-    #         return
-    #     ## extend scalar kwargs to full new length
-    #     for key,val in list(kwargs.items()):
-    #         if np.isscalar(val):
-    #             kwargs[key] = np.full(new_data_length,kwargs[key])
-    #     ## include default values if needed
-    #     for key in self:
-    #         if key not in kwargs:
-    #             kwargs[key] = np.full(new_data_length,self._defaults[key])
-    #     ## add data
-    #     if len(self) == 0:
-    #         ## currently no data -- simply set extending values
-    #         for key,val in kwargs.items():
-    #             self[key] = val
-    #     else:
-    #         total_length = len(self) + new_data_length
-    #         for key,val in kwargs.items():
-    #             ## check extending data is already in self -- if not
-    #             ## then set existing data with an autodefault if
-    #             ## use_auto_defaults is true
-    #             if key not in self:
-    #                 if self.permit_auto_defaults and self.has_prototype(key):
-    #                     self.set_default(key,self.get_prototype(key,'auto_default'))
-    #                 else:
-    #                     raise Exception(f'Key not in existing: {repr(key)}')
-    #             ## increase unicode dtype length if new strings are
-    #             ## longer than the current
-    #             if self._data[key]['kind'] == 'U':
-    #                 ## this is a really hacky way to get the length of string in a numpy array!!!
-    #                 old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self._data[key]['value'].dtype)))
-    #                 new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(val).dtype)))
-    #                 if new_str_len > old_str_len:
-    #                     ## reallocate array with new dtype with overallocation
-    #                     t = np.empty(len(self._data[key]['value']),dtype=f'<U{new_str_len*self._over_allocate_factor}')
-    #                     t[:len(self)] = self._data[key]['value'][:len(self)]
-    #                     self._data[key]['value'] = t
-    #             ## reallocate and lengthen value array if necessary
-    #             if total_length > len(self._data[key]['value']):
-    #                 self._data[key]['value'] = np.concatenate((
-    #                     self[key],
-    #                     np.empty(
-    #                         int(total_length*self._over_allocate_factor-len(self)),
-    #                         dtype=self._data[key]['value'].dtype)))
-    #             ## set extending data
-    #             self._data[key]['value'][len(self):total_length] = val
-    #         self._length = total_length
-
     def extend(self,**kwargs):
         """Extend self with data given as kwargs."""
         keys = np.unique(self.keys() + list(kwargs.keys()))
@@ -847,20 +781,21 @@ class Dataset(optimise.Optimiser):
                 extending_length = max(extending_length,len(val))
         total_length = original_length + extending_length
         for key in keys:
-
             if not self.is_known(key):
                 if original_length == 0:
                     self.set(key,[])
-                elif self.permit_auto_defaults and self.has_prototype(key):
-                    self.set_default(key,self.get_prototype(key,'default'))
+                elif (self.permit_auto_defaults
+                      and ((prototype:=self.get_prototype(key)) is not None)):
+                    self.set_default(key,prototype['default'])
                 else:
                     raise Exception()
 
             if key not in kwargs:
-                if self.has_default(key):
-                    kwargs[key] = self.get_default(key)
-                elif self.permit_auto_defaults and self.has_prototype(key):
-                    kwargs[key] = self.get_prototype(key,'default')
+                if (default:=self.get_default(key)) is not None:
+                    kwargs[key] = default
+                elif (self.permit_auto_defaults
+                      and (prototype:=self.get_prototype(key)) is not None):
+                    kwargs[key] = prototype['default']
                 else:
                     raise Exception()
 
@@ -889,79 +824,7 @@ class Dataset(optimise.Optimiser):
             ## set extending data
             self._data[key]['value'][original_length:total_length] = kwargs[key]
         self._length = total_length
-
-
-            
-
-
-        # ## ensure enough data is provided in kwargs, or if possible
-        # ## get from defaults or auto_defaults
-        # for key in self:
-            # if key not in kwargs:
-                # if self.has_default(key):
-                    # kwargs[key] = self.get_default(key)
-                # # elif self.permit_auto_defaults and self.has_prototype(key):
-                    # # kwargs[key] = self.get_prototype(key,'auto_default')
-                # else:
-                    # raise Exception(f'Key not in extending data and has no default or auto_default: {repr(key)}')
-        # ## get length of new data
-        # new_data_length = 0
-        # for key,val in kwargs.items():
-            # if np.isscalar(val):
-                # pass
-            # elif new_data_length == 0:
-                # new_data_length = len(val)
-            # else:
-                # assert new_data_length == len(val),f'Inconsistent length for {key=}'
-        # ## test if any data to extend with
-        # if new_data_length == 0:
-            # return
-        # ## extend scalar kwargs to full new length
-        # for key,val in list(kwargs.items()):
-            # if np.isscalar(val):
-                # kwargs[key] = np.full(new_data_length,kwargs[key])
-        # ## include default values if needed
-        # for key in self:
-            # if key not in kwargs:
-                # kwargs[key] = np.full(new_data_length,self._defaults[key])
-        # ## add data
-        # if len(self) == 0:
-            # ## currently no data -- simply set extending values
-            # for key,val in kwargs.items():
-                # self[key] = val
-        # else:
-            # total_length = len(self) + new_data_length
-            # for key,val in kwargs.items():
-                # ## check extending data is already in self -- if not
-                # ## then set existing data with an autodefault if
-                # ## use_auto_defaults is true
-                # if key not in self:
-                    # if self.permit_auto_defaults and self.has_prototype(key):
-                        # self.set_default(key,self.get_prototype(key,'auto_default'))
-                    # else:
-                        # raise Exception(f'Key not in existing: {repr(key)}')
-                # ## increase unicode dtype length if new strings are
-                # ## longer than the current
-                # if self._data[key]['kind'] == 'U':
-                    # ## this is a really hacky way to get the length of string in a numpy array!!!
-                    # old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self._data[key]['value'].dtype)))
-                    # new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(val).dtype)))
-                    # if new_str_len > old_str_len:
-                        # ## reallocate array with new dtype with overallocation
-                        # t = np.empty(len(self._data[key]['value']),dtype=f'<U{new_str_len*self._over_allocate_factor}')
-                        # t[:len(self)] = self._data[key]['value'][:len(self)]
-                        # self._data[key]['value'] = t
-                # ## reallocate and lengthen value array if necessary
-                # if total_length > len(self._data[key]['value']):
-                    # self._data[key]['value'] = np.concatenate((
-                        # self[key],
-                        # np.empty(
-                            # int(total_length*self._over_allocate_factor-len(self)),
-                            # dtype=self._data[key]['value'].dtype)))
-                # ## set extending data
-                # self._data[key]['value'][len(self):total_length] = val
-            # self._length = total_length
-
+        
     def plot(
             self,
             xkey,
@@ -1042,8 +905,7 @@ class Dataset(optimise.Optimiser):
                 y = z[ykey]
                 if label is not None:
                     kwargs.setdefault('label',label)
-                if plot_errorbars and z.has_uncertainty(ykey):
-                    dy = z.get_uncertainty(ykey)
+                if plot_errorbars and (dy:=z.get_uncertainty(ykey)) is not None:
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
                     ax.errorbar(x,y,dy,**kwargs)

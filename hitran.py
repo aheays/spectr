@@ -132,8 +132,6 @@ def load(filename):
     # else:
         # raise Exception(f'unknown spectrum type: {spectrum_type}')
 
-
-
 @functools.lru_cache
 def get_lines(species_or_isotopologue):
     """Load a preconstructed linelists.  If species_or_isotopologue is not

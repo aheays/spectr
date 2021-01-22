@@ -3,7 +3,7 @@ from pytest import raises,approx
 import numpy as np
 
 from spectr import dataset
-from spectr.dataset2 import *
+from spectr.dataset import *
 from spectr.optimise import P
 from spectr.exceptions import InferException
 
@@ -55,20 +55,22 @@ def test_uncertainties():
 
 def test_dataset_prototypes():
     t = Dataset()
+    assert t.get_prototype('x') is None
     t.set_prototype('x',kind='f',description="X is a thing.",)
+    assert t.get_prototype('x') is not None
     t['x'] = [5]
     assert isinstance(t['x'][0],float)
     assert t._data['x']['description'] == "X is a thing."
-    assert t.has_prototype('x')
-    assert t.get_prototype('x','description') == "X is a thing."
+    assert t.get_prototype('x')['description'] == "X is a thing."
 
 def test_defaults():
     ## set and use a default
     t = Dataset(x=[1,2,3],y=['a','b','c'])
-    assert not t.has_default('x')
-    with raises(Exception): t.append(y='unc')
+    assert t.get_default('x') is None
+    with raises(Exception):
+        t.append(y='unc')
     t.set_default(x=5)
-    assert t.has_default('x')
+    assert t.get_default('x') is not None
     assert t.get_default('x') == 5
     t.append(y='unc')
     assert all(t['x'] == [1,2,3,5])
@@ -76,13 +78,11 @@ def test_defaults():
     assert all(t['x'] == [1,2,3,5,5,5])
     ## set default at instantiation
     t = Dataset(y='a')
-    assert t.has_default('y')
+    assert t.get_default('y') is not None
     assert t.get_default('y') == 'a'
     t.extend(x=[1,2])
-    assert t.has_default('y')
     assert t.get_default('y') == 'a'
     t = Dataset(x=[1,2],y='a')
-    assert t.has_default('y')
     assert t.get_default('y') == 'a'
     assert len(t) == 2
     assert all(t['x'] == [1,2])
@@ -92,7 +92,7 @@ def test_auto_defaults():
     t = Dataset(x=[1,2,3])
     t.set_prototype('x','f')
     t.set_prototype('y','f')
-    assert np.isnan(t.get_prototype('x','default'))
+    assert np.isnan(t.get_prototype('x')['default'])
     t.permit_auto_defaults = False
     t.extend(x=[1,3,4])
     with raises(Exception):
@@ -239,7 +239,6 @@ def test_dataset_infer_autoremove_inferences():
     pprint( t._data['z'])
     assert 'z' in t
     t['x'] = [2]
-    print( t)
     assert 'z' not in t
     t['z']
     t['z'] = [5]
@@ -393,10 +392,10 @@ def test_load_from_string():
     assert all(t['d'] == ['1','1','xxx'])
 
 
-def test_differentiation_step():
+def test_step():
     t = Dataset(x=[1,2,3],f=5)
-    t.set_differentiation_step('x',0.1)
-    assert all(t.get_differentiation_step('x') == [0.1,0.1,0.1])
+    t.set_step('x',0.1)
+    assert all(t.get_step('x') == [0.1,0.1,0.1])
     t = Dataset(x=[1,2,3],f=5)
     t['step_x'] = 0.1
     assert all(t['step_x'] == [0.1,0.1,0.1])
@@ -450,7 +449,7 @@ def test_load():
 
 def test_units():
     x = Dataset(x=[1,2,3])
-    assert not x.has_units('x')
+    assert x.get_units('x') is None
     x.set_prototype('x','f', units='m')
     x = Dataset()
     x.set('x',[1,2,3],units='m')
