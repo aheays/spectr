@@ -36,7 +36,17 @@ def auto_construct_method(function_name):
     construct_function. Parameters are picked out of the input
     kwargs. POSITIONAL ARGUMENTS NOT ALLOWED for simplicity."""
     def actual_decorator(function):
-        def new_function(self,**kwargs):
+        def new_function(self,*args,**kwargs):
+            ## this block subtitutes into kwargs with keys taken from
+            ## the function signature
+            if len(args)>0:
+                for ikey,key in enumerate(inspect.signature(function).parameters):
+                    ## skip first key 'self'
+                    if ikey == 0:
+                        continue
+                    if key in kwargs:
+                        raise Exception(f'Positional argument conflictgs with keyword argument {repr(key)} in function {repr(function_name)}.')
+                    kwargs[key] = args[ikey-1]
             ## add parameters in kwargs
             self.parameters.extend(_collect_parameters(kwargs))
             ## make a construct function
