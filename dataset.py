@@ -30,17 +30,18 @@ class Dataset(optimise.Optimiser):
         'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','default':None,},
     }
 
-    attributes = ('classname','description')
+    attributes = ('name','classname','description')
 
     def __init__(
             self,
             name=None,
-            load_from_filename = None,
             description = None,
             permit_nonprototyped_data = True,
             permit_reference_breaking = True,
             permit_auto_defaults = False,
             prototypes = None,  # a dictionary of prototypes
+            load_from_filename = None,
+            load_from_string = None,
             **kwargs):
         ## deal with attributes
         for key in self.attributes:
@@ -627,7 +628,7 @@ class Dataset(optimise.Optimiser):
         for key in self.attributes:
             val = getattr(self,key)
             if val is not None:
-                header.append(f'{key:12} = {repr(val)}')
+                header.append(f'{key:10} = {repr(val)}')
         if include_description:
             ## include description of keys
             for key in self:
@@ -723,13 +724,16 @@ class Dataset(optimise.Optimiser):
             filename = tools.expand_path(filename)
             data = {}
             ## load header
+            blank_line_re = re.compile(r'^ *$')
+            description_line_re = re.compile(r'^ *'+comment+f' *([^# ]+) *# *(.+) *')
+            unique_value_line_re = re.compile(r'^ *'+comment+f' *([^= ]+) *= *(.+) *')
             with open(filename,'r') as fid:
                 for iline,line in enumerate(fid):
-                    if r:=re.match(r'^ *'+comment+f' *([^# ]+) *# *(.+) *',line):
-                        ## a description line
+                    if re.match(blank_line_re,line):
+                        continue
+                    if r:=re.match(description_line_re,line):
                         pass
-                    elif r:=re.match(r'^ *'+comment+f' *([^= ]+) *= *(.+) *',line):
-                        ## a unique value encoded in the header
+                    elif r:=re.match(unique_value_line_re,line):
                         key,val = r.groups()
                         data[key] = ast.literal_eval(val)
                     else:
@@ -758,14 +762,19 @@ class Dataset(optimise.Optimiser):
             else:
                 self[key] = val
 
-    def load_from_string(self,string,delimiter='|'):
+    def load_from_string(
+            self,
+            string,             # multi line string in the format expected by self.load
+            delimiter='|',      # column delimiter
+            **load_kwargs       # other kwargs passed to self.load
+    ):     
         """Load data from a string."""
         ## Write a temporary file and then uses the regular file load
         tmpfile = tools.tmpfile()
         tmpfile.write(string.encode())
         tmpfile.flush()
         tmpfile.seek(0)
-        self.load(tmpfile.name,delimiter='|')
+        self.load(tmpfile.name,delimiter=delimiter,**load_kwargs)
 
     def append(self,**kwargs):
         """Append a single row of data from kwarg scalar values."""

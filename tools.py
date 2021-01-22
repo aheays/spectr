@@ -3817,16 +3817,21 @@ def txt_to_dict(
     first_block_commented_lines_passed = False
     number_of_columns = None
     for i,line in enumerate(filename.readlines()):
-        if i<skiprows: continue
+        if i<skiprows:
+            continue
         line = line.strip()     # remove leading/trailing whitespace
-        if ignore_blank_lines and len(line)==0: continue
-        if filter_function is not None: line = filter_function(line)
-        if filter_regexp is not None:   line = re.sub(filter_regexp[0],filter_regexp[1],line)
+        if ignore_blank_lines and len(line)==0:
+            continue
+        if filter_function is not None:
+            line = filter_function(line)
+        if filter_regexp is not None:
+            line = re.sub(filter_regexp[0],filter_regexp[1],line)
         line = (line.split() if delimiter is None else line.split(delimiter)) # split line
         if comment_regexp is not None and re.match(comment_regexp,line[0]): # commented line found
             if not first_block_commented_lines_passed:
                 line[0] = re.sub(comment_regexp,'',line[0]) # remove comment start
-                if len(line[0])==0: line = line[1:] # first element was comment only,
+                if len(line[0])==0:
+                    line = line[1:] # first element was comment only,
                 last_line_in_first_block_of_commented_lines = line
             continue
         first_block_commented_lines_passed = True # look for no more key labels
