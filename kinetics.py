@@ -252,16 +252,10 @@ class Species:
 
     ## for sorting a list of Species objects
     def __lt__(self,other):
-        if self.isotopologue is None:
-            return self.species < other
-        else:
-            return self.isotopologue < other
+        return self.name < other
 
     def __gt__(self,other):
-        if self.isotopologue is None:
-            return self.species > other
-        else:
-            return self.isotopologue > other
+        return self.name > other
 
     @lru_cache
     def __getitem__(self,key):

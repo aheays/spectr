@@ -110,7 +110,7 @@ class Dataset(optimise.Optimiser):
         ## provided
         if index is None:
             ## decide whether to permit if non-prototyped
-            if not self.permit_nonprototyped_data and not self.has_prototype(key):
+            if not self.permit_nonprototyped_data and self.get_prototype(key) is None:
                 # if not self.is_value_key(key):
                     # ## is an uncertainty, vary, stepsize or something
                     # pass
@@ -143,7 +143,7 @@ class Dataset(optimise.Optimiser):
                 data['default'] = self._kind_defaults[data['kind']]['default']
             ## infer function dict,initialise inference lists, and units if needed
             for tkey,tval in (
-                    ('infer',{}),
+                    ('infer',[]),
                     ('inferred_from',[]),
                     ('inferred_to',[]),
             ):
@@ -280,7 +280,7 @@ class Dataset(optimise.Optimiser):
         elif kind is object:
             kind = 'O'
         if infer is None:
-            infer = {}
+            infer = []
         self._prototypes[key] = dict(kind=kind,infer=infer,**kwargs)
         for tkey,tval in self._kind_defaults[kind].items():
             self._prototypes[key].setdefault(tkey,tval)
@@ -347,11 +347,13 @@ class Dataset(optimise.Optimiser):
             self.unset(inferred_to)
 
     def is_inferred_from(self,key_to,key_from):
+        """Check whether data is calculated from other dats."""
         return key_from in self._data[key_to]['inferred_from']
 
     def add_infer_function(self,key,dependencies,function):
+        """Add a new method of data inference."""
         assert key in self._prototypes
-        self._prototypes[key]['infer'][dependencies] = function
+        self._prototypes[key]['infer'].append((dependencies,function))
 
     def index(self,index):
         """Index all array data in place."""
@@ -480,7 +482,7 @@ class Dataset(optimise.Optimiser):
         if key not in self._prototypes:
             raise InferException(f"No prototype for {key=}")
         ## loop through possible methods of inferences.
-        for dependencies,function in self._prototypes[key]['infer'].items():
+        for dependencies,function in self._prototypes[key]['infer']:
             if isinstance(dependencies,str):
                 ## sometimes dependencies end up as a string instead of a list of strings
                 dependencies = (dependencies,)

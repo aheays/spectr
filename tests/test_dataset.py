@@ -113,7 +113,7 @@ def test_dataset_permit_nonprototyped_data():
     t['x'] = [5]
     t.permit_nonprototyped_data = False
     with raises(Exception):
-        t['y'] = [5]
+        qt['y'] = [5]
 
 def test_dataset_index():
     t = Dataset(x=[1,2,3,4,5])

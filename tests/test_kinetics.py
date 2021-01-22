@@ -31,7 +31,7 @@ def test_species_sort():
 
 def test_species_mass():
     assert Species('[14N]2')['mass'] == approx(28.006147)
-    assert Species('[14N]2')['reduced_mass'] == 7.0015372
+    assert Species('[14N]2')['reduced_mass'] == approx(7.0015372)
 
 # def test_species_element():
     # assert Species('NH3')['elements'] == sorted(['H','H','H','N'])

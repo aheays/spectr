@@ -99,7 +99,7 @@ def test_vibline():
     # # # # print(x.rotational_level)
 
 # test_viblevel()        
-test_vibline()
+# test_vibline()
 
     # print( len(z.vibrational_spin_line))
     # print( z.rotational_line[:5])
