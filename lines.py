@@ -90,7 +90,7 @@ prototypes['nair'] = dict(description="Pressure broadening temperature dependenc
 prototypes['γself'] = dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer={},)
 prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f', infer={})
 prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f', infer={})
-prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer={('Pself','L','Teq'): lambda self,Pself,L,Teq: (Pself*L)/(database.constants.Boltzmann*Teq)*1e-4,})
+prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer={('Pself','L','Teq'): lambda self,Pself,L,Teq: convert((Pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),})
 
 def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
     """Compute partition function from data in self."""
