@@ -394,6 +394,15 @@ def test_load_from_string():
     assert all(t['d'] == ['1','1','xxx'])
     assert all(t['x'] == [5,5,5])
     assert all(t['y'] == ['ddd','ddd','ddd'])
+    t = Dataset(load_from_string='''
+    x = 5
+    y = 'ddd'
+    a|  b   |  c | d
+    1|  2   |  c | 1
+    3|  -5.0|  d | 1
+    1|  2   |  e | xxx
+    ''')
+    assert all(t['a'] == [1,3,1])
 
 def test_step():
     t = Dataset(x=[1,2,3],f=5)

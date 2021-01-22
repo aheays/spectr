@@ -10,7 +10,7 @@ from spectr import levels
 from spectr import plotting
 from spectr.optimise import P
 
-make_plot = False 
+make_plot =  True 
 
 def test_init():
     spectrum.Experiment()
@@ -67,10 +67,28 @@ def test_fit_intensity():
     t.add_intensity(intensity=P(1.1, True,1e-3))
     t.optimise()
     if make_plot:
-        fig,ax = plotting.fig()
+        fig = plotting.qfig()
         t.plot()
-        plotting.show()
     assert t.rms == approx(0.04259560696454527)
+
+def test_model_some_lines():
+    linelist = lines.Generic('linelist')
+    linelist.load_from_string('''
+    species = 'H2O'
+    Teq = 300
+    ν  |τ  |Γ
+    100|0.1|1
+    110|0.5|1
+    115|2  |3
+    ''')
+    mod = spectrum.Model('mod')
+    mod.add_intensity(intensity=1)
+    mod.add_absorption_lines(lines=linelist)
+    mod.get_spectrum(x=np.arange(90,130,1e-2))
+    if make_plot:
+        plotting.qfig()
+        mod.plot()
+
 
 # def test_add_absorption_lines():
     # t = spectrum.Model()
@@ -120,3 +138,6 @@ def test_fit_intensity():
     # t.get_residual()
     # t.construct()
     # t.save_to_directory('tmp/test_spectrum',trash_existing= True)
+
+if make_plot:
+    plotting.show()

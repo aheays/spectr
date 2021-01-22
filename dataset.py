@@ -67,6 +67,12 @@ class Dataset(optimise.Optimiser):
         if prototypes is not None:
             for key,val in prototypes.items():
                 self.set_prototype(key,**val)
+        ## load data from a file
+        if load_from_filename is not None:
+            self.load(load_from_filename)
+        ## load data from an encode tabular string
+        if load_from_string is not None:
+            self.load_from_string(load_from_string)
         ## set scalar values in kwargs to default values, vector
         ## values to data
         for key,val in kwargs.items():
@@ -74,9 +80,7 @@ class Dataset(optimise.Optimiser):
                 self[key] = val
             else:
                 self.set_default(key,val)
-        if load_from_filename is not None:
-            self.load(load_from_filename)
-            
+
     def __len__(self):
         return self._length
 
@@ -142,7 +146,6 @@ class Dataset(optimise.Optimiser):
                     ('infer',{}),
                     ('inferred_from',[]),
                     ('inferred_to',[]),
-                    # ('units',None),
             ):
                 if tkey not in data:
                     data[tkey] = tval
@@ -755,7 +758,7 @@ class Dataset(optimise.Optimiser):
                         data[to_key] = data.pop(from_key)
         ## Set data in self and selected attributes
         for key,val in data.items():
-            if key in ('classname','description',):
+            if key in self.attributes:
                 setattr(self,key,val)
             elif not tools.isiterable(val):
                 self.set_default(key,val)
