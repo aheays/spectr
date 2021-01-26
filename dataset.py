@@ -40,7 +40,7 @@ class Dataset(optimise.Optimiser):
             permit_reference_breaking = True,
             permit_auto_defaults = False,
             prototypes = None,  # a dictionary of prototypes
-            load_from_filename = None,
+            load_from_file = None,
             load_from_string = None,
             **kwargs):
         ## deal with attributes
@@ -68,8 +68,8 @@ class Dataset(optimise.Optimiser):
             for key,val in prototypes.items():
                 self.set_prototype(key,**val)
         ## load data from a file
-        if load_from_filename is not None:
-            self.load(load_from_filename)
+        if load_from_file is not None:
+            self.load(load_from_file)
         ## load data from an encode tabular string
         if load_from_string is not None:
             self.load_from_string(load_from_string)
@@ -297,6 +297,17 @@ class Dataset(optimise.Optimiser):
     def keys(self):
         return list(self._data.keys())
 
+    def items(self):
+        """Iterate over set keys and their values."""
+        for key in self:
+            yield key,self[key]
+
+    def pop(self,key):
+        """Pop data in key."""
+        value = self[key]
+        self.unset(key)
+        return value
+
     def optimised_keys(self):
         return [key for key in self.keys() if self.get_vary(key) is not None]
 
@@ -316,15 +327,30 @@ class Dataset(optimise.Optimiser):
         of x. If list of strings return a copy of self restricted to
         that data. If an index, return an indexed copy of self."""
         if isinstance(arg,str):
-            return self.get(arg)
+            if len(arg) > 4 and arg[-4:] == '_unc':
+                return self.get_uncertainty(arg[:-4])
+            elif len(arg) > 5 and arg[-5:] == '_vary':
+                return self.get_vary(arg[:-5])
+            elif len(arg) > 5 and arg[-5:] == '_step':
+                return self.get_step(arg[:-5])
+            else:
+                return self.get(arg)
         elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
             return self.copy(keys=arg)
         else:
             return self.copy(index=arg)
 
     def __setitem__(self,key,value):
-        """Set a value"""
-        self.set(key,value)
+        """Set a key to value. If key_unc then set uncertainty. If key_vary or
+        key_step then set optimisation parameters"""
+        if len(key) > 4 and key[-4:] == '_unc':
+            self.set_uncertainty(key[:-4],value)
+        elif len(key) > 5 and key[-5:] == '_vary':
+            self.set_vary(key[:-5],value)
+        elif len(key) > 5 and key[-5:] == '_step':
+            self.set_step(key[:-5],value)
+        else:
+            self.set(key,value)
         
     def clear(self):
         self._length = 0

@@ -198,7 +198,7 @@ def test_plot():
 
 def test_dataset_parameters():
     o = Optimiser()
-    d = Dataset(x=[1.0,2.0,3.0],v_x=[True,True,False,],d_x=np.nan,s_x=1e-3)
+    d = Dataset(x=[1.0,2.0,3.0],x_vary=[True,True,False,],x_unc=np.nan,x_step=1e-3)
     o.add_suboptimiser(d)
     p,s,dp = o._get_parameters()
     assert p == [1,2]

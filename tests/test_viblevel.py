@@ -5,7 +5,7 @@ import numpy as np
 
 from spectr import *
 
-make_plot =  True 
+make_plot = False 
 
 def test_viblevel_init():
     viblevel.VibLevel('test','[14N]2')

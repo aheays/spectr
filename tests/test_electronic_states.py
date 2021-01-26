@@ -2,7 +2,7 @@ import pytest
 from pytest import raises,approx
 from scipy import constants
 
-show_plot = True 
+make_plot =False 
 
 from spectr import *
 
@@ -31,7 +31,7 @@ def test_find_single_channel_bound_levels_harmonic_oscillator():
     Etheory = ωe_harmonic*(v+1/2)
     for Ei,Etheoryi in zip(E,Etheory):
         assert Ei == approx(Etheoryi)
-    if show_plot:
+    if make_plot:
         qfig()
         plot(R,Vharmonic)
         for vi,Ei,χi in zip(v,E,χ):
@@ -50,7 +50,7 @@ def test_find_single_channel_bound_levels_morse():
     Etheory = ωe_morse*(v+1/2)-ωexe_morse*(v+1/2)**2
     for Ei,Etheoryi in zip(E,Etheory):
         assert Ei == approx(Etheoryi)
-    if show_plot:
+    if make_plot:
         qfig()
         plot(R,Vmorse)
         for vi,Ei,χi in zip(v,E,χ):
@@ -64,5 +64,5 @@ def test_find_single_channel_bound_levels_morse():
         ylabel('E-Etheory')
 
 def test_show():
-    if show_plot:
+    if make_plot:
         show()

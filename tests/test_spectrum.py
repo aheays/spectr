@@ -10,7 +10,7 @@ from spectr import levels
 from spectr import plotting
 from spectr.optimise import P
 
-make_plot =  True 
+make_plot = False 
 
 def test_init():
     spectrum.Experiment()

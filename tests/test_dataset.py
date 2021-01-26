@@ -53,6 +53,15 @@ def test_uncertainties():
     t.set_uncertainty('x',0.2,[0,2])
     assert all(t.get_uncertainty('x') == [0.2,0.1,0.2 ])
 
+def test_get_set_uncertainties_as_key():
+    t = Dataset()
+    t['x'] = [1.,2.,3]
+    t['x_unc'] = [0.1,0.2,0.3]
+    assert all(t.get_uncertainty('x') == [0.1,0.2,0.3])
+    assert all(t['x_unc'] == [0.1,0.2,0.3])
+    t = Dataset(x=[1.,2.,3],x_unc=[0.1,0.2,0.3])
+    assert all(t.get_uncertainty('x') == [0.1,0.2,0.3])
+
 def test_dataset_prototypes():
     t = Dataset()
     assert t.get_prototype('x') is None
@@ -417,8 +426,9 @@ def test_vary():
     t.set_vary('x',[True,True,False])
     assert all(t.get_vary('x') == [True,True,False])
     t = Dataset(x=[1,2,3],f=5)
-    t['vary_x'] = False 
-    assert all(t['vary_x'] == [False,False,False,])
+    t['x_vary'] = False
+    assert all(t.get_vary('x') == [False,False,False,])
+    assert all(t['x_vary'] == [False,False,False,])
 
 def test_rows():
     x = Dataset(x=[1,2,3],y=[4,5,6])
