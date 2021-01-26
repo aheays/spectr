@@ -44,7 +44,7 @@ class VibLevel(Optimiser):
             'permit_auto_defaults':True, 
             'permit_nonprototyped_data':False,
         }
-        self.rotational_level = levels.Diatomic(**tkwargs)
+        self.rotational_level = levels.Diatomic(**tkwargs) # includes forbidden levels
         self.vibrational_level = levels.Diatomic(**tkwargs)
         self.vibrational_spin_level = levels.Diatomic(**tkwargs) 
 
@@ -89,7 +89,7 @@ class VibLevel(Optimiser):
         self.H = None
         self.eigvals = None
         self.eigvects = None
-        self.cache = {'J':None}
+        # self.cache = {'J':None}
         ## a Level object containing data, better access through level property
         self._exp = None # an array of experimental data matching the model data in shape
         ## the optimiser
@@ -142,28 +142,25 @@ class VibLevel(Optimiser):
             # self.add_spin_manifolds_from_dynamic_array(input_vibrational_level)
 
     def _initialise_construct(self):
-        ## cache this stuff
-        self.H = np.full((len(self.J),
-                          len(self.vibrational_spin_level),
-                          len(self.vibrational_spin_level)),0.)
+        """Runs before anything else."""
+        if self._modify_time > self._construct_time:
+            ## blank Hamiltonian
+            self.H = np.full((len(self.J),
+                              len(self.vibrational_spin_level),
+                              len(self.vibrational_spin_level)),0.)
+            ## create a rotational level with all quantum numbers
+            ## inserted and limit to allowed levels
+            self.rotational_level.clear()
+            self.rotational_level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
+            for key in self.vibrational_spin_level:
+                self.rotational_level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
+            self._iallowed = self.rotational_level['J'] >= self.rotational_level['Ω']
+            self.rotational_level = self.rotational_level[self._iallowed]
 
     def _finalise_construct(self):
-        """Diagonlise J-blocks, add to rotational_level"""
-        ## cache this
-        self.rotational_level.clear()
-        # self.iallowed = {}
-        # for J in self.J:
-        #     self.iallowed[J] = self.vibrational_spin_level['Ω']<=J
-        #     self.rotational_level.extend(
-        #         J=J,E=np.nan,
-        #         **self.vibrational_spin_level[self.iallowed[J]])
-        self.rotational_level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
-        for key in self.vibrational_spin_level:
-            self.rotational_level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
-        self.rotational_level['E'] = nan
-        self.c = {}
-        self.E = {}
-        ibeg = 0
+        """The actual matrix diagonlisation is done last."""
+        self.c = {}             # mixing coefficients
+        self.E = {}             # eignvalues
         for iJ,J in enumerate(self.J):
             H = self.H[iJ,:,:]
             iallowed = self.vibrational_spin_level['Ω']<=J
@@ -180,11 +177,9 @@ class VibLevel(Optimiser):
             ## save data
             self.E[J] = eigvals.real
             self.c[J] = eigvects
-            ## add allowed level to rotational_level
-            # iend = ibeg+np.sum(iallowed)
-            # ibeg = ien
-        self.rotational_level['E'] = np.concatenate(list(self.E.values()))
-        
+        ## insert energies into rotational_level
+        self.rotational_level['E'] = np.concatenate(list(self.E.values()))[self._iallowed]
+
     @auto_construct_method('add_level')
     def add_level(self,name='level',**kwargs):
         """Add a new electronic vibrational level. kwargs contains fitting
