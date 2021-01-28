@@ -11,30 +11,28 @@ def test_viblevel_init():
     viblevel.VibLevel('test','[14N]2')
 
 def test_viblevel():
-    t = viblevel.VibLevel('test','[14N]2',J=range(5))
+    t = viblevel.VibLevel('test','[14N]2',J=range(51))
     t.add_level(name='X.3Σ+u(v=0)',Tv=1000,Bv=1)
-    for v in range(1):
-        t.add_level(name=f'A.3Πu(v={v})',Tv=3000,Bv=1.2,Av=100)
+    for v in range(10):
+        t.add_level(name=f'A.3Πu(v={v})',Tv=3000+100*v,Bv=1.2,Av=100)
     t.construct()
-    # assert len(t.rotational_level) == 271
-    # assert len(t.vibrational_spin_level) == 9
-    # assert len(t.vibrational_level) == 2
-    # print( len(t.rotational_level))
+    assert len(t.rotational_level) == 3151
+    assert len(t.vibrational_spin_level) == 63
+    assert len(t.vibrational_level) == 11
     if make_plot:
         qfig()
-        i = t.rotational_level['J'] < t.rotational_level['Ω']
-        t.rotational_level[~i].plot('J','E')
-    # t.rotational_level['Tex'] = 300
-    # t.rotational_level.partition_source = 'self'
-    # t.rotational_level['Inuclear'] = 1
-    # t.rotational_level['species']
-    # t.rotational_level['Tex']
-    # t.rotational_level.verbose = True 
-    # t.rotational_level['g']
-    # t.rotational_level['partition']
-    # t.rotational_level.sort('J')
-    # print( t.rotational_level)
-        
+        t.rotational_level.plot('J','E')
+    # # t.rotational_level['Tex'] = 300
+    # # t.rotational_level.partition_source = 'self'
+    # # t.rotational_level['Inuclear'] = 1
+    # # t.rotational_level['species']
+    # # t.rotational_level['Tex']
+    # # t.rotational_level.verbose = True 
+    # # t.rotational_level['g']
+    # # t.rotational_level['partition']
+    # # t.rotational_level.sort('J')
+    # # print( t.rotational_level)
+
 def test_vibline():
     x = viblevel.VibLevel('x','[14N]2')
     y = viblevel.VibLevel('x','[14N]2')
@@ -98,7 +96,7 @@ def test_vibline():
     # # # # print( z.rotational_line)
     # # # # print(x.rotational_level)
 
-# test_viblevel()        
+test_viblevel()        
 # test_vibline()
 
     # print( len(z.vibrational_spin_line))

@@ -76,7 +76,7 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only (cm-1)", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate (s-1)", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
 prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer=[])
-prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Tex:Teq,)])
+prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)])
 prototypes['Ttr'] = dict(description="Translational temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)])
 prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer=[(('Jp','Jpp'),lambda self,Jp,Jpp: Jp-Jpp,)],)
 prototypes['L'] = dict(description="Optical path length (m)", kind='f', fmt='0.5f', infer=[])

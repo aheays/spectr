@@ -64,5 +64,5 @@ def test_find_single_channel_bound_levels_morse():
         ylabel('E-Etheory')
 
 def test_show():
-    if make_plot:
+    if make=_plot:
         show()
