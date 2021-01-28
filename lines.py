@@ -162,9 +162,9 @@ prototypes['Sij'] =dict(description=" strength (au)", kind='f',  fmt='<10.5e', i
     (('Sv','SJ'), lambda self,Sv,SJ:  Sv*SJ),
     ( ('f','ν','Jpp'), lambda self,f,ν,Jpp: f/3.038e-6/ν*(2*Jpp+1)),
     ( ('Ae','ν','Jp'), lambda self,Ae,ν,Jp: Ae/(2.026e-6*ν**3/(2*Jp+1)),)])
-prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate (s-1).", kind='f',  fmt='<10.5e', infer={('f','ν','Jp','Jpp'): lambda self,f,ν,Jp,Jpp: f*0.666886/(2*Jp+1)*(2*Jpp+1)*ν**2, ('Sij','ν','Jp'): lambda self,Sij,ν,Jp: Sij*2.026e-6*ν**3/(2*Jp+1),},)
-prototypes['FCfactor'] =dict(description="Franck-Condon factor (dimensionless)", kind='f',  fmt='<10.5e', infer={('χp','χpp','R'): lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)]),},)
-prototypes['Rcentroid'] =dict(description="R-centroid (Å)", kind='f',  fmt='<10.5e', infer={('χp','χpp','R','FCfactor'): lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)]),},)
+prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate (s-1).", kind='f',  fmt='<10.5e', infer=[(('f','ν','Jp','Jpp'), lambda self,f,ν,Jp,Jpp: f*0.666886/(2*Jp+1)*(2*Jpp+1)*ν**2),( ('Sij','ν','Jp'), lambda self,Sij,ν,Jp: Sij*2.026e-6*ν**3/(2*Jp+1))],)
+prototypes['FCfactor'] =dict(description="Franck-Condon factor (dimensionless)", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R'), lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)])),],)
+prototypes['Rcentroid'] =dict(description="R-centroid (Å)", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R','FCfactor'), lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)])),])
 def _f0(self,Sp,Spp,Ωp,Ωpp,Jp,Jpp):
     if not (np.all(Sp==0) and np.all(Spp==0)): raise InferException('Honl-London factors only defined here for singlet states.')
     try:
