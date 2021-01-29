@@ -1317,9 +1317,12 @@ class Model(Optimiser):
             xlabel=None,ylabel=None,
             invert_model=False,
             show=True,
+            plot_kwargs=None,
             **limit_to_qn,
     ):
         """Plot experimental and model spectra."""
+        if plot_kwargs is None:
+            plot_kwargs = {}
         ## get axes if not specified
         if ax is not None:
             fig = ax.figure
@@ -1349,19 +1352,28 @@ class Model(Optimiser):
             # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
             ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            ax.plot(self.xexp,self.yexp,color=plotting.newcolor(0), label='Experimental spectrum') # plot experimental spectrum
+            tkwargs = copy(plot_kwargs)
+            tkwargs.setdefault('color',plotting.newcolor(0))
+            tkwargs.setdefault('label','Experimental spectrum')
+            ax.plot(self.xexp,self.yexp,**tkwargs)
         if plot_model and self.y is not None:
             if invert_model:
                 self.y *= -1
             ymin,ymax = min(ymin,self.y.min(),-0.1*self.y.max()),max(ymax,self.y.max()*1.1)
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
-            ax.plot(self.x,self.y,color=plotting.newcolor(1), label='Model spectrum') # plot model spectrum
+            tkwargs = copy(plot_kwargs)
+            tkwargs.setdefault('color',plotting.newcolor(1))
+            tkwargs.setdefault('label','Model spectrum')
+            ax.plot(self.x,self.y,**tkwargs)
             if invert_model:
                 self.y *= -1
         if plot_residual and self.residual is not None and len(self.residual)>0:
             ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            ax.plot(self.xexp,self.residual+shift_residual,color=plotting.newcolor(2),zorder=-1,label='Exp-Mod residual error',) # plot fit residual
+            tkwargs = copy(plot_kwargs)
+            tkwargs.setdefault('color',plotting.newcolor(2))
+            tkwargs.setdefault('label','Exp-Mod residual error')
+            ax.plot(self.xexp,self.residual+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
