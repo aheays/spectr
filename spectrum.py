@@ -1316,7 +1316,6 @@ class Model(Optimiser):
             shift_residual=0.,
             xlabel=None,ylabel=None,
             invert_model=False,
-            show=True,
             plot_kwargs=None,
             **limit_to_qn,
     ):
@@ -1448,8 +1447,6 @@ class Model(Optimiser):
         if ylabel is not None:
             ax.set_ylabel(ylabel)
         self._figure = fig
-        if show:
-            plotting.show()
         return(fig)
 
     def output_data_to_directory(
