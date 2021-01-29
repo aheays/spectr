@@ -96,13 +96,17 @@ class Dataset(optimise.Optimiser):
     ):
         """Set a value"""
         self._modify_time = time.time()
-        if isinstance(value,optimise.P):
-            ## if value is a parameter -- then set value /
-            ## uncertainty/ and vary from it
-            self.set(key,value=value.value,
-                     uncertainty=value.uncertainty,vary=value.vary,step=value.step,
-                     index=index,**prototype_kwargs)
-            return
+        # if isinstance(value,optimise.P):
+            # ## if value is a parameter -- then set value /
+            # ## uncertainty/ and vary from it
+            # self.set_parameter(key,value,index=index,**prototype_kwargs)
+            # # self.set(key,value=value.value,
+                     # # uncertainty=value.uncertainty,
+                     # # # vary=value.vary,
+                     # # step=value.step,
+                     # # index=index,
+                     # # **prototype_kwargs)
+            # return
         ## delete inferences since data has changed
         if key in self:
             self.unset_inferences(key)
@@ -294,6 +298,14 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
+    @optimise.auto_construct_method('set_parameter')
+    def set_parameter(self,key,parameter,index=None,**prototype_kwargs):
+        def construct_function():
+            self.set(key,value=parameter.value,
+                     uncertainty=parameter.uncertainty,
+                     index=index, **prototype_kwargs,)
+        return construct_function
+        
     def keys(self):
         return list(self._data.keys())
 
@@ -349,6 +361,8 @@ class Dataset(optimise.Optimiser):
             self.set_vary(key[:-5],value)
         elif len(key) > 5 and key[-5:] == '_step':
             self.set_step(key[:-5],value)
+        elif isinstance(value,optimise.P):
+            self.set_parameter(key,value)
         else:
             self.set(key,value)
         
