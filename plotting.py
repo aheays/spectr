@@ -38,7 +38,7 @@ papersize={
 
 def presetRcParams(
         preset='base',      # name of the preset to use
-        make_fig=False, # make a figure and axes and return (fig,ax)
+        # make_fig=False, # make a figure and axes and return (fig,ax)
         **params, # a dictionay containing any valid rcparams, or abbreviated by removing xxx.yyy. etc
 ):
     """Call this function wit some presets before figure object is
@@ -347,19 +347,29 @@ def presetRcParams(
         matplotlib.rcParams[key] = presets[preset][key]
     ## extra keys -- potentially with assuming prefixes in rcParams
     ## hierarchy until an existing key is found
+    set_rcparam(params)
+    # ## create figure and axes objects
+    # if make_fig:
+        # fig = plt.figure()
+        # ax = fig.gca()
+        # return fig,ax 
+
+def set_rcparam(params):
+    """Set a matplotlib rcParam, possibly guessing the prefix of an
+    abbreviated form.  E.g., linewith=1 is guess as
+    lines.linewidth=1."""
     for key,val in params.items():
-        for prefix in ('','figure.','figure.subplot.','axes.',
-                        'lines.','font.','xtick.','ytick.',): 
-            if prefix+key in matplotlib.rcParams:
-                matplotlib.rcParams[prefix+key] = val
-                break
+        if key in matplotlib.rcParams:
+            ## not abbreviated
+            matplotlib.rcParams[key] = val
         else:
-            raise Exception(f"Could not interpret rcParam: {repr(key)}")
-    ## create figure and axes objects
-    if make_fig:
-        fig = plt.figure()
-        ax = fig.gca()
-        return(fig,ax,)
+            for prefix in ('','figure.','figure.subplot.','axes.',
+                            'lines.','font.','xtick.','ytick.',): 
+                if prefix+key in matplotlib.rcParams:
+                    matplotlib.rcParams[prefix+key] = val
+                    break
+            else:
+                raise Exception(f"Could not interpret abbreviated rcParam: {repr(key)}")
 
 def newfig():
     """Make a new figure"""
