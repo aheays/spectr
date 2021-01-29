@@ -38,15 +38,13 @@ def auto_construct_method(function_name):
     def actual_decorator(function):
         def new_function(self,*args,**kwargs):
             ## this block subtitutes into kwargs with keys taken from
-            ## the function signature
-            if len(args)>0:
-                for ikey,key in enumerate(inspect.signature(function).parameters):
-                    ## skip first key 'self'
-                    if ikey == 0:
-                        continue
-                    if key in kwargs:
-                        raise Exception(f'Positional argument conflictgs with keyword argument {repr(key)} in function {repr(function_name)}.')
-                    kwargs[key] = args[ikey-1]
+            ## the function signature.  get signature argumets -- skip
+            ## first "self"
+            signature_keys = list(inspect.signature(function).parameters)[1:]
+            for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
+                if signature_key in kwargs:
+                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function_name)}.')
+                kwargs[signature_key] = arg
             ## add parameters in kwargs
             self.parameters.extend(_collect_parameters(kwargs))
             ## make a construct function
