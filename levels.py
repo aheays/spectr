@@ -253,7 +253,8 @@ def _collect_prototypes(*keys):
 class Base(Dataset):
     """Common stuff for for lines and levels."""
     _prototypes = _collect_prototypes()
-    
+    attributes = ('name','classname','description','Zsource')
+
     def __init__(self,name=None,**kwargs):
         """Default_name is decoded to give default values. Kwargs ca be
         scalar data, further default values of vector data, or if vetors
@@ -272,6 +273,7 @@ class Generic(Base):
         'point_group',
         'E','Eref',
         'Γ','ΓD',
+        'J',
         'g','gnuclear',
         'Teq','Tex','Z','α',
         'Nself',
