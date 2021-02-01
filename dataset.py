@@ -345,6 +345,8 @@ class Dataset(optimise.Optimiser):
                 return self.get_vary(arg[:-5])
             elif len(arg) > 5 and arg[-5:] == '_step':
                 return self.get_step(arg[:-5])
+            elif arg in self.attributes:
+                return getattr(self,arg)
             else:
                 return self.get(arg)
         elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
@@ -363,6 +365,8 @@ class Dataset(optimise.Optimiser):
             self.set_step(key[:-5],value)
         elif isinstance(value,optimise.P):
             self.set_parameter(key,value)
+        elif key in self.attributes:
+            setattr(self,key,value)
         else:
             self.set(key,value)
         
@@ -519,7 +523,10 @@ class Dataset(optimise.Optimiser):
         if key in already_attempted:
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key)
+
         if key not in self._prototypes:
+            # print('DEBUG:', f"No prototype for {key=}")
+            # import pdb; pdb.set_trace(); # DEBUG
             raise InferException(f"No prototype for {key=}")
         ## loop through possible methods of inferences.
         for dependencies,function in self._prototypes[key]['infer']:

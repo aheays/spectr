@@ -458,6 +458,13 @@ def test_class_and_description_attributes():
     x = Dataset(description='abc', x=[1,2,3],z=['a','b','c'],y=[3,3,3],)
     assert x.description == 'abc'
     assert x.classname == 'Dataset'
+    x = Dataset()
+    x.description = 'abc'
+    assert x.description == 'abc'
+    x = Dataset()
+    x['description'] = 'abc'
+    assert x.description == 'abc'
+    assert x['description'] == 'abc'
 
 def test_get_common():
     x = Dataset(x=[1,2,3],z=['a','b','c'],y=[1,2,3],)
