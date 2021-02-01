@@ -418,6 +418,9 @@ class Dataset(optimise.Optimiser):
                 retval[key] = self[key]
             else:
                 retval[key] = deepcopy(self[key][index])
+        ## copy all attributes
+        for key in self.attributes:
+            retval[key] = self[key]
         return retval
 
     def find(self,**matching_keys_vals):
@@ -679,6 +682,7 @@ class Dataset(optimise.Optimiser):
         ## add attributes to header
         for key in self.attributes:
             val = getattr(self,key)
+            print('DEBUG:', key,val,self.Zsource)
             if val is not None:
                 header.append(f'{key:10} = {repr(val)}')
         if include_description:
