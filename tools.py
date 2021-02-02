@@ -366,11 +366,11 @@ def randn(shape=None):
 def warnings_off():
     warnings.simplefilter("ignore")
 
-# def date_string():
-    # """Get string representing date in ISO format."""
-    # import datetime
-    # t = datetime.datetime.now()
-    # return('-'.join([str(t.year),format(t.month,'02d'),format(t.day,'02d')]))
+def date_string():
+    """Get string representing date in ISO format."""
+    import datetime
+    t = datetime.datetime.now()
+    return('-'.join([str(t.year),format(t.month,'02d'),format(t.day,'02d')]))
 
 # def dump(o,f):
     # """Like pickle.dump except that f can string filename."""
