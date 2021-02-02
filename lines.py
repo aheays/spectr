@@ -84,7 +84,7 @@ prototypes['γair'] = dict(description="Pressure broadening coefficient in air (
 prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer=[],)
 prototypes['nair'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer=[],)
 prototypes['γself'] = dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer=[],)
-prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
+prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[])
 prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
 prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer=[(('Pself','L','Teq'), lambda self,Pself,L,Teq: convert((Pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
 
