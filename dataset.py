@@ -30,43 +30,60 @@ class Dataset(optimise.Optimiser):
         'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','default':None,},
     }
 
-    attributes = ('name','classname','description')
+    attributes = ('description',)
 
     def __init__(
             self,
             name=None,
             description = None,
             permit_nonprototyped_data = True,
-            permit_reference_breaking = True,
+            # permit_reference_breaking = True,
             permit_auto_defaults = False,
             prototypes = None,  # a dictionary of prototypes
             load_from_file = None,
             load_from_string = None,
             **kwargs):
-        ## deal with attributes
+        ## deal with arguments
+        self.description = description # A string describing this dataset
+        # self.automatic_format_input_function(limit_to_args=['name','load_from_file'])
+        # self.automatic_format_input_function(multiline=True)
+        self._data = dict()
+        self._length = 0
+        self._over_allocate_factor = 2
+        self._modify_data_time = time.time()  # used for triggering optimise construct
+        self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self._prototypes
+        # self.permit_reference_breaking = permit_reference_breaking  # not implemented -- I think
+        self.permit_auto_defaults = permit_auto_defaults         # set default values if necessary automatically
+        # self.permit_missing = True # add missing data if required
+        self.verbose = False
+        ## init prototypes
+        self._prototypes = {}
+        if prototypes is not None:
+            for key,val in prototypes.items():
+                self.set_prototype(key,**val)
+        ## initialise with attributes
         for key in self.attributes:
             setattr(self,key,None)
         self.classname = self.__class__.__name__
         ## default name is snake version of camel object name
         if name is None:
             name = re.sub(r'(?<!^)(?=[A-Z])', '_', self.__class__.__name__).lower()
+        ## init as optimiser, make a custom form_input_function
         optimise.Optimiser.__init__(self,name=name)
-        self.description = description # A string describing this dataset
         self.pop_format_input_function()
-        self.add_format_input_function(lambda: 'not implemented')
-        self._data = dict()
-        self._length = 0
-        self._over_allocate_factor = 2
-        self._prototypes = {}
-        self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self._prototypes
-        # self.permit_reference_breaking = permit_reference_breaking  # not implemented -- I think
-        self.permit_auto_defaults = permit_auto_defaults         # set default values if necessary automatically
-        # self.permit_missing = True # add missing data if required
-        self.verbose = False
-        ## init prototypes if included as kwargs
-        if prototypes is not None:
-            for key,val in prototypes.items():
-                self.set_prototype(key,**val)
+        def format_input_function(classname=self.classname):
+            retval = f'{self.name} = {classname}({self.name},'
+            if description is not None:
+                retval += f'description={repr(description)},'
+            if load_from_file is not None:
+                retval += f'load_from_file={repr(load_from_file)},'
+            if len(kwargs)>0:
+                retval += '\n'
+            for key,val in kwargs.items():
+                retval += f'    {key}={repr(val)},\n'
+            retval += ')'
+            return retval
+        self.add_format_input_function(format_input_function)
         ## load data from a file
         if load_from_file is not None:
             self.load(load_from_file)
@@ -78,8 +95,15 @@ class Dataset(optimise.Optimiser):
         for key,val in kwargs.items():
             if tools.isiterable(val):
                 self[key] = val
+            elif key in self.attributes:
+                self[key] = val
+            elif isinstance(val,optimise.P):
+                self.set_parameter(key,val)
+                self.pop_format_input_function() # input function customised above
             else:
                 self.set_default(key,val)
+
+
 
     def __len__(self):
         return self._length
@@ -92,21 +116,15 @@ class Dataset(optimise.Optimiser):
             uncertainty=None,
             vary=None,
             step=None,
+            _inferred=False,    # internal use -- mark if this is set call is due to inference
             **prototype_kwargs
     ):
         """Set a value"""
-        self._modify_time = time.time()
-        # if isinstance(value,optimise.P):
-            # ## if value is a parameter -- then set value /
-            # ## uncertainty/ and vary from it
-            # self.set_parameter(key,value,index=index,**prototype_kwargs)
-            # # self.set(key,value=value.value,
-                     # # uncertainty=value.uncertainty,
-                     # # # vary=value.vary,
-                     # # step=value.step,
-                     # # index=index,
-                     # # **prototype_kwargs)
-            # return
+        if self.verbose:
+            print(f'{self.name}: setting {key} inferred={_inferred}')
+        ## update modification if externally set, not if it is inferred
+        if not _inferred:
+            self._modify_data_time = time.time()
         ## delete inferences since data has changed
         if key in self:
             self.unset_inferences(key)
@@ -184,6 +202,7 @@ class Dataset(optimise.Optimiser):
             self.set_step(key,step,index=index)
 
     def get(self,key,index=None,units=None):
+        """Get value."""
         if index is not None:
             return self.get(key)[index]
         if key not in self._data:
@@ -298,12 +317,19 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
-    @optimise.auto_construct_method('set_parameter')
+    @optimise.auto_construct_method('set_parameter',format_single_line=True)
     def set_parameter(self,key,parameter,index=None,**prototype_kwargs):
         def construct_function():
-            self.set(key,value=parameter.value,
-                     uncertainty=parameter.uncertainty,
-                     index=index, **prototype_kwargs,)
+            ## only reconstruct for the following reasons
+            if (
+                    key not in self.keys() # key is unkonwn -- first run
+                    or parameter._last_modify_value_time > self._last_construct_time # parameter has been set
+                    or np.any(self.get(key,index=index) != parameter.value) # data has changed some other way and differs from parameter
+                    or ((not np.isnan(parameter.uncertainty)) and (np.any(self.get_uncertainty(key,index=index) != parameter.uncertainty))) # data has changed some other way and differs from parameter
+                ):
+                self.set(key,value=parameter.value,
+                         uncertainty=parameter.uncertainty,
+                         index=index, **prototype_kwargs,)
         return construct_function
         
     def keys(self):
@@ -382,10 +408,10 @@ class Dataset(optimise.Optimiser):
     def unset_inferences(self,key):
         """Delete any record of inferences to or from this key and any data
         inferred from it."""
-        for inferred_from in self._data[key]['inferred_from']:
+        for inferred_from in list(self._data[key]['inferred_from']):
             self._data[inferred_from]['inferred_to'].remove(key)
             self._data[key]['inferred_from'].remove(inferred_from)
-        for inferred_to in self._data[key]['inferred_to']:
+        for inferred_to in list(self._data[key]['inferred_to']):
             self._data[inferred_to]['inferred_from'].remove(key)
             self._data[key]['inferred_to'].remove(inferred_to)
             self.unset(inferred_to)
@@ -528,8 +554,6 @@ class Dataset(optimise.Optimiser):
         already_attempted.append(key)
 
         if key not in self._prototypes:
-            # print('DEBUG:', f"No prototype for {key=}")
-            # import pdb; pdb.set_trace(); # DEBUG
             raise InferException(f"No prototype for {key=}")
         ## loop through possible methods of inferences.
         for dependencies,function in self._prototypes[key]['infer']:
@@ -543,7 +567,7 @@ class Dataset(optimise.Optimiser):
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted),depth=depth+1) # copy of already_attempted so it will not feed back here
                 ## compute value if dependencies successfully inferred
-                self[key] = function(self,*[self[dependency] for dependency in dependencies])
+                self.set(key,function(self,*[self[dependency] for dependency in dependencies]),_inferred=True)
                 ## compute uncertainties by linearisation
                 squared_contribution = []
                 value = self[key]
@@ -682,7 +706,6 @@ class Dataset(optimise.Optimiser):
         ## add attributes to header
         for key in self.attributes:
             val = getattr(self,key)
-            print('DEBUG:', key,val,self.Zsource)
             if val is not None:
                 header.append(f'{key:10} = {repr(val)}')
         if include_description:

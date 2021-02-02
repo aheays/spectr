@@ -1,7 +1,7 @@
 import inspect,re
-from copy import copy
+from copy import copy,deepcopy
 from pprint import pprint
-
+import warnings
 
 from matplotlib import pyplot as plt
 from scipy import signal,constants,fft,interpolate
@@ -477,11 +477,12 @@ class Model(Optimiser):
     def add_absorption_lines(
             self,
             lines=None,
-            nfwhmL=None, nfwhmG=None,
+            nfwhmL=None,
+            nfwhmG=None,
             τmin=None,
             gaussian_method=None, voigt_method=None,
             use_multiprocessing=None, use_cache= None,
-            **line_parameters
+            # **line_parameters
     ):
         self.add_suboptimiser(lines)
         ## update lines data and recompute optical depth if
@@ -495,21 +496,7 @@ class Model(Optimiser):
                 ## no lines
                 return
             ## recompute spectrum if is necessary for somem reason
-            if (cache == {}    # currently no spectrum computed
-                or True        #  DEBUG
-                or self.timestamp < lines.timestamp # lines has changed
-                or any([self.timestamp < t.timestamp for t in line_parameters.values() if isinstance(t,P)]) # optimise_keys_vals has changed
-                ## or not (len(cache['x']) == len(self.x)) # experimental domain has changed
-                ## or not np.all( cache['x'] == self.x ) # experimental domain has changed
-                ):
-                ## update optimise_keys_vals that have changed -- if
-                ## optimised also set uncertainty
-                for key,val in line_parameters.items():
-                    if cache == {} or np.all(lines[key] != val): # has been changed elsewhere, or the parameter has changed, or first use
-                        if isinstance(val,P):
-                            lines.set(key,val.value,uncertainty=val.uncertainty)
-                        else:
-                            lines[key] = val
+            if len(cache)==0 or self._last_construct_time < lines._last_construct_time:
                 x,y = lines.calculate_spectrum(
                     x=self.x,
                     ykey='τ',
@@ -527,7 +514,9 @@ class Model(Optimiser):
                 )
                 cache['x'] = copy(self.x)
                 cache['absorbance'] = np.exp(-y)
+                # print('DEBUG:', lines.name,np.sum(y))
             ## absorb
+            # print('DEBUG:', cache['absorbance'].sum())
             self.y *= cache['absorbance']
         return f
 
