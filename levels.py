@@ -253,7 +253,7 @@ def _collect_prototypes(*keys):
 class Base(Dataset):
     """Common stuff for for lines and levels."""
     _prototypes = _collect_prototypes()
-    attributes = ('name','classname','description','Zsource')
+    attributes = ('description','Zsource')
 
     def __init__(self,name=None,**kwargs):
         """Default_name is decoded to give default values. Kwargs ca be
@@ -261,10 +261,12 @@ class Base(Dataset):
         themselves will populate data arrays."""
         Dataset.__init__(self,name=name,prototypes=self._prototypes,**kwargs)
         self._cache = {}
-        self.pop_format_input_function()
-        self.automatic_format_input_function(limit_to_args=('name',))
+        # self.pop_format_input_function()
+        # self.automatic_format_input_function(limit_to_args=('name',))
+        # self.automatic_format_input_function(multiline=True )
+        # self.pop_format_input_function()
+        # self.automatic_format_input_function(limit_to_args=('name',))
         self.default_zkeys = self._defining_qn
-
 
 class Generic(Base):
     """A generic level."""
