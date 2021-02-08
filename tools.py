@@ -717,6 +717,15 @@ def mkdir(*directories,trash_existing=False):
     # except ValueError:
         # return format(x,'>'+str(width))
 
+def regularise_string_to_symbol(x):
+    """Turn an arbitrary string into a valid python symbol. NOT
+FINISHED!!  Check out https://github.com/Ghostkeeper/Luna/blob/d69624cd0dd5648aec2139054fae4d45b634da7e/plugins/data/enumerated/enumerated_type.py#L91"""
+    x = x.replace('.','_')
+    x = x.replace('-','_')
+    if re.match('[0-9]',x[0]):
+        x = 'x_'+x
+    return x
+    
 def format_string_or_general_numeric(x):
     """Return a string which is the input formatted 'g' if it is numeric or else is str representation."""
     try:
@@ -4700,76 +4709,89 @@ def resample_out_of_bounds_to_zero(xin,yin,xout):
     # ## return
     # return np.array(i,dtype=int)
 
-# def find_peaks(
-        # y,
-        # x=None,                    # if x is None will use index
-        # peak_type='maxima',     # can be 'maxima', 'minima', 'both'
-        # fractional_trough_depth=None, # minimum height of trough between adjacent peaks as a fraction of the lowest neighbouring peak height. I.e., 0.9 would be a very shallow trough.
-        # ybeg = None,       # peaks below this will be ignored
-        # yend = None,      # peaks below this will be ignored
-        # xbeg = None,       # peaks below this will be ignored
-        # xend = None,      # peaks below this will be ignored
-        # x_minimimum_separation = None, # two peaks closer than this will be reduced to the taller
-        # return_coords=True,
-# ):
-    # """A reworked version of locate_peaks with difference features. Does
-# not attempt to fit the background with a tensioned spline, isntead
-# this should already be reduced to zero for the fractional_trough_depth
-# part of the algorithm to work. """
-    # ## find both maxima and minima
-    # assert peak_type in ('maxima', 'minima', 'both')
-    # if peak_type=='both':
-        # maxima = find_peaks(y,x,'maxima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
-        # minima = find_peaks(y,x,'minima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
-        # return(np.concatenate(np.sort(maxima,minima)))
-    # ## get data in correct array format
-    # y = np.array(y,ndmin=1)             # ensure y is an array
-    # if x is None: x = np.arange(len(y)) # default x to index
-    # assert all(np.diff(x)>0), 'Data not sorted or unique with respect to x.'
-    # ## in case of minima search
-    # if peak_type=='minima':
-        # y *= -1
-        # ybeg,yend = -1*yend,-1*ybeg
-    # ## find all peaks
-    # ipeak = find((y[:-2]<=y[1:-1])&(y[2:]<=y[1:-1]))+1
-    # ## limit to minima/maxima
-    # if ybeg is not None:
-        # ipeak = ipeak[y[ipeak]>=ybeg]
-    # if yend is not None:
-        # ipeak = ipeak[y[ipeak]<=yend]
-    # if xbeg is not None:
-        # ipeak = ipeak[x[ipeak]>=xbeg]
-    # if xend is not None:
-        # ipeak = ipeak[x[ipeak]<=xend]
-    # ## compare with next point to see if trough is deep enough to
-    # ## count as tow peaks. If not keep the tallest peak.
-    # if fractional_trough_depth is not None:
-        # i = 0
-        # while i < (len(ipeak)-1):
-            # ## index of minimum between maxima
-            # j = ipeak[i]+np.argmin(y[ipeak[i]:ipeak[i+1]+1])
-            # if (y[j]/min(y[ipeak[i]],y[ipeak[i+1]]) < fractional_trough_depth):
-                # ## no problem, proceed to next maxima
-                # i += 1
-            # else:
-                # ## not happy, delete the lowest height maxima
-                # if y[ipeak[i]]>y[ipeak[i+1]]:
-                    # ipeak.pop(i+1)
-                # else:
-                    # ipeak.pop(i)
-    # ## if any peaks are closer than x_minimimum_separation then keep the taller.
-    # if x_minimimum_separation is not None:
-        # while True:
-            # jj = find(np.diff(x[ipeak]) < x_minimimum_separation)
-            # if len(jj)==0: break
-            # for j in jj:
-                # if y[j]>y[j+1]:
-                    # ipeak[j+1] = -1
-                # else:
-                    # ipeak[j] = -1
-            # ipeak = [ii for ii in ipeak if ii!=-1]
-    # ipeak = np.array(ipeak)
-    # return(ipeak)
+def find_peaks(
+        y,
+        x=None,                    # if x is None will use index
+        peak_type='maxima',     # can be 'maxima', 'minima', 'both'
+        peak_min=None, # minimum height of trough between adjacent peaks as a fraction of the lowest neighbouring peak height. I.e., 0.9 would be a very shallow trough.
+        ybeg = None,       # peaks below this will be ignored
+        yend = None,      # peaks below this will be ignored
+        xbeg = None,       # peaks below this will be ignored
+        xend = None,      # peaks below this will be ignored
+        x_minimimum_separation = None, # two peaks closer than this will be reduced to the taller
+        return_coords=True,
+):
+    """A reworked version of locate_peaks with difference features. Does
+not attempt to fit the background with a tensioned spline, isntead
+this should already be reduced to zero for the fractional_trough_depth
+part of the algorithm to work. """
+    ## find both maxima and minima
+    assert peak_type in ('maxima', 'minima', 'both')
+    if peak_type=='both':
+        maxima = find_peaks(y,x,'maxima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
+        minima = find_peaks(y,x,'minima',fractional_trough_depth,ybeg,yend,xbeg,xend,x_minimimum_separation)
+        return np.concatenate(np.sort(maxima,minima))
+    if ybeg is None:
+        ybeg = -np.inf
+    if yend is None:
+        yend = np.inf
+    ## get data in correct array format
+    y = np.array(y,ndmin=1)             # ensure y is an array
+    if x is None:
+        x = np.arange(len(y)) # default x to index
+    assert all(np.diff(x)>0), 'Data not sorted or unique with respect to x.'
+    ## in case of minima search
+    if peak_type=='minima':
+        y *= -1
+        ybeg,yend = -1*yend,-1*ybeg
+    ## shift for conveniences
+    shift = np.min(y)
+    y -= shift
+    ybeg -= shift
+    yend -= shift
+    ## find all peaks
+    ipeak = find((y[:-2]<=y[1:-1])&(y[2:]<=y[1:-1]))+1
+    ## limit to minima/maxima
+    if ybeg is not None:
+        ipeak = ipeak[y[ipeak]>=ybeg]
+    if yend is not None:
+        ipeak = ipeak[y[ipeak]<=yend]
+    if xbeg is not None:
+        ipeak = ipeak[x[ipeak]>=xbeg]
+    if xend is not None:
+        ipeak = ipeak[x[ipeak]<=xend]
+    ## compare with next point to see if trough is deep enough to
+    ## count as tow peaks. If not keep the tallest peak.
+    if peak_min is not None:
+        ipeak = list(ipeak)
+        i = 0
+        while i < (len(ipeak)-1):
+            ## index of minimum between maxima
+            j = ipeak[i] + np.argmin(y[ipeak[i]:ipeak[i+1]+1])
+            
+            if (min(y[ipeak[i]],y[ipeak[i+1]])-y[j]) > peak_min:
+                ## no problem, proceed to next maxima
+                i += 1
+            else:
+                ## not happy, delete the lowest height maxima
+                if y[ipeak[i]]>y[ipeak[i+1]]:
+                    ipeak.pop(i+1)
+                else:
+                    ipeak.pop(i)
+        ipeak = np.array(ipeak)
+    ## if any peaks are closer than x_minimimum_separation then keep the taller.
+    if x_minimimum_separation is not None:
+        while True:
+            jj = find(np.diff(x[ipeak]) < x_minimimum_separation)
+            if len(jj)==0: break
+            for j in jj:
+                if y[j]>y[j+1]:
+                    ipeak[j+1] = -1
+                else:
+                    ipeak[j] = -1
+            ipeak = [ii for ii in ipeak if ii!=-1]
+    ipeak = np.array(ipeak)
+    return ipeak
 
 
 #################

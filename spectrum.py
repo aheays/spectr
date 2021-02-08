@@ -147,12 +147,8 @@ class Experiment(Optimiser):
     @auto_construct_method('scalex')
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
-        # scale = self.add_parameter(scale)
-        # self.auto_format_input_function('scalex',scale=scale)
         def construct_function():
             self.x *= float(scale)
-        # self.add_construct_function(construct_function)
-        # return scale
         return construct_function
 
     def interpolate(self,dx):
@@ -480,25 +476,38 @@ class Model(Optimiser):
             nfwhmL=None,
             nfwhmG=None,
             τmin=None,
-            gaussian_method=None, voigt_method=None,
-            use_multiprocessing=None, use_cache= None,
-            # **line_parameters
+            gaussian_method=None,
+            voigt_method=None,
+            use_multiprocessing=None
     ):
         self.add_suboptimiser(lines)
         ## update lines data and recompute optical depth if
         ## necessary
         cache = {}
         def f():
+            pass 
             ## first call -- no good, x not set yet
             if self.x is None:
                 return
             if len(lines)==0:
                 ## no lines
                 return
-            ## recompute spectrum if is necessary for somem reason
-            if len(cache)==0 or self._last_construct_time < lines._last_construct_time:
-                x,y = lines.calculate_spectrum(
+            ## recompute spectrum if is necessary for some reason --
+            ## do various tests to see if a cached version is ok
+            i = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
+            tlines = lines[i]
+            if (
+                    'absorbance'  not in cache
+                    or self._last_construct_time < lines._last_construct_time
+                    or np.any( i!=cache['i'] )
+                    or np.any( lines['ν'] != cache['ν'] )
+                    or np.any( lines['τ'] != cache['τ'] )
+                    or np.any( lines['ΓD'] != cache['ΓD'] )
+                    or np.any( lines['Γ'] != cache['Γ'] )
+            ):
+                x,y = tlines.calculate_spectrum(
                     x=self.x,
+                    xkey='ν',
                     ykey='τ',
                     nfwhmG=(nfwhmG if nfwhmG is not None else 10),
                     nfwhmL=(nfwhmL if nfwhmL is not None else 100),
@@ -510,13 +519,14 @@ class Model(Optimiser):
                     voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
                     ## use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                     use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    use_cache=(use_cache if use_cache is not None else True),
                 )
-                cache['x'] = copy(self.x)
+                cache['i'] = i
+                cache['ν'] = tlines['ν']
+                cache['τ'] = tlines['τ']
+                cache['Γ'] = tlines['Γ']
+                cache['ΓD'] = tlines['ΓD']
                 cache['absorbance'] = np.exp(-y)
-                # print('DEBUG:', lines.name,np.sum(y))
             ## absorb
-            # print('DEBUG:', cache['absorbance'].sum())
             self.y *= cache['absorbance']
         return f
 
@@ -844,6 +854,10 @@ class Model(Optimiser):
                 ## nothing to be done
                 return
             abswidth = abs(width)
+            max_width = 1
+            if abswidth > 1e2:
+                raise Exception(f'Gaussian width > 100')
+            # print('DEBUG:', self.name,abswidth)
             if self.verbose and abswidth<3*np.diff(self.xexp).min(): 
                 warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
@@ -852,7 +866,11 @@ class Model(Optimiser):
             xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
             ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
             ## generate gaussian to convolve with
-            xconv = np.arange(-fwhms_to_include*abswidth,fwhms_to_include*abswidth,dx)
+            xconv_beg = -fwhms_to_include*abswidth
+            xconv_end =  fwhms_to_include*abswidth
+            # if ((xconv_end-xconv_beg)/dx) > 1e6:
+                # warnings.warn('Convolution domain length very long.')
+            xconv = np.arange(xconv_beg,xconv_end,dx)
             if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
             yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abswidth**2) # peak normalised gaussian
             yconv = yconv/yconv.sum() # sum normalised

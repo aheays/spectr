@@ -310,7 +310,6 @@ class Generic(levels.Base):
             gaussian_method='python', #'fortran stepwise', 'fortran', 'python'
             voigt_method='wofz',   
             use_multiprocessing=False, # might see a speed up
-            use_cache=False,    # is it actually any faster?!?
             **set_keys_vals,    # set some data first, e..g, the tempertaure
     ):
         """Calculate a Voigt/Lorentzian/Gaussian spectrum from data in self. Returns (x,σ)."""
@@ -363,158 +362,78 @@ class Generic(levels.Base):
             ΓL = np.asarray(ΓL,dtype=float)
             assert np.all(~np.isnan(ΓL)),f'NaN values in provided ΓL array'
             assert len(ΓL)==len(self),'Provided ΓL array wrong length'
-        ## test for appropriate use of cache
-        if use_cache:
-            for test,msg in (
-                    (voigt_method=='wofz','Cache only implemented for wofz.'),
-                    (ΓG is not None,'Cache only implemented for given ΓG not None.'),
-                    (ΓL is not None,'Cache only implemented for given ΓL not None.'),
-            ):
-                if not test:
-                    warnings.warn(f'{self.name}: {msg}')
-                    use_cache = False
-        ## establish which data should be stored in cache and load
-        ## cache if it exists
-        if use_cache:
-            if 'calculate_spectrum' not in self._cache:
-                self._cache['calculate_spectrum'] = {}
-            cache = self._cache['calculate_spectrum']
-            cache_keys = (xkey,ykey,ΓLin,ΓGin)
-        ## test is cache exist and is usable
-        if (not use_cache   # no cache requested
-            or len(cache) == 0         #  first run
-            or len(cache['y'])!=len(x)   # x domain is the same length as the last cached calculation 
-            or not np.all(cache['x']==x)):   # x domain is the same as the last cached calculation -- TEST REQUIRES MUCH MEMORY?
-            ## comput entire spectrum with out cache
-            ##
-            ## get a default frequency scale if none provided
-            if x is None:
-                if dx is not None:
-                    x = np.arange(max(0,self[xkey].min()-10.),self[xkey].max()+10.,dx)
-                else:
-                    x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
+        ## get a default frequency scale if none provided
+        if x is None:
+            if dx is not None:
+                x = np.arange(max(0,self[xkey].min()-10.),self[xkey].max()+10.,dx)
             else:
-                x = np.asarray(x)
-            ## get spectrum type according to width specified
-            ##
-            if ΓL is None and ΓG is None:
-                ## divide centroided triangles
-                y = lineshapes.centroided_spectrum(x,self[xkey],self[ykey],Smin=ymin)
-            elif ΓL is not None and ΓG is None:
-                ## spectrum Lorentzians
-                y = lineshapes.lorentzian_spectrum(x,self[xkey],self[ykey],ΓL,nfwhm=nfwhmL,Smin=ymin)
-            elif ΓG is not None and ΓL is None:
-                ## spectrum Gaussians
-                y = lineshapes.gaussian_spectrum(x, self[xkey], self[ykey], ΓG, nfwhm=nfwhmG,Smin=ymin,method=gaussian_method)
-            elif ΓL is not None and ΓG is not None:
-                if voigt_method=='wofz':
-                    ## spectrum of Voigts computed by wofz
-                    y = lineshapes.voigt_spectrum(
-                        x,self[xkey],self[ykey],ΓL,ΓG,
-                        nfwhmL,nfwhmG,Smin=ymin, use_multiprocessing=use_multiprocessing)
-                elif voigt_method=='fortran Doppler' and ΓLin=='Γ' and ΓGin=='ΓD':
-                    ## spectrum of Voigts with common mass/temperature lines
-                    ## computed in groups with fortran code
-                    if use_multiprocessing and len(self)>100: # multprocess if requested, and there are enough lines to make it worthwhile
-                        import multiprocessing
-                        p = multiprocessing.Pool()
-                        y = []
-                        def handle_result(result):
-                            y.append(result)
-                        number_of_processes_per_mass_temperature_combination = 6 # if there are multiple temperature/mass combinations there will more be more processes, with an associated memory danger
-                        self.assert_known(xkey,ykey,'Γ')
-                        for d in self.unique_dicts('masspp','TDopplerpp'):
-                            m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
-                            ibeg,istep = 0,int(len(m)/number_of_processes_per_mass_temperature_combination)
-                            while ibeg<len(m): # loop through lines in chunks, starting subprocesses
-                                iend = min(ibeg+istep,len(m))
-                                t = p.apply_async(lineshapes.voigt_spectrum_with_gaussian_doppler_width,
-                                                  args=(x,m[xkey][ibeg:iend],m[ykey][ibeg:iend],m['Γ'][ibeg:iend],
-                                                        d['masspp'],d['TDopplerpp'], nfwhmL,nfwhmG,ymin),
-                                                  callback=handle_result)
-                                ibeg += istep
-                        ## wait for all subprocesses with a tidy keyboard quit
-                        try:
-                            p.close()
-                            p.join()
-                        except KeyboardInterrupt as err:
-                            p.terminate()
-                            p.join()
-                            raise err
-                        y = np.sum(y,axis=0)
-                    else:
-                        ## no multiprocessing
-                        y = np.zeros(x.shape)
-                        ## for d,m in self.unique_dicts_matches('masspp','temperaturepp'):
-                        ##     y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
-                        ##         x,m[xkey],m[ykey], m['Γ'],d['masspp'],d['temperaturepp'],
-                        ##         nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
-                        self.assert_known(ykey,xkey,'Γ','masspp','TDopplerpp')
-                        for d in self.unique_dicts('masspp','TDopplerpp'):
-                            m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
-                            y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
-                                x,m[xkey],m[ykey],m['Γ'],d['masspp'],d['TDopplerpp'],
-                                nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
-                else:
-                    raise Exception(f"voigt_method unknown: {repr(voigt_method)}")
-            else:
-                raise Exception("No method for calculating spectrum implemented.")
+                x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
         else:
-            if self.verbose:
-                print('calculate_spectrum: using cached spectrum')
-            ## Compute using existing cache. Determine which lines
-            ## need to be updated and update them. Do this row-by-row
-            ## using recarray equality. Need to remove references to
-            ## keys containing NaNs
-            i = np.any([self[key]!=cache[key] for key in cache_keys],0) # changed lines
-            if (ykey == 'τ'     # absorption
-                and self.is_inferred_from('τ','S') and self.is_inferred_from('τ','Nself_l') # τ is computed from absorption strength 
-                and len(np.unique(cache['Nself_l']/self['Nself_l'])) == 1 # all column_densitypp has changed by the same factor
-                and np.all(self['S']==cache['S']) # no σ has not changed
-                and np.all([self[key]==cache[key] for key in cache_keys if key != 'τ'])): # frequencies and widths have not changed
-                ## all lines have changed column density but nothing
-                ## else. Rescale spectrum by change common change in
-                ## column density.
-                if self.verbose:
-                    print('calculate_spectrum: using cached transmission spectrum')
-                y = cache['y']/cache['Nself_l']*self['Nself_l'][0]
-            elif (False and ykey == 'I'     # emission -- UNSTABLE definition
-                  and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}
-                  and np.sum(i) == len(i)            # all data has changed
-                  and len(np.unique(cache['column_densityp']/self['column_densityp'])) == 1 # all column_densityp has changed by the same factor
-                  and np.all(cache['Ae']==self['Ae']) # Ae are the same
-                  and np.all([self[key]==cache[key] for key in cache_keys if key != 'I'])): # frequencies and widths have not changed
-                if self.verbose:
-                    print('calculate_spectrum: using emission column_densitypp shortcut')
-                y = cache['y']/cache['column_densityp'][0]*self['column_densityp'][0]
-            elif (np.sum(i)/len(i))>0.25:
-                ## many lines have changed, just recompute all
-                self._cache.pop('calculate_spectrum')
-                x,y = self.calculate_spectrum(**all_args,use_cache=use_cache)
-            elif np.sum(i)==0:
-                ## no change at all
-                y = cache['y']
+            x = np.asarray(x)
+        ## get spectrum type according to width specified
+        ##
+        if ΓL is None and ΓG is None:
+            ## divide centroided triangles
+            y = lineshapes.centroided_spectrum(x,self[xkey],self[ykey],Smin=ymin)
+        elif ΓL is not None and ΓG is None:
+            ## spectrum Lorentzians
+            y = lineshapes.lorentzian_spectrum(x,self[xkey],self[ykey],ΓL,nfwhm=nfwhmL,Smin=ymin)
+        elif ΓG is not None and ΓL is None:
+            ## spectrum Gaussians
+            y = lineshapes.gaussian_spectrum(x, self[xkey], self[ykey], ΓG, nfwhm=nfwhmG,Smin=ymin,method=gaussian_method)
+        elif ΓL is not None and ΓG is not None:
+            if voigt_method=='wofz':
+                ## spectrum of Voigts computed by wofz
+                y = lineshapes.voigt_spectrum(
+                    x,self[xkey],self[ykey],ΓL,ΓG,
+                    nfwhmL,nfwhmG,Smin=ymin, use_multiprocessing=use_multiprocessing)
+            elif voigt_method=='fortran Doppler' and ΓLin=='Γ' and ΓGin=='ΓD':
+                ## spectrum of Voigts with common mass/temperature lines
+                ## computed in groups with fortran code
+                if use_multiprocessing and len(self)>100: # multprocess if requested, and there are enough lines to make it worthwhile
+                    import multiprocessing
+                    p = multiprocessing.Pool()
+                    y = []
+                    def handle_result(result):
+                        y.append(result)
+                    number_of_processes_per_mass_temperature_combination = 6 # if there are multiple temperature/mass combinations there will more be more processes, with an associated memory danger
+                    self.assert_known(xkey,ykey,'Γ')
+                    for d in self.unique_dicts('masspp','TDopplerpp'):
+                        m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
+                        ibeg,istep = 0,int(len(m)/number_of_processes_per_mass_temperature_combination)
+                        while ibeg<len(m): # loop through lines in chunks, starting subprocesses
+                            iend = min(ibeg+istep,len(m))
+                            t = p.apply_async(lineshapes.voigt_spectrum_with_gaussian_doppler_width,
+                                              args=(x,m[xkey][ibeg:iend],m[ykey][ibeg:iend],m['Γ'][ibeg:iend],
+                                                    d['masspp'],d['TDopplerpp'], nfwhmL,nfwhmG,ymin),
+                                              callback=handle_result)
+                            ibeg += istep
+                    ## wait for all subprocesses with a tidy keyboard quit
+                    try:
+                        p.close()
+                        p.join()
+                    except KeyboardInterrupt as err:
+                        p.terminate()
+                        p.join()
+                        raise err
+                    y = np.sum(y,axis=0)
+                else:
+                    ## no multiprocessing
+                    y = np.zeros(x.shape)
+                    ## for d,m in self.unique_dicts_matches('masspp','temperaturepp'):
+                    ##     y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
+                    ##         x,m[xkey],m[ykey], m['Γ'],d['masspp'],d['temperaturepp'],
+                    ##         nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
+                    self.assert_known(ykey,xkey,'Γ','masspp','TDopplerpp')
+                    for d in self.unique_dicts('masspp','TDopplerpp'):
+                        m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
+                        y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
+                            x,m[xkey],m[ykey],m['Γ'],d['masspp'],d['TDopplerpp'],
+                            nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
             else:
-                ## a few changed line, subtract old lines from cached
-                ## spectrum, add new lines
-                tkwargs = dict(nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin,use_multiprocessing=use_multiprocessing)
-                y = (cache['y']
-                     - lineshapes.voigt_spectrum(x,cache[xkey][i],cache[ykey][i],cache[ΓLin][i],cache[ΓGin][i],**tkwargs)
-                     + lineshapes.voigt_spectrum(x,self[xkey][i],self[ykey][i],self[ΓLin][i],self[ΓGin][i],**tkwargs))
-        ## save cache
-        if use_cache:
-            if self.verbose:
-                print('calculate_spectrum: saving cache')
-            cache['x'],cache['y']  = x,y
-            for key in cache_keys:
-                cache[key] = copy(self[key])
-            ## save these for rescale column density shortcuts
-            if (ykey == 'τ'     # absorption
-                and self.is_inferred_from('τ','S') and self.is_inferred_from('τ','Nself_l')): # τ is computed from absorption strength 
-                cache['Nself_l'],cache['S'] = copy(self['Nself_l'][0]),copy(self['S'])
-            if False and (ykey == 'I' and self.vector_data['I'].inferred_from == {'Ae','column_densityp'}):
-                cache['column_densityp'] = copy(self['column_densityp'])
-                cache['Ae'] = copy(self['Ae'])
+                raise Exception(f"voigt_method unknown: {repr(voigt_method)}")
+        else:
+            raise Exception("No method for calculating spectrum implemented.")
         return x,y
 
     def _get_level(self, u_or_l, reduce_to=None,):

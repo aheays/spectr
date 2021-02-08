@@ -87,6 +87,7 @@ class Optimiser:
         """Suboptimisers can be other Optimiser that are also
         optimised with this one."""
         assert isinstance(name,str),'Name must be a string.'
+        # self.name = tools.regularise_string_to_symbol(name) # for generating evaluatable references to self
         self.name = name # for generating evaluatable references to self
         self.residual_scale_factor = None # scale all resiudal by this amount -- useful when combining with other optimisers
         self.parameters = []           # Data objects
@@ -111,22 +112,10 @@ class Optimiser:
                 val = (val.value,val.vary,val.step)
             self.add_named_parameter(key,*ensure_iterable(val))
         ## make an input line
-        kwargs = dict(
-            name=self.name,
-            suboptimisers=self._suboptimisers,
-            verbose=self.verbose,
-            description=self.description,
-            )
-        if len(self._suboptimisers) == 0:
-            kwargs.pop('suboptimisers')
-        if self.verbose == False:
-            kwargs.pop('verbose')
-        if self.description == '':
-            kwargs.pop('description')
         def f():
             retval = f'{self.name} = Optimiser(name={repr(self.name)},'
-            if len(self._suboptimisers)>0:
-                retval += ','.join([repr(t) for t in self._suboptimisers])+','
+            if len(suboptimisers)>0:
+                retval += ','.join([repr(t) for t in suboptimisers])+','
             if self.verbose:
                 retval += f'verbose={repr(self.verbose)},'
             if self.description != '':
@@ -177,15 +166,17 @@ class Optimiser:
             return retval
         self.add_format_input_function(f)
 
-    def add_suboptimiser(self,*suboptimisers,add_format_function=False,):
+    def add_suboptimiser(self,*suboptimisers,add_format_function=True):
         """Add one or suboptimisers."""
         ## add only if not already there
         for t in suboptimisers:
             if t not in self._suboptimisers:
                 self._suboptimisers.append(t)
         if add_format_function:
-            self.format_input_functions.append(
-                f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)},{repr(add_format_function)})')
+            self.add_format_input_function(
+                lambda: f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)})')
+
+    suboptimisers = property(lambda self: self._suboptimisers)
 
     def add_parameter(self,parameter,*args,**kwargs):
         """Add one parameter. Return a reference to it. Args are as in
@@ -212,6 +203,10 @@ class Optimiser:
 
     def __setitem__(self,key,val):
         self._named_parameters[key].value = val
+
+    def __iter__(self):
+        for key in self._named_parameters:
+            yield key
 
     def add_construct_function(self,*functions):
         """Add one or more functions that are called each iteration when the
@@ -306,7 +301,7 @@ class Optimiser:
     def print_input(self,match_lines_regexp=None):
         """Print recreated input function. Filter lines by regexp if
         desired."""
-        t = repr(match_lines_regexp) if match_lines_regexp is not None else ''
+        # t = repr(match_lines_regexp) if match_lines_regexp is not None else ''
         self.add_format_input_function(lambda: f'{self.name}.print_input({repr(match_lines_regexp) if match_lines_regexp is not None else ""})')
         print(self.format_input(match_lines_regexp=match_lines_regexp))
 
@@ -338,9 +333,9 @@ class Optimiser:
             if subdirectory in used_subdirectories:
                 raise Exception(f'Non-unique optimiser names producting subdirectory: {repr(subdirectory)}')
             used_subdirectories.append(subdirectory)
-            tools.string_to_file(
-                subdirectory+'/parameters.psv',
-                optimiser.get_parameter_dataset().format(delimiter=' | '))
+            # tools.string_to_file(
+                # subdirectory+'/parameters.psv',
+                # optimiser.get_parameter_dataset().format(delimiter=' | '))
             tools.string_to_file(subdirectory+'/input.py',optimiser.format_input())
             if optimiser.residual is not None:
                 tools.array_to_file(subdirectory+'/residual' ,optimiser.residual,fmt='%+0.4e')
@@ -439,15 +434,20 @@ class Optimiser:
             dp = list(dp)
         already_set = []
         for optimiser in self._get_all_suboptimisers():
+            # print('DEBUG:', optimiser.name)
             for parameter in optimiser.parameters:
-                if parameter not in already_set and parameter.vary:
+                if id(parameter) not in already_set and parameter.vary:
+                    # print('DEBUG:    lll',parameter,p[0])
                     parameter.value = p.pop(0)
                     parameter.dp = dp.pop(0)
-                    already_set.append(parameter)
+                    already_set.append(id(parameter))
+                # else:
+                    # print('DEBUG:', 'ggg',parameter)    
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get_vary(key)
                     for i in tools.find(vary):
+                        # print('DEBUG:    fff',p[0])
                         optimiser.set(key,p.pop(0),i)
                         optimiser.set_uncertainty(key,dp.pop(0),i)
 
@@ -456,27 +456,21 @@ class Optimiser:
         parameters have changed since its last construction."""
         ## test if new construct function added recently
         if self._last_add_construct_function_time > self._last_construct_time:
-            # print('DEBUG:', self.name,'change 1')
             return True 
         ## test if suboptimiser constructed recently
         for o in self._get_all_suboptimisers():
-            # print('DEBUG:', self.name)
             ## search for internally specified modification
             if o._last_construct_time > self._last_construct_time:
-                # print('DEBUG:', self.name,'change 2')
                 return True 
         ## test if parameter changed recently
         for p in self.parameters:
             if p._last_modify_value_time > self._last_construct_time:
-                # print('DEBUG:', self.name,'change 3',p)
                 return True
         ## test if dat has been modified in a Dataset
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
         if isinstance(self,Dataset) and self._modify_data_time > self._last_construct_time:
-            # print('DEBUG:', self.name,'change 4')
             return True
         ## no changes
-        # print('DEBUG:', self.name,'not changed')
         return False
 
     def construct(
@@ -484,10 +478,6 @@ class Optimiser:
             recompute_all=False, # recompute Optimiser even if has not changed since last construct
     ):
         """Run all construct functions and return collected residuals."""
-        ## nothing to be done, return cached residual immediately
-        # if not self.has_changed() and not recompute_all:
-            # print('DEBUG:', 'no change', self.name)
-            # return self.combined_residual
         ## collect residuals from suboptimisers and self
         combined_residual = []  # from self and suboptimisers
         for optimiser in self._get_all_suboptimisers():

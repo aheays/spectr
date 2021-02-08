@@ -1,0 +1,56 @@
+B = Neutral Termolecular and Thermal Decomposition Reactions
+BS = Neutral Termolecular and Thermal Decomposition Reactions (added to model Venus)
+BI = Neutral Termolecular and Thermal Decomposition Reactions (added to model Isoprene)
+G = Reverse Neutral Termolecular and Thermal Decomposition Reactions
+
+Q = Ion-Neutral Termolecular and Thermal Decomposition Reactions
+R = Reverse Ion-Neutral Termolecular and Thermal Decomposition Reactions
+
+T = Three-Body Recombination Reactions
+I = Thermal Ionization Reactions
+
+A = Neutral Bimolecular Reactions
+AS = Neutral Bimolecular Reactions (added to model Venus)
+AS = Neutral Bimolecular Reactions (added to model Isoprene)
+F = Reverse Neutral Bimolecular Reactions
+
+D = Ion-Neutral Bimolecular Reactions
+L = Reverse Ion-Neutral Bimolecular Reactions
+
+V = Photochemical Reactions
+EV = Condensation/Evaporation Reactions
+Z = Cosmic Ray Reactions (All of these are set equal zero for the Venus model)
+
+U = Dissociative Recombination Reactions
+RA = Radiative Association Reactions
+
+ANH hack version:
+
+ 0 B Neutral Termolecular and Thermal Decomposition Reactions
+ 1 Z Cosmic Ray Reactions (All of these are set equal zero for the Venus model 
+ 2 D Ion-Neutral Bimolecular Reactions
+ 3 L Reverse Ion-Neutral Bimolecular Reactions
+ 5 T Three-Body Recombination Reactions
+ 6 I Thermal Ionization Reactions: 
+ 7 A Neutral Bimolecular Reactions
+ 8 RA Radiative Association Reactions
+10 U Dissociative Recombination Reactions
+11 Q Ion-Neutral Termolecular and Thermal Decomposition Reaction
+13 V Photochemical Reactions
+14 F Reverse Neutral Bimolecular Reactions
+15 G Reverse Neutral Termolecular and Thermal Decomposition Reactions
+16 R Reverse Ion-Neutral Termolecular and Thermal Decomposition Reactions
+17 EV Evaporation
+18 DP Condensation
+19 ?? 2-BODY REACTIONS WITH PRESSURE-DEPENDENT BRANCHING RATIOS
+42 ?? Outgassing
+43 ?? Deposition
+44 ID Impact induced reaction with rate proportional to density -- ANH test
+66 BA Banking particles
+67 GO Related to banking particles
+88 TR Artificial way to get rid of terminating species
+95 BI Neutral Termolecular and Thermal Decomposition Reactions (added to model Isoprene
+96 AS (or AI?) Neutral Bimolecular Reactions (added to model Isoprene)
+97 BS Neutral Termolecular and Thermal Decomposition Reactions (added to model Venus)
+98 AS Neutral Bimolecular Reactions (added to model Venus)
+99 GL Unknown
