@@ -112,9 +112,12 @@ def test_optimiser_has_changed():
     t.construct()
     assert not t.has_changed()
     assert not u.has_changed()
+    print('DEBUG: a', u.has_changed())
     u['z'] = 5
-    assert t.has_changed()
+    print('DEBUG: b', u.has_changed())
     assert u.has_changed()
+    print('DEBUG:', 'ff')
+    assert t.has_changed()
     t.construct()
     t['x'] = 2.5
     assert t.has_changed()
@@ -198,7 +201,12 @@ def test_plot():
 
 def test_dataset_parameters():
     o = Optimiser()
-    d = Dataset(x=[1.0,2.0,3.0],x_vary=[True,True,False,],x_unc=np.nan,x_step=1e-3)
+    d = Dataset(
+        x=[1.0,2.0,3.0],
+        x_vary=[True,True,False,],
+    )
+    d['x_unc'] = np.nan
+    d['x_step'] = 1e-3
     o.add_suboptimiser(d)
     p,s,dp = o._get_parameters()
     assert p == [1,2]
@@ -207,8 +215,8 @@ def test_dataset_parameters():
     o._set_parameters([4,5])
     assert all(d['x'] == [4,5,3])
     o._set_parameters([4,5],[1,2])
-    assert all(d['d_x'][:2] == [1,2])
-    assert np.isnan(d['d_x'][2])
+    assert all(d['x_unc'][:2] == [1,2])
+    assert np.isnan(d['x_unc'][2])
     def _f():
         return d['x']-np.array([2,3,4])
     o.add_construct_function(_f)

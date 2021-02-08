@@ -1,5 +1,5 @@
 import re
-import time
+from time import perf_counter as timestamp
 import ast
 from copy import copy,deepcopy
 from pprint import pprint
@@ -35,7 +35,6 @@ class Dataset(optimise.Optimiser):
     def __init__(
             self,
             name=None,
-            description = None,
             permit_nonprototyped_data = True,
             # permit_reference_breaking = True,
             permit_auto_defaults = False,
@@ -44,13 +43,11 @@ class Dataset(optimise.Optimiser):
             load_from_string = None,
             **kwargs):
         ## deal with arguments
-        self.description = description # A string describing this dataset
-        # self.automatic_format_input_function(limit_to_args=['name','load_from_file'])
-        # self.automatic_format_input_function(multiline=True)
+        # self.description = description # A string describing this dataset
         self._data = dict()
         self._length = 0
         self._over_allocate_factor = 2
-        self._modify_data_time = time.time()  # used for triggering optimise construct
+        self._modify_data_time = timestamp()  # used for triggering optimise construct
         self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self._prototypes
         # self.permit_reference_breaking = permit_reference_breaking  # not implemented -- I think
         self.permit_auto_defaults = permit_auto_defaults         # set default values if necessary automatically
@@ -61,9 +58,10 @@ class Dataset(optimise.Optimiser):
         if prototypes is not None:
             for key,val in prototypes.items():
                 self.set_prototype(key,**val)
-        ## initialise with attributes
+        ## initialise attributes
         for key in self.attributes:
             setattr(self,key,None)
+        ## classname to identify type of Dataset
         self.classname = self.__class__.__name__
         ## default name is snake version of camel object name
         if name is None:
@@ -73,8 +71,6 @@ class Dataset(optimise.Optimiser):
         self.pop_format_input_function()
         def format_input_function(classname=self.classname):
             retval = f'{self.name} = {classname}({self.name},'
-            if description is not None:
-                retval += f'description={repr(description)},'
             if load_from_file is not None:
                 retval += f'load_from_file={repr(load_from_file)},'
             if len(kwargs)>0:
@@ -92,18 +88,26 @@ class Dataset(optimise.Optimiser):
             self.load_from_string(load_from_string)
         ## set scalar values in kwargs to default values, vector
         ## values to data
+        # for key,val in kwargs.items():
+        #     if tools.isiterable(val):
+        #         self[key] = val
+        #     elif key in self.attributes:
+        #         self[key] = val
+        #     elif isinstance(val,optimise.P):
+        #         self.set_parameter(key,val)
+        #         self.pop_format_input_function() # input function customised above
+        #     else:
+        #         self.set_default(key,val)
         for key,val in kwargs.items():
-            if tools.isiterable(val):
+            if key in self.attributes:
                 self[key] = val
-            elif key in self.attributes:
-                self[key] = val
-            elif isinstance(val,optimise.P):
+            elif isinstance(val,optimise.Parameter):
                 self.set_parameter(key,val)
                 self.pop_format_input_function() # input function customised above
+            elif tools.isiterable(val):
+                self[key] = val
             else:
                 self.set_default(key,val)
-
-
 
     def __len__(self):
         return self._length
@@ -124,7 +128,7 @@ class Dataset(optimise.Optimiser):
             print(f'{self.name}: setting {key} inferred={_inferred}')
         ## update modification if externally set, not if it is inferred
         if not _inferred:
-            self._modify_data_time = time.time()
+            self._modify_data_time = timestamp()
         ## delete inferences since data has changed
         if key in self:
             self.unset_inferences(key)

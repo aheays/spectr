@@ -170,6 +170,7 @@ def test_dataset_extend():
     assert len(t) == 4
     ## with defaults
     t = Dataset(x=[1], y='a',)
+    t.set_default('y','a')
     assert all(t['x'] == [1])
     assert all(t['y'] == ['a'])
     t.extend(x=[2,3],)
@@ -212,6 +213,7 @@ def test_dataset_append():
     ## assert t['x'] == 5
     ## appending with defaults
     t = Dataset(x=[1],y='a')
+    t.set_default('y','a')
     t.append(x=2)
     assert all(t['x'] == [1,2])
     assert all(t['y'] == ['a','a'])
@@ -338,6 +340,7 @@ def test_dataset_load_save_to_file():
     t = Dataset()
     t['x'] = [1,2,3]
     t['f'] = [1.29,1.29,3.342]
+    tools.mkdir('tmp')
     t.save('tmp/t0.npz')
     u = Dataset()
     u.load('tmp/t0.npz')
