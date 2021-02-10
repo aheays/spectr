@@ -388,18 +388,6 @@ class Optimiser:
             for f in optimiser._monitor_functions:
                 f()
 
-    # def get_parameters(self):
-        # """Return a list of parameter objects in this optimiser and all
-        # suboptimisers."""
-        # retval = []
-        # unique_ids = []
-        # for optimiser in self._get_all_suboptimisers():
-            # for parameter in optimiser.parameters:
-                # if id(parameter) not in unique_ids:
-                    # retval.append(parameter)
-                    # unique_ids.append(id(parameter))
-        # return(retval)
-
     def _get_parameters(self):
         """Collect all varied parameters for optimisation. These are either in
         self.parameters, in self._data if this is also a Dataset or found in
@@ -458,17 +446,20 @@ class Optimiser:
         ## test if new construct function added recently
         if self._last_add_construct_function_time > self._last_construct_time:
             return True 
-        ## test if parameter changed recently
+        ## test if parameter in self has changed recently
         for p in self.parameters:
             if p._last_modify_value_time > self._last_construct_time:
                 return True
-        ## test if data has been modified in a Dataset
+        ## test if self is a Dataset and has been modified recently
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
         if isinstance(self,Dataset) and self._modify_data_time > self._last_construct_time:
             return True
-        ## test if suboptimiser has changed or been constructed recently
+        ## test if any suboptimiser has changed, or been constructed
+        ## recently
         for o in self._get_all_suboptimisers(include_self=False):
-            if o._last_construct_time > self._last_construct_time or o.has_changed():
+            if o.has_changed():
+                return True 
+            if  o._last_construct_time > self._last_construct_time:
                 return True 
         ## no changes
         return False
@@ -483,7 +474,7 @@ class Optimiser:
         ## collect residuals from suboptimisers and self
         combined_residual = []  # from self and suboptimisers
         for optimiser in self._get_all_suboptimisers():
-            print('DEBUG:', optimiser.name,optimiser.has_changed())
+            # print('DEBUG:', optimiser.name,optimiser.has_changed())
             if optimiser.has_changed() or recompute_all:
                 if self.verbose:
                     print(f'constructing optimiser: {optimiser.name}')
