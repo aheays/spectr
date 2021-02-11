@@ -163,6 +163,20 @@ def test_format_input_decorator():
     assert len(optimiser.parameters)==1
     assert len(optimiser._format_input_functions) == 2
     assert list(optimiser.construct()) == [20]
+    ## also detect suboptimisers
+    class c(Optimiser):
+        @auto_construct_method('m')
+        def m(self,p,o):
+            def f():
+                return p-5
+            return f
+    optimiser = c()
+    optimiser.m(p=P(25),o=Optimiser('hello'))
+    assert len(optimiser._construct_functions)==1
+    assert len(optimiser.parameters)==1
+    assert len(optimiser.suboptimisers)==1
+    assert len(optimiser._format_input_functions) == 3
+    assert list(optimiser.construct()) == [20]
 
 # def test_optimiser_str():
     # t = optimise.Optimiser()

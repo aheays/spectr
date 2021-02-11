@@ -13,21 +13,24 @@ from . import tools
 from .tools import ensure_iterable
 from . import plotting
 
-def _collect_parameters(x):
-    """Iteratively collect Parametero / P objects from x descending
-    into any iterable children."""
-    maximum_length_for_searching_for_parameters = 100
-    if isinstance(x,P):
-        return [x]
-    elif tools.isiterable(x) and len(x)<maximum_length_for_searching_for_parameters:
+def _collect_parameters_and_optimisers(x):
+    """Iteratively collect Parameter and Optimiser objects from x
+    descending into any iterable children."""
+    maximum_length_for_searching = 100
+    parameters,optimisers = [],[]
+    if isinstance(x,Parameter):
+        parameters.append(x)
+    elif isinstance(x,Optimiser):
+        optimisers.append(x)
+    elif tools.isiterable(x) and len(x)<maximum_length_for_searching:
         if isinstance(x,dict):
             x = x.values()
         retval = []
         for y in x:
-            retval.extend(_collect_parameters(y))
-        return retval
-    else:
-        return []
+            tp,to = _collect_parameters_and_optimisers(y)
+            parameters.extend(tp)
+            optimisers.extend(to)
+    return parameters,optimisers
 
 def auto_construct_method(
         function_name,
@@ -50,9 +53,12 @@ def auto_construct_method(
                 if signature_key in kwargs:
                     raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function_name)}.')
                 kwargs[signature_key] = arg
-            ## add parameters in kwargs
-            for p in _collect_parameters(kwargs):
-                self.add_parameter(p)
+            ## add parameters suboptimisers in args to self
+            parameters,suboptimisers =  _collect_parameters_and_optimisers(kwargs)
+            for t in parameters:
+                self.add_parameter(t)
+            for t in suboptimisers:
+                self.add_suboptimiser(t)
             ## make a construct function
             construct_function = function(self,**kwargs)
             self.add_construct_function(construct_function)
