@@ -1,0 +1,22 @@
+RUN 1 -------------------------------------------------------------
+replace initial conditions in set abundance with mixing ratios from volcanic degassing? 
+
+H2O 0.0868349
+H2 0.023853648
+O2 5.49355E-12
+CO20.50245275
+CO 0.357353386
+CH4 1.78142E-10
+S020.001789295
+H2S0.011557353
+S2 0.011366571
+OCS0.004792097
+
+
+
+
+
+
+
+
+
