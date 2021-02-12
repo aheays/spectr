@@ -42,6 +42,7 @@ class Dataset(optimise.Optimiser):
             load_from_file = None,
             load_from_string = None,
             copy_from = None,
+            limit_to_match=None, # dict of things to match 
             **kwargs):
         ## deal with arguments
         # self.description = description # A string describing this dataset
@@ -90,18 +91,8 @@ class Dataset(optimise.Optimiser):
         ## load data from an encode tabular string
         if load_from_string is not None:
             self.load_from_string(load_from_string)
-        ## set scalar values in kwargs to default values, vector
-        ## values to data
-        # for key,val in kwargs.items():
-        #     if tools.isiterable(val):
-        #         self[key] = val
-        #     elif key in self.attributes:
-        #         self[key] = val
-        #     elif isinstance(val,optimise.P):
-        #         self.set_parameter(key,val)
-        #         self.pop_format_input_function() # input function customised above
-        #     else:
-        #         self.set_default(key,val)
+        ## kwargs to default values if scale, data values if vector,
+        ## set_parameter if Paramters
         for key,val in kwargs.items():
             if key in self.attributes:
                 self[key] = val
@@ -112,6 +103,9 @@ class Dataset(optimise.Optimiser):
                 self[key] = val
             else:
                 self.set_default(key,val)
+        ## limit_to_match of data inserted above
+        if limit_to_match is not None:
+            self.limit_to_match(**limit_to_match)
 
     def __len__(self):
         return self._length
@@ -234,6 +228,8 @@ class Dataset(optimise.Optimiser):
         if self._data[key]['kind'] != 'f':
             raise Exception
         if index is not None:
+            if self.get_uncertainty(key) is None:
+                self.set_uncertainty(key,nan)
             self.get_uncertainty(key)[index] = value
         else:
             if np.isscalar(value):
@@ -264,18 +260,49 @@ class Dataset(optimise.Optimiser):
         if 'vary' not in self._data[key]:
             return None
         if index is not None:
-            return get_vary(key)[index] 
+            return self.get_vary(key)[index] 
         return self._data[key]['vary'][:len(self)]
 
     def set_vary(self,key,vary,index=None):
+        """Set boolean vary for optimisation. Strings 'True', 'False', and
+        'None' also accepted."""
+        ## interpret string represnation  of "True" and "False"
+        if np.isscalar(vary):
+            if vary in ('True',):
+                vary = True
+            if vary in ('False','None'): 
+                vary = False
+        elif isinstance(vary[0],str):
+            tvary = vary
+            vary = []
+            for val in tvary:
+                if val in ('True',):
+                    val = True
+                if val in ('False','None'): 
+                    val = False
+                vary.append(val)
+        ## set if indexed values
         if index is not None:
-            get_vary(key)[index] = vary
+            if self.get_vary(key) is None:
+                self.set_vary(key,False)
+            self.get_vary(key)[index] = vary
+            return
+        ## set if scalar
         if np.isscalar(vary):
             self._data[key]['vary'] = np.full(len(self),vary,dtype=bool)
+        ## set if vector
         else:
             if len(vary) != len(self):
                 raise Exception()
             self._data[key]['vary'] = np.asarray(vary,dtype=bool)
+        ## set a default step size and uncertainty
+        if self.get_step(key) is None:
+            if (prototype:=self.get_prototype(key)) is not None and 'default_step' in prototype:
+                self.set_step(key,prototype['default_step'])
+            else:
+                self.set_step(key,10**np.round(np.log10(1e-5*self[key])))
+        if self.get_uncertainty(key) is None:
+            self.set_uncertainty(key,nan)
 
     def get_units(self,key):
         if 'units' not in self._data[key]:
@@ -327,10 +354,12 @@ class Dataset(optimise.Optimiser):
 
     @optimise.auto_construct_method('set_parameter',format_single_line=True)
     def set_parameter(self,key,parameter,index=None,**prototype_kwargs):
+        if not isinstance(parameter,optimise.Parameter):
+            parameter = optimise.Parameter(parameter,vary=None)
         def construct_function():
             ## only reconstruct for the following reasons
             if (
-                    key not in self.keys() # key is unkonwn -- first run
+                    key not in self.keys() # key is unknown -- first run
                     or parameter._last_modify_value_time > self._last_construct_time # parameter has been set
                     or np.any(self.get(key,index=index) != parameter.value) # data has changed some other way and differs from parameter
                     or ((not np.isnan(parameter.uncertainty)) and (np.any(self.get_uncertainty(key,index=index) != parameter.uncertainty))) # data has changed some other way and differs from parameter
@@ -405,6 +434,8 @@ class Dataset(optimise.Optimiser):
             self.set(key,value)
         
     def clear(self):
+        """Clear all data"""
+        self._last_modify_value_time = timestamp()
         self._length = 0
         self._data.clear()
 
@@ -443,33 +474,52 @@ class Dataset(optimise.Optimiser):
     def copy(self,keys=None,index=None):
         """Get a copy of self with possible restriction to indices and
         keys."""
-        if keys is None:
-            keys = self.keys()
         retval = self.__class__() # new version of self
-        retval.permit_nonprototyped_data = self.permit_nonprototyped_data
-        for key in keys:
-            if index is None:
-                retval[key] = self[key]
-            else:
-                retval[key] = deepcopy(self[key][index])
-        ## copy all attributes
-        for key in self.attributes:
-            retval[key] = self[key]
+        retval.copy_from(self,keys,index)
         return retval
 
+
     @optimise.auto_construct_method('copy_from')
-    def copy_from(self,source_dataset,*keys):
-        """Copy all data from source Dataset and update if source changes
-        during optimisation."""
-        def construct_function():
-            if len(keys) > 0:
-                keys_to_copy = keys
-            else:
-                keys_to_copy = source_dataset.keys()
-            if (source_dataset._last_modify_data_time > self._last_construct_time
-                or self._last_add_construct_function_time > self._last_construct_time):
-                for key in keys_to_copy:
-                    self[key] = source_dataset[key]
+    def copy_from(self,source,keys=None,index=None,limit_to_match=None):
+        """Copy all values and uncertainties from source Dataset and update if
+        source changes during optimisation."""
+        def construct_function(keys=keys,index=index):
+            self.clear()
+            if keys is None:
+                keys = source.keys()
+            self.permit_nonprototyped_data = source.permit_nonprototyped_data
+            if limit_to_match is not None:
+                index = source.match(**limit_to_match)
+            for key in keys:
+                self.set(key,source.get(key,index=index))
+                if (t:=source.get_uncertainty(key,index=index)) is not None:
+                    self.set_uncertainty(key,t)
+                # if (t:=source.get_vary(key,index=index)) is not None:
+                    # self.set_vary(key,t)
+                # if (t:=source.get_step(key,index=index)) is not None:
+                    # self.set_step(key,t)
+                # if index is None:
+                    # self[key] = source[key]
+                # else:
+                    # self[key] = deepcopy(source[key][index])
+            ## copy all attributes
+            for key in source.attributes:
+                self[key] = source[key]
+                
+
+                
+            # if len(keys) > 0:
+                # keys_to_copy = keys
+            # else:
+                # keys_to_copy = source.keys()
+            # if (source._last_modify_data_time > self._last_construct_time
+                # or self._last_add_construct_function_time > self._last_construct_time):
+                # i = source.limit_to_match(**limit_to_match)
+                # self.clear()
+                # for key in keys_to_copy:
+                    # self.set(key,
+                             # value=source.get(key,index=i),
+                             # uncertainty=source.get_uncertainty(key,index=i),)
         return construct_function
 
     def find(self,**matching_keys_vals):
@@ -671,9 +721,11 @@ class Dataset(optimise.Optimiser):
         else:
             return d
 
-    def sort(self,*sort_keys):
+    def sort(self,*sort_keys,reverse_order=False):
         """Sort rows according to key or keys."""
         i = np.argsort(self[sort_keys[0]])
+        if reverse_order:
+            i = i[::-1]
         for key in sort_keys[1:]:
             i = i[np.argsort(self[key][i])]
         self.index(i)
@@ -687,6 +739,9 @@ class Dataset(optimise.Optimiser):
             format_step= True,
             unique_values_in_header=True,
             include_description=True,
+            include_attributes=True,
+            quote_strings=False,
+            quote_keys=False,
     ):
         """Format data into a string representation."""
         if len(self)==0:
@@ -698,45 +753,54 @@ class Dataset(optimise.Optimiser):
         columns = []
         header_values = {}
         for key in keys:
+            formatted_key = ( "'"+key+"'" if quote_keys else key )
             if (unique_values_in_header
                 and len(tval:=self.unique(key)) == 1
                 and ( (not format_uncertainty) or self.get_uncertainty(key) is None)
                 and ( (not format_vary) or self.get_vary(key) is None)
                 and ( (not format_step) or self.get_step(key) is None)
                 ):
-                header_values[key] = format(tval[0],self._data[key]['fmt'])
+                ## format value for header
+                # header_values[key] = format(tval[0],self._data[key]['fmt'])
+                header_values[key] = tval[0]
             else:
                 ## two passes required on all data to align column
                 ## widths
                 vals = [format(t,self._data[key]['fmt']) for t in self.get(key)]
-                width = str(max(len(key),np.max([len(t) for t in vals])))
-                columns.append([format(key,width)]+[format(t,width) for t in vals])
+                if quote_strings and self._data[key]['kind'] == 'U':
+                    vals = ["'"+val+"'" for val in vals]
+                width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
+                columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
                 ## add uncertinaties / vary /step
                 if format_uncertainty and self.get_uncertainty(key) is not None:
+                    formatted_key = ( "'"+key+"_unc'" if quote_keys else key+"_unc" )
                     vals = [format(t,"0.1e") for t in self.get_uncertainty(key)]
-                    width = str(max(len(key+'_unc'),np.max([len(t) for t in vals])))
-                    columns.append([format(key+'_unc',width)]+[format(t,width) for t in vals])
+                    width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
+                    columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
                 if format_vary and self.get_vary(key) is not None:
+                    formatted_key = ( "'"+key+"_vary'" if quote_keys else key+"_vary" )
                     vals = [repr(t) for t in self.get_vary(key)]
-                    width = str(max(len(key+'_vary'),np.max([len(t) for t in vals])))
-                    columns.append([format(key+'_vary',width)]+[format(t,width) for t in vals])
+                    width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
+                    columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
                 if format_step and self.get_step(key) is not None:
+                    formatted_key = ( "'"+key+"_step'" if quote_keys else key+"_step" )
                     vals = [format(t,"0.1e") for t in self.get_step(key)]
-                    width = str(max(len(key+'_step'),np.max([len(t) for t in vals])))
-                    columns.append([format(key+'_step',width)]+[format(t,width) for t in vals])
+                    width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
+                    columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
         ## construct header before table
         header = []
         ## add attributes to header
-        for key in self.attributes:
-            val = getattr(self,key)
-            if val is not None:
-                header.append(f'{key:10} = {repr(val)}')
+        if include_attributes:
+            for key in self.attributes:
+                val = getattr(self,key)
+                if val is not None:
+                    header.append(f'{key:12} = {repr(val)}')
         if include_description:
             ## include description of keys
             for key in self:
                 line = f'{key:12}'
                 if key in header_values:
-                    line += f' = {header_values[key]:20}'
+                    line += f' = {repr(header_values[key]):20}'
                 else:
                     line += f'{"":23}'    
                 line += f' # {self.get_description(key)}'
@@ -745,13 +809,34 @@ class Dataset(optimise.Optimiser):
                 header.append(line)
         else:
             for key,val in header_values.items():
-                header.append(f'{key:10} = {val}')
+                header.append(f'{key:12} = {repr(val)}')
         ## make full formatted string
         retval = ''
         if header != []:
             retval = '\n'.join(header)+'\n'
         if columns != []:
             retval += '\n'.join([delimiter.join(t) for t in zip(*columns)])+'\n'
+        return retval
+
+    def format_as_list(self):
+        """Form as a valid python list of lists."""
+        retval = f'[ \n'
+        data = self.format(
+            delimiter=' , ',
+            format_uncertainty=True,
+            format_vary=True,
+            format_step= True,
+            unique_values_in_header=False,
+            include_description=False,
+            include_attributes=False,
+            quote_strings=True,
+            quote_keys=True,
+        )
+        for line in data.split('\n'):
+            if len(line)==0:
+                continue
+            retval += '    [ '+line+' ],\n'
+        retval += ']'
         return retval
 
     def __str__(self):
@@ -788,6 +873,10 @@ class Dataset(optimise.Optimiser):
                 format_kwargs.setdefault('delimiter',', ')
             elif re.match(r'.*\.rs',filename):
                 format_kwargs.setdefault('delimiter',' ␞ ')
+            elif re.match(r'.*\.psv',filename):
+                format_kwargs.setdefault('delimiter',' | ')
+            else:
+                format_kwargs.setdefault('delimiter',' ')
             tools.string_to_file(filename,self.format(keys,**format_kwargs))
 
     def load(
@@ -827,8 +916,8 @@ class Dataset(optimise.Optimiser):
             data = {}
             ## load header
             blank_line_re = re.compile(r'^ *$')
-            description_line_re = re.compile(r'^ *'+comment+f' *([^# ]+) *# *(.+) *')
-            unique_value_line_re = re.compile(r'^ *'+comment+f' *([^= ]+) *= *(.+) *')
+            description_line_re = re.compile(r'^ *'+comment+f' *([^# ]+) *# *(.+) *') # no value in line
+            unique_value_line_re = re.compile(r'^ *'+comment+f' *([^= ]+) *= *([^#]*[^ #\n])') # may also contain description
             with open(filename,'r') as fid:
                 for iline,line in enumerate(fid):
                     if re.match(blank_line_re,line):
@@ -837,7 +926,10 @@ class Dataset(optimise.Optimiser):
                         pass
                     elif r:=re.match(unique_value_line_re,line):
                         key,val = r.groups()
-                        data[key] = ast.literal_eval(val)
+                        if key in ('classname','name'):
+                            pass   #  HACK -- classname is neither data nor an attribute
+                        else:
+                            data[key] = ast.literal_eval(val)
                     else:
                         ## end of header
                         break
@@ -877,6 +969,59 @@ class Dataset(optimise.Optimiser):
         tmpfile.flush()
         tmpfile.seek(0)
         self.load(tmpfile.name,delimiter=delimiter,**load_kwargs)
+
+    def load_from_lists(self,keys,*values):
+        """Add many lines of data efficiently, with values possible optimised."""
+        cache = {}
+        if len(cache) == 0:
+            ## first construct
+            cache['ibeg'] = len(self)
+            cache['keys_vals'] = {key:[t[j] for t in values] for j,key in enumerate(keys)}
+        for key,val in cache['keys_vals'].items():
+            self[key] = val
+        def format_input_function():
+            retval = self.format_as_list()
+            retval = f'{self.name}.load_from_lists(' + retval[1:-1] + ')'
+            return retval
+        self.add_format_input_function(format_input_function)
+                                  
+
+        # ## add data from name to common_keys_vals if it is provided
+        # keys_vals = collections.OrderedDict() # will contain line data
+        # parameters = []                       # save optimisation parameters in a list
+        # value_lists = [list(t) for t in value_lists]       # make mutable
+        # for ivals,vals in enumerate(value_lists):              # loop through all lines
+            # for ikey,(key,val) in enumerate(zip(keys,vals)):
+                # if key not in keys_vals: keys_vals[key] = [] # add to keys if first
+                # if np.isscalar(val):                         
+                    # keys_vals[key].append(val) # add data to append
+                # else:
+                    # p = self.add_parameter(key,*val) # add to optimiser
+                    # vals[ikey] = p
+                    # parameters.append((ivals+len(self),p)) # record which line in self will be after appending data
+                    # keys_vals[key].append(p.p)   # add data to append
+        # ## append lines to self
+        # self.append(**keys_vals,**common_keys_vals)
+        # ## add optimisation function
+        # def f():
+            # for i,p in parameters:
+                # ## update parameters and uncertainty
+                # self[p.name][i] = self.vector_data[p.name].cast(p.p) 
+                # if not self.is_set('d'+p.name):
+                    # self['d'+p.name] = np.nan
+                # self['d'+p.name][i] = self.vector_data['d'+p.name].cast(p.dp) 
+                # self.unset_inferences(p.name)
+        # self.add_construct(f)
+        # ## add format input function
+        # def f():
+            # retval = f'{self.name}.add_lines(\n    {repr(keys)},'
+            # retval += '\n    '+",\n    ".join([repr(vals) for vals in value_lists])+",\n    "
+            # if len(common_keys_vals)>0:
+                # retval += my.dict_to_kwargs(common_keys_vals)+','
+            # retval +=  ')'
+            # return(retval)
+        # self.format_input_functions.append(f)
+
 
     def append(self,**kwargs):
         """Append a single row of data from kwarg scalar values."""

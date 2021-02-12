@@ -20,7 +20,6 @@ from .exceptions import InferException,MissingDataException
 
 prototypes = {}
 
-# prototypes['classname'] = dict( description="Type of levels of lines object.",kind='U' ,infer=[])
 prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer=[])
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
 prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer=[])

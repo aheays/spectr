@@ -147,7 +147,7 @@ class Optimiser:
     def pop_format_input_function(self):
         """Delete last format input function added."""
         key = list(self._format_input_functions.keys())[-1]
-        self._format_input_functions.pop(key)
+        return self._format_input_functions.pop(key)
 
     def automatic_format_input_function(self,limit_to_args=None,multiline=False):
         """Try to figure one out from any non None variables. Could
@@ -443,9 +443,7 @@ class Optimiser:
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get_vary(key)
                     for i in tools.find(vary):
-                        # print('DEBUG:    fff',p[0])
-                        optimiser.set(key,p.pop(0),i)
-                        optimiser.set_uncertainty(key,dp.pop(0),i)
+                        optimiser.set(key,value=p.pop(0),uncertainty=dp.pop(0),index=i)
 
     def has_changed(self):
         """Whether the construction of this optimiser has been changed or any

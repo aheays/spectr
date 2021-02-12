@@ -43,6 +43,7 @@ class Experiment(Optimiser):
         self.add_save_to_directory_function(
             lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
 
+    @auto_construct_method('set_spectrum')
     def set_spectrum(self,x,y,xbeg=None,xend=None):
         """Set x and y as the experimental spectrum. With various safety
         checks. Not optimisable, no format_input_function."""
@@ -66,13 +67,14 @@ class Experiment(Optimiser):
         ## check for regular x grid
         t0,t1 = np.diff(x).min(),np.diff(x).max()
         assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
-        ## add to self
-        def f():
-            self.x,self.y = copy(x),copy(y) # make copy -- more memory but survive other changes
-        self.add_construct_function(f)
+        ## verbose info
         if self.verbose:
             print('experimental_parameters:')
             pprint(self.experimental_parameters)
+        ## construct function
+        def f():
+            self.x,self.y = copy(x),copy(y) # make copy -- more memory but survive other changes
+        return f
 
     def set_spectrum_from_file(self,filename,xbeg=None,xend=None,**file_to_array_kwargs):
         """Load a spectrum to fit from an x,y file."""
@@ -86,7 +88,6 @@ class Experiment(Optimiser):
         opusdata = bruker.OpusData(filename)
         x,y = opusdata.get_spectrum()
         d = opusdata.data
-        self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
         self.experimental_parameters['filename'] = filename
         if 'Fourier Transformation' in d:
             self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
@@ -95,6 +96,8 @@ class Experiment(Optimiser):
             else:
                 warnings.warn(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
         self.set_spectrum(x,y,xbeg,xend)
+        self.pop_format_input_function() 
+        self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
 
     
     def set_spectrum_from_SOLEIL_file(
@@ -151,17 +154,17 @@ class Experiment(Optimiser):
             self.x *= float(scale)
         return construct_function
 
-    def interpolate(self,dx):
-        """Interpolate experimental spectrum to a grid of width dx, may change
-        position of xend."""
-        self.add_format_input_function(lambda:self.name+f'.interpolate({repr(dx)})')
-        def f():
-            xnew = np.arange(self.x[0],self.x[-1],dx)
-            ynew = tools.spline(self.x,self.y,xnew)
-            if self.verbose:
-                print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.x[0])},{repr(self.x[-1])},{self.x[1]-self.x[0]})")
-            self.x,self.y = xnew,ynew
-        self.add_construct_function(f)
+    # def interpolate(self,dx):
+        # """Interpolate experimental spectrum to a grid of width dx, may change
+        # position of xend."""
+        # self.add_format_input_function(lambda:self.name+f'.interpolate({repr(dx)})')
+        # def f():
+            # xnew = np.arange(self.x[0],self.x[-1],dx)
+            # ynew = tools.spline(self.x,self.y,xnew)
+            # if self.verbose:
+                # print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.x[0])},{repr(self.x[-1])},{self.x[1]-self.x[0]})")
+            # self.x,self.y = xnew,ynew
+        # self.add_construct_function(f)
 
     def __len__(self):
         return len(self.x)
@@ -485,25 +488,18 @@ class Model(Optimiser):
         ## necessary
         cache = {}
         def f():
-            pass 
-            ## first call -- no good, x not set yet
             if self.x is None:
-                return
-            if len(lines)==0:
-                ## no lines
+                ## x not set yet
                 return
             ## recompute spectrum if is necessary for some reason --
             ## do various tests to see if a cached version is ok
-            i = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
-            tlines = lines[i]
+            if 'i' not in cache:
+                cache['i'] = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
+            tlines = lines[cache['i']]
             if (
                     'absorbance'  not in cache
-                    or self._last_construct_time < lines._last_construct_time
-                    or np.any( i!=cache['i'] )
-                    or np.any( lines['ν'] != cache['ν'] )
-                    or np.any( lines['τ'] != cache['τ'] )
-                    or np.any( lines['ΓD'] != cache['ΓD'] )
-                    or np.any( lines['Γ'] != cache['Γ'] )
+                    or self._last_construct_time < lines._last_construct_time # line spectrum has changed
+                    or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
             ):
                 x,y = tlines.calculate_spectrum(
                     x=self.x,
@@ -520,12 +516,8 @@ class Model(Optimiser):
                     ## use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                     use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                 )
-                cache['i'] = i
-                cache['ν'] = tlines['ν']
-                cache['τ'] = tlines['τ']
-                cache['Γ'] = tlines['Γ']
-                cache['ΓD'] = tlines['ΓD']
                 cache['absorbance'] = np.exp(-y)
+                cache['tlines'] = tlines
             ## absorb
             self.y *= cache['absorbance']
         return f
@@ -857,7 +849,6 @@ class Model(Optimiser):
             max_width = 1
             if abswidth > 1e2:
                 raise Exception(f'Gaussian width > 100')
-            # print('DEBUG:', self.name,abswidth)
             if self.verbose and abswidth<3*np.diff(self.xexp).min(): 
                 warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects

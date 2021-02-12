@@ -52,7 +52,7 @@ prototypes['f'] = dict(description="Line f-value (dimensionless)",kind='f',fmt='
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section (cm2.cm-1).", kind='f', fmt='<10.5e',infer=[
     (('τa','Nself_l'),lambda self,τ,column_densitypp: τ/column_densitypp), 
     (('f','α_l'),lambda self,f,α_l: f/1.1296e12*α_l),
-    (('S','ν','Teq'),lambda self,S,ν,Teq,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Teq))),])
+    (('S','ν','Tex'),lambda self,S,ν,Tex,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Tex))),])
 ## prototypes['σ'] =dict(description="Integrated cross section (cm2.cm-1).", kind='f',  fmt='<10.5e', infer={('τ','column_densitypp'):lambda self,τ,column_densitypp: τ/column_densitypp, ('f','populationpp'):lambda self,f,populationpp: f/1.1296e12*populationpp,})
 def _f0(self,S296K,species,Z,E_l,Tex,ν):
     """See Eq. 9 of simeckova2006"""
@@ -81,25 +81,25 @@ prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11
 
 ## pressure broadening and shift parameter
 prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
-prototypes['γair'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['γair'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],cast=lambda x:np.abs(np.asarray(x),dtype=float),default_step=1e-3)
 prototypes['nγair'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδair'] = dict(description="Pressure shift temperature dependence in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['ΓPair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γair','nγair','Pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*γ*convert(P,'Pa','atm')),])
 prototypes['ΔνPair'] = dict(description="Pressure shift due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[(('δair','nδair','Pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
 
 prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
-prototypes['γself'] = dict(description="Pressure broadening coefficient in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['γself'] = dict(description="Pressure broadening coefficient in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],cast=lambda x:np.abs(np.asarray(x),dtype=float),default_step=1e-3)
 prototypes['nγself'] = dict(description="Pressure broadening temperature dependence in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['δself'] = dict(description="Pressure shift coefficient in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['δself'] = dict(description="Pressure shift coefficient in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδself'] = dict(description="Pressure shift temperature dependence in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['ΓPself'] = dict(description="Pressure self-broadening (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γself','nγself','Pself','Ttr'),lambda self,γ,n,P,T: (296/T)**n*γ*convert(P,'Pa','atm')),])
 prototypes['ΔνPself'] = dict(description="Pressure shift due to self (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[(('δself','nδself','Pself','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
 
 prototypes['PX'] = dict(description="Pressure of X (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
-prototypes['γX'] = dict(description="Pressure broadening coefficient in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['γX'] = dict(description="Pressure broadening coefficient in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],cast=lambda x:np.abs(np.asarray(x),dtype=float),default_step=1e-3)
 prototypes['nγX'] = dict(description="Pressure broadening temperature dependence in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['δX'] = dict(description="Pressure shift coefficient in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['δX'] = dict(description="Pressure shift coefficient in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδX'] = dict(description="Pressure shift temperature dependence in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['ΓPX'] = dict(ption="Pressure broadening due to species X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γX','nγX','PX','Ttr'),lambda self,γ,n,P,T: (296/T)**n*γ*convert(P,'Pa','atm')),])
 prototypes['ΔνPX'] = dict(description="Pressure shift due to species X (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[(('δX','nδX','PX','Ttr'),lambda X,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
@@ -120,7 +120,7 @@ prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or tran
 prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,)])
 
 ## line frequencies
-prototypes['ν0'] = dict(description="Transition wavenumber in a vacuum (cm-1)", kind='f', fmt='>0.6f', infer=[('ν',_f0)])
+prototypes['ν0'] = dict(description="Transition wavenumber in a vacuum (cm-1)", kind='f', fmt='>0.6f', default_step=1e-3, infer=[('ν',_f0)])
 prototypes['ν'] = dict(description="Transition wavenumber (cm-1)", kind='f', fmt='>0.6f', infer=[
     ## manually input all permutations of broadening affects -- could
     ## use 'self' in a function but then infer connections will not be
@@ -132,6 +132,7 @@ prototypes['ν'] = dict(description="Transition wavenumber (cm-1)", kind='f', fm
     (('ν0','ΔνPself'),lambda self,ν0,Δν0: ν0+Δν0),
     (('ν0','ΔνPair' ),lambda self,ν0,Δν0: ν0+Δν0),
     (('ν0','ΔνPX'),lambda self,ν0,Δν0: ν0+Δν0),
+    (('ν0',),lambda self,ν0: ν0),
 ])
 
 ## partition functions
@@ -518,14 +519,14 @@ class Generic(levels.Base):
         data = hitran.load(filename)
         ## interpret into transition quantities common to all transitions
         new = self.__class__(**{
-            'ν':data['ν'],
+            'ν0':data['ν'],
             ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
             'S296K':data['S'],
             'E_l':data['E_l'],
             'g_u':data['g_u'],
             'g_l':data['g_l'],
             'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
-            'nair':data['nγair'],
+            'nγair':data['nair'],
             'δair':data['δair'],
             'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
         })
