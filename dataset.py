@@ -41,13 +41,14 @@ class Dataset(optimise.Optimiser):
             prototypes = None,  # a dictionary of prototypes
             load_from_file = None,
             load_from_string = None,
+            copy_from = None,
             **kwargs):
         ## deal with arguments
         # self.description = description # A string describing this dataset
         self._data = dict()
         self._length = 0
         self._over_allocate_factor = 2
-        self._modify_data_time = timestamp()  # used for triggering optimise construct
+        self._last_modify_data_time = timestamp()  # used for triggering optimise construct
         self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self._prototypes
         # self.permit_reference_breaking = permit_reference_breaking  # not implemented -- I think
         self.permit_auto_defaults = permit_auto_defaults         # set default values if necessary automatically
@@ -80,6 +81,9 @@ class Dataset(optimise.Optimiser):
             retval += ')'
             return retval
         self.add_format_input_function(format_input_function)
+        ## copy from another dataset
+        if copy_from is not None:
+            self.copy_from(copy_from)
         ## load data from a file
         if load_from_file is not None:
             self.load(load_from_file)
@@ -128,7 +132,7 @@ class Dataset(optimise.Optimiser):
             print(f'{self.name}: setting {key} inferred={_inferred}')
         ## update modification if externally set, not if it is inferred
         if not _inferred:
-            self._modify_data_time = timestamp()
+            self._last_modify_data_time = timestamp()
         ## delete inferences since data has changed
         if key in self:
             self.unset_inferences(key)
@@ -452,6 +456,21 @@ class Dataset(optimise.Optimiser):
         for key in self.attributes:
             retval[key] = self[key]
         return retval
+
+    @optimise.auto_construct_method('copy_from')
+    def copy_from(self,source_dataset,*keys):
+        """Copy all data from source Dataset and update if source changes
+        during optimisation."""
+        def construct_function():
+            if len(keys) > 0:
+                keys_to_copy = keys
+            else:
+                keys_to_copy = source_dataset.keys()
+            if (source_dataset._last_modify_data_time > self._last_construct_time
+                or self._last_add_construct_function_time > self._last_construct_time):
+                for key in keys_to_copy:
+                    self[key] = source_dataset[key]
+        return construct_function
 
     def find(self,**matching_keys_vals):
         """Return an array of indices matching key_vals."""

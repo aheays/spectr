@@ -220,7 +220,8 @@ class Optimiser:
         to the list of residuals."""
         for f in functions:
             self._construct_functions[timestamp()] = f
-        # f()
+        f()                  # run function now
+        # self._last_construct_time = timestamp()
         self._last_add_construct_function_time = timestamp()
 
     def add_post_construct_function(self,*functions):
@@ -458,7 +459,7 @@ class Optimiser:
                 return True
         ## test if self is a Dataset and has been modified recently
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
-        if isinstance(self,Dataset) and self._modify_data_time > self._last_construct_time:
+        if isinstance(self,Dataset) and self._last_modify_data_time > self._last_construct_time:
             return True
         ## test if any suboptimiser has changed, or been constructed
         ## recently
