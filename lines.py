@@ -45,12 +45,6 @@ for key,val in levels.prototypes.items():
 
 ## add lines things
 prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='U', cast=str, fmt='<10s')
-prototypes['ν'] = dict(description="Transition wavenumber (cm-1)", kind='f', fmt='>0.6f', infer=[])
-prototypes['Γ'] = dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[
-    (('γself','Pself','γair','Pair'),lambda self,γself,Pself,γair,Pair: γself*convert(Pself,'Pa','atm')+γair*convert(Pair,'Pa','atm')), # LINEAR COMBINATION!
-    (('γself','Pself'),lambda self,γself,Pself: γself*convert(Pself,'Pa','atm')),
-    (('γair','Pair'),lambda self,γair,Pair: γair*convert(Pair,'Pa','atm'),)])
-prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,)])
 prototypes['f'] = dict(description="Line f-value (dimensionless)",kind='f',fmt='<10.5e', infer=[
     (('Ae','ν','g_u','g_l'),lambda self,Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2),
     (('Sij','ν','J_l'), lambda self,Sij,ν,J_l: 3.038e-6*ν*Sij/(2*J_l+1)), 
@@ -79,15 +73,68 @@ prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', 
 prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)])
 prototypes['Ttr'] = dict(description="Translational temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)])
 prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer=[(('Jp','Jpp'),lambda self,Jp,Jpp: Jp-Jpp,)],)
+
+
+## column 
 prototypes['L'] = dict(description="Optical path length (m)", kind='f', fmt='0.5f', infer=[])
-prototypes['γair'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer=[],)
-prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer=[],)
-prototypes['nair'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer=[],)
-prototypes['γself'] = dict(description="Pressure self-broadening coefficient (cm-1.atm-1.FWHM)", kind='f', cast=lambda x:np.abs(np.asarray(x),dtype=float), fmt='<10.5g', infer=[],)
-prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[])
-prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
 prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer=[(('Pself','L','Teq'), lambda self,Pself,L,Teq: convert((Pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
 
+## pressure broadening and shift parameter
+prototypes['Pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
+prototypes['γair'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['nγair'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['δair'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['nδair'] = dict(description="Pressure shift temperature dependence in air (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['ΓPair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γair','nγair','Pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*γ*convert(P,'Pa','atm')),])
+prototypes['ΔνPair'] = dict(description="Pressure shift due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[(('δair','nδair','Pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
+
+prototypes['Pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
+prototypes['γself'] = dict(description="Pressure broadening coefficient in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['nγself'] = dict(description="Pressure broadening temperature dependence in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['δself'] = dict(description="Pressure shift coefficient in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['nδself'] = dict(description="Pressure shift temperature dependence in self (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['ΓPself'] = dict(description="Pressure self-broadening (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γself','nγself','Pself','Ttr'),lambda self,γ,n,P,T: (296/T)**n*γ*convert(P,'Pa','atm')),])
+prototypes['ΔνPself'] = dict(description="Pressure shift due to self (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[(('δself','nδself','Pself','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
+
+prototypes['PX'] = dict(description="Pressure of X (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
+prototypes['γX'] = dict(description="Pressure broadening coefficient in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['nγX'] = dict(description="Pressure broadening temperature dependence in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['δX'] = dict(description="Pressure shift coefficient in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[],)
+prototypes['nδX'] = dict(description="Pressure shift temperature dependence in X (cm-1.atm-1.FWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['ΓPX'] = dict(ption="Pressure broadening due to species X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γX','nγX','PX','Ttr'),lambda self,γ,n,P,T: (296/T)**n*γ*convert(P,'Pa','atm')),])
+prototypes['ΔνPX'] = dict(description="Pressure shift due to species X (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[(('δX','nδX','PX','Ttr'),lambda X,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
+
+## linewidths
+prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or transition (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[
+    ## manually input all permutations of broadening affects --  could
+    ## use 'self' in a function but then infer connections will not be
+    ## made
+    (('ΓPself','ΓPair','ΓPX'),lambda self,Γ0,Γ1,Γ2: Γ0+Γ1+Γ2),
+    (('ΓPself','ΓPair'),lambda self,Γ0,Γ1: Γ0+Γ1),
+    (('ΓPself','ΓPX'),lambda self,Γ0,Γ1: Γ0+Γ1),
+    (('ΓPair','ΓPX'),lambda self,Γ0,Γ1: Γ0+Γ1),
+    ('ΓPself',lambda self,Γ0: Γ0),
+    ('ΓPair' ,lambda self,Γ0: Γ0),
+    ('ΓPX',lambda self,Γ0: Γ0),
+])
+prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,)])
+
+## line frequencies
+prototypes['ν0'] = dict(description="Transition wavenumber in a vacuum (cm-1)", kind='f', fmt='>0.6f', infer=[('ν',_f0)])
+prototypes['ν'] = dict(description="Transition wavenumber (cm-1)", kind='f', fmt='>0.6f', infer=[
+    ## manually input all permutations of broadening affects -- could
+    ## use 'self' in a function but then infer connections will not be
+    ## made
+    (('ν0','ΔνPself','ΔνPair','ΔνPX'),lambda self,ν0,Δν0,Δν1,Δν2: ν0+Δν0+Δν1+Δν2),
+    (('ν0','ΔνPself','ΔνPair'),lambda self,ν0,Δν0,Δν1: ν0+Δν0+Δν1),
+    (('ν0','ΔνPself','ΔνPX'),lambda self,ν0,Δν0,Δν1: ν0+Δν0+Δν1),
+    (('ν0','ΔνPair','ΔνPX'),lambda self,ν0,Δν0,Δν1: ν0+Δν0+Δν1),
+    (('ν0','ΔνPself'),lambda self,ν0,Δν0: ν0+Δν0),
+    (('ν0','ΔνPair' ),lambda self,ν0,Δν0: ν0+Δν0),
+    (('ν0','ΔνPX'),lambda self,ν0,Δν0: ν0+Δν0),
+])
+
+## partition functions
 def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
     """Compute partition function from data in self."""
     if self.Zsource != 'self':
@@ -110,14 +157,12 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
             k.append((i[j])[0])
         Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
     return Z
-
 @vectorise(cache=True,vargs=(1,2))
 def _f5(self,species,Tex):
     if self.Zsource != 'HITRAN':
         raise InferException(f'Zsource not "HITRAN".')
     from . import hitran
     return hitran.get_partition_function(species,Tex)
-
 prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[(('species','Tex'),_f5),( ('species','Tex','E_u','E_l','g_u','g_l'),_f3,)])
 
 ## vibrational transition frequencies
@@ -230,12 +275,16 @@ class Generic(levels.Base):
     _levels_class = levels.Generic
     _prototypes,_defining_qn = _collect_prototypes(
         'species', 'point_group','mass',
-        'ν',
+        'ν','ν0',
         # 'λ',
         'ΔJ',
         'f','σ','S','S296K','τ','Ae',
-        'γair','δair','nair','γself',
-        'Pself', 'Pair', 'Nself',
+
+        'Pair','γair','nγair','δair','nδair','ΓPair','ΔνPair',
+        'Pself','γself','nγself','δself','nδself','ΓPself','ΔνPself',
+        'PX','γX','nγX','δX','nδX','ΓPX','ΔνPX',
+
+        'Nself',
         'Teq','Tex','Ttr','Z',
         'Γ','ΓD',
         levels_class = _levels_class
@@ -476,7 +525,7 @@ class Generic(levels.Base):
             'g_u':data['g_u'],
             'g_l':data['g_l'],
             'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
-            'nair':data['nair'],
+            'nair':data['nγair'],
             'δair':data['δair'],
             'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
         })
@@ -517,12 +566,12 @@ class Diatomic(Generic):
         # 'λ','λv',
         'ΔJ',
         'f','σ','S','S296K','τ','Ae',
-        'γair','δair','nair','γself',
-        'Pself', 'Pair', 'Nself',
+        # 'γair','δair','nair','γself',
+        # 'Pself', 'Pair', 'Nself',
         'Teq','Ttr','Z',
         'Γ','ΓD',
         'Teq', 'Tex', 'Ttr', 'L',
-        'γair', 'δair', 'γself', 'nair', 'Pself', 'Pair', 'Nself',
+        # 'γair', 'δair', 'γself', 'nair', 'Pself', 'Pair', 'Nself',
         'branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ',
         levels_class = _levels_class
     )
