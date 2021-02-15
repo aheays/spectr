@@ -5,7 +5,7 @@ import numpy as np
 from pytest import approx
 
 from spectr import optimise
-from spectr.optimise import Optimiser,P,auto_construct_method
+from spectr.optimise import *
 from spectr import tools
 from spectr.dataset import Dataset
 
@@ -177,6 +177,27 @@ def test_format_input_decorator():
     assert len(optimiser.suboptimisers)==1
     assert len(optimiser._format_input_functions) == 3
     assert list(optimiser.construct()) == [20]
+
+def test_optimise_method_decorator():
+    ## an Optimiser subclass using optimise_method
+    class C(Optimiser):
+        @optimise_method('m')
+        def m(self,x,_cache=None):
+            _cache['x'] = float(x)
+            return [float(x)]
+        @optimise_method('n')
+        def n(self,x,y=None):
+            return [float(x+1)]
+    ## an instance
+    c = C()
+    ## add some parmaeters
+    pm = c.m(P(5, True))
+    pn = c.n(P(5, True),y=5)
+    ## fit them
+    c.optimise()
+    ## check the results are as expected
+    assert pm['x'] == approx(0)
+    assert pn['x'] == approx(-1)
 
 # def test_optimiser_str():
     # t = optimise.Optimiser()

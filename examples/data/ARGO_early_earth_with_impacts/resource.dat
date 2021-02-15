@@ -1,0 +1,15 @@
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c       reservoir.dat #This is a file for outgassing
+c       May 2006 Wakelam Valentine/May 2019 Rimmer Paul
+c       input file for outgassing, with amount valued as reservoir amount.
+c       No thermochemistry. Abundances are absolute (ni/sum(n)).
+c       Colums indicate:
+c       number  species  charge  element (H, He, C, O, S, Grain)  Abundance
+c       Please respect the format
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+0.              +- H  He C  N  O  Si S  Fe Na Mg Cl P  K  Ar Ti  number of bar	time
+   1 GH2        0  2  0  0  0  0  0  0  0  0  0  0  0  0  0  0  1.0000D+05  XXXXXXXXXX
+   2 GHCN       0  1  0  1  1  0  0  0  0  0  0  0  0  0  0  0  1.0000D+05  XXXXXXXXXX
+   3 GH3N       0  3  0  0  1  0  0  0  0  0  0  0  0  0  0  0  1.0000D+05  XXXXXXXXXX
+   4 GC2H2      0  2  0  2  0  0  0  0  0  0  0  0  0  0  0  0  1.0000D+05  XXXXXXXXXX
+   5 GC5H8      0  8  0  5  0  0  0  0  0  0  0  0  0  0  0  0  1.0000D+05  XXXXXXXXXX

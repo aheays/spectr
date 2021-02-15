@@ -4,6 +4,7 @@ import re
 import os
 # import sys
 from pprint import pprint
+from copy import copy
 
 import numpy as np
 from numpy import nan
@@ -73,6 +74,59 @@ def auto_construct_method(
             self.add_format_input_function(f)
             ## return kwargs
             return kwargs
+        return new_function
+    return actual_decorator
+
+def optimise_method(
+        format_single_line=None,
+        format_multi_line=None,
+):
+    """A decorator factory for automatically adding parameters,
+    construct_function, and input_format_function to a method in an
+    Optimiser subclass.  The undecorated method must return any
+    resiudal that you want added to the Optimsier. Parameters and
+    suboptimisers are picked out of the input kwargs.\n\n Input
+    arguments format_single_line and format_multi_line override
+    default format_input_function properties. The only reason to write
+    a factory is to accomodate these arguments, and maybe future
+    ones."""
+    def actual_decorator(function):
+        def new_function(self,*args,**kwargs):
+            ## this block subtitutes into kwargs with keys taken from
+            ## the function signature.  get signature arguments -- skip
+            ## first "self"
+            signature_keys = list(inspect.signature(function).parameters)[1:]
+            for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
+                if signature_key in kwargs:
+                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function_name)}.')
+                kwargs[signature_key] = arg
+            ## add parameters suboptimisers in args to self
+            parameters,suboptimisers =  _collect_parameters_and_optimisers(kwargs)
+            for t in parameters:
+                self.add_parameter(t)
+            for t in suboptimisers:
+                self.add_suboptimiser(t)
+            ## make a construct function which returns the output of
+            ## the original method, add an empty _cache if '_cache' in
+            ## signature kwargs but not provided in arguments
+            if '_cache' in signature_keys:
+                kwargs.setdefault('_cache',{})
+            self.add_construct_function(lambda: function(self,**kwargs))
+            ## make a foramt_input_function
+            def f():
+                kwargs_to_format = {key:val for key,val in kwargs.items() if key != '_cache' and val is not None}
+                if (len(kwargs_to_format)<2 or format_single_line) and not format_multi_line:
+                    formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                    return f'{self.name}.{function.__name__}({formatted_kwargs},)'
+                else:
+                    formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                    return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
+            self.add_format_input_function(f)
+            ## returns all args as a dictionary -- but not _cache
+            retval = copy(kwargs)
+            if "_cache" in retval:
+                retval.pop('_cache')
+            return retval
         return new_function
     return actual_decorator
 
