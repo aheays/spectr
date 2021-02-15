@@ -12,6 +12,7 @@ from .tools import AutoDict
 from .exceptions import InferException
 from .conversions import convert
 from . import optimise
+from .optimise import optimise_method,Parameter
 
 
 
@@ -148,13 +149,18 @@ class Dataset(optimise.Optimiser):
             ## apply prototype kwargs
             for tkey,tval in prototype_kwargs.items():
                 data[tkey] = tval
-            ## if a scalar value is given
+            ## if a scalar value is then expand to full length, if
+            ## vector then cast as a new array.  Do not use asarray
+            ## but instead make a copy -- this will prevent mysterious
+            ## bugs where assigned arrays feedback.
             if np.isscalar(value):
                 value = np.full(len(self),value)
+            else:
+                value = np.array(value)
             ## infer kind
             if 'kind' not in data:
                 ## use data to infer kind
-                value = np.asarray(value)
+                # value = np.asarray(value)
                 data['kind'] = value.dtype.kind
             ## convert bytes string to unicode
             if data['kind'] == 'S':
@@ -352,11 +358,18 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
-    @optimise.auto_construct_method('set_parameter',format_single_line=True)
-    def set_parameter(self,key,parameter,index=None,**prototype_kwargs):
-        if not isinstance(parameter,optimise.Parameter):
-            parameter = optimise.Parameter(parameter,vary=None)
-        def construct_function():
+    @optimise_method(format_single_line=True)
+    def set_parameter(
+            self,
+            key,
+            parameter,          # a scalar or Parameter
+            index=None,         # only apply to these indices
+            **prototype_kwargs,
+    ):
+        """Set a value to be optimised."""
+        ## if not a parameter then treat as a float -- could use set(
+        ## instead and branch there, requiring a Parameter here
+        if isinstance(parameter,Parameter):
             ## only reconstruct for the following reasons
             if (
                     key not in self.keys() # key is unknown -- first run
@@ -364,10 +377,15 @@ class Dataset(optimise.Optimiser):
                     or np.any(self.get(key,index=index) != parameter.value) # data has changed some other way and differs from parameter
                     or ((not np.isnan(parameter.uncertainty)) and (np.any(self.get_uncertainty(key,index=index) != parameter.uncertainty))) # data has changed some other way and differs from parameter
                 ):
-                self.set(key,value=parameter.value,
-                         uncertainty=parameter.uncertainty,
-                         index=index, **prototype_kwargs,)
-        return construct_function
+                self.set(key,value=parameter.value,uncertainty=parameter.uncertainty,index=index,**prototype_kwargs)
+
+        else:
+            ## only reconstruct for the following reasons
+            if (
+                    key not in self.keys() # key is unknown -- first run
+                    or np.any(self.get(key,index=index) != parameter) # data has changed some other way and differs from parameter
+                ):
+                self.set(key,value=parameter,index=index,**prototype_kwargs)
         
     def keys(self):
         return list(self._data.keys())
@@ -479,48 +497,23 @@ class Dataset(optimise.Optimiser):
         return retval
 
 
-    @optimise.auto_construct_method('copy_from')
+    @optimise_method()
     def copy_from(self,source,keys=None,index=None,limit_to_match=None):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
-        def construct_function(keys=keys,index=index):
-            self.clear()
-            if keys is None:
-                keys = source.keys()
-            self.permit_nonprototyped_data = source.permit_nonprototyped_data
-            if limit_to_match is not None:
-                index = source.match(**limit_to_match)
-            for key in keys:
-                self.set(key,source.get(key,index=index))
-                if (t:=source.get_uncertainty(key,index=index)) is not None:
-                    self.set_uncertainty(key,t)
-                # if (t:=source.get_vary(key,index=index)) is not None:
-                    # self.set_vary(key,t)
-                # if (t:=source.get_step(key,index=index)) is not None:
-                    # self.set_step(key,t)
-                # if index is None:
-                    # self[key] = source[key]
-                # else:
-                    # self[key] = deepcopy(source[key][index])
-            ## copy all attributes
-            for key in source.attributes:
-                self[key] = source[key]
-                
-
-                
-            # if len(keys) > 0:
-                # keys_to_copy = keys
-            # else:
-                # keys_to_copy = source.keys()
-            # if (source._last_modify_data_time > self._last_construct_time
-                # or self._last_add_construct_function_time > self._last_construct_time):
-                # i = source.limit_to_match(**limit_to_match)
-                # self.clear()
-                # for key in keys_to_copy:
-                    # self.set(key,
-                             # value=source.get(key,index=i),
-                             # uncertainty=source.get_uncertainty(key,index=i),)
-        return construct_function
+        self.clear()            # total data reset
+        if keys is None:
+            keys = source.keys()
+        self.permit_nonprototyped_data = source.permit_nonprototyped_data
+        if limit_to_match is not None:
+            index = source.match(**limit_to_match)
+        for key in keys:
+            self.set(key,source.get(key,index=index))
+            if (t:=source.get_uncertainty(key,index=index)) is not None:
+                self.set_uncertainty(key,t)
+        ## copy all attributes
+        for key in source.attributes:
+            self[key] = source[key]
 
     def find(self,**matching_keys_vals):
         """Return an array of indices matching key_vals."""

@@ -425,10 +425,10 @@ def test_step():
     assert all(t['step_x'] == [0.1,0.1,0.1])
 
 def test_vary():
-    t = Dataset(x=[1,2,3],f=5)
+    t = Dataset(x=[1,2,3.0],f=5)
     t.set_vary('x',[True,True,False])
     assert all(t.get_vary('x') == [True,True,False])
-    t = Dataset(x=[1,2,3],f=5)
+    t = Dataset(x=[1,2,3.0],f=5)
     t['x_vary'] = False
     assert all(t.get_vary('x') == [False,False,False,])
     assert all(t['x_vary'] == [False,False,False,])

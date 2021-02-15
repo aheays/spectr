@@ -314,25 +314,6 @@ class Optimiser:
             retval.append(self)     # put self last
         return retval 
 
-    # def get_parameter_dataset(self):
-        # """Compose parameters into a DataSet"""
-        # from .dataset import Dataset
-        # data = Dataset()
-        # data.prototypes = {
-            # 'description':dict(kind=str,description='Description of this parameter.'),
-            # 'value':dict(kind=float,description='Parameter value.'),
-            # 'uncertainty':dict(kind=float,description='Parameter uncertainty.',fmt='0.2g'),
-            # 'vary':dict(kind=bool,description='Optimised or not.'),
-            # 'step':dict(kind=float, description='Linearisation step size.', fmt='0.2g'),
-        # }
-        # parameters = self.get_parameters()
-        # data['description'] = [t.description for t in parameters]
-        # data['value'] = [t.value for t in parameters]
-        # data['uncertainty'] = [t.uncertainty for t in parameters]
-        # data['vary'] = [t.vary for t in parameters]
-        # data['step'] = [t.step for t in parameters],
-        # return data
-
     def format_input(self,match_lines_regexp=None):
         """Join strings which should make an exectuable python script for
         repeating this optimisation with updated parameters. Each element of
@@ -372,7 +353,6 @@ class Optimiser:
         tools.string_to_file(filename,self.format_input(match_lines_regexp))
 
     def __str__(self):
-        # return self.get_parameter_dataset().format()
         return self.format_input()
 
     def save_to_directory(
@@ -395,9 +375,6 @@ class Optimiser:
             if subdirectory in used_subdirectories:
                 raise Exception(f'Non-unique optimiser names producting subdirectory: {repr(subdirectory)}')
             used_subdirectories.append(subdirectory)
-            # tools.string_to_file(
-                # subdirectory+'/parameters.psv',
-                # optimiser.get_parameter_dataset().format(delimiter=' | '))
             tools.string_to_file(subdirectory+'/input.py',optimiser.format_input())
             if optimiser.residual is not None:
                 tools.array_to_file(subdirectory+'/residual' ,optimiser.residual,fmt='%+0.4e')
@@ -484,18 +461,15 @@ class Optimiser:
             dp = list(dp)
         already_set = []
         for optimiser in self._get_all_suboptimisers():
-            # print('DEBUG:', optimiser.name)
             for parameter in optimiser.parameters:
                 if id(parameter) not in already_set and parameter.vary:
-                    # print('DEBUG:    lll',parameter,p[0])
                     parameter.value = p.pop(0)
                     parameter.dp = dp.pop(0)
                     already_set.append(id(parameter))
-                # else:
-                    # print('DEBUG:', 'ggg',parameter)    
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get_vary(key)
+                    ## could speed up using slice rather than pop?
                     for i in tools.find(vary):
                         optimiser.set(key,value=p.pop(0),uncertainty=dp.pop(0),index=i)
 
