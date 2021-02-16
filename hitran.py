@@ -136,13 +136,15 @@ def load(filename):
 def get_lines(species_or_isotopologue):
     """Load a preconstructed linelists.  If species_or_isotopologue is not
     an isotopologue return natural abundance."""
-    l = lines.Base(f'species_or_isotopologue')
-    if species_or_isotopologue in molparam['species']:
+    l = lines.Generic(f'species_or_isotopologue')
+    if species_or_isotopologue in molparam['chemical_species']:
         filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/natural_abundance/lines.h5'
-    elif species_or_isotopologue in molparam['species']:
+    elif species_or_isotopologue in molparam['isotopologue']:
         filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/lines.h5'
+    else:
+        raise Exception(f"could not determine HITRAN linelist filename for {repr(species_or_isotopologue)}")
     l.load(filename)
-    l['partition_source'] = 'HITRAN'
+    l['Zsource'] = 'HITRAN'
     return l
 
 

@@ -316,13 +316,6 @@ class Model(Optimiser):
         self._xin = None        # might be needed in next _initialise
         return self.y
 
-    def _remove_interpolation(self):
-        """If the model has been interpolated then restore it to original
-        grid."""
-        if self._interpolate_factor is not None:
-            self.x = self.x[::self._interpolate_factor]
-            self.y = self.y[::self._interpolate_factor]
-
     def _get_residual(self):
         """Compute residual error."""
         if self.xexp is None:
@@ -332,16 +325,21 @@ class Model(Optimiser):
             residual *= self.residual_weighting
         return residual
 
-    @auto_construct_method('interpolate')
+    @optimise_method()
     def interpolate(self,dx):
         """When calculating model set to dx grid (or less to achieve
-        overlap with experimental points."""
-        def f():
-            xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
-            self._interpolate_factor = int(np.ceil(xstep/dx))
-            self.x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*self._interpolate_factor)
-            self.y = np.zeros(self.x.shape,dtype=float) # delete current y!!
-        return f
+        overlap with experimental points. DELETES CURRENT Y!"""
+        xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
+        self._interpolate_factor = int(np.ceil(xstep/dx))
+        self.x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*self._interpolate_factor)
+        self.y = np.zeros(self.x.shape,dtype=float) # delete current y!!
+
+    def _remove_interpolation(self):
+        """If the model has been interpolated then restore it to original
+        grid."""
+        if self._interpolate_factor is not None:
+            self.x = self.x[::self._interpolate_factor]
+            self.y = self.y[::self._interpolate_factor]
 
     def add_absorption_cross_section_from_file(
             self,
@@ -811,15 +809,13 @@ class Model(Optimiser):
                  np.arange(self.experiment.x[0]-xstep,self.experiment.x[-1]+xstep*1.01,xstep)]
         self.add_intensity_spline(knots=knots)
 
-    @auto_construct_method('add_intensity_spline')
+    @optimise_method()
     def add_intensity_spline(self,knots=None,order=3):
         """Add intensity points defined by a spline."""
-        def f():
-            x = np.array([float(xi) for xi,yi in knots])
-            y = np.array([float(yi) for xi,yi in knots])
-            i = (self.x>=np.min(x))&(self.x<=np.max(x))
-            self.y[i] += tools.spline(x,y,self.x[i],order=order)
-        return f
+        x = np.array([float(xi) for xi,yi in knots])
+        y = np.array([float(yi) for xi,yi in knots])
+        i = (self.x>=np.min(x))&(self.x<=np.max(x))
+        self.y[i] += tools.spline(x,y,self.x[i],order=order)
 
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
         # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
@@ -829,13 +825,10 @@ class Model(Optimiser):
         # def f(): self.y *= scale*p['scale_factor']
         # self.add_construct_function(f)
 
-    def shift_by_constant(self,shift=0.):
+    @optimise_method()
+    def shift_by_constant(self,shift):
         """Shift by a constant amount."""
-        shift = self.add_parameter('shift_by_constant',*tools.ensure_iterable(shift)) # add to optimsier
-        self.add_format_input_function(lambda: f"{self.name}.shift_by_constant({repr(shift)})")
-        def f():
-            self.y += shift.p
-        self.add_construct_function(f) # multiply spline during construct
+        self.y += float(shift)
 
     @auto_construct_method('convolve_with_gaussian')
     def convolve_with_gaussian(self,width=1,fwhms_to_include=100):
@@ -1025,7 +1018,7 @@ class Model(Optimiser):
     ):
         """Apodise the spectrum with a known function. This is done in the
         length-domain so both Fourier and inverse-Fourier transforms are
-        required."""
+        required.  MUST INCLUDE ENTIRE SPECTRUM? CORRECTABLE?"""
         ## get apodisation_function and interpolation_factor 
         if apodisation_function is not None:
             pass
@@ -1081,41 +1074,91 @@ class Model(Optimiser):
         # self.construct_functions.append(f)
         self.add_format_input_function(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
 
-    def convolve_with_blackman_harris(self,terms=3):
+
+    # def convolve_with_blackman_harris(self,terms=3,fwhms_to_include=100):
+        # """Convolve with sinc function, width is FWHM."""
+        # ## check if there is a risk that subsampling will ruin the convolution
+        # p = self.add_parameter_set('convolve_with_sinc',width=width)
+        # if 'sinc_FWHM' in self.experimental_parameters: # get auto width and make sure consistent with what is given
+            # if width is None: width = self.experimental_parameters['sinc_FWHM']
+            # if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
+        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
+        # if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        # def f():
+            # x,y = self.x,self.y
+            # width = np.abs(p['width'])
+            # ## get padded spectrum to minimise edge effects
+            # dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
+            # padding = np.arange(dx,fwhms_to_include*width+dx,dx)
+            # xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+            # ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
+            # ## generate sinc to convolve with
+            # xconv = np.arange(-fwhms_to_include*width,fwhms_to_include*width,dx)
+            # if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
+            # yconv = np.sinc((xconv-xconv.mean())/width*1.2)*1.2/width # unit integral normalised sinc
+            # yconv = yconv/yconv.sum() # sum normalised
+            # ## convolve and return, discarding padding
+            # self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        # self.add_construct_function(f)
+
+    @optimise_method()
+    def convolve_with_blackman_harris(
+            self,
+            terms=3,
+            interpolation_factor=None,
+            fwhms_to_include=100,
+            _cache=None,
+    ):
         """Convolve with the coefficients equivalent to a Blackman-Harris
         window. Coefficients taken from harris1978 p. 65.  There are
         multiple coefficents given for 3- and 5-Term windows. I use
         the left.  This is faster than apodisation in the
         length-domain."""
-        raise Exception('Does not quite work in current form when compared with frequency-domain apodisation.')
-        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow})')
-        warned_already = False
-        def f():
-            x,y = self.x,self.y
-            ## get padded spectrum to minimise edge effects
-            dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
-            padding = np.arange(dx,2*(terms-1)+1+dx,dx)
-            xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-            ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-            ## generate sinc to convolve with
-            if ('interpolation_factor' not in self.experiment.experimental_parameters
-                and not warned_already):
-                warnings.warn("interpolation_factor not found in experimental_parameters, assuming it is 1")
-                warned_already = True 
-            interpolation_factor = (self._interpolate_factor if self._interpolate_factor else 1)
-            if 'interpolation_factor' in self.experiment.experimental_parameters:
-                interpolation_factor *= self.experiment.experimental_parameters['interpolation_factor']
-            assert interpolation_factor%1 == 0,'Blackman-Harris convolution only valid for integer interpolation_factor (current: {interpolation_factor{)'
+        x,y = self.x,self.y
+        ## determine how much interpolation there is
+        if 'interpolate_factor' not in _cache:
+            if interpolation_factor is None:
+                ## in experimental spectrum
+                if 'interpolation_factor' in self.experiment.experimental_parameters:
+                    interpolation_factor = self.experiment.experimental_parameters['interpolation_factor']
+                else:
+                    interpolation_factor = 1
+                    warnings.warn("interpolation_factor not found in experimental_parameters, assuming it is 1")
+                ## added in  model
+                if self._interpolate_factor is not None:
+                    interpolation_factor *= self._interpolate_factor
+            if interpolation_factor%1 != 0:
+                raise Exception('Blackman-Harris convolution only valid for integer interpolation_factor, not {interpolation_factor}')
             interpolation_factor = int(interpolation_factor)
-            if terms == 3:
-                yconv = np.zeros(4*interpolation_factor+1,dtype=float)
-                yconv[2*interpolation_factor] = 0.42323 # harris1978
-                yconv[interpolation_factor] = yconv[-interpolation_factor-1] = 0.49755 # harris1978
-                yconv[0] = yconv[-1] = 0.07922 # harris1978
-            yconv /= yconv.sum()                    # normalised
-            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.add_construct_function(f)
+            _cache['interpolation_factor'] = interpolation_factor
+        interpolation_factor = _cache['interpolation_factor']
+        ## get padded spectrum to minimise edge effects
+        dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
+        width = interpolation_factor*dx
+        padding = np.arange(dx,fwhms_to_include*width+dx,dx)
+        xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+        ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
+        ## generate sinc to convolve with
+        xconv = np.arange(0,fwhms_to_include*width,dx)
+        xconv = np.concatenate((-xconv[-1:0:-1],xconv))
+        # ax = plotting.qax(10)
+        # ax.plot(xconv,0.42323*np.sinc(xconv/width*1.2))
+        # ax.plot(xconv,0.5*0.49755*np.sinc((xconv-width/1.2)/width*1.2))
+        if terms == 3:
+            yconv =  0.42323*np.sinc(xconv/width*1.2)
+            yconv += 0.5*0.49755*np.sinc((xconv-width/1.2)/width*1.2)
+            yconv += 0.5*0.49755*np.sinc((xconv+width/1.2)/width*1.2)
+            yconv += 0.5*0.07922*np.sinc((xconv-2*width/1.2)/width*1.2)
+            yconv += 0.5*0.07922*np.sinc((xconv+2*width/1.2)/width*1.2)
+        else: 
+            raise Exception("Only 3-term version implemented.")
+        yconv /= yconv.sum()                    # normalised
+        # ax.plot(xconv,yconv)
+        # ax.set_xlim(-0.1,0.1)
+        # ax.grid(True)
+        self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
+    @optimise_method()
     def convolve_with_signum(
             self,
             amplitude,          # amplitude of signume
@@ -1124,34 +1167,26 @@ class Model(Optimiser):
             xend=None,
     ):
         """Convolve with signum function generating asymmetry. δ(x-x0) + amplitude/(x-x0)."""
-        amplitude = self.add_parameter('amplitude',*tools.ensure_iterable(amplitude),note='convolve_with_signum')
-        def f():
-            retval =  f'{self.name}.convolve_with_signum(amplitude={repr(amplitude)},xwindow={xwindow}'
-            if xbeg is not None:
-                retval += f',xbeg={xbeg}'
-            if xend is not None:
-                retval += f',xend={xend}'
-            return(retval+')')
-        self.add_format_input_function(f)
-        def f():
-            i = ((self.x>=(xbeg if xbeg is not None else -np.inf))
-                 &(self.x<=(xend if xend is not None else np.inf)))
-            x,y = self.x[i],self.y[i]
-            if len(x)==0:
-                return
-            ## get padded spectrum to minimise edge effects
-            dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
-            padding = np.arange(dx,xwindow+dx,dx)
-            xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-            ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-            ## generate sinc to convolve with
-            xconv = np.arange(0,xwindow,dx)
-            xconv = np.concatenate((-xconv[::-1],xconv[1:]))
-            yconv = amplitude.p/xconv/len(xconv)               # signum function
-            yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
-            yconv /= yconv.sum()                    # normalised
-            self.y[i] = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.add_construct_function(f)
+        i = ((self.x>=(xbeg if xbeg is not None else -np.inf))
+             &(self.x<=(xend if xend is not None else np.inf)))
+        x,y = self.x[i],self.y[i]
+        if len(x)==0:
+            return
+        ## get padded spectrum to minimise edge effects
+        dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
+        padding = np.arange(dx,xwindow+dx,dx)
+        xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+        ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
+        ## generate sinc to convolve with
+        xconv = np.arange(0,xwindow,dx)
+        xconv = np.concatenate((-xconv[::-1],xconv[1:]))
+        yconv = amplitude/xconv/len(xconv)               # signum function
+        yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
+        yconv /= yconv.sum()                    # normalised
+        # print('DEBUG:', )
+        # ax = plotting.qax()
+        # ax.plot(yconv)
+        self.y[i] = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
     def convolve_with_SOLEIL_instrument_function(
             self,

@@ -63,7 +63,13 @@ def voigt(x,
     from scipy import special
     b = 0.8325546111576 # np.sqrt(np.log(2))
     norm = 1.0644670194312262*ΓG # sqrt(2*pi/8/log(2))
-    if nfwhmG is None:
+    if ΓG == 0:
+        ## pure Lorentzian
+        return lorentzian(x,x0,S,ΓL,nfwhm=nfwhmL)
+    elif ΓL == 0:
+        ## pure Gaussian
+        return gaussian(x,x0,S,ΓG,y)
+    elif nfwhmG is None:
         ## full calculation
         y = S*special.wofz((2.*(x-x0)+1.j*ΓL)*b/ΓG).real/norm
     elif nfwhmL is None and nfwhmG is not None:
@@ -88,6 +94,36 @@ def voigt(x,
     else:
         raise Exception(f'Not implemented: nfwhmL={repr(nfwhmL)} and nfwhmG={repr(nfwhmG)}')
     return(y)
+
+def rautian(
+        x,
+        x0=0,                 # centre
+        S=1,                  # integrated value
+        ΓL=0,ΓG=0,            # fwhm
+        νvc=0,
+        # nfwhmL=None,          # maximum Lorentzian widths to include
+        # nfwhmG=None,          # maximum Gaussian widths to include -- pure Lorentzian outside this
+        # yin = None            # set to add this line in place to an existing specturm of size matching x
+):
+    """Rautian profile. E.g,. schreier2020, 10.1016/j.jqsrt.2020.107385"""
+    # if ζ == 0:
+        # return voigt(x,x0,S,ΓL,ΓG)
+    from scipy import special
+    b = 0.8325546111576 # np.sqrt(np.log(2))
+    γG,γL = ΓG/2,ΓL/2   # FWHM to HWHM
+    if γG == 0:
+        ## hack to prevent divide by zero
+        γG = 1e-10
+    print('DEBUG:', γG,γG==0)
+    x = b*(x-x0)/γG
+    y = b*γL/γG
+    z = x + 1j*y
+    ζ = b*νvc/γG
+    retval = (special.wofz(z)/(1-np.sqrt(constants.pi)*ζ*special.wofz(z))).real
+    ## normalise
+    retval /= 1.0644670194312262*ΓG
+    return retval
+
 
 # def fano(x,x0=0,S=1,Γ=1,q=0,ρ=1):
     # """Calculate a Fano profile."""

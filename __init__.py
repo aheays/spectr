@@ -5,7 +5,7 @@ import shutil
 
 ## nonstandard library
 import numpy as np
-from numpy import array,nan
+from numpy import array,nan,arange
 from scipy import integrate
 
 ## import subpackages of this library
@@ -25,6 +25,7 @@ from . import bruker
 from . import electronic_states
 from . import viblevel
 from . import cross_section
+from . import lineshapes
 
 ## import more explicitly for interactive use
 from .dataset import Dataset
