@@ -14,6 +14,7 @@ from . import plotting
 from . import tools
 from . import hitran
 from . import bruker
+from . import lineshapes
 
 class Experiment(Optimiser):
     
@@ -516,21 +517,50 @@ class Model(Optimiser):
                 )
                 cache['absorbance'] = np.exp(-y)
                 cache['tlines'] = tlines
+                print( tlines)  #  DEBUG
             ## absorb
             self.y *= cache['absorbance']
         return f
 
-    # @auto_construct_method('add_hitran_absorption_lines')
+    @optimise_method()
+    def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
+        ## x not set yet
+        if self.x is None:
+            return
+        ## first run
+        if len(_cache) == 0:
+            ## recompute spectrum if is necessary for some reason --
+            ## do various tests to see if a cached version is ok
+            i = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
+            _cache['i'] = i
+        else:
+            i = _cache['i']
+            
+        if (
+                'absorbance'  not in _cache
+                or self._last_construct_time < lines._last_construct_time # line spectrum has changed
+                or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
+        ):
+            τ = lineshapes.rautian_spectrum(
+                x=self.x,
+                x0=lines['ν'][i],
+                S=lines['τ'][i],
+                ΓL=lines['Γ'][i],
+                ΓG=lines['ΓD'][i],
+                νvc=lines['νvc'][i],
+                Smin=τmin,
+            )
+            _cache['absorbance'] = np.exp(-τ)
+        self.y *= _cache['absorbance']
+
     def add_hitran_absorption_lines(self,species=None,**kwargs):
         """Shortcut"""
         return self.add_absorption_lines(lines=hitran.get_lines(species),**kwargs)
                 
-    @auto_construct_method('add_noise')
+    @optimise_method()
     def add_noise(self,rms=1):
         """Add normally distributed noise with given rms."""
-        def f():
-            self.y += rms*tools.randn(len(self.y))
-        return f
+        self.y += rms*tools.randn(len(self.y))
 
     def add_emission_lines(
             self,

@@ -68,7 +68,7 @@ def voigt(x,
         return lorentzian(x,x0,S,ΓL,nfwhm=nfwhmL)
     elif ΓL == 0:
         ## pure Gaussian
-        return gaussian(x,x0,S,ΓG,y)
+        return gaussian(x,x0,S,ΓG)
     elif nfwhmG is None:
         ## full calculation
         y = S*special.wofz((2.*(x-x0)+1.j*ΓL)*b/ΓG).real/norm
@@ -99,7 +99,8 @@ def rautian(
         x,
         x0=0,                 # centre
         S=1,                  # integrated value
-        ΓL=0,ΓG=0,            # fwhm
+        ΓL=0,
+        ΓG=0,
         νvc=0,
         # nfwhmL=None,          # maximum Lorentzian widths to include
         # nfwhmG=None,          # maximum Gaussian widths to include -- pure Lorentzian outside this
@@ -114,14 +115,13 @@ def rautian(
     if γG == 0:
         ## hack to prevent divide by zero
         γG = 1e-10
-    print('DEBUG:', γG,γG==0)
     x = b*(x-x0)/γG
     y = b*γL/γG
     z = x + 1j*y
     ζ = b*νvc/γG
     retval = (special.wofz(z)/(1-np.sqrt(constants.pi)*ζ*special.wofz(z))).real
-    ## normalise
-    retval /= 1.0644670194312262*ΓG
+    ## normalise and scale
+    retval = retval/(1.0644670194312262*ΓG) * S
     return retval
 
 
@@ -129,6 +129,37 @@ def rautian(
     # """Calculate a Fano profile."""
     # tx = 2*(x-x0)/Γ
     # return(S*((1.-ρ**2+ρ**2*(q+tx)**2./(1.+tx**2.))/(ρ**2.*(1.+q**2.)*constants.pi*Γ/2.)))
+
+def rautian_spectrum(
+        x,                      # frequency scale, assumed monotonically increasing (cm-1)
+        x0,                     # line centers (cm-1)
+        S,                      # line strengths
+        ΓL,                     # Lorentzian linewidth (cm-1 FWHM)
+        ΓG,                     # Gaussian linewidth (cm-1 FWHM)
+        νvc,
+        Smin=None,              # do not include lines weaker than this
+):
+    """Convert some lines into a spectrum."""
+    ## no x, nothing to do
+    if len(x)==0 or len(x0)==0:
+        return np.zeros(x.shape,dtype=float) 
+    ## strip lines that are too weak
+    if Smin is not None:
+        i = np.abs(S)>Smin
+        x0,S,ΓL,ΓG = x0[i],S[i],ΓL[i],ΓG[i]
+    ## remove lines outside of fwhm calc range
+    # if not nfwhmG is None and not nfwhmL is None:
+        # i = ((x0+nfwhmL*ΓL+nfwhmG*ΓG)<x[0]) | ((x0-nfwhmL*ΓL-nfwhmG*ΓG)>x[-1])
+        # x0,S,ΓL,ΓG = x0[~i],S[~i],ΓL[~i],ΓG[~i]
+    ## test if nothing left
+    if len(x0) == 0:
+        return np.full(x.shape,0.) 
+    ## calc single process
+    y = np.zeros(x.shape,dtype=float)
+    for args in zip(x0,S,ΓL,ΓG,νvc):
+        y += rautian(x,*args)
+    return y
+
 
 def voigt_spectrum(
         x,                      # frequency scale, assumed monotonically increasing (cm-1)
@@ -162,7 +193,7 @@ def voigt_spectrum(
         y = np.zeros(x.shape,dtype=float)
         for (x0i,Si,ΓLi,ΓGi) in zip(x0,S,ΓL,ΓG):
             voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG,yin=y)
-            ## y += voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG)
+            # y += voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG)
     else:
         if tools.isnumeric(use_multiprocessing):
             nparallel = int(use_multiprocessing)
@@ -190,7 +221,7 @@ def voigt_spectrum(
             p.join()
             raise err
         y = np.sum(y,axis=0)
-    return(y)
+    return y 
 
 
 def centroided_spectrum(

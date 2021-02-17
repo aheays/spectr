@@ -12,3 +12,4 @@ def test_load_lines():
     # t.load_from_hitran('data/hitran_data/CO/hitran_linelist.data')
     # assert len(t) == 849
     # assert set(t.keys()) == {'γair', 'v_u', 'Ae', 'g_u', 'v_l', 'ΔJ', 'γself', 'J_l', 'species', 'ν', 'nair', 'δair', 'E_l', 'g_l'}
+

@@ -17,7 +17,7 @@ def get_partition_function(
     """Use hapi to get a partition function.  Uses main isotopologue if
     not given."""
     from hapi import hapi
-    Mol,Iso = translate_isotopologue_to_codes(species_or_isotopologue)
+    Mol,Iso = translate_species_to_codes(species_or_isotopologue)
     return hapi.partitionSum(Mol,Iso,temperature)
 
 def get_molparam(**match_keys_vals):
@@ -36,7 +36,7 @@ def get_molparam_from_isotopologue(species_or_isotopologue):
         j = np.argmax(molparam['natural_abundance'][i])
         return molparam.as_dict(tools.find(i)[j])
 
-def translate_codes_to_species_isotopologue(
+def translate_codes_to_species(
         species_ID,
         local_isotopologue_ID,
 ):
@@ -46,7 +46,7 @@ def translate_codes_to_species_isotopologue(
                       local_isotopologue_ID=local_isotopologue_ID)
     return molparam['chemical_species'][i],molparam['isotopologue'][i]
 
-def translate_isotopologue_to_codes(species_or_isotopologue):
+def translate_species_to_codes(species_or_isotopologue):
     """Get hitran species and isotopologue codes from species name.
     Assumes primary isotopologue if not indicated."""
     if len(i:=find(molparam.match(isotopologue=species_or_isotopologue))) > 0:
@@ -56,11 +56,11 @@ def translate_isotopologue_to_codes(species_or_isotopologue):
         i = i[np.argmax(molparam['natural_abundance'][i])]
     else:
         raise Exception("Cannot find {species_or_isotopologue=}")
-    return (molparam['species_ID'][i],
-            molparam['local_isotopologue_ID'][i])
+    return (int(molparam['species_ID'][i]),
+            int(molparam['local_isotopologue_ID'][i]))
 
 def download_linelist(
-        species_or_isotopologue, 
+        species, 
         νbeg,νend,
         data_directory='td',
         table_name=None,        # defaults to species
@@ -68,10 +68,46 @@ def download_linelist(
     from hapi import hapi
     if table_name is None:
         table_name = species
-    MOL,ISO = translate_isotopologue_to_codes(species_or_isotopologue)
+    MOL,ISO = translate_species_to_codes(species)
     mkdir(data_directory)
     hapi.db_begin(data_directory)
     hapi.fetch(table_name,int(MOL),int(ISO),νbeg,νend)
+
+def calc_spectrum(
+        species,
+        data_directory,
+        T,p,
+        νbeg,νend,νstep,
+        table_name=None,
+        make_plot= True,
+):
+    """Plot data. Must be already downloaded with download_linelist."""
+    from hapi import hapi
+    if table_name is None:
+        table_name = species
+    MOL,ISO = translate_species_to_codes(species)
+    hapi.db_begin(data_directory)
+    # ## download data if necessary -- ν range not checked
+    # if not os.path.exists(f'{data_directory}/{species}.data'):
+        # hapi.fetch(species,MOL,ISO,νbeg,νend)
+    ## calculate spectrum
+    import time ; timer = time.time() # DEBUG
+    ν,coef = hapi.absorptionCoefficient_Lorentz(
+        SourceTables=table_name,
+        WavenumberRange=[νbeg,νend],
+        WavenumberStep=νstep,
+        Environment={"T":T,"p":p},)
+    print('Time elapsed:',format(time.time()-timer,'12.6f'),'line: 95 file: /home/heays/src/python/spectr/hitran.py'); timer = time.time() # DEBUG
+    if make_plot:
+        from . import plotting
+        ax = plotting.gca()
+        ax.plot(ν,coef,label=species)
+        ax.set_yscale('log')
+        ax.set_xlabel('Wavenumber (cm-1)')
+        ax.set_ylabel('Absorption coefficient')
+    return ν,coef
+    
+
 
 def load(filename):
     """Load HITRAN .data file into a dictionary of numpy arrays."""
