@@ -113,10 +113,10 @@ prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', 
 prototypes['Nself'] = dict(description="Column density (cm2)",kind='f',fmt='<11.3e', infer=[])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
-prototypes['v1'] = dict(description="Vibrational quantum number for mode 1", kind='i',infer=[])
-prototypes['v2'] = dict(description="Vibrational quantum number for mode 2", kind='i',infer=[])
-prototypes['v3'] = dict(description="Vibrational quantum number for mode 3", kind='i',infer=[])
-prototypes['v4'] = dict(description="Vibrational quantum number for mode 4", kind='i',infer=[])
+prototypes['ν1'] = dict(description="Vibrational quantum number for mode 1", kind='i',infer=[])
+prototypes['ν2'] = dict(description="Vibrational quantum number for mode 2", kind='i',infer=[])
+prototypes['ν3'] = dict(description="Vibrational quantum number for mode 3", kind='i',infer=[])
+prototypes['ν4'] = dict(description="Vibrational quantum number for mode 4", kind='i',infer=[])
 prototypes['l2'] = dict(description="Vibrational angular momentum 2", kind='i',infer=[])
 prototypes['Λ'] = dict(description="Total orbital angular momentum aligned with internuclear axis", kind='i',infer=[])
 prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',infer=[])
@@ -265,7 +265,7 @@ class Base(Dataset):
         # self.automatic_format_input_function(multiline=True )
         # self.pop_format_input_function()
         # self.automatic_format_input_function(limit_to_args=('name',))
-        self.default_zkeys = self._defining_qn
+        self.default_zkeys = self.defining_qn
 
 class Generic(Base):
     """A generic level."""
@@ -279,9 +279,24 @@ class Generic(Base):
         'Teq','Tex','Z','α',
         'Nself',
     )
-    _defining_qn = ('species',)
-    
-    
+    defining_qn = ('species',)
+
+class LinearTriatomic(Generic):
+    """A generic level."""
+    _prototypes = _collect_prototypes(
+        'species',
+        'label',
+        'ν1','ν2','ν3','l2',
+        'point_group',
+        'E','Eref',
+        'Γ','ΓD',
+        'J',
+        'g','gnuclear',
+        'Teq','Tex','Z','α',
+        'Nself',
+    )
+    defining_qn = ('species','label','ν1','ν2','ν3','l2',)
+        
 
 class Diatomic(Base):
     _prototypes = _collect_prototypes(
@@ -312,7 +327,7 @@ class Diatomic(Base):
         'Teq',
         'α',
     )
-    _defining_qn = ('species','label','v','Σ','ef','J')
+    defining_qn = ('species','label','v','Σ','ef','J')
 
     def load_from_duo(self,filename):
         """Load an output level list computed by DUO (yurchenko2016)."""

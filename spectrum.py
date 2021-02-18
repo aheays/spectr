@@ -15,6 +15,7 @@ from . import tools
 from . import hitran
 from . import bruker
 from . import lineshapes
+from . import lines
 
 class Experiment(Optimiser):
     
@@ -517,7 +518,6 @@ class Model(Optimiser):
                 )
                 cache['absorbance'] = np.exp(-y)
                 cache['tlines'] = tlines
-                print( tlines)  #  DEBUG
             ## absorb
             self.y *= cache['absorbance']
         return f
@@ -1213,9 +1213,6 @@ class Model(Optimiser):
         yconv = amplitude/xconv/len(xconv)               # signum function
         yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
         yconv /= yconv.sum()                    # normalised
-        # print('DEBUG:', )
-        # ax = plotting.qax()
-        # ax.plot(yconv)
         self.y[i] = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
     def convolve_with_SOLEIL_instrument_function(
@@ -1365,7 +1362,6 @@ class Model(Optimiser):
             plot_branch_heads=False,
             qn_defining_branch=('speciesp','speciespp','labelp','labelpp','vp','vpp','Fp'),
             label_key=None,
-            label_match_name_re=None,
             label_match_qn=None,
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
@@ -1380,7 +1376,6 @@ class Model(Optimiser):
             xlabel=None,ylabel=None,
             invert_model=False,
             plot_kwargs=None,
-            **limit_to_qn,
     ):
         """Plot experimental and model spectra."""
         if plot_kwargs is None:
@@ -1439,31 +1434,27 @@ class Model(Optimiser):
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
-            for transition in self.transitions:
-                ## limit to qn
-                if not transition.is_known(*limit_to_qn):
+            for line in self.suboptimisers:
+                if not isinstance(line,lines.Generic):
                     continue
-                i = transition.match(**limit_to_qn)
-                ## limit to ν-range and sufficiently strong lines
-                i &= (transition['ν']>self.xexp[0])&(transition['ν']<self.xexp[-1])
+                ## limit to qn
+                if label_match_qn is None:
+                    label_match_qn = {}
+                if not line.is_known(*label_match_qn):
+                    continue
+                i = line.match(**label_match_qn)
+                ## limit to ν-range and sufficiently strong line
+                i &= (line['ν']>self.xexp[0])&(line['ν']<self.xexp[-1])
                 if minimum_τ_to_label is not None:
-                    i &= transition['τ']>minimum_τ_to_label
+                    i &= line['τ']>minimum_τ_to_label
                 if minimum_I_to_label is not None:
-                    i &= transition['I']>minimum_I_to_label
-                t = transition[i]
-                if len(t)==0: continue
-                if isinstance(t,Rotational_Transition):
-                    zkeys = ('speciesp','labelp','labelpp','vp','vpp','branch',)
-                    if label_key==None:
-                        label_key = 'Jp'
-                elif isinstance(t,Atomic_Transition):
-                    zkeys = ('speciesp',)
-                    if label_key==None:
-                        label_key = 'speciesp'
-                else:
-                    warnings.warn(f"Label keys not implemented for transition type {repr(type(transition))}")
-                branch_annotations = annotate_spectrum_by_branch(
-                    t, # only label lines which are strong enough
+                    i &= line['I']>minimum_I_to_label
+                line = line[i]
+                if len(line)==0:
+                    continue
+                zkeys = [key for key in line.defining_qn if line.is_known(key)]
+                branch_annotations = plotting.annotate_spectrum_by_branch(
+                    line,
                     ymax+ystep/2.,
                     ystep,
                     zkeys=zkeys,
@@ -1471,8 +1462,6 @@ class Model(Optimiser):
                     color_by=('branch' if 'branch' in zkeys else zkeys),
                     labelsize='xx-small',namesize='x-small', namepos='float',    
                     label_key=label_key,
-                    match_name_re=label_match_name_re,
-                    match_qn=label_match_qn,
                 )
                 ymax += ystep*(len(branch_annotations)+1)
         ## plot branch heads

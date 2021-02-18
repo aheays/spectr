@@ -2204,7 +2204,8 @@ def annotate_spectrum(
     x = np.array(x)
     i = np.isnan(x)
     x = x[~i]
-    if len(labels)>0: labels = np.array(labels)[~i]
+    if len(labels)>0:
+        labels = np.array(labels)[~i]
     plotkwargs.setdefault('color',color)
     plotkwargs.setdefault('linewidth',1.)
     plotkwargs.setdefault('clip_on',clip)
@@ -2301,7 +2302,7 @@ def annotate_spectrum_by_branch(
         zkeys = ('branch',), # how to divide up into separate annotations
         xkey = 'ν',
         label_key='J_l', # what quantum number to give as a rotational label
-        # match_name_re=None,   # only annotate these branches
+        label_frequency=False,
         match_qn=None,        # only annotate matching qn
         qn_not_to_label=(), # e.g., [{'Σ':-1,'Jpp':[0,2],}] would not label these, requries label_translate_function is None
         color_by = 'zkeys', # or one or a list of quantum numbers, e.g., 'ΔJ'
@@ -2326,7 +2327,10 @@ def annotate_spectrum_by_branch(
         ## get annotation name
         if name_function is None:
             # name = encode_lines(**qn)
-            name = str(qn)
+            # name = str(qn)
+            # name = ','.join([f'{key}={val}' for key,val in qn.items()])
+            name = ' '.join([f'{val}' for key,val in qn.items()])
+
         else:
             name = name_function(qn)
         # if match_name_re is not None and not re.match(match_name_re,name):
@@ -2338,7 +2342,7 @@ def annotate_spectrum_by_branch(
         if label_function is not None:
             labels = [label_function(t) for t in zlines.iter_dict(*tools.ensure_iterable(label_key))]
         elif label_key is None:
-            labels = ['' for t in zlines]
+            labels = ['' for t in zlines.rows()]
         elif np.isscalar(label_key):
             if tools.isnumeric(lines[label_key][0]):
                 labels = [format(t[label_key],'g') for t in zlines.rows()]
@@ -2350,10 +2354,13 @@ def annotate_spectrum_by_branch(
         for keys_vals in qn_not_to_label :
             for ii in tools.find(zlines.match(**keys_vals)):
                 labels[ii] = ''
+        ## add frequency to labels
+        if label_frequency:
+            labels = [f'{label}({x:0.4f})' for label,x in zip(labels,ztransition[xkey])]
         ## make annotation
         retval.append(annotate_spectrum(zlines[xkey],labels=labels,ylevel=ybeg+iz*ystep,**kwargs))
         iz += 1
-    return(retval)
+    return retval
 
 def plot_stick_spectrum(x,y,ax=None,**plot_kwargs):
     assert len(x)==len(y)

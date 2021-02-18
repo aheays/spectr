@@ -87,17 +87,12 @@ def calc_spectrum(
         table_name = species
     MOL,ISO = translate_species_to_codes(species)
     hapi.db_begin(data_directory)
-    # ## download data if necessary -- ν range not checked
-    # if not os.path.exists(f'{data_directory}/{species}.data'):
-        # hapi.fetch(species,MOL,ISO,νbeg,νend)
     ## calculate spectrum
-    import time ; timer = time.time() # DEBUG
     ν,coef = hapi.absorptionCoefficient_Lorentz(
         SourceTables=table_name,
         WavenumberRange=[νbeg,νend],
         WavenumberStep=νstep,
         Environment={"T":T,"p":p},)
-    print('Time elapsed:',format(time.time()-timer,'12.6f'),'line: 95 file: /home/heays/src/python/spectr/hitran.py'); timer = time.time() # DEBUG
     if make_plot:
         from . import plotting
         ax = plotting.gca()
@@ -132,7 +127,7 @@ def load(filename):
             ('Iref',int),     # Reference indices           
             ('asterisk','U1'), # Flag                           
             ('g_u',float),    # lower level degeneracy
-            ('g_l',float),    # ujpper level degeneracy
+            ('g_l',float),    # upper level degeneracy
         ],
         delimiter=(2,1,12,10,10,5,5,10,4,8,15,15,15,15,6,12,1,7,7), # column widths
     )

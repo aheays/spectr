@@ -66,7 +66,11 @@ prototypes['S296K'] = dict(description="Spectral line intensity at 296K referenc
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
 ## former considers the effect of stimulated emission.
-prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission (cm-1)", kind='f', fmt='<10.5e', infer=[(('S','Nself_l'),lambda self,S,Nself_l: S*Nself_l,)],)
+prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission (cm-1)", kind='f', fmt='<10.5e',
+                       infer=[
+                           (('S','Nself_l'),lambda self,S,Nself_l: S*Nself_l,),
+                           (('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,),
+                       ],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only (cm-1)", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate (s-1)", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
 prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer=[])
@@ -150,13 +154,13 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
         ## sum for all unique upper levels
         k = []
         for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_u'][i] for key in self._levels_class._defining_qn]):
+                *[self[key+'_u'][i] for key in self._levels_class.defining_qn]):
             k.append((i[j])[0])
         Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
         ## sum for all unique lower levels
         k = []
         for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_l'][i] for key in self._levels_class._defining_qn]):
+                *[self[key+'_l'][i] for key in self._levels_class.defining_qn]):
             k.append((i[j])[0])
         Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
     return Z
@@ -269,14 +273,14 @@ def _collect_prototypes(*keys,levels_class=None):
         keys.append(key+'_u')
     retval_protoypes = {key:prototypes[key] for key in keys}
     defining_qn = tuple(
-        [key+'_l' for key in levels_class._defining_qn]
-        +[key+'_u' for key in levels_class._defining_qn]
+        [key+'_u' for key in levels_class.defining_qn]
+        +[key+'_l' for key in levels_class.defining_qn]
         )
     return retval_protoypes,defining_qn
 
 class Generic(levels.Base):
     _levels_class = levels.Generic
-    _prototypes,_defining_qn = _collect_prototypes(
+    _prototypes,defining_qn = _collect_prototypes(
         'species', 'point_group','mass',
         'ν','ν0',
         # 'λ',
@@ -524,7 +528,7 @@ class Generic(levels.Base):
         ## interpret into transition quantities common to all transitions
         new = self.__class__(**{
             'ν0':data['ν'],
-            ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
+            # 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
             'S296K':data['S'],
             'E_l':data['E_l'],
             'g_u':data['g_u'],
@@ -539,20 +543,9 @@ class Generic(levels.Base):
         new['species'] =  hitran.molparam['isotopologue'][i]
         ## remove natural abundance weighting
         new['S296K'] /=  hitran.molparam['natural_abundance'][i]
-        ## ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
-        ## ## standin for diatomics
-        ## kw['v'+'_u'] = data['V_u']
-        ## kw['v'+'_l'] = data['V_l']
-        ## branches = {'P':-1,'Q':0,'R':+1}
-        ## ΔJ,J_l = [],[]
-        ## for Q_l in data['Q_l']:
-        ##     branchi,Jli = Q_l.split()
-        ##     ΔJ.append(branches[branchi])
-        ##     J_l.append(Jli)
-        ## kw['ΔJ'] = np.array(ΔJ,dtype=int)
-        ## kw['J'+'_l'] = np.array(J_l,dtype=float)
         self.extend(**new)
-
+        return data             # return raw HITRAN data
+        
     def generate_from_levels(self,level_upper,level_lower):
         """Combeiong all combination of upper and lower levels into a line list."""
         for key in level_upper:
@@ -561,10 +554,71 @@ class Generic(levels.Base):
             self[key+'_l'] = np.ravel(np.repeat(level_lower[key],len(level_upper)))
 
 
+
+
+class LinearTriatomic(Generic):
+    """A generic level."""
+
+    _levels_class = levels.LinearTriatomic
+    _prototypes,defining_qn = _collect_prototypes(
+        'species', 'point_group','mass',
+        'ν','ν0',
+        # 'λ',
+        'ΔJ',
+        'f','σ','S','S296K','τ','Ae',
+        'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
+        'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
+        'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
+        'νvc',                  # test Rautian profile
+        'Nself',
+        'Teq','Tex','Ttr','Z',
+        'Γ','ΓD',
+        levels_class = _levels_class
+    )
+
+    def load_from_hitran(self,filename):
+        """Load HITRAN .data."""
+        ## load generic things using the method in Generic
+        data = Generic.load_from_hitran(self,filename)
+        ## interpret specific quantum numbers
+        quantum_numbers = dict(
+            label=np.full(len(self),'X'),  # always ground state
+            ΔJ=np.empty(len(self),dtype=int),
+            J_l=np.empty(len(self),dtype=float),
+            ν1_u=np.empty(len(self),dtype=int),
+            ν2_u=np.empty(len(self),dtype=int),
+            l2_u=np.empty(len(self),dtype=int),
+            ν3_u=np.empty(len(self),dtype=int),
+            ν1_l=np.empty(len(self),dtype=int),
+            ν2_l=np.empty(len(self),dtype=int),
+            l2_l=np.empty(len(self),dtype=int),
+            ν3_l=np.empty(len(self),dtype=int),
+        )
+        ## loop over upper quantum setting in arrays
+        for i,V in enumerate(data['V_u']):
+            quantum_numbers['ν1_u'][i] = int(V[7:9])
+            quantum_numbers['ν2_u'][i] = int(V[9:11])
+            quantum_numbers['l2_u'][i] = int(V[11:13])
+            quantum_numbers['ν3_u'][i] = int(V[13:15])
+        ## loop over lower quantum setting in arrays
+        for i,V in enumerate(data['V_l']):
+            quantum_numbers['ν1_l'][i] = int(V[7:9])
+            quantum_numbers['ν2_l'][i] = int(V[9:11])
+            quantum_numbers['l2_l'][i] = int(V[11:13])
+            quantum_numbers['ν3_l'][i] = int(V[13:15])
+        ## Q_u is blank, Q_l is  [PQR][J_l]
+        translatePQR = {'P':-1,'Q':0,'R':+1}
+        for i,Q in enumerate(data['Q_l']):
+            quantum_numbers['ΔJ'][i] = translatePQR[Q[5]]
+            quantum_numbers['J_l'][i] = float(Q[6:])
+        ## add all this data to self
+        for key,val in quantum_numbers.items():
+            self[key] = val
+
 class Diatomic(Generic):
 
     _levels_class = levels.Diatomic
-    _prototypes,_defining_qn = _collect_prototypes(
+    _prototypes,defining_qn = _collect_prototypes(
         'species', 'point_group','mass',
         'ν','νv',
         'μv',
