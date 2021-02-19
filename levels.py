@@ -243,8 +243,6 @@ prototypes['Tvreduced_common_polynomial'] = dict(description="Polynomial in term
 prototypes['Bv_μscaled']  = dict(description='Rotational constant scaled by reduced mass to an isotopologue-independent value (cm-1)' , kind='f',fmt='0.8f', infer=[(('Bv','reduced_mass'),lambda self,Bv,reduced_mass: Bv*reduced_mass,)])
 prototypes['dBv_μscaled'] = dict(description='Uncertainty in Bv_μscaled (1σ, cm-1)' ,kind='f',fmt='0.2g', infer=[(('Bv','dBv','Bv_μscaled'),lambda self,Bv,dBv,Bv_μscaled:dBv/Bv*Bv_μscaled,)])
 
-
-
 def _collect_prototypes(*keys):
     retval = {key:prototypes[key] for key in keys}
     return retval
@@ -252,7 +250,7 @@ def _collect_prototypes(*keys):
 class Base(Dataset):
     """Common stuff for for lines and levels."""
     _prototypes = _collect_prototypes()
-    attributes = ('description','Zsource')
+    attributes = (*Dataset.attributes,'Zsource')
 
     def __init__(self,name=None,**kwargs):
         """Default_name is decoded to give default values. Kwargs ca be

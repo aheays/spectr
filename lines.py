@@ -561,6 +561,7 @@ class LinearTriatomic(Generic):
 
     _levels_class = levels.LinearTriatomic
     _prototypes,defining_qn = _collect_prototypes(
+
         'species', 'point_group','mass',
         'ν','ν0',
         # 'λ',
@@ -582,7 +583,6 @@ class LinearTriatomic(Generic):
         data = Generic.load_from_hitran(self,filename)
         ## interpret specific quantum numbers
         quantum_numbers = dict(
-            label=np.full(len(self),'X'),  # always ground state
             ΔJ=np.empty(len(self),dtype=int),
             J_l=np.empty(len(self),dtype=float),
             ν1_u=np.empty(len(self),dtype=int),
