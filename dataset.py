@@ -4,6 +4,7 @@ import ast
 from copy import copy,deepcopy
 from pprint import pprint
 import importlib
+import warnings
 
 import numpy as np
 from numpy import nan
@@ -953,7 +954,7 @@ class Dataset(optimise.Optimiser):
                 return None
         if 'classname' in data and data['classname'] != self.classname:
             warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
-            data.remove('classname')
+            data.pop('classname')
         ## Set data in self and selected attributes
         for key,val in data.items():
             if key in self.attributes:
@@ -1133,7 +1134,10 @@ class Dataset(optimise.Optimiser):
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
                 z.sort(xkey)
                 if zlabel_format_function is None:
-                    zlabel = tools.dict_to_kwargs(dz)
+                    if len(dz) == 1:
+                        zlabel = str(dz[list(dz.keys())[0]])
+                    else:
+                        zlabel = tools.dict_to_kwargs(dz)
                 else:
                     zlabel = zlabel_format_function(**dz)
                 if ynewaxes and znewaxes:
