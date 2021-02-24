@@ -1038,6 +1038,7 @@ class Dataset(optimise.Optimiser):
     def extend(self,**kwargs):
         """Extend self with data given as kwargs."""
         keys = np.unique(self.keys() + list(kwargs.keys()))
+        ## get data lengths 
         original_length = len(self)
         extending_length = 0
         for val in kwargs.values():
@@ -1045,7 +1046,9 @@ class Dataset(optimise.Optimiser):
                 extending_length = max(extending_length,len(val))
         total_length = original_length + extending_length
         for key in keys:
-            if not self.is_known(key):
+            ## make sure key is in _data
+            # if not self.is_known(key):
+            if key not in self:
                 if original_length == 0:
                     self.set(key,[])
                 elif (self.permit_auto_defaults
@@ -1053,7 +1056,7 @@ class Dataset(optimise.Optimiser):
                     self.set_default(key,prototype['default'])
                 else:
                     raise Exception()
-
+            ## get a default value for missing extended data
             if key not in kwargs:
                 if (default:=self.get_default(key)) is not None:
                     kwargs[key] = default
@@ -1062,7 +1065,6 @@ class Dataset(optimise.Optimiser):
                     kwargs[key] = prototype['default']
                 else:
                     raise Exception()
-
             ## increase unicode dtype length if new strings are
             ## longer than the current
             if self.get_kind(key) == 'U':
@@ -1076,7 +1078,6 @@ class Dataset(optimise.Optimiser):
                         dtype=f'<U{new_str_len*self._over_allocate_factor}')
                     t[:len(self)] = self.get(key)
                     self._data[key]['value'] = t
-                    
             ## reallocate and lengthen value array if necessary
             if total_length > len(self._data[key]['value']):
                 self._data[key]['value'] = np.concatenate((
@@ -1084,7 +1085,6 @@ class Dataset(optimise.Optimiser):
                     np.empty(
                         int(total_length*self._over_allocate_factor-original_length),
                         dtype=self._data[key]['value'].dtype)))
-
             ## set extending data
             self._data[key]['value'][original_length:total_length] = kwargs[key]
         self._length = total_length
@@ -1277,9 +1277,7 @@ def load(filename,classname=None,**kwargs):
     loading the file twice."""
     if classname is None:
         d = Dataset()
-        import time ; timer = time.time() # DEBUG
         classname = d.load(filename,return_classname_only=True)
-        print('Time elapsed:',format(time.time()-timer,'12.6f'),'line: 1278 file: /home/heays/src/python/spectr/dataset.py'); timer = time.time() # DEBUG
         if classname is None:
             classname = 'Dataset'
     retval = make(classname,load_from_file=filename,**kwargs)
