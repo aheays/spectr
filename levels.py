@@ -1,4 +1,4 @@
-import itertools
+import itertools 
 import functools
 from copy import copy,deepcopy
 import re
