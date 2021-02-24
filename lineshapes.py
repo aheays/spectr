@@ -1,6 +1,7 @@
 import multiprocessing
 
 import numpy as np
+from numpy import array,arange,linspace
 from scipy import constants
 
 from . import tools
@@ -8,24 +9,101 @@ from . import tools
 # from .fortran_tools import fortran_tools as _fortran_tools
 # # from .fortran import fortran
 
-# def sinc(x,x0=0,S=1,Γ=1):
+
+def calculate_spectrum(
+        x,
+        line_function,
+        *line_args,
+        ncpus=1,
+        multiprocess_divide='lines', # 'lines' or 'x'
+        **line_kwargs,
+):
+    """Compute a spectrum of lines using line_function which is applied to
+    positional arguments line_args and with common kwargs.
+    line_function must add to y in place with a yin argument."""
+    ncpus = min(ncpus,multiprocessing.cpu_count())
+    ## run as a single process
+    if ncpus == 1:
+        y = np.zeros(x.shape,dtype=float)
+        for args in zip(*line_args):
+            line_function(x,*args,**line_kwargs,yin=y)
+        return y
+    ## multiprocessing version  -- divide lines between processes
+    elif multiprocess_divide == 'lines':
+        y = np.zeros(x.shape,dtype=float)
+        ## get indices to divide lines
+        nlines = len(line_args[0])
+        js = [int(t) for t in linspace(0,nlines,ncpus)]
+        with multiprocessing.Pool(ncpus) as p:
+            y = []
+            for jbeg,jend in zip(js[:-1],js[1:]):
+                ## start async processes
+                y.append(
+                    p.apply_async(
+                        calculate_spectrum,
+                        args=(x,line_function,*[t[jbeg:jend] for t in line_args]),
+                        kwds=line_kwargs,))
+            ## run proceses, tidy keyboard interrupt, sum to give full spectrum
+            try:
+                p.close()
+                p.join()
+            except KeyboardInterrupt as err:
+                p.terminate()
+                p.join()
+                raise err
+            y = np.sum([t.get() for t in y],axis=0)
+        return y
+    ## multiprocessing version  -- divide x-range between processes
+    elif multiprocess_divide == 'x':
+        ## get indices to divide lines
+        js = [int(t) for t in linspace(0,len(x),ncpus)]
+        with multiprocessing.Pool(ncpus) as p:
+            y = []
+            for jbeg,jend in zip(js[:-1],js[1:]):
+                ## start async processes
+                y.append(
+                    p.apply_async(
+                        calculate_spectrum,
+                        args=(x[jbeg:jend],line_function,*line_args),
+                        kwds=line_kwargs,))
+            ## run proceses, tidy keyboard interrupt, sum to give full spectrum
+            try:
+                p.close()
+                p.join()
+            except KeyboardInterrupt as err:
+                p.terminate()
+                p.join()
+                raise err
+            y = np.concatenate([t.get() for t in y])
+        return y
+    else:
+        raise Exception('Unknown {multiprocess_divide=}')
+
+    # def sinc(x,x0=0,S=1,Γ=1):
     # """Lorentzian profile.""" 
     # return(S*np.sinc((x-x0)/Γ*1.2)*1.2/Γ)
 
-def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=np.inf):
+def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None): 
     """Lorentzian profile."""
-    if nfwhm is None or np.isinf(nfwhm):
+    if nfwhm is None:
         ## whole domain
-        return(S*Γ/2./constants.pi/((x-x0)**2+Γ**2/4.))
+        if yin is None:
+            return S*Γ/2./constants.pi/((x-x0)**2+Γ**2/4.)
+        else:
+            yin += S*Γ/2./constants.pi/((x-x0)**2+Γ**2/4.)
+            return yin
     else:
         ## partial domain inside nfwhm cutoff
-        retval = np.zeros(x.shape)
         t = nfwhm*Γ
         ibeg,iend = np.searchsorted(x,[x0-t,x0+t])
         ibeg,iend = max(ibeg-1,0),min(iend+1,len(x))
-        if iend-ibeg>1:
+        if yin is None:
+            retval = np.zeros(x.shape)
             retval[ibeg:iend] = lorentzian(x[ibeg:iend],x0,S,Γ)
-        return(retval)
+            return retval
+        else:
+            yin[ibeg:iend] = lorentzian(x[ibeg:iend],x0,S,Γ)
+            return yin
 
 # def stepwise_lorentzian(x,x0=0,S=1,Γ=1,nfwhm=np.inf):
     # """Lorentzian profile, preserves integral even if under resolved.."""
@@ -42,14 +120,14 @@ def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=np.inf):
             # retval[ibeg:iend] = stepwise_lorentzian(x[ibeg:iend],x0,S,Γ)
         # return(retval)
 
-def gaussian(x,x0=0.,S=1,Γ=1.,y=None):
+def gaussian(x,x0=0.,S=1,Γ=1.,yin=None):
     """A gaussian with area normalised to one. Γ is FWHM. If y is
     provided add to this in place."""
-    if y is None:
+    if yin is None:
         return S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
     else:
-        y +=  S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
-        return y
+        yin +=  S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+        return yin
 
 def voigt(x,
           x0=0,                 # centre
@@ -65,16 +143,20 @@ def voigt(x,
     norm = 1.0644670194312262*ΓG # sqrt(2*pi/8/log(2))
     if ΓG == 0:
         ## pure Lorentzian
-        return lorentzian(x,x0,S,ΓL,nfwhm=nfwhmL)
+        return lorentzian(x,x0,S,ΓL,nfwhm=nfwhmL,yin=yin)
     elif ΓL == 0:
         ## pure Gaussian
-        return gaussian(x,x0,S,ΓG)
+        return gaussian(x,x0,S,ΓG,yin=yin)
     elif nfwhmG is None:
         ## full calculation
-        y = S*special.wofz((2.*(x-x0)+1.j*ΓL)*b/ΓG).real/norm
+        if yin is None:
+            return S*special.wofz((2.*(x-x0)+1.j*ΓL)*b/ΓG).real/norm
+        else:
+            yin += S*special.wofz((2.*(x-x0)+1.j*ΓL)*b/ΓG).real/norm
+            return yin
     elif nfwhmL is None and nfwhmG is not None:
         ## Lorentzian wings
-        y = lorentzian(x,x0,S,ΓL)
+        y = lorentzian(x,x0,S,ΓL,yin=yin)
         i0,i1 = np.searchsorted(x,[x0-nfwhmG*ΓG,x0+nfwhmG*ΓG])
         y[i0:i1] = voigt(x[i0:i1],x0,S,ΓL,ΓG)
     elif nfwhmL is not None and nfwhmG is not None:
@@ -93,7 +175,7 @@ def voigt(x,
             y[j1:i1] += lorentzian(x[j1:i1],x0,S,ΓL)
     else:
         raise Exception(f'Not implemented: nfwhmL={repr(nfwhmL)} and nfwhmG={repr(nfwhmG)}')
-    return(y)
+    return y
 
 def rautian(
         x,

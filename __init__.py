@@ -15,7 +15,7 @@ from . import plotting
 from . import optimise
 from . import dataset
 from . import levels
-from . import lines
+from . import lines 
 from . import database
 from . import spectrum
 from . import kinetics

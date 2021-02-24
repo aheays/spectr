@@ -479,9 +479,10 @@ class Model(Optimiser):
             nfwhmL=None,
             nfwhmG=None,
             τmin=None,
-            gaussian_method=None,
-            voigt_method=None,
-            use_multiprocessing=None
+            # gaussian_method=None,
+            # voigt_method=None,
+            # use_multiprocessing=None
+            ncpus=1,
     ):
         self.add_suboptimiser(lines)
         ## update lines data and recompute optical depth if
@@ -508,13 +509,15 @@ class Model(Optimiser):
                     nfwhmG=(nfwhmG if nfwhmG is not None else 10),
                     nfwhmL=(nfwhmL if nfwhmL is not None else 100),
                     ymin=τmin,
-                    ΓG='ΓD',
-                    ΓL='Γ',
+                    ncpus=ncpus,
+                    # lineshape='voigt',
+                    # ΓG='ΓD',
+                    # ΓL='Γ',
                     ## gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
-                    gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
-                    voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
+                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
+                    # voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
                     ## use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
+                    # use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                 )
                 cache['absorbance'] = np.exp(-y)
                 cache['tlines'] = tlines

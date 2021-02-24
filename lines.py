@@ -3,7 +3,7 @@ from copy import copy,deepcopy
 from pprint import pprint
 
 import numpy as np
-from numpy import nan,array
+from numpy import nan,array,linspace
 from scipy import constants
 
 # from . import *
@@ -109,6 +109,21 @@ prototypes['δ0X'] = dict(description="Pressure shift coefficient in X (cm-1.atm
 prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
 prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert(P,'Pa','atm')),])
+
+prototypes['HT_X'] = dict(description='Broadening species for Hartmann-Tran profile',kind='U')
+prototypes['HT_Tref'] = dict(description='Reference temperature for Hartmann-Tran profile',units='K',kind='f')
+prototypes['HT_γ0'] = dict(description='Speed-averaged Hartmann-Tran profile halfwidth in temperature range around T=Tref d due to perturber X',units='cm-1.atm-1',kind='f')
+prototypes['HT_n'] = dict(description='Temperature dependence exponent in the range corresponding to T=Tref for γ 0 HT (X ; T ref )',units='dimensionless',kind='f')
+prototypes['HT_γ2H2'] = dict(description='Speed-dependence of the P halfwidth in temperature range around T=Tref due to perturber X.',units='cm-1.atm-1',kind='f')
+prototypes['HT_δ0'] = dict(description='Speed-averaged line shift of the Hartmann-Tran profile in temperature range around T=Tref due to perturber X',units='cm-1.atm-1',kind='f')
+prototypes['HT_δp'] = dict(description='Linear temperature dependence coefficient for δ0 HT (X ; T ref ) in temperature range around T 1⁄4 Tre f',units='cm-1.atm.K-1',kind='f')
+prototypes['HT_δ2'] = dict(description='Speed-dependence of the Hartmann-Tran profile line shift in temperature range around T 1⁄4 Tref due to perturber X',units='cm-1.atm-1',kind='f')
+prototypes['HT_νVC'] = dict(description='Frequency of velocity changing collisions in the HT profile formalism',units='cm-1.atm-1',kind='f')
+prototypes['HT_κ'] = dict(description='Temperature dependence of νVC HT (X )',units='dimensionless',kind='f')
+prototypes['HT_η'] = dict(description='Correlation parameter in HT profile formalism',units='dimensionless',kind='f')
+prototypes['HT_T'] = dict(description='First-order (Rosenkranz) line coupling coefficient within HT profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
+
+
 
 ## linewidths
 prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or transition (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[
@@ -259,7 +274,7 @@ prototypes['Nself_u']['infer'].append((('Nself'),lambda self,Nself: Nself))
 prototypes['Nself_l']['infer'].append((('Nself'),lambda self,Nself: Nself))
 prototypes['species_l']['infer'].append((('species'),lambda self,species: species))
 prototypes['species_u']['infer'].append((('species'),lambda self,species: species))
-prototypes['species']['infer'].append((('species_u'),lambda self,species_l: species_l))
+prototypes['species']['infer'].append((('species_l'),lambda self,species_l: species_l))
 prototypes['species']['infer'].append((('species_u'),lambda self,species_u: species_u))
 prototypes['ΔJ']['infer'].append((('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l))
 prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
@@ -305,7 +320,8 @@ class Generic(levels.Base):
             xkey='ν',
             ykey='σ',
             zkeys=None,         # None or list of keys to plot as separate lines
-            ΓG='ΓD', ΓL='Γ',
+            ΓG='ΓD',
+            ΓL='Γ',
             dx=None,
             ax=None,
             **plot_kwargs # can be calculate_spectrum or plot kwargs
@@ -358,68 +374,25 @@ class Generic(levels.Base):
             x=None,        # frequency grid (must be regular, I think), if None then construct a reasonable grid
             xkey='ν',      # strength to use, i.e., "ν", or "λ"
             ykey='σ',      # strength to use, i.e., "σ", "τ", or "I"
-            ΓG='ΓD', # a key to use for Gaussian widths, a constant numeric value, or None to neglect Gaussian entirely
-            ΓL='Γ',        # a key or for Lorentzian widths (i.e., "Γ"), a constant numeric value, or None to neglect Lorentzian entirely
-            nfwhmG=20,         # how many Gaussian FWHMs to include in convolution
+            lineshape=None, # None for auto selection, or else one of ['voigt','gaussian','lorentzian']
+            nfwhmG=20, # how many Gaussian FWHMs to include in convolution
             nfwhmL=100,         # how many Lorentzian FWHMs to compute
-            dx=None,
-            nx=10000,     # number of grid points used if x not give
-            ymin=None,     # minimum value of ykey before a line is ignored, None for use all lines
-            gaussian_method='python', #'fortran stepwise', 'fortran', 'python'
-            voigt_method='wofz',   
-            use_multiprocessing=False, # might see a speed up
-            **set_keys_vals,    # set some data first, e..g, the tempertaure
+            dx=None, # grid step to use if x grid computed automatically
+            nx=10000, # number of grid points to use if x grid computed automatically
+            ymin=None, # minimum value of ykey before a line is ignored, None for use all lines
+            ncpus = 1, # 1 for single process, more to use up to this amount when computing spectrum
+            **set_keys_vals, # set some data first, e..g, the tempertaure
     ):
-        """Calculate a Voigt/Lorentzian/Gaussian spectrum from data in self. Returns (x,σ)."""
+        """Calculate a spectrum from the data in self. Returns (x,y)."""
+        ## set some data
         for key,val in set_keys_vals.items():
             self[key] = val
-        ## save input arguments in their original from
-        ΓGin,ΓLin = ΓG,ΓL
-        ## all input args except use_cache
-        all_args = dict(x=x, xkey=xkey, ykey=ykey, ΓG=ΓG, ΓL=ΓL,
-                        nfwhmG=nfwhmG, nfwhmL=nfwhmL, nx=nx, ymin=ymin, voigt_method=voigt_method,
-                        use_multiprocessing=use_multiprocessing,
-                        # temperaturepp=temperaturepp,
-                        # column_densitypp=column_densitypp,
-        )        
         ## no lines to add to cross section -- return quickly
         if len(self)==0:
             if x is None:
                 return(np.array([]),np.array([]))
             else:
                 return(x,np.zeros(x.shape))
-        ## check frequencies, strengths, widths are as expected
-        self.assert_known(xkey,ykey)
-        assert np.all(~np.isnan(self[xkey])),f'NaN values in xkey: {repr(xkey)}'
-        assert np.all(~np.isnan(self[ykey])),f'NaN values in ykey: {repr(ykey)}'
-        if ΓG is None:
-            ## no Gaussian linewidth
-            pass
-        elif isinstance(ΓG,str):
-            ## use this key for Gaussian width
-            self.assert_known(ΓG)
-            assert np.all(~np.isnan(self[ΓG])),f'NaN values in ΓG key: {repr(xkey)}'
-            ΓG = self[ΓG]
-        elif np.isscalar:
-            ## constant Gaussian width
-            ΓG = np.full(len(self),ΓG,dtype=float)
-        else:
-            ## a list of Gaussian widths
-            ΓG = np.asarray(ΓG,dtype=float)
-            assert np.all(~np.isnan(ΓG)),f'NaN values in provided ΓG array'
-            assert len(ΓG)==len(self),'Provided ΓG array wrong length'
-        if ΓL is None:
-            pass
-        elif isinstance(ΓL,str):
-            self.assert_known(ΓL)
-            assert np.all(~np.isnan(self[ΓL])),f'NaN values in ΓL key: {repr(xkey)}'
-            ΓL = self[ΓL]
-        elif np.isscalar:
-            ΓL = np.full(len(self),ΓL,dtype=float)
-        else:
-            ΓL = np.asarray(ΓL,dtype=float)
-            assert np.all(~np.isnan(ΓL)),f'NaN values in provided ΓL array'
-            assert len(ΓL)==len(self),'Provided ΓL array wrong length'
         ## get a default frequency scale if none provided
         if x is None:
             if dx is not None:
@@ -428,70 +401,43 @@ class Generic(levels.Base):
                 x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
         else:
             x = np.asarray(x)
-        ## get spectrum type according to width specified
-        ##
-        if ΓL is None and ΓG is None:
-            ## divide centroided triangles
-            y = lineshapes.centroided_spectrum(x,self[xkey],self[ykey],Smin=ymin)
-        elif ΓL is not None and ΓG is None:
-            ## spectrum Lorentzians
-            y = lineshapes.lorentzian_spectrum(x,self[xkey],self[ykey],ΓL,nfwhm=nfwhmL,Smin=ymin)
-        elif ΓG is not None and ΓL is None:
-            ## spectrum Gaussians
-            y = lineshapes.gaussian_spectrum(x, self[xkey], self[ykey], ΓG, nfwhm=nfwhmG,Smin=ymin,method=gaussian_method)
-        elif ΓL is not None and ΓG is not None:
-            if voigt_method=='wofz':
-                ## spectrum of Voigts computed by wofz
-                y = lineshapes.voigt_spectrum(
-                    x,self[xkey],self[ykey],ΓL,ΓG,
-                    nfwhmL,nfwhmG,Smin=ymin, use_multiprocessing=use_multiprocessing)
-            elif voigt_method=='fortran Doppler' and ΓLin=='Γ' and ΓGin=='ΓD':
-                ## spectrum of Voigts with common mass/temperature lines
-                ## computed in groups with fortran code
-                if use_multiprocessing and len(self)>100: # multprocess if requested, and there are enough lines to make it worthwhile
-                    import multiprocessing
-                    p = multiprocessing.Pool()
-                    y = []
-                    def handle_result(result):
-                        y.append(result)
-                    number_of_processes_per_mass_temperature_combination = 6 # if there are multiple temperature/mass combinations there will more be more processes, with an associated memory danger
-                    self.assert_known(xkey,ykey,'Γ')
-                    for d in self.unique_dicts('masspp','TDopplerpp'):
-                        m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
-                        ibeg,istep = 0,int(len(m)/number_of_processes_per_mass_temperature_combination)
-                        while ibeg<len(m): # loop through lines in chunks, starting subprocesses
-                            iend = min(ibeg+istep,len(m))
-                            t = p.apply_async(lineshapes.voigt_spectrum_with_gaussian_doppler_width,
-                                              args=(x,m[xkey][ibeg:iend],m[ykey][ibeg:iend],m['Γ'][ibeg:iend],
-                                                    d['masspp'],d['TDopplerpp'], nfwhmL,nfwhmG,ymin),
-                                              callback=handle_result)
-                            ibeg += istep
-                    ## wait for all subprocesses with a tidy keyboard quit
-                    try:
-                        p.close()
-                        p.join()
-                    except KeyboardInterrupt as err:
-                        p.terminate()
-                        p.join()
-                        raise err
-                    y = np.sum(y,axis=0)
-                else:
-                    ## no multiprocessing
-                    y = np.zeros(x.shape)
-                    ## for d,m in self.unique_dicts_matches('masspp','temperaturepp'):
-                    ##     y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
-                    ##         x,m[xkey],m[ykey], m['Γ'],d['masspp'],d['temperaturepp'],
-                    ##         nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
-                    self.assert_known(ykey,xkey,'Γ','masspp','TDopplerpp')
-                    for d in self.unique_dicts('masspp','TDopplerpp'):
-                        m = self[(xkey,ykey,'Γ')][self.match(**d)] # get relevant data as a recarrat -- faster than using unique_dicts_matches
-                        y += lineshapes.voigt_spectrum_with_gaussian_doppler_width(
-                            x,m[xkey],m[ykey],m['Γ'],d['masspp'],d['TDopplerpp'],
-                            nfwhmL=nfwhmL,nfwhmG=nfwhmG,Smin=ymin)
+        ## check frequencies, strengths, widths are as expected
+        # self.assert_known(xkey,ykey)
+        # assert np.all(~np.isnan(self[xkey])),f'NaN values in xkey: {repr(xkey)}'
+        # assert np.all(~np.isnan(self[ykey])),f'NaN values in ykey: {repr(ykey)}'
+        ## neglect lines out of x-range -- NO ACCOUNTING FOR EDGES!!!!
+        i = (self[xkey]>x[0]) & (self[xkey]<x[-1])
+        ## neglect lines out of y-range
+        if ymin is not None:
+            i &= self[ykey] > ymin
+        ## get line function and arguments
+        if lineshape is None:
+            if self.is_known('Γ','ΓD'):
+                lineshape = 'voigt'
+            elif self.is_known('Γ'):
+                lineshape = 'lorentzian'
+            elif self.is_known('ΓD'):
+                lineshape = 'gaussian'
             else:
-                raise Exception(f"voigt_method unknown: {repr(voigt_method)}")
+                raise Exception("No lineshape has computable widths.") 
+        if lineshape == 'voigt':
+            line_function = lineshapes.voigt
+            line_args = (self[xkey][i],self[ykey][i],self['Γ'][i],self['ΓD'][i])
+            line_kwargs = dict(nfwhmL=nfwhmL,nfwhmG=nfwhmG)
+        elif lineshape == 'gaussian':
+            line_function = lineshapes.gaussian
+            line_args = (self[xkey][i],self[ykey][i],self['ΓD'][i])
+            line_kwargs = {}
+        elif lineshape == 'lorentzian':
+            line_function = lineshapes.lorentzian
+            line_args = (self[xkey][i],self[ykey][i],self['Γ'][i])
+            line_kwargs = dict(nfwhm=nfwhmL)
         else:
-            raise Exception("No method for calculating spectrum implemented.")
+            raise Exception(f'Lineshape {repr(lineshape)} not implemented.')
+        ## compute spectrum
+        y = lineshapes.calculate_spectrum(
+            x,line_function,*line_args,**line_kwargs,
+            ncpus=ncpus, multiprocess_divide='lines',)
         return x,y
 
     def _get_level(self, u_or_l, reduce_to=None,):
