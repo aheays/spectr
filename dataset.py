@@ -466,16 +466,32 @@ class Dataset(optimise.Optimiser):
         self.unset_inferences(key)
         self._data.pop(key)
 
-    def unset_inferences(self,key):
-        """Delete any record of inferences to or from this key and any data
-        inferred from it."""
-        for inferred_from in list(self._data[key]['inferred_from']):
-            self._data[inferred_from]['inferred_to'].remove(key)
-            self._data[key]['inferred_from'].remove(inferred_from)
-        for inferred_to in list(self._data[key]['inferred_to']):
-            self._data[inferred_to]['inferred_from'].remove(key)
-            self._data[key]['inferred_to'].remove(inferred_to)
-            self.unset(inferred_to)
+    # def unset_inferences(self,key):
+    #     """Delete any record of inferences to or from this key and any data
+    #     inferred from it."""
+    #     for inferred_from in list(self._data[key]['inferred_from']):
+    #         self._data[inferred_from]['inferred_to'].remove(key)
+    #         self._data[key]['inferred_from'].remove(inferred_from)
+    #     for inferred_to in list(self._data[key]['inferred_to']):
+    #         self._data[inferred_to]['inferred_from'].remove(key)
+    #         self._data[key]['inferred_to'].remove(inferred_to)
+    #         self.unset(inferred_to)
+
+    def unset_inferences(self,*keys):
+        """Delete any record of inferences to or from the given
+        keys. If no keys given then delete all inferred data."""
+        if len(keys) == 0:
+            ## default to uninfer everything inferred
+            keys = list(self.keys()) 
+        for key in keys:
+            if key in self:     # test this since key might have been unset earlier in this loop
+                for inferred_from in list(self._data[key]['inferred_from']):
+                    self._data[inferred_from]['inferred_to'].remove(key)
+                    self._data[key]['inferred_from'].remove(inferred_from)
+                for inferred_to in list(self._data[key]['inferred_to']):
+                    self._data[inferred_to]['inferred_from'].remove(key)
+                    self._data[key]['inferred_to'].remove(inferred_to)
+                    self.unset(inferred_to)
 
     def is_inferred_from(self,key_to,key_from):
         """Check whether data is calculated from other dats."""
@@ -924,10 +940,7 @@ class Dataset(optimise.Optimiser):
                         pass
                     elif r:=re.match(unique_value_line_re,line):
                         key,val = r.groups()
-                        if key in ('classname','name'):
-                            pass   #  HACK -- classname is neither data nor an attribute
-                        else:
-                            data[key] = ast.literal_eval(val)
+                        data[key] = ast.literal_eval(val)
                     else:
                         ## end of header
                         break
@@ -1119,8 +1132,9 @@ class Dataset(optimise.Optimiser):
         if fig is None:
             fig = plt.gcf()
             fig.clf()
-        if xkey is None:
-            assert 'index' not in self.keys()
+        if xkey == 'index':
+            if 'index'  in self.keys():
+                raise Exception("Index already exists")
             self['index'] = np.arange(len(self),dtype=int)
             xkey = 'index'
         if zkeys is None:
