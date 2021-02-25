@@ -476,9 +476,10 @@ class Model(Optimiser):
     def add_absorption_lines(
             self,
             lines=None,
-            nfwhmL=None,
-            nfwhmG=None,
+            nfwhmL=20,
+            nfwhmG=100,
             τmin=None,
+            lineshape='voigt',
             # gaussian_method=None,
             # voigt_method=None,
             # use_multiprocessing=None
@@ -492,36 +493,46 @@ class Model(Optimiser):
             if self.x is None:
                 ## x not set yet
                 return
+
+
             ## recompute spectrum if is necessary for some reason --
             ## do various tests to see if a cached version is ok
-            if 'i' not in cache:
-                cache['i'] = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
-            tlines = lines[cache['i']]
             if (
-                    'absorbance'  not in cache
+                    'absorbance'  not in cache # first run
                     or self._last_construct_time < lines._last_construct_time # line spectrum has changed
                     or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
             ):
-                x,y = tlines.calculate_spectrum(
-                    x=self.x,
-                    xkey='ν',
-                    ykey='τ',
-                    nfwhmG=(nfwhmG if nfwhmG is not None else 10),
-                    nfwhmL=(nfwhmL if nfwhmL is not None else 100),
-                    ymin=τmin,
-                    ncpus=ncpus,
-                    # lineshape='voigt',
-                    # ΓG='ΓD',
-                    # ΓL='Γ',
-                    ## gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
-                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
-                    # voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
-                    ## use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    # use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                )
-                cache['absorbance'] = np.exp(-y)
+                ## only include lines in the x-range
+                if 'i' not in cache:
+                    cache['i'] = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
+                tlines = lines[cache['i']]
+                ## if previous calculations are cached then find which lines have actually changed -- store in j
+                if 'tlines' in cache:
+                    j = np.any([ tlines[key] != cache['tlines'][key] for key in tlines.keys()], axis=0)
+                else:
+                    j = None
+                ## compute entire spectrum
+                if  'τ' not in cache or j is None:
+
+                    x,y = tlines.calculate_spectrum(
+                        x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                        ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+                ## compute difference of changed lines
+                else:
+                    xnew,ynew = tlines[j].calculate_spectrum(
+                        x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                        ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+                    
+                    xold,yold = cache['tlines'][j].calculate_spectrum(
+                        x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                        ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+                    y = cache['τ'] - yold + ynew             
+                ## store cache
+                # tlines.unset_inferences()
                 cache['tlines'] = tlines
-            ## absorb
+                cache['τ'] = y
+                cache['absorbance'] = np.exp(-y)
+            ## set absorbance in self
             self.y *= cache['absorbance']
         return f
 
@@ -843,12 +854,23 @@ class Model(Optimiser):
         self.add_intensity_spline(knots=knots)
 
     @optimise_method()
-    def add_intensity_spline(self,knots=None,order=3):
+    def add_intensity_spline(self,knots=None,order=3,_cache=None):
         """Add intensity points defined by a spline."""
         x = np.array([float(xi) for xi,yi in knots])
         y = np.array([float(yi) for xi,yi in knots])
         i = (self.x>=np.min(x))&(self.x<=np.max(x))
-        self.y[i] += tools.spline(x,y,self.x[i],order=order)
+        ## calculate spline -- get cached version if inputs have not
+        ## changed
+        if ('s' not in _cache
+            or np.any(_cache['x'] != x)
+            or np.any(_cache['y'] != y)
+            or np.any(_cache['i'] != i)
+            ):
+            s = tools.spline(x,y,self.x[i],order=order)
+        else:
+            s = _cache['s']
+        _cache['s'],_cache['x'],_cache['y'],_cache['i'] = s,x,y,i
+        self.y[i] += s
 
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
         # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)

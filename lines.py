@@ -110,20 +110,45 @@ prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in
 prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
 prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert(P,'Pa','atm')),])
 
-prototypes['HT_X'] = dict(description='Broadening species for Hartmann-Tran profile',kind='U')
-prototypes['HT_Tref'] = dict(description='Reference temperature for Hartmann-Tran profile',units='K',kind='f')
-prototypes['HT_γ0'] = dict(description='Speed-averaged Hartmann-Tran profile halfwidth in temperature range around T=Tref d due to perturber X',units='cm-1.atm-1',kind='f')
-prototypes['HT_n'] = dict(description='Temperature dependence exponent in the range corresponding to T=Tref for γ 0 HT (X ; T ref )',units='dimensionless',kind='f')
-prototypes['HT_γ2H2'] = dict(description='Speed-dependence of the P halfwidth in temperature range around T=Tref due to perturber X.',units='cm-1.atm-1',kind='f')
-prototypes['HT_δ0'] = dict(description='Speed-averaged line shift of the Hartmann-Tran profile in temperature range around T=Tref due to perturber X',units='cm-1.atm-1',kind='f')
-prototypes['HT_δp'] = dict(description='Linear temperature dependence coefficient for δ0 HT (X ; T ref ) in temperature range around T 1⁄4 Tre f',units='cm-1.atm.K-1',kind='f')
-prototypes['HT_δ2'] = dict(description='Speed-dependence of the Hartmann-Tran profile line shift in temperature range around T 1⁄4 Tref due to perturber X',units='cm-1.atm-1',kind='f')
-prototypes['HT_νVC'] = dict(description='Frequency of velocity changing collisions in the HT profile formalism',units='cm-1.atm-1',kind='f')
-prototypes['HT_κ'] = dict(description='Temperature dependence of νVC HT (X )',units='dimensionless',kind='f')
-prototypes['HT_η'] = dict(description='Correlation parameter in HT profile formalism',units='dimensionless',kind='f')
-prototypes['HT_T'] = dict(description='First-order (Rosenkranz) line coupling coefficient within HT profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
+## HITRAN encoded pressure and temperature dependent Hartmann-Tran
+## line broadening and shifting coefficients
+prototypes['HT_HITRAN_X'] = dict(description='Broadening species for a HITRAN-encoded Hartmann-Tran profile',kind='U')
+def _f0(x):
+    """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
+    x = np.asarray(x,dtype=float)
+    x[x<1e-50] = 1e-50
+    return x
+prototypes['HT_HITRAN_p'] = dict(description='Pressure  HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=_f0,infer=[('pX',lambda self,pX:convert(pX,'Pa','atm'))])
+prototypes['HT_HITRAN_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f')
+prototypes['HT_HITRAN_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
+prototypes['HT_HITRAN_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
+def _f0(x):
+    """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
+    x = np.asarray(x,dtype=float)
+    x[x<1e-10] = 1e-10
+    # x[x>0.03] = 0.03
+    return x
+prototypes['HT_HITRAN_γ2'] = dict(description='Speed-dependence of the halfwidth in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=_f0)
+prototypes['HT_HITRAN_δ0'] = dict(description='Speed-averaged line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
+prototypes['HT_HITRAN_δp'] = dict(description='Linear temperature dependence coefficient for δ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm.K-1',kind='f')
+prototypes['HT_HITRAN_δ2'] = dict(description='Speed-dependence of the line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
+prototypes['HT_HITRAN_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=lambda x:np.abs(np.asarray(x),dtype=float))
+prototypes['HT_HITRAN_κ'] = dict(description='Temperature dependence of νVC in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
+# def _f0(x):
+    # """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
+    # x = np.abs(np.asarray(x),dtype=float)
+    # x[x>1] = 0.99999
+    # return x
+prototypes['HT_HITRAN_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',cast=lambda x:np.abs(np.asarray(x),dtype=float),)
+prototypes['HT_HITRAN_Y'] = dict(description='First-order (Rosenkranz) line coupling coefficient in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
 
-
+## coefficients of the Hartmann-Tran lineshape
+prototypes['HT_Γ0'] = dict(description='Speed-averaged halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_γ0','HT_HITRAN_Tref','Ttr','HT_HITRAN_n'),lambda self,p,γ0,Tref,T,n: γ0*p*(Tref/T)**n)])
+prototypes['HT_Γ2'] = dict(description='Speed-dependence for the halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_γ2',),lambda self,p,γ2: p*γ2),])
+prototypes['HT_Δ0'] = dict(description='Speed-averaged line shift for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_δ0','HT_HITRAN_δp','HT_HITRAN_Tref','Ttr'),lambda self,p,δ0,δp,Tref,T: p*(δ0+δp*(T-Tref))),])
+prototypes['HT_Δ2'] = dict(description='Speed-dependence for the line shift for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_δ2'),lambda self,p,δ2: p*δ2),])
+prototypes['HT_νVC'] = dict(description='Frequency of velocity changing collisions for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_νVC','HT_HITRAN_Tref','Ttr','HT_HITRAN_κ'),lambda self,p,νVC,Tref,T,κ: p*νVC*(Tref/T)**κ),])
+prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-Tran profile',units='dimensionless',kind='f',infer=[(('HT_HITRAN_η',),lambda self,η:η),])
 
 ## linewidths
 prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or transition (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[
@@ -306,7 +331,11 @@ class Generic(levels.Base):
         'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
         'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
 
-        'νvc',                  # test Rautian profile
+        # 'νvc',                  # test Rautian profile
+
+        ## test HITRAN Hartmann-Tran
+        'HT_HITRAN_X','HT_HITRAN_p', 'HT_HITRAN_Tref', 'HT_HITRAN_γ0', 'HT_HITRAN_n', 'HT_HITRAN_γ2', 'HT_HITRAN_δ0', 'HT_HITRAN_δp', 'HT_HITRAN_δ2', 'HT_HITRAN_νVC', 'HT_HITRAN_κ', 'HT_HITRAN_η', 'HT_HITRAN_Y',
+        'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
 
         'Nself',
         'Teq','Tex','Ttr','Z',
@@ -374,7 +403,7 @@ class Generic(levels.Base):
             x=None,        # frequency grid (must be regular, I think), if None then construct a reasonable grid
             xkey='ν',      # strength to use, i.e., "ν", or "λ"
             ykey='σ',      # strength to use, i.e., "σ", "τ", or "I"
-            lineshape=None, # None for auto selection, or else one of ['voigt','gaussian','lorentzian']
+            lineshape=None, # None for auto selection, or else one of ['voigt','gaussian','lorentzian','hartmann-tran']
             nfwhmG=20, # how many Gaussian FWHMs to include in convolution
             nfwhmL=100,         # how many Lorentzian FWHMs to compute
             dx=None, # grid step to use if x grid computed automatically
@@ -427,17 +456,39 @@ class Generic(levels.Base):
         elif lineshape == 'gaussian':
             line_function = lineshapes.gaussian
             line_args = (self[xkey][i],self[ykey][i],self['ΓD'][i])
-            line_kwargs = {}
+            line_kwargs = dict(nfwhm=nfwhmG)
         elif lineshape == 'lorentzian':
             line_function = lineshapes.lorentzian
             line_args = (self[xkey][i],self[ykey][i],self['Γ'][i])
             line_kwargs = dict(nfwhm=nfwhmL)
+        elif lineshape == 'hartmann-tran':
+            if xkey != 'ν':
+                raise Exception('Only valid option is ν')
+            line_function = lineshapes.hartmann_tran
+            line_args = (
+                self['ν'][i],
+                self[ykey][i],
+                self['mass'][i],
+                self['Ttr'][i],
+                self['HT_νVC'][i],
+                self['HT_η'][i],
+                self['HT_Γ0'][i],
+                self['HT_Γ2'][i],
+                self['HT_Δ0'][i],
+                self['HT_Δ2'][i],
+            )
+            line_kwargs = dict(nfwhmL=nfwhmL,nfwhmG=nfwhmG)
         else:
             raise Exception(f'Lineshape {repr(lineshape)} not implemented.')
         ## compute spectrum
         y = lineshapes.calculate_spectrum(
-            x,line_function,*line_args,**line_kwargs,
-            ncpus=ncpus, multiprocess_divide='lines',)
+            x,
+            line_function,
+            *line_args,
+            **line_kwargs,
+            ncpus=ncpus,
+            multiprocess_divide='lines',
+        )
         return x,y
 
     def _get_level(self, u_or_l, reduce_to=None,):
@@ -503,7 +554,7 @@ class Generic(levels.Base):
 
 
 class LinearTriatomic(Generic):
-    """A generic level."""
+    """E.g., CO2, CS2."""
 
     _levels_class = levels.LinearTriatomic
     _prototypes,defining_qn = _collect_prototypes(
@@ -513,10 +564,15 @@ class LinearTriatomic(Generic):
         # 'λ',
         'ΔJ',
         'f','σ','S','S296K','τ','Ae',
+
         'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
         'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
         'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
-        'νvc',                  # test Rautian profile
+        # 'νvc',                  # test Rautian profile
+        ## test HITRAN Hartmann-Tran
+        'HT_HITRAN_X','HT_HITRAN_p', 'HT_HITRAN_Tref', 'HT_HITRAN_γ0', 'HT_HITRAN_n', 'HT_HITRAN_γ2', 'HT_HITRAN_δ0', 'HT_HITRAN_δp', 'HT_HITRAN_δ2', 'HT_HITRAN_νVC', 'HT_HITRAN_κ', 'HT_HITRAN_η', 'HT_HITRAN_Y',
+        'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
+
         'Nself',
         'Teq','Tex','Ttr','Z',
         'Γ','ΓD',
@@ -700,3 +756,4 @@ class Diatomic(Generic):
         # # list(Base.prototypes)
         # # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
 
+ 

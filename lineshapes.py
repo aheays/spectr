@@ -2,13 +2,10 @@ import multiprocessing
 
 import numpy as np
 from numpy import array,arange,linspace
-from scipy import constants
+from scipy import constants,special
 
 from . import tools
-
-# from .fortran_tools import fortran_tools as _fortran_tools
-# # from .fortran import fortran
-
+from .conversions import convert
 
 def calculate_spectrum(
         x,
@@ -94,16 +91,13 @@ def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None):
             return yin
     else:
         ## partial domain inside nfwhm cutoff
-        t = nfwhm*Γ
-        ibeg,iend = np.searchsorted(x,[x0-t,x0+t])
-        ibeg,iend = max(ibeg-1,0),min(iend+1,len(x))
+        ibeg,iend = np.searchsorted(x,[x0-nfwhm*Γ,x0+nfwhm*Γ])
         if yin is None:
-            retval = np.zeros(x.shape)
-            retval[ibeg:iend] = lorentzian(x[ibeg:iend],x0,S,Γ)
-            return retval
+            y = np.zeros(x.shape)
         else:
-            yin[ibeg:iend] = lorentzian(x[ibeg:iend],x0,S,Γ)
-            return yin
+            y = yin    
+        lorentzian(x[ibeg:iend],x0,S,Γ,nfwhm=None,yin=y[ibeg:iend])
+        return y
 
 # def stepwise_lorentzian(x,x0=0,S=1,Γ=1,nfwhm=np.inf):
     # """Lorentzian profile, preserves integral even if under resolved.."""
@@ -120,14 +114,24 @@ def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None):
             # retval[ibeg:iend] = stepwise_lorentzian(x[ibeg:iend],x0,S,Γ)
         # return(retval)
 
-def gaussian(x,x0=0.,S=1,Γ=1.,yin=None):
+def gaussian(x,x0=0.,S=1,Γ=1.,nfwhm=None,yin=None):
     """A gaussian with area normalised to one. Γ is FWHM. If y is
     provided add to this in place."""
-    if yin is None:
-        return S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+    if nfwhm is None:
+        if yin is None:
+            return S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+        else:
+            yin +=  S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+            return yin
     else:
-        yin +=  S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
-        return yin
+        ## partial domain inside nfwhm cutoff
+        ibeg,iend = np.searchsorted(x,[x0-nfwhm*Γ,x0+nfwhm*Γ])
+        if yin is None:
+            y = np.zeros(x.shape)
+        else:
+            y = yin    
+        gaussian(x[ibeg:iend],x0,S,Γ,nfwhm=None,yin=y[ibeg:iend])
+        return y
 
 def voigt(x,
           x0=0,                 # centre
@@ -206,136 +210,203 @@ def rautian(
     retval = retval/(1.0644670194312262*ΓG) * S
     return retval
 
+def hartmann_tran(
+        x,        # frequency scale (cm-1)
+        x0,       # centre unshifted frequency (cm-1)
+        S,        # line strength
+        m,        # mass of the abosrbing molecule (amu)
+        T,        # temperature (K)
+        νVC,      # frequncy of velocity-changing collisions
+        η,        # correlation parameter
+        Γ0,       # speed-averaged halfwidth
+        Γ2,       # quadratic halfwidth
+        Δ0,       # speed-averaged shift
+        Δ2,       # quadratic shift
+        # Y,        # First-order (Rosenkranz) line coupling coefficient
+        yin=None, # add line in place to this array
+        nfwhmL=None,            # how many widths of the approximate Lorentzian component to include before cutting off line
+        nfwhmG=None,            # how many widths of approximate Gaussian component to include before switching to a pure Lorentzian
+):
+    """The Hartmann-Tran line profile, based on ngo2013 doi:
+    10.1016/j.jqsrt.2013.05.034."""
+    ## full calculation
+    if nfwhmG is None:
+        vtilde = np.sqrt(2*constants.Boltzmann*T/convert(m,'amu','kg'))
+        C0 = νVC+(1-η)*(Γ0-1j*Δ0-3*(Γ2-1j*Δ2)/2) # Eq. (5)
+        C2 = (1-η)*(Γ2-1j*Δ2)                  # Eq. (5)
+        X = (1j*(x-x0)+C0)/C2                # Eq. (5)
+        Y = (x0*vtilde/(2*constants.c*C2))**2 # Eq. (5)
+        Z1 = np.sqrt(X+Y) - np.sqrt(Y)        # Eq. (5)
+        Z2 = np.sqrt(X+Y) + np.sqrt(Y)        # Eq. (5)
+        A = np.sqrt(constants.pi)*constants.c/(x0*vtilde)*(special.wofz(1j*Z1)-special.wofz(1j*Z2)) # Eq. (6)
+        B = vtilde**2/C2*(-1+np.sqrt(constants.pi)/(2*np.sqrt(Y))*(1-Z1**2)*special.wofz(1j*Z1)-np.sqrt(constants.pi)/(2*np.sqrt(Y))*(1-Z2**2)*special.wofz(1j*Z2)) # Eq. (6)
+        y = S*1/constants.pi*np.real(A/(1-(νVC-η*(C0-3*C2/2))*A + (η*C2/vtilde)*B )) # Eq. (1)
+        if yin is None:
+            return y
+        else:
+            yin += y
+            return yin
+
+    ## Hartmann-Tran within nfwhmG and Lorentzian wings outside, if
+    ## nfwhmL is not None then cut off completely outide this
+    ## Γ0*nfwhmL
+    else:
+        ΓG = 2.*6.331e-8*np.sqrt(T*32./m)*x0
+        i0,i1 = np.searchsorted(x,[x0-nfwhmG*ΓG,x0+nfwhmG*ΓG])
+        if yin is None:
+            y = np.zeros(x.shape,dtype=float)
+        else:
+            y = yin    
+        lorentzian(x[:i0],x0,S,Γ0*2,nfwhm=nfwhmL,yin=y[:i0])
+        hartmann_tran(x[i0:i1],x0,S,m,T,νVC,η,Γ0,Γ2,Δ0,Δ2,nfwhmL=None,nfwhmG=None,yin=y[i0:i1])
+        lorentzian(x[i1:],x0,S,Γ0*2,nfwhm=nfwhmL,yin=y[i1:])
+        return y
+
+    # ## Lorentzian wings and cutoff
+    # elif nfwhmL is not None and nfwhmG is not None:
+        # i0,i1 = np.searchsorted(x,[x0-(nfwhmG*ΓG+nfwhmL*ΓL),x0+(nfwhmG*ΓG+nfwhmL*ΓL)])
+        # j0,j1 = np.searchsorted(x,[x0-(nfwhmG*ΓG),x0+(nfwhmG*ΓG)])
+        # if yin is None:
+            # y = np.zeros(x.shape,dtype=float)
+            # y[i0:j0] = lorentzian(x[i0:j0],x0,S,ΓL)
+            # y[j0:j1] = voigt(x[j0:j1],x0,S,ΓL,ΓG)
+            # y[j1:i1] = lorentzian(x[j1:i1],x0,S,ΓL)
+        # else:
+            # y = yin
+            # y[i0:j0] += lorentzian(x[i0:j0],x0,S,ΓL)
+            # y[j0:j1] += voigt(x[j0:j1],x0,S,ΓL,ΓG)
+            # y[j1:i1] += lorentzian(x[j1:i1],x0,S,ΓL)
+    # else:
+
+    
 
 # def fano(x,x0=0,S=1,Γ=1,q=0,ρ=1):
     # """Calculate a Fano profile."""
     # tx = 2*(x-x0)/Γ
     # return(S*((1.-ρ**2+ρ**2*(q+tx)**2./(1.+tx**2.))/(ρ**2.*(1.+q**2.)*constants.pi*Γ/2.)))
 
-def rautian_spectrum(
-        x,                      # frequency scale, assumed monotonically increasing (cm-1)
-        x0,                     # line centers (cm-1)
-        S,                      # line strengths
-        ΓL,                     # Lorentzian linewidth (cm-1 FWHM)
-        ΓG,                     # Gaussian linewidth (cm-1 FWHM)
-        νvc,
-        Smin=None,              # do not include lines weaker than this
-):
-    """Convert some lines into a spectrum."""
-    ## no x, nothing to do
-    if len(x)==0 or len(x0)==0:
-        return np.zeros(x.shape,dtype=float) 
-    ## strip lines that are too weak
-    if Smin is not None:
-        i = np.abs(S)>Smin
-        x0,S,ΓL,ΓG = x0[i],S[i],ΓL[i],ΓG[i]
-    ## remove lines outside of fwhm calc range
+# def rautian_spectrum(
+        # x,                      # frequency scale, assumed monotonically increasing (cm-1)
+        # x0,                     # line centers (cm-1)
+        # S,                      # line strengths
+        # ΓL,                     # Lorentzian linewidth (cm-1 FWHM)
+        # ΓG,                     # Gaussian linewidth (cm-1 FWHM)
+        # νvc,
+        # Smin=None,              # do not include lines weaker than this
+# ):
+    # """Convert some lines into a spectrum."""
+    # ## no x, nothing to do
+    # if len(x)==0 or len(x0)==0:
+        # return np.zeros(x.shape,dtype=float) 
+    # ## strip lines that are too weak
+    # if Smin is not None:
+        # i = np.abs(S)>Smin
+        # x0,S,ΓL,ΓG = x0[i],S[i],ΓL[i],ΓG[i]
+    # ## remove lines outside of fwhm calc range
+    # # if not nfwhmG is None and not nfwhmL is None:
+        # # i = ((x0+nfwhmL*ΓL+nfwhmG*ΓG)<x[0]) | ((x0-nfwhmL*ΓL-nfwhmG*ΓG)>x[-1])
+        # # x0,S,ΓL,ΓG = x0[~i],S[~i],ΓL[~i],ΓG[~i]
+    # ## test if nothing left
+    # if len(x0) == 0:
+        # return np.full(x.shape,0.) 
+    # ## calc single process
+    # y = np.zeros(x.shape,dtype=float)
+    # for args in zip(x0,S,ΓL,ΓG,νvc):
+        # y += rautian(x,*args)
+    # return y
+
+# def voigt_spectrum(
+        # x,                      # frequency scale, assumed monotonically increasing (cm-1)
+        # x0,                     # line centers (cm-1)
+        # S,                      # line strengths
+        # ΓL,                     # Lorentzian linewidth (cm-1 FWHM)
+        # ΓG,                     # Gaussian linewidth (cm-1 FWHM)
+        # nfwhmL=None,              # Number of Lorentzian full-width half-maxima to compute (zero for infinite)
+        # nfwhmG=None,             # Number of Gaussian full-width half-maxima to compute
+        # Smin=None,              # do not include lines weaker than this
+        # use_multiprocessing= True,
+        # multiprocessing_max_cpus=999,
+# ):
+    # """Convert some lines into a spectrum."""
+    # ## no x, nothing to do
+    # if len(x)==0 or len(x0)==0:
+        # return(np.zeros(x.shape,dtype=float))
+    # ## strip lines that are too weak
+    # if Smin is not None:
+        # i = np.abs(S)>Smin
+        # x0,S,ΓL,ΓG = x0[i],S[i],ΓL[i],ΓG[i]
+    # ## remove lines outside of fwhm calc range
     # if not nfwhmG is None and not nfwhmL is None:
         # i = ((x0+nfwhmL*ΓL+nfwhmG*ΓG)<x[0]) | ((x0-nfwhmL*ΓL-nfwhmG*ΓG)>x[-1])
         # x0,S,ΓL,ΓG = x0[~i],S[~i],ΓL[~i],ΓG[~i]
-    ## test if nothing left
-    if len(x0) == 0:
-        return np.full(x.shape,0.) 
-    ## calc single process
-    y = np.zeros(x.shape,dtype=float)
-    for args in zip(x0,S,ΓL,ΓG,νvc):
-        y += rautian(x,*args)
-    return y
+    # ## test if nothing left
+    # if len(x0)==0:
+        # return(np.full(x.shape,0.))
+    # ## calc single process
+    # if (not use_multiprocessing) or len(x)<10000:
+        # y = np.zeros(x.shape,dtype=float)
+        # for (x0i,Si,ΓLi,ΓGi) in zip(x0,S,ΓL,ΓG):
+            # voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG,yin=y)
+            # # y += voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG)
+    # else:
+        # if tools.isnumeric(use_multiprocessing):
+            # nparallel = int(use_multiprocessing)
+        # else:
+            # nparallel = min(multiprocessing.cpu_count()-1,multiprocessing_max_cpus)
+        # step = max(1,int(len(x0)/(nparallel-1)))
+        # nmax = len(x0)
+        # # y = [None for t in range(nparallel)]
+        # y = []
+        # p = multiprocessing.Pool()
+        # for iprocess,ibeg in enumerate(range(0,nmax,step)):
+            # iend = min(ibeg+step,nmax)
+            # def callback(ypartial,iprocess=iprocess):
+                # # y[iprocess] = ypartial
+                # y.append(ypartial)
+            # # p.apply_async(voigt_spectrum,
+            # p.apply_async(
+                # voigt_spectrum,
+                # args=(x,x0[ibeg:iend],S[ibeg:iend],ΓL[ibeg:iend],ΓG[ibeg:iend], nfwhmL,nfwhmG,Smin,False),
+                # callback=callback)
+        # try:
+            # p.close();p.join()
+        # except KeyboardInterrupt as err:
+            # p.terminate()
+            # p.join()
+            # raise err
+        # y = np.sum(y,axis=0)
+    # return y 
 
-
-def voigt_spectrum(
-        x,                      # frequency scale, assumed monotonically increasing (cm-1)
-        x0,                     # line centers (cm-1)
-        S,                      # line strengths
-        ΓL,                     # Lorentzian linewidth (cm-1 FWHM)
-        ΓG,                     # Gaussian linewidth (cm-1 FWHM)
-        nfwhmL=None,              # Number of Lorentzian full-width half-maxima to compute (zero for infinite)
-        nfwhmG=None,             # Number of Gaussian full-width half-maxima to compute
-        Smin=None,              # do not include lines weaker than this
-        use_multiprocessing= True,
-        multiprocessing_max_cpus=999,
-):
-    """Convert some lines into a spectrum."""
-    ## no x, nothing to do
-    if len(x)==0 or len(x0)==0:
-        return(np.zeros(x.shape,dtype=float))
-    ## strip lines that are too weak
-    if Smin is not None:
-        i = np.abs(S)>Smin
-        x0,S,ΓL,ΓG = x0[i],S[i],ΓL[i],ΓG[i]
-    ## remove lines outside of fwhm calc range
-    if not nfwhmG is None and not nfwhmL is None:
-        i = ((x0+nfwhmL*ΓL+nfwhmG*ΓG)<x[0]) | ((x0-nfwhmL*ΓL-nfwhmG*ΓG)>x[-1])
-        x0,S,ΓL,ΓG = x0[~i],S[~i],ΓL[~i],ΓG[~i]
-    ## test if nothing left
-    if len(x0)==0:
-        return(np.full(x.shape,0.))
-    ## calc single process
-    if (not use_multiprocessing) or len(x)<10000:
-        y = np.zeros(x.shape,dtype=float)
-        for (x0i,Si,ΓLi,ΓGi) in zip(x0,S,ΓL,ΓG):
-            voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG,yin=y)
-            # y += voigt(x,x0i,Si,ΓLi,ΓGi,nfwhmL,nfwhmG)
-    else:
-        if tools.isnumeric(use_multiprocessing):
-            nparallel = int(use_multiprocessing)
-        else:
-            nparallel = min(multiprocessing.cpu_count()-1,multiprocessing_max_cpus)
-        step = max(1,int(len(x0)/(nparallel-1)))
-        nmax = len(x0)
-        # y = [None for t in range(nparallel)]
-        y = []
-        p = multiprocessing.Pool()
-        for iprocess,ibeg in enumerate(range(0,nmax,step)):
-            iend = min(ibeg+step,nmax)
-            def callback(ypartial,iprocess=iprocess):
-                # y[iprocess] = ypartial
-                y.append(ypartial)
-            # p.apply_async(voigt_spectrum,
-            p.apply_async(
-                voigt_spectrum,
-                args=(x,x0[ibeg:iend],S[ibeg:iend],ΓL[ibeg:iend],ΓG[ibeg:iend], nfwhmL,nfwhmG,Smin,False),
-                callback=callback)
-        try:
-            p.close();p.join()
-        except KeyboardInterrupt as err:
-            p.terminate()
-            p.join()
-            raise err
-        y = np.sum(y,axis=0)
-    return y 
-
-
-def centroided_spectrum(
-        x,                      # frequency scale (cm-1) -- ORDERED AND REGULAR!
-        x0,                     # line centers (cm-1)
-        S,                      # line strengths
-        Smin=None,              # do not include lines weaker than this
-):
-    """Convert some lines into a stick spectrum with each linestrength
-    divided between the two nearest neighbour x-points.."""
-    print('UNRELIABLE NEEDS WORK -- only implemented for regular grid')
-    dx = (x[-1]-x[0])/len(x)
-    if Smin is not None:
-        i = np.abs(S)>Smin
-        x0,S = x0[i],S[i]
-    x = np.array(x,dtype=float)
-    y = np.zeros(x.shape,dtype=float)
-    ## get indices of output points above and below data
-    i = np.argsort(x0)
-    x0,S = x0[i],S[i]
-    ib = np.searchsorted(x,x0)
-    ia = ib-1
-    ## add left and rigth divided strength to spectrum
-    for iai,ibi,x0i,Si in zip(ia,ib,x0,S):
-        if iai<=0 or ibi>=len(x):
-            ## points outside x domain
-            continue
-        ## weights to above and below points -- COULD BE MODIFIED FOR IRREGULAR GRID
-        ca = (x0i-x[iai])/(x[ibi]-x[iai])
-        y[iai] += ca*Si/dx
-        y[ibi] += (1.-ca)*Si/dx
-    return(y)
+# def centroided_spectrum(
+        # x,                      # frequency scale (cm-1) -- ORDERED AND REGULAR!
+        # x0,                     # line centers (cm-1)
+        # S,                      # line strengths
+        # Smin=None,              # do not include lines weaker than this
+# ):
+    # """Convert some lines into a stick spectrum with each linestrength
+    # divided between the two nearest neighbour x-points.."""
+    # print('UNRELIABLE NEEDS WORK -- only implemented for regular grid')
+    # dx = (x[-1]-x[0])/len(x)
+    # if Smin is not None:
+        # i = np.abs(S)>Smin
+        # x0,S = x0[i],S[i]
+    # x = np.array(x,dtype=float)
+    # y = np.zeros(x.shape,dtype=float)
+    # ## get indices of output points above and below data
+    # i = np.argsort(x0)
+    # x0,S = x0[i],S[i]
+    # ib = np.searchsorted(x,x0)
+    # ia = ib-1
+    # ## add left and rigth divided strength to spectrum
+    # for iai,ibi,x0i,Si in zip(ia,ib,x0,S):
+        # if iai<=0 or ibi>=len(x):
+            # ## points outside x domain
+            # continue
+        # ## weights to above and below points -- COULD BE MODIFIED FOR IRREGULAR GRID
+        # ca = (x0i-x[iai])/(x[ibi]-x[iai])
+        # y[iai] += ca*Si/dx
+        # y[ibi] += (1.-ca)*Si/dx
+    # return(y)
 
 # def voigt_spectrum_with_gaussian_doppler_width(
         # x,                      # frequency scale (cm-1)
@@ -845,42 +916,42 @@ def centroided_spectrum(
     # warnings.warn("Deprecated: Use auto_fit_lines(x,y,fit_profile='estimate',**kwargs_find_peaks)")
     # return(auto_fit_lines(x,y,fit_profile='estimate',**kwargs_find_peaks))
 
-def gaussian_spectrum(
-        x,                      # frequency scale (cm-1)
-        x0,                     # line centers (cm-1)
-        S,                      # line strengths
-        Γ,                     # Gaussian linewidth (cm-1 FWHM)
-        nfwhm=10.,             # Number of Gaussian full-width half-maxima to compute
-        Smin=None,
-        method='python'
-):
-    """Convert some lines into a spectrum."""
-    ## no x, nothing to do
-    if len(x)==0 or len(x0)==0:
-        return(np.zeros(x.shape,dtype=float))
-    ## strip lines that are too weak
-    if Smin is not None:
-        i = np.abs(S)>Smin
-        x0,S,Γ = x0[i],S[i],Γ[i]
-    ## remove lines outside of fwhm calc range
-    if not nfwhm is None:
-        i = ((x0+nfwhm*Γ)<x[0]) | ((x0-nfwhm*Γ)>x[-1])
-        x0,S,Γ = x0[~i],S[~i],Γ[~i]
-    ## test if nothing left
-    if len(x0)==0:
-        return(np.full(x.shape,0.))
-    ## calc single process
-    if method=='python':
-        y = np.zeros(x.shape,dtype=float)
-        for (x0i,Si,Γi) in zip(x0,S,Γ):
-            i,j = np.searchsorted(x,[x0i-Γi*nfwhm,x0i+Γi*nfwhm])
-            gaussian(x[i:j],x0i,Si,Γi,y=y[i:j])
-    elif method=='fortran':
-        y = np.zeros(x.shape,dtype=float)
-        _fortran_tools.calculate_gaussian_spectrum(x0,S,Γ,x.astype(float),y,nfwhm)
-    elif method=='fortran stepwise':
-        y = np.zeros(x.shape,dtype=float)
-        _fortran_tools.calculate_stepwise_gaussian_spectrum(x0,S,Γ,x.astype(float),y,nfwhm)
-    else:
-        raise Exception(f'Unknown gaussian_method: {repr(method)}')
-    return y 
+# def gaussian_spectrum(
+        # x,                      # frequency scale (cm-1)
+        # x0,                     # line centers (cm-1)
+        # S,                      # line strengths
+        # Γ,                     # Gaussian linewidth (cm-1 FWHM)
+        # nfwhm=10.,             # Number of Gaussian full-width half-maxima to compute
+        # Smin=None,
+        # method='python'
+# ):
+    # """Convert some lines into a spectrum."""
+    # ## no x, nothing to do
+    # if len(x)==0 or len(x0)==0:
+        # return(np.zeros(x.shape,dtype=float))
+    # ## strip lines that are too weak
+    # if Smin is not None:
+        # i = np.abs(S)>Smin
+        # x0,S,Γ = x0[i],S[i],Γ[i]
+    # ## remove lines outside of fwhm calc range
+    # if not nfwhm is None:
+        # i = ((x0+nfwhm*Γ)<x[0]) | ((x0-nfwhm*Γ)>x[-1])
+        # x0,S,Γ = x0[~i],S[~i],Γ[~i]
+    # ## test if nothing left
+    # if len(x0)==0:
+        # return(np.full(x.shape,0.))
+    # ## calc single process
+    # if method=='python':
+        # y = np.zeros(x.shape,dtype=float)
+        # for (x0i,Si,Γi) in zip(x0,S,Γ):
+            # i,j = np.searchsorted(x,[x0i-Γi*nfwhm,x0i+Γi*nfwhm])
+            # gaussian(x[i:j],x0i,Si,Γi,y=y[i:j])
+    # elif method=='fortran':
+        # y = np.zeros(x.shape,dtype=float)
+        # _fortran_tools.calculate_gaussian_spectrum(x0,S,Γ,x.astype(float),y,nfwhm)
+    # elif method=='fortran stepwise':
+        # y = np.zeros(x.shape,dtype=float)
+        # _fortran_tools.calculate_stepwise_gaussian_spectrum(x0,S,Γ,x.astype(float),y,nfwhm)
+    # else:
+        # raise Exception(f'Unknown gaussian_method: {repr(method)}')
+    # return y 
