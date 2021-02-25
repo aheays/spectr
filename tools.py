@@ -3868,7 +3868,7 @@ def txt_to_dict(
     for key,column in zip(labels,zip(*lines)):
         column = [(t.strip() if len(t.strip())>0 else replacement_for_blank_elements) for t in column]
         data[key] = try_cast_to_numerical_array(column)
-    return(data)
+    return data 
             
 # def txt_to_array_unpack(filename,skiprows=0,comment='#'):
     # """Read a text file of 2D data into a seperate array for each
