@@ -472,7 +472,7 @@ class Model(Optimiser):
         self.add_construct_function(f)
     add_cross_section = add_absorption_cross_section # deprecated name
 
-    @auto_construct_method('add_absorption_lines')
+    @optimise_method()
     def add_absorption_lines(
             self,
             lines=None,
@@ -480,61 +480,53 @@ class Model(Optimiser):
             nfwhmG=100,
             τmin=None,
             lineshape='voigt',
-            # gaussian_method=None,
-            # voigt_method=None,
-            # use_multiprocessing=None
             ncpus=1,
+            _cache=None
     ):
-        self.add_suboptimiser(lines)
-        ## update lines data and recompute optical depth if
-        ## necessary
-        cache = {}
-        def f():
-            if self.x is None:
-                ## x not set yet
-                return
+        if self.x is None:
+            ## x not set yet
+            return
 
 
-            ## recompute spectrum if is necessary for some reason --
-            ## do various tests to see if a cached version is ok
-            if (
-                    'absorbance'  not in cache # first run
-                    or self._last_construct_time < lines._last_construct_time # line spectrum has changed
-                    or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
-            ):
-                ## only include lines in the x-range
-                if 'i' not in cache:
-                    cache['i'] = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
-                tlines = lines[cache['i']]
-                ## if previous calculations are cached then find which lines have actually changed -- store in j
-                if 'tlines' in cache:
-                    j = np.any([ tlines[key] != cache['tlines'][key] for key in tlines.keys()], axis=0)
-                else:
-                    j = None
-                ## compute entire spectrum
-                if  'τ' not in cache or j is None:
+        ## recompute spectrum if is necessary for some reason --
+        ## do various tests to see if a cached version is ok
+        if (
+                'absorbance'  not in _cache # first run
+                or self._last_construct_time < lines._last_construct_time # line spectrum has changed
+                or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
+        ):
+            ## only include lines in the x-range
+            if 'i' not in _cache:
+                _cache['i'] = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
+            tlines = lines[_cache['i']]
+            ## if previous calculations are cached then find which lines have actually changed -- store in j
+            if 'tlines' in _cache:
+                j = np.any([ tlines[key] != _cache['tlines'][key] for key in tlines.keys()], axis=0)
+            else:
+                j = None
+            ## compute entire spectrum
+            if  'τ' not in _cache or j is None:
+                x,y = tlines.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+            ## compute difference of changed lines
+            else:
+                xnew,ynew = tlines[j].calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
 
-                    x,y = tlines.calculate_spectrum(
-                        x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                        ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-                ## compute difference of changed lines
-                else:
-                    xnew,ynew = tlines[j].calculate_spectrum(
-                        x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                        ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-                    
-                    xold,yold = cache['tlines'][j].calculate_spectrum(
-                        x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                        ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-                    y = cache['τ'] - yold + ynew             
-                ## store cache
-                # tlines.unset_inferences()
-                cache['tlines'] = tlines
-                cache['τ'] = y
-                cache['absorbance'] = np.exp(-y)
-            ## set absorbance in self
-            self.y *= cache['absorbance']
-        return f
+                xold,yold = _cache['tlines'][j].calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+                y = _cache['τ'] - yold + ynew             
+            ## store _cache
+            # tlines.unset_inferences()
+            _cache['tlines'] = tlines
+            _cache['τ'] = y
+            _cache['absorbance'] = np.exp(-y)
+        ## set absorbance in self
+        self.y *= _cache['absorbance']
+
 
     @optimise_method()
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
@@ -1161,7 +1153,7 @@ class Model(Optimiser):
             self,
             terms=3,
             interpolation_factor=None,
-            fwhms_to_include=100,
+            fwhms_to_include=10,
             _cache=None,
     ):
         """Convolve with the coefficients equivalent to a Blackman-Harris
@@ -1194,24 +1186,23 @@ class Model(Optimiser):
         xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
         ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
         ## generate sinc to convolve with
-        xconv = np.arange(0,fwhms_to_include*width,dx)
-        xconv = np.concatenate((-xconv[-1:0:-1],xconv))
-        # ax = plotting.qax(10)
-        # ax.plot(xconv,0.42323*np.sinc(xconv/width*1.2))
-        # ax.plot(xconv,0.5*0.49755*np.sinc((xconv-width/1.2)/width*1.2))
-        if terms == 3:
-            yconv =  0.42323*np.sinc(xconv/width*1.2)
-            yconv += 0.5*0.49755*np.sinc((xconv-width/1.2)/width*1.2)
-            yconv += 0.5*0.49755*np.sinc((xconv+width/1.2)/width*1.2)
-            yconv += 0.5*0.07922*np.sinc((xconv-2*width/1.2)/width*1.2)
-            yconv += 0.5*0.07922*np.sinc((xconv+2*width/1.2)/width*1.2)
-        else: 
-            raise Exception("Only 3-term version implemented.")
-        yconv /= yconv.sum()                    # normalised
-        # ax.plot(xconv,yconv)
-        # ax.set_xlim(-0.1,0.1)
-        # ax.grid(True)
-        self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        if 'yconv' not in _cache:
+            xconv = np.arange(0,fwhms_to_include*width,dx)
+            xconv = np.concatenate((-xconv[-1:0:-1],xconv))
+            if terms == 3:
+                yconv =  0.42323*np.sinc(xconv/width*1.2)
+                yconv += 0.5*0.49755*np.sinc((xconv-width/1.2)/width*1.2)
+                yconv += 0.5*0.49755*np.sinc((xconv+width/1.2)/width*1.2)
+                yconv += 0.5*0.07922*np.sinc((xconv-2*width/1.2)/width*1.2)
+                yconv += 0.5*0.07922*np.sinc((xconv+2*width/1.2)/width*1.2)
+            else: 
+                raise Exception("Only 3-term version implemented.")
+            yconv /= yconv.sum()                    # normalised
+            _cache['yconv'] = yconv
+        else:
+            yconv = _cache['yconv']
+        ## self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
     @optimise_method()
     def convolve_with_signum(
