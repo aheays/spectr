@@ -62,7 +62,7 @@ def _f0(self,S296K,species,Z,E_l,Tex,ν):
             *((np.exp(-E_l/(c*Tex))/Z)*(1-np.exp(-c*ν/Tex)))
             /((np.exp(-E_l/(c*296))/Z296K)*(1-np.exp(-c*ν/296))))
 prototypes['S'] = dict(description="Spectral line intensity (cm or cm-1/(molecular.cm-2) ", kind='f', fmt='<10.5e', infer=[(('S296K','species','Z','E_l','Tex_l','ν'),_f0,)])
-prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ( cm-1/(molecular.cm-2) ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.", kind='f', fmt='<10.5e', infer=[])
+prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ( cm-1/(molecular.cm-2) ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.", kind='f', fmt='<10.5e', infer=[],cast=tools.cast_abs_float_array)
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
 ## former considers the effect of stimulated emission.
@@ -85,29 +85,29 @@ prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11
 
 ## pressure broadening and shift parameters
 prototypes['pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
-prototypes['γ0air'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=lambda x:np.abs(np.asarray(x),dtype=float),default_step=1e-3)
+prototypes['γ0air'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0air'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0air'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['Γair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float), infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert(P,'Pa','atm')),])
+prototypes['Γair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert(P,'Pa','atm')),])
 prototypes['Δνair'] = dict(description="Pressure shift due to air (cm-1)" , kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
 
-prototypes['νvc'] = dict(description="Frequency of velocity changing collisions (which profile?) (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=lambda x:np.abs(np.asarray(x),dtype=float),default_step=1e-3)
+prototypes['νvc'] = dict(description="Frequency of velocity changing collisions (which profile?) (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 
 prototypes['pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
-prototypes['γ0self'] = dict(description="Pressure broadening coefficient in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=lambda x:np.abs(np.asarray(x),dtype=float),default_step=1e-3)
+prototypes['γ0self'] = dict(description="Pressure broadening coefficient in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0self'] = dict(description="Pressure broadening temperature dependence in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0self'] = dict(description="Pressure shift coefficient in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0self'] = dict(description="Pressure shift temperature dependence in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['Γself'] = dict(description="Pressure broadening due to self (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γ0self','nγ0self','pself','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
+prototypes['Γself'] = dict(description="Pressure broadening due to self (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0self','nγ0self','pself','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
 prototypes['Δνself'] = dict(description="Pressure shift due to self (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0self','nδ0self','pself','Ttr'),lambda self,δ0,n,P,T: (296/T)**n*δ0*convert(P,'Pa','atm')),])
 
 prototypes['pX'] = dict(description="Pressure of X (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
-prototypes['γ0X'] = dict(description="Pressure broadening coefficient in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=lambda x:np.abs(np.asarray(x),dtype=float),default_step=1e-3)
+prototypes['γ0X'] = dict(description="Pressure broadening coefficient in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0X'] = dict(description="Pressure broadening temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0X'] = dict(description="Pressure shift coefficient in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=lambda x:np.abs(np.asarray(x),dtype=float),infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
+prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
 prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert(P,'Pa','atm')),])
 
 ## HITRAN encoded pressure and temperature dependent Hartmann-Tran
@@ -132,14 +132,14 @@ prototypes['HT_HITRAN_γ2'] = dict(description='Speed-dependence of the halfwidt
 prototypes['HT_HITRAN_δ0'] = dict(description='Speed-averaged line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
 prototypes['HT_HITRAN_δp'] = dict(description='Linear temperature dependence coefficient for δ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm.K-1',kind='f')
 prototypes['HT_HITRAN_δ2'] = dict(description='Speed-dependence of the line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
-prototypes['HT_HITRAN_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=lambda x:np.abs(np.asarray(x),dtype=float))
+prototypes['HT_HITRAN_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
 prototypes['HT_HITRAN_κ'] = dict(description='Temperature dependence of νVC in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
 # def _f0(x):
     # """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
     # x = np.abs(np.asarray(x),dtype=float)
     # x[x>1] = 0.99999
     # return x
-prototypes['HT_HITRAN_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',cast=lambda x:np.abs(np.asarray(x),dtype=float),)
+prototypes['HT_HITRAN_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',cast=tools.cast_abs_float_array,default_step=1e-5)
 prototypes['HT_HITRAN_Y'] = dict(description='First-order (Rosenkranz) line coupling coefficient in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
 
 ## coefficients of the Hartmann-Tran lineshape
