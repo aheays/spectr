@@ -313,7 +313,7 @@ class Dataset(optimise.Optimiser):
             else:
                 step = np.full(len(self),1e-5)
                 i = self[key] != 0
-                step[i] = 10**np.round(np.log10(1e-5*np.abs(self[key])))
+                step[i] = 10**np.round(np.log10(1e-5*np.abs(self[key][i])))
                 self.set_step(key,step)
         if self.get_uncertainty(key) is None:
             self.set_uncertainty(key,nan)
@@ -1126,6 +1126,7 @@ class Dataset(optimise.Optimiser):
             plot_errorbars=True, # if uncertainty available
             xscale='linear',     # 'log' or 'linear'
             yscale='linear',     # 'log' or 'linear'
+            ncolumns=None,
             show=False,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
@@ -1165,17 +1166,17 @@ class Dataset(optimise.Optimiser):
                 else:
                     zlabel = zlabel_format_function(**dz)
                 if ynewaxes and znewaxes:
-                    ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig)
+                    ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = None
                     title = ylabel+' '+zlabel
                 elif ynewaxes and not znewaxes:
-                    ax = plotting.subplot(n=iy,fig=fig)
+                    ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = (zlabel if len(zkeys)>0 else None) 
                     title = ylabel
                 elif not ynewaxes and znewaxes:
-                    ax = plotting.subplot(n=iz,fig=fig)
+                    ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = ylabel
                     title = zlabel
@@ -1199,6 +1200,7 @@ class Dataset(optimise.Optimiser):
                 if plot_errorbars and (dy:=z.get_uncertainty(ykey)) is not None:
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
+                    dy[np.isnan(dy)] = 0.
                     ax.errorbar(x,y,dy,**kwargs)
                     ## plot zero/undefined uncertainty data as filled symbols
                     i = np.isnan(dy)|(dy==0)

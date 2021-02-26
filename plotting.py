@@ -7,7 +7,6 @@ import shutil
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
-from matplotlib.pyplot import *
 from scipy import constants
 
 from . import tools
@@ -2088,14 +2087,13 @@ def show():
 
 # show_if_noninteractive = show
 
-def qplot(xydata,**kwargs):
+def qplot(*plot_args,**plot_kwargs):
     """Issue a plot command and then output to file."""
-    fig=plt.figure()
-    ax=fig.gca()
-    ax.plot(xydata[:,0],xydata[:,1:],**kwargs)
+    ax = qax()
+    ax.plot(*plot_args,**plot_kwargs)
     legend()
     ax.grid(True)
-    fig.savefig('/tmp/tmp.eps')
+    show()
 
 def qxlim(*args,**kwargs):
     """Issue a plot command and then output to file."""

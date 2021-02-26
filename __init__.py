@@ -7,6 +7,7 @@ import shutil
 import numpy as np
 from numpy import array,nan,arange,linspace
 from scipy import integrate
+from scipy.constants import pi as π
 
 ## import subpackages of this library
 from .fortran_tools import fortran_tools
@@ -30,7 +31,8 @@ from . import lineshapes
 ## import more explicitly for interactive use
 from .dataset import Dataset
 from .conversions import convert
+from matplotlib.pyplot import * # before plotting
 from .plotting import *
 from .tools import *
-from .optimise import *
+from .optimise import Optimiser,Parameter,P,Fixed
 
