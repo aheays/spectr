@@ -120,7 +120,7 @@ def _f0(x):
     return x
 prototypes['HT_HITRAN_p'] = dict(description='Pressure  HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=_f0,infer=[('pX',lambda self,pX:convert(pX,'Pa','atm'))])
 prototypes['HT_HITRAN_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f')
-prototypes['HT_HITRAN_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
+prototypes['HT_HITRAN_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
 prototypes['HT_HITRAN_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
 def _f0(x):
     """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
@@ -206,7 +206,7 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
     return Z
 @vectorise(cache=True,vargs=(1,2))
 def _f5(self,species,Tex):
-    if self.Zsource != 'HITRAN':
+    if self.attributes['Zsource'] != 'HITRAN':
         raise InferException(f'Zsource not "HITRAN".')
     from . import hitran
     return hitran.get_partition_function(species,Tex)

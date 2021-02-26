@@ -33,7 +33,7 @@ class Dataset(optimise.Optimiser):
         'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','default':None,},
     }
 
-    attributes = ('classname','description',)
+    default_attributes = ('classname','description',)
 
     def __init__(
             self,
@@ -50,6 +50,7 @@ class Dataset(optimise.Optimiser):
         ## deal with arguments
         # self.description = description # A string describing this dataset
         self._data = dict()
+        self.attributes = dict()
         self._length = 0
         self._over_allocate_factor = 2
         self._last_modify_data_time = timestamp()  # used for triggering optimise construct
@@ -64,8 +65,8 @@ class Dataset(optimise.Optimiser):
             for key,val in prototypes.items():
                 self.set_prototype(key,**val)
         ## initialise attributes
-        for key in self.attributes:
-            setattr(self,key,None)
+        for key in self.default_attributes:
+            self.attributes[key] = None
         ## classname to identify type of Dataset
         # self.classname = self.__class__.__name__
         self.classname = re.sub(r"<class 'spectr.(.+)'>",r'\1',str(self.__class__))
@@ -310,7 +311,10 @@ class Dataset(optimise.Optimiser):
             if (prototype:=self.get_prototype(key)) is not None and 'default_step' in prototype:
                 self.set_step(key,prototype['default_step'])
             else:
-                self.set_step(key,10**np.round(np.log10(1e-5*self[key])))
+                step = np.full(len(self),1e-5)
+                i = self[key] != 0
+                step[i] = 10**np.round(np.log10(1e-5*np.abs(self[key])))
+                self.set_step(key,step)
         if self.get_uncertainty(key) is None:
             self.set_uncertainty(key,nan)
 
@@ -431,7 +435,7 @@ class Dataset(optimise.Optimiser):
             elif len(arg) > 5 and arg[-5:] == '_step':
                 return self.get_step(arg[:-5])
             elif arg in self.attributes:
-                return getattr(self,arg)
+                return self.attributes[arg]
             else:
                 return self.get(arg)
         elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
@@ -451,7 +455,7 @@ class Dataset(optimise.Optimiser):
         elif isinstance(value,optimise.P):
             self.set_parameter(key,value)
         elif key in self.attributes:
-            setattr(self,key,value)
+            self.attributes[key] = value
         else:
             self.set(key,value)
         
@@ -516,17 +520,16 @@ class Dataset(optimise.Optimiser):
         retval.copy_from(self,keys,index)
         return retval
 
-
     @optimise_method()
-    def copy_from(self,source,keys=None,index=None,limit_to_match=None):
+    def copy_from(self,source,keys=None,index=None,match=None):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
         self.clear()            # total data reset
         if keys is None:
             keys = source.keys()
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
-        if limit_to_match is not None:
-            index = source.match(**limit_to_match)
+        if match is not None:
+            index = source.match(**match)
         for key in keys:
             self.set(key,source.get(key,index=index))
             if (t:=source.get_uncertainty(key,index=index)) is not None:
@@ -804,8 +807,7 @@ class Dataset(optimise.Optimiser):
         header = []
         ## add attributes to header
         if include_attributes:
-            for key in self.attributes:
-                val = getattr(self,key)
+            for key,val in self.attributes.items():
                 if val is not None:
                     header.append(f'{key:12} = {repr(val)}')
         if include_description:
@@ -869,17 +871,21 @@ class Dataset(optimise.Optimiser):
         if re.match(r'.*\.npz',filename):
             ## numpy archive
             data = {key:self[key] for key in keys}
-            for key in self.attributes:
-                if (val:=getattr(self,key)) is not None:
+            for key,val in self.attributes.items():
+                if val is not None:
                     data[key] = val
             np.savez(filename,**data)
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
             data = {key:self[key] for key in keys}
-            for key in self.attributes:
-                if (val:=getattr(self,key)) is not None:
-                    data[key] = val
-            tools.dict_to_hdf5(filename,data)
+            # data['attributes'] = self.attributes
+            # # for key,val in self.attributes.items():
+                # # if val is not None:
+                    # # data[key] = val
+            tools.dict_to_hdf5(
+                filename,
+                data,
+                attributes={key:val for key,val in self.attributes.items() if val is not None})
         else:
             ## text file
             if re.match(r'.*\.csv',filename):
@@ -905,8 +911,12 @@ class Dataset(optimise.Optimiser):
         '''Load data from a text file in standard format generated by
         save_to_file.'''
         if re.match(r'.*\.(h5|hdf5)',filename):
-            ## hdf5 archive
+            ## hdf5 archive, load data then top-level attributes
             data =  tools.hdf5_to_dict(filename)
+            import h5py
+            with h5py.File(tools.expand_path(filename),'r') as fid:
+                for key,val in fid.attrs.items():
+                    self.attributes[key] = val
         elif re.match(r'.*\.npz',filename):
             ## numpy npz archive.  get as scalar rather than
             ## zero-dimensional numpy array
@@ -971,7 +981,7 @@ class Dataset(optimise.Optimiser):
         ## Set data in self and selected attributes
         for key,val in data.items():
             if key in self.attributes:
-                setattr(self,key,val)
+                self.attributes[key] = val
             elif not tools.isiterable(val):
                 self.set_default(key,val)
             else:
@@ -1116,7 +1126,7 @@ class Dataset(optimise.Optimiser):
             plot_errorbars=True, # if uncertainty available
             xscale='linear',     # 'log' or 'linear'
             yscale='linear',     # 'log' or 'linear'
-            show=True,
+            show=False,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
         """Plot a few standard values for looking at. If ax is set then all
