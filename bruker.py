@@ -24,6 +24,12 @@ class OpusData:
         y = self.data['ScSm'][:parameters['NPT']] # for some reason the data in the datablock can be too long
         return x,y
 
+    def set_spectrum(self,y):
+        assert self.has_spectrum(),'No spectrum (ScSm) found.'
+        parameters = self.data[f'ScSm Data Parameter']
+        x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
+        self.data['ScSm'][:parameters['NPT']] = y # for some reason the data in the datablock can be too long
+
     def get_background(self):
         assert self.has_background(),'No background (ScRf) found.'
         parameters = self.data[f'ScRf Data Parameter']
@@ -31,6 +37,15 @@ class OpusData:
         y = self.data['ScRf'][:parameters['NPT']] # for some reason the data in the datablock can be too long
         return x,y
     
+    def get_interpolation_factor(self):
+        return float(self.data['Fourier Transformation']['ZFF'])
+
+    def get_apodisation_function(self):
+        if self.data['Fourier Transformation']['APF'] == 'B3':
+            return 'Blackman-Harris 3-term'
+        else:
+            raise Exception(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
+
     def plot(
             self,
             plot_spectrum=True,
@@ -55,27 +70,8 @@ class OpusData:
                 ax.plot(*self.get_spectrum(),**kwargs)
             else:
                 print(f'No spectrum in file: {self.filename}')    
-            
         
-        
-    # def load_spectrum(filename,datablock='ScSm'):
-        # """Load a binary Bruker Opus file, returning a specific datablock as well as all data in a
-        # dictionary. Useful datablocks:
-        # IgSm:  the single-channel sample interferogram
-        # ScSm:  the single-channel sample spectrum
-        # IgRf:  the reference (background) interferogram
-        # ScRf:  the reference (background) spectrum
-        # """
-        # d = load(filename)
-        # if datablock not in d:
-            # raise Exception(f'Cannot find datablock: {repr(datablock)}.  Existing datablocks are: {repr(list(d))}')
-        # parameters = d[f'{datablock} Data Parameter']
-        # x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
-        # y = d[datablock][:parameters['NPT']] # for some reason the data in the datablock can be too long
-        # return x,y
-
-    # def load_background(filename):
-        # """Load a binary Bruker Opus file background,"""
-        # return load_spectrum(filename,'ScRf')
-
-
+def load_spectrum(filename):
+    """Load ScSm from a file"""
+    o = OpusData(filename)
+    return o.get_spectrum()
