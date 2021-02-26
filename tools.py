@@ -903,6 +903,9 @@ def printcols(*columns):
         # x = x.reshape(list(x.shape)+[1 for t in range(number_of_axes_to_add)])
     # return np.repeat(x,repeats,axis)
 
+def cast_abs_float_array(x):
+    return np.abs(np.asarray(x,dtype=float))
+
 def repmat_vector(x,repeats=(),axis=-1):
     """x must be 1D. Expand to as many other dimension as length of
     repeats. Put x variability on axis. All other dimensions just
@@ -987,6 +990,11 @@ def hdf5_to_array(filename,unpack=False,dataset=None,usecols=None):
         x = x.transpose()
     return(x)
 
+def hdf5_get_attributes(filename):
+    """Get top level attributes."""
+    with h5py.File(expand_path(filename_or_hdf5_object),'r') as fid:
+        return {key:val for key,val in fid.attrs.items()}
+
 def hdf5_to_dict(filename_or_hdf5_object):
     """Load all elements in hdf5 into a dictionary. Groups define
     subdictionaries."""
@@ -1014,6 +1022,7 @@ def hdf5_to_dict(filename_or_hdf5_object):
         else:
             retval_dict[str(key)] = hdf5_to_dict(filename_or_hdf5_object[key])
     return retval_dict
+
 
 # def print_hdf5_tree(filename_or_hdf5_object,make_print=True):
     # """Print out a tree of an hdf5 object or file."""
@@ -1165,10 +1174,9 @@ def make_recarray(**kwargs):
 
 def dict_to_hdf5(
         filename,
-        dictionary,
-        keys=None,
-        overwrite=True,
-        compress_data=True,
+        data,
+        attributes=None,        #  a separate dictionary of attributes
+        compress=True,
 ):
     """Save all elements of a dictionary as datasets in an hdf5 file.
     Compression options a la h5py, e.g., 'gzip' or True for defaults"""
@@ -1176,28 +1184,23 @@ def dict_to_hdf5(
     import os
     filename = expand_path(filename)
     mkdir(dirname(filename)) # make leading directories if not currently there
-    if keys is None:
-        keys = list(dictionary.keys()) # default add all keys to datasets
-    if overwrite:
-        if os.path.isdir(filename):
-            raise Exception("Is directory: "+filename)
-        if os.path.lexists(filename):
-            os.unlink(filename)
-    else:
-        if os.path.lexists(filename):
-            raise Exception("File exists: "+filename)
-    f = h5py.File(filename,mode='w')
-    for key in keys:
-        kwargs = {}
-        if compress_data and not np.isscalar(dictionary[key]):
-            kwargs['compression'] = "gzip"
-            kwargs['compression_opts'] = 9
-        data = np.asarray(dictionary[key])
-        ## deal with missing unicode type in hdft http://docs.h5py.org/en/stable/strings.html#what-about-numpy-s-u-type
-        if not np.isscalar(data) and data.dtype.kind=='U':
-            data = np.array(data, dtype=h5py.string_dtype(encoding='utf-8'))
-        f.create_dataset(key,data=data,**kwargs)
-    f.close()
+    with h5py.File(filename,mode='w') as f:
+        ## add attributes
+        if attributes is not None:
+            for key,val in attributes.items():
+                f.attrs.create(key,val)
+        ## add data
+        if data is not None:
+            for key,val in data.items():
+                kwargs = {}
+                if compress and not np.isscalar(val):
+                    kwargs['compression'] = "gzip"
+                    kwargs['compression_opts'] = 9
+                val = np.asarray(val)
+                ## deal with missing unicode type in hdft http://docs.h5py.org/en/stable/strings.html#what-about-numpy-s-u-type
+                if not np.isscalar(val) and val.dtype.kind=='U':
+                    val = np.array(val, dtype=h5py.string_dtype(encoding='utf-8'))
+                f.create_dataset(key,data=val,**kwargs)
 
 def append_to_hdf5(filename,**keys_vals):
     """Added key=val to hdf5 file."""
