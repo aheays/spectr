@@ -5,7 +5,9 @@ import warnings
 
 from matplotlib import pyplot as plt
 from scipy import signal,constants,fft,interpolate
+from scipy.constants import pi as π
 import numpy as np
+from numpy import arange
 
 
 from . import optimise
@@ -93,7 +95,7 @@ class Experiment(Optimiser):
         d = Dataset()
         d.load(filename)
         experimental_parameters = {key:val for key,val in d.items() if  key not in (xkey,ykey)}
-        self.set_spectrum(d[xkey],d[ykey],xbeg,xend,**d.attributes)
+        self.set_spectrum(d[xkey],d[ykey],xbeg,xend,filename=filename,**d.attributes)
 
     def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
@@ -872,6 +874,42 @@ class Model(Optimiser):
         _cache['s'],_cache['x'],_cache['y'],_cache['i'] = s,x,y,i
         self.y[i] += s
 
+    def auto_scale_by_piecewise_sinusoid(self,xstep,xbeg=-inf,xend=inf,vary=True):
+        """Automatically find regions for use in
+        scale_by_piecewise_sinusoid."""
+        ## get join points between regions
+        i = (self.x>=xbeg)&(self.x<=xend)
+        xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
+        ## loop over all regions, gettin dominant frequency and phase
+        ## from the residual error power spectrum
+        regions = []
+        for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
+            i = (self.x>=xbegi)&(self.x<=xendi)
+            residual = self.yexp[i] - self.y[i]
+            FT = fft.fft(residual)
+            imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
+            phase = np.arctan(FT.imag[imax]/FT.real[imax])
+            if FT.real[imax]<0:
+                phase += π
+            dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
+            frequency = 1/dx*imax/len(FT)
+            amplitude = tools.rms(residual)/self.y[i].mean()
+            regions.append((
+                xbegi,xendi,
+                P(amplitude,vary,self.y[i].mean()*1e-3),
+                P(frequency,vary,frequency*1e-3),
+                P(phase,vary,2*π*1e-3),))
+        self.scale_by_piecewise_sinusoid(regions)
+        
+    @optimise_method()
+    def scale_by_piecewise_sinusoid(self,regions,_cache=None):
+        """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
+        regions = [(xa,xb,A,f,φ),...].  Probably should initialise
+        with auto_scale_by_piecewise_sinusoid."""
+        for xbeg,xend,amplitude,frequency,phase in regions:
+            i = (self.x>=xbeg)&(self.x<=xend)
+            self.y[i] *= 1+float(amplitude)*np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
+        
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
         # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
         # self.add_format_input_function(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
