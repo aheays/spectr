@@ -7,7 +7,8 @@ from pprint import pprint
 from copy import copy
 
 import numpy as np
-from numpy import nan
+from numpy import nan,inf
+from scipy import optimize,linalg
 
 # from . import dataset
 from . import tools
@@ -88,8 +89,9 @@ def optimise_method(
     suboptimisers are picked out of the input kwargs.\n\n Input
     arguments format_single_line and format_multi_line override
     default format_input_function properties. The only reason to write
-    a factory is to accomodate these arguments, and maybe future
-    ones."""
+    a factory is to accomodate these arguments, and maybe future ones.
+    Not that new_function does not actually run function!  Instead it
+    is run by add_construct_function and construct."""
     def actual_decorator(function):
         def new_function(self,*args,**kwargs):
             ## this block subtitutes into kwargs with keys taken from
@@ -127,6 +129,36 @@ def optimise_method(
             if "_cache" in retval:
                 retval.pop('_cache')
             return retval
+        return new_function
+    return actual_decorator
+
+def format_input_method(
+        format_single_line=None,
+        format_multi_line=None,
+):
+    """Add function to format_input_functions and run it."""
+    def actual_decorator(function):
+        def new_function(self,*args,**kwargs):
+            ## this block subtitutes into kwargs with keys taken from
+            ## the function signature.  get signature arguments -- skip
+            ## first "self"
+            signature_keys = list(inspect.signature(function).parameters)[1:]
+            for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
+                if signature_key in kwargs:
+                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function_name)}.')
+                kwargs[signature_key] = arg
+            ## make a format_input_function
+            def f():
+                kwargs_to_format = {key:val for key,val in kwargs.items() if key != '_cache' and val is not None}
+                if (len(kwargs_to_format)<2 or format_single_line) and not format_multi_line:
+                    formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                    return f'{self.name}.{function.__name__}({formatted_kwargs},)'
+                else:
+                    formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                    return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
+            self.add_format_input_function(f)
+            ## run the function
+            function(self,*args,**kwargs)
         return new_function
     return actual_decorator
 
@@ -244,7 +276,6 @@ class Optimiser:
         if (isinstance(parameter,Named_Parameter)
             and parameter.optimiser not in self._suboptimisers):
             self.add_suboptimiser(parameter.optimiser)
-
         if not isinstance(parameter,Parameter):
             parameter = Parameter(*tools.ensure_iterable(parameter),*args,**kwargs)
         self.parameters.append(parameter)
@@ -544,6 +575,7 @@ class Optimiser:
     def _optimisation_function(self,p):
         """Internal function used by optimise routine. p is a list of varied
         parameters."""
+        # print('DEBUG:', list(p))
         self._number_of_optimisation_function_calls += 1
         ## update parameters in internal model
         self._set_parameters(p)
@@ -561,34 +593,22 @@ class Optimiser:
                 self.monitor()
                 self._previous_time = current_time
                 if rms<self._rms_minimum: self._rms_minimum = rms
-        return(residuals)           
+        return residuals
 
+    @format_input_method()
     def optimise(
             self,
-            compute_final_uncertainty=False, # single Hessian computation with normlised suboptimiser residuals
+            compute_uncertainty=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
             xtol=1e-14,
             rms_noise=None,
             monitor_frequency='every iteration', # 'rms decrease', 'never'
             verbose=True,
             normalise_suboptimiser_residuals=False,
-            data_interpolation_factor=1.,
+            max_nfev=None,         # max number of iterations
     ):
         """Optimise parameters."""
-        def f(xtol=xtol,
-              normalise_suboptimiser_residuals=normalise_suboptimiser_residuals):
-            return(f'''{self.name}.optimise(
-            xtol={repr(xtol)},
-            compute_final_uncertainty={repr(compute_final_uncertainty)},
-            rms_noise={repr(rms_noise)},
-            monitor_frequency={repr(monitor_frequency)},
-            verbose={repr(verbose)},
-            data_interpolation_factor={repr(data_interpolation_factor)},
-            normalise_suboptimiser_residuals={repr(normalise_suboptimiser_residuals)})''')
-        self.add_format_input_function(f)
-        if compute_final_uncertainty:
-            ## a hack to prevent iteratoin of leastsq, and just get
-            ## the estimated error at the starting point
-            xtol = 1e16
+        if compute_uncertainty:
+            max_nfev = 1
         if normalise_suboptimiser_residuals:
             ## normalise all suboptimiser residuals to one, only
             ## appropriate if model is finished -- common normalisation
@@ -601,39 +621,82 @@ class Optimiser:
                     else:
                         suboptimiser.residual_scale_factor /= tools.nanrms(suboptimiser.residual)
                     suboptimiser.residual = None # mark undone
-        ## info
-        if self.verbose:
-            print(f'{self.name}: optimising')
-        self.monitor_frequency = monitor_frequency
-        assert monitor_frequency in ('rms decrease','every iteration','never'),f"Valid monitor_frequency: {repr(('rms decrease','every iteration','never'))}"
-        self._rms_minimum,self._previous_time = np.inf,timestamp()
-        self._number_of_optimisation_function_calls = 0
         ## get initial values and reset uncertainties
         p,s,dp = self._get_parameters()
-        if verbose:
+        self.monitor_frequency = monitor_frequency
+        assert monitor_frequency in ('rms decrease','every iteration','never'),f"Valid monitor_frequency: {repr(('rms decrease','every iteration','never'))}"
+        self._rms_minimum,self._previous_time = inf,timestamp()
+        self._number_of_optimisation_function_calls = 0
+        if verbose or self.verbose:
+            print(f'{self.name}: optimising')
             print('Number of varied parameters:',len(p))
         if len(p)>0:
-            ## 2018-05-08 on one occasion I seemed to be getting
-            ## returned p from leastsq which did not correspond to the
-            ## best fit!!! So I did not update p from this output and
-            ## retained what was set in construct()
             try:
-                p,dp = tools.leastsq(self._optimisation_function, p,s,xtol=xtol,rms_noise=rms_noise,)
-                if self.verbose:
-                    print('Number of evaluations:',self._number_of_optimisation_function_calls)
+                ## use leastsq Levenberg-Marquadt
+                ## p,dp = tools.leastsq(self._optimisation_function, p,s,xtol=xtol,rms_noise=rms_noise,)
+                ## use optimize.least_squares allowing for other methods and more tuning
+                # print('DEBUG:', p)
+                # print('DEBUG:', s)
+                # print('DEBUG:', [(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)])
+                result = optimize.least_squares(
+                    self._optimisation_function,
+                    p,
+                    method='trf',
+                    # method='lm',
+                    jac='2-point',
+                    # xtol=1e-10,
+                    # ftol=,
+                    # gtol=,
+                    # bounds=(-inf,inf),
+                    # x_scale=s,
+                    # diff_step=1e-21,
+                    # diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
+                    diff_step=s,
+                    x_scale='jac',
+                    # x_scale=[t*100 for t in s],
+                    # loss='soft_l1',
+                    loss='linear',
+                    # tr_solver='exact',
+                    tr_solver='lsmr',
+                    max_nfev=max_nfev,
+                    # jac_sparsity=None, 
+                )
+                if verbose or self.verbose:
+                    print('Optimisation complete')
+                    print('    Number of evaluations:',self._number_of_optimisation_function_calls)
+                    print('    Number of iterations: ',result['nfev'])
+                    print('    Termination reason:   ',result['message'])
+                p = result['x']
+                ## compute 1σ standard error
+                try:
+                    jacobean = result['jac']
+                    hessian = np.dot(np.transpose(jacobean),jacobean)
+                    covariance = linalg.inv(hessian)
+                    if rms_noise is None:
+                        ## Find the RMS of the noise if not given as an
+                        ## input argument, or standard deviation for
+                        ## normally-distributed noise. This
+                        ## uniformly-noise experimental data (gavin2011)
+                        chisq=np.sum(result["fun"]*result["fun"])
+                        dof=len(result["fun"])-len(result['x'])+1        # degrees of freedom
+                        rms_noise = np.sqrt(chisq/dof)
+                    dp = np.sqrt(covariance.diagonal())*rms_noise
+                except linalg.LinAlgError as err:
+                    print(f'warning: failed to computed uncertainty: {err}')
+                    dp = None
                 ## update parameters and uncertainties
                 self._set_parameters(p,dp)
             except KeyboardInterrupt:
                 pass
         residual = self.construct(recompute_all=True) # run at least once, recompute_all to get uncertainties
         self.monitor() # run monitor functions after optimisation
-        if verbose:
+        if verbose or self.verbose:
             print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
             for suboptimiser in self._get_all_suboptimisers():
                 if (suboptimiser.residual is not None
                     and len(suboptimiser.residual)>0):
                     print(f'suboptimiser {suboptimiser.name} RMS:',tools.rms(suboptimiser.residual))
-        return(residual) # returns residual array
+        return residual
 
     def _get_rms(self):
         """Compute root-mean-square error."""
@@ -731,3 +794,4 @@ class Named_Parameter(P):
         return f"{self.optimiser.name}['{self.name}']"
 
     __str__ = Parameter.__repr__
+
