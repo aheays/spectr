@@ -16,6 +16,7 @@ from . import hitran
 from . import bruker
 from . import lineshapes
 from . import lines
+from .dataset import Dataset
 
 class Experiment(Optimiser):
     
@@ -46,7 +47,7 @@ class Experiment(Optimiser):
             lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
 
     @auto_construct_method('set_spectrum')
-    def set_spectrum(self,x,y,xbeg=None,xend=None):
+    def set_spectrum(self,x,y,xbeg=None,xend=None,**experimental_parameters):
         """Set x and y as the experimental spectrum. With various safety
         checks. Not optimisable, no format_input_function."""
         x,y = np.array(x),np.array(y)
@@ -69,6 +70,8 @@ class Experiment(Optimiser):
         ## check for regular x grid
         t0,t1 = np.diff(x).min(),np.diff(x).max()
         assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
+        ##
+        self.experimental_parameters.update(experimental_parameters)
         ## verbose info
         if self.verbose:
             print('experimental_parameters:')
@@ -84,6 +87,13 @@ class Experiment(Optimiser):
         x,y = tools.file_to_array_unpack(filename,**file_to_array_kwargs)
         self.experimental_parameters['filename'] = filename
         self.set_spectrum(x,y,xbeg,xend)
+
+    def set_spectrum_from_dataset(self,filename,xbeg=None,xend=None,xkey='x',ykey='y'):
+        """Load a spectrum to fit from an x,y file."""
+        d = Dataset()
+        d.load(filename)
+        experimental_parameters = {key:val for key,val in d.items() if  key not in (xkey,ykey)}
+        self.set_spectrum(d[xkey],d[ykey],xbeg,xend,**d.attributes)
 
     def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
@@ -505,7 +515,7 @@ class Model(Optimiser):
             else:
                 j = None
             ## compute entire spectrum
-            if  'τ' not in _cache or j is None:
+            if  'τ' not in _cache or j is None or np.sum(j) > (len(tlines)/2):
                 x,y = tlines.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
@@ -514,7 +524,6 @@ class Model(Optimiser):
                 xnew,ynew = tlines[j].calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-
                 xold,yold = _cache['tlines'][j].calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
@@ -526,7 +535,6 @@ class Model(Optimiser):
             _cache['absorbance'] = np.exp(-y)
         ## set absorbance in self
         self.y *= _cache['absorbance']
-
 
     @optimise_method()
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
@@ -906,7 +914,7 @@ class Model(Optimiser):
             yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abswidth**2) # peak normalised gaussian
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         return f
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
@@ -929,7 +937,7 @@ class Model(Optimiser):
             yconv = lineshapes.lorentzian(xconv,xconv.mean(),1.,width)
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
     def convolve_with_sinc(self,width=None,fwhms_to_include=100):
@@ -955,7 +963,7 @@ class Model(Optimiser):
             yconv = np.sinc((xconv-xconv.mean())/width*1.2)*1.2/width # unit integral normalised sinc
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+            self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
     def convolve_with_instrument_function(
@@ -1054,7 +1062,7 @@ class Model(Optimiser):
             padding = np.arange(dx,instrument_function_cache['width']+dx, dx)
             xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
             ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-            self.y = signal.convolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+            self.y = signal.oaconvolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
         self.add_construct_function(f)
 
     def apodise(
@@ -1229,7 +1237,7 @@ class Model(Optimiser):
         yconv = amplitude/xconv/len(xconv)               # signum function
         yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
         yconv /= yconv.sum()                    # normalised
-        self.y[i] = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        self.y[i] = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
     def convolve_with_SOLEIL_instrument_function(
             self,
@@ -1324,7 +1332,7 @@ class Model(Optimiser):
             padding = np.arange(dx,cache['width']+dx, dx)
             xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
             ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-            self.y = signal.convolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+            self.y = signal.oaconvolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
         self.add_construct_function(f)
 
     def add_SOLEIL_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
