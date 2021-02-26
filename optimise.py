@@ -15,10 +15,26 @@ from . import tools
 from .tools import ensure_iterable
 from . import plotting
 
+class CustomBool():
+    """Create Boolean alternatives to True and False."""
+    def __init__(self,name,value):
+        self.name = name
+        self.value = bool(value)
+    def __str__(self):
+        return self.name
+    def __repr__(self):
+        return self.name
+    def __bool__(self):
+        return self.value
+
+## False, and not intended to be changed
+Fixed = CustomBool('Fixed',False)
+
+
 def _collect_parameters_and_optimisers(x):
     """Iteratively collect Parameter and Optimiser objects from x
     descending into any iterable children."""
-    maximum_length_for_searching = 100
+    maximum_length_for_searching = 1000
     parameters,optimisers = [],[]
     if isinstance(x,Parameter):
         parameters.append(x)
@@ -181,7 +197,7 @@ class Optimiser:
         assert isinstance(name,str),'Name must be a string.'
         # self.name = tools.regularise_string_to_symbol(name) # for generating evaluatable references to self
         self.name = name # for generating evaluatable references to self
-        self.residual_scale_factor = None # scale all resiudal by this amount -- useful when combining with other optimisers
+        self.residual_scale_factor = 1 # scale all resiudal by this amount -- useful when combining with other optimisers
         self.parameters = []           # Data objects
         self._construct_functions = {} # list of function which collectively construct the model and optionally return a list of fit residuals
         self._post_construct_functions = {} # run in reverse order after other construct functions
@@ -564,10 +580,7 @@ class Optimiser:
                 optimiser._last_construct_time = timestamp()
             ## add resisudal to return value for optimisation, possibly rescaling it
             if optimiser.residual is not None:
-                if optimiser.residual_scale_factor is not None:
-                    combined_residual.append(optimiser.residual_scale_factor*np.array(optimiser.residual))
-                else:
-                    combined_residual.append(np.array(optimiser.residual))
+                combined_residual.append(optimiser.residual_scale_factor*np.array(optimiser.residual))
         combined_residual = np.concatenate(combined_residual)  # includes own residual and for all suboptimisers
         self.combined_residual = combined_residual # this includes residuals from construct_functions combined with suboptimisers
         return combined_residual
@@ -575,7 +588,6 @@ class Optimiser:
     def _optimisation_function(self,p):
         """Internal function used by optimise routine. p is a list of varied
         parameters."""
-        # print('DEBUG:', list(p))
         self._number_of_optimisation_function_calls += 1
         ## update parameters in internal model
         self._set_parameters(p)
@@ -610,17 +622,15 @@ class Optimiser:
         if compute_uncertainty:
             max_nfev = 1
         if normalise_suboptimiser_residuals:
-            ## normalise all suboptimiser residuals to one, only
-            ## appropriate if model is finished -- common normalisation
-            ## for all construct function outputs in each suboptimiser
+            ## normalise all suboptimiser residuals before handing to
+            ## the least-squares routine
             for suboptimiser in self._get_all_suboptimisers():
-                self.construct()
+                self.construct(recompute_all=True)
                 if suboptimiser.residual is not None and len(suboptimiser.residual)>0:
                     if suboptimiser.residual_scale_factor is None:
-                        suboptimiser.residual_scale_factor = 1/tools.nanrms(suboptimiser.residual)
+                        suboptimiser.residual_scale_factor = 1/tools.rms(suboptimiser.residual)
                     else:
-                        suboptimiser.residual_scale_factor /= tools.nanrms(suboptimiser.residual)
-                    suboptimiser.residual = None # mark undone
+                        suboptimiser.residual_scale_factor /= tools.rms(suboptimiser.residual)
         ## get initial values and reset uncertainties
         p,s,dp = self._get_parameters()
         self.monitor_frequency = monitor_frequency
@@ -635,34 +645,32 @@ class Optimiser:
                 ## use leastsq Levenberg-Marquadt
                 ## p,dp = tools.leastsq(self._optimisation_function, p,s,xtol=xtol,rms_noise=rms_noise,)
                 ## use optimize.least_squares allowing for other methods and more tuning
-                # print('DEBUG:', p)
-                # print('DEBUG:', s)
-                # print('DEBUG:', [(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)])
                 result = optimize.least_squares(
                     self._optimisation_function,
                     p,
                     method='trf',
-                    # method='lm',
+                    ## method='lm',
                     jac='2-point',
-                    # xtol=1e-10,
-                    # ftol=,
-                    # gtol=,
-                    # bounds=(-inf,inf),
-                    # x_scale=s,
-                    # diff_step=1e-21,
-                    # diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
+                    ## xtol=1e-10,
+                    ## ftol=,
+                    ## gtol=,
+                    ## bounds=(-inf,inf),
+                    ## x_scale=s,
+                    ## diff_step=1e-21,
+                    ## diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
                     diff_step=s,
                     x_scale='jac',
-                    # x_scale=[t*100 for t in s],
-                    # loss='soft_l1',
+                    ## x_scale=[t*100 for t in s],
+                    ## loss='soft_l1',
                     loss='linear',
-                    # tr_solver='exact',
+                    ## tr_solver='exact',
                     tr_solver='lsmr',
                     max_nfev=max_nfev,
-                    # jac_sparsity=None, 
+                    ## jac_sparsity=None, 
                 )
                 if verbose or self.verbose:
                     print('Optimisation complete')
+                    print('    Number parameters:    ',len(p))
                     print('    Number of evaluations:',self._number_of_optimisation_function_calls)
                     print('    Number of iterations: ',result['nfev'])
                     print('    Termination reason:   ',result['message'])
@@ -784,7 +792,9 @@ class Parameter():
 P = Parameter                   # an abbreviation
 
 class Named_Parameter(P):
-    
+    """Like a Parameter but has a name and knows which Optimiser it
+    originally belongs to."""
+
     def __init__(self,optimiser,name,value,*args,**kwargs):
         self.optimiser = optimiser # back reference to optimiser where this is defined
         self.name = name
