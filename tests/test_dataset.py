@@ -7,7 +7,7 @@ from spectr.dataset import *
 from spectr.optimise import P
 from spectr.exceptions import InferException
 
-show_plots =False
+show_plots = False
 
 def test_dataset_construct():
     t = Dataset()
