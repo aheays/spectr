@@ -1,4 +1,4 @@
-classname = 'Dataset'
+classname = 'dataset.Dataset'
 x|z|f              
 1|a|+1.29000000e+00
 2|b|+1.29000000e+00

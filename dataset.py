@@ -69,16 +69,16 @@ class Dataset(optimise.Optimiser):
             self.attributes[key] = None
         ## classname to identify type of Dataset
         # self.classname = self.__class__.__name__
-        self.classname = re.sub(r"<class 'spectr.(.+)'>",r'\1',str(self.__class__))
+        self.attributes['classname'] = re.sub(r"<class 'spectr.(.+)'>",r'\1',str(self.__class__))
         ## default name is snake version of camel object name
         if name is None:
             # name = re.sub(r'(?<!^)(?=[A-Z])', '_', self.classname.lower())
-            name = re.sub(r'[<!^.]', '_', self.classname.lower())
+            name = re.sub(r'[<!^.]', '_', self.attributes['classname'].lower())
         ## init as optimiserg, make a custom form_input_function
         optimise.Optimiser.__init__(self,name=name)
         self.pop_format_input_function()
-        def format_input_function(classname=self.classname):
-            retval = f'{self.name} = {classname}({self.name},'
+        def format_input_function():
+            retval = f'{self.name} = {self.attributes["classname"]}({self.name},'
             if load_from_file is not None:
                 retval += f'load_from_file={repr(load_from_file)},'
             if len(kwargs)>0:
@@ -510,7 +510,12 @@ class Dataset(optimise.Optimiser):
         """Index all array data in place."""
         original_length = len(self)
         for data in self._data.values():
+            ## index value
             data['value'] = data['value'][:original_length][index]
+            ## index any ancillary data
+            for key in 'uncertainty','vary','step':
+                if key in data and data[key] is not None:
+                    data[key] = data[key][:original_length][index]
             self._length = len(data['value'])
 
     def copy(self,keys=None,index=None):
@@ -975,7 +980,7 @@ class Dataset(optimise.Optimiser):
                 return data['classname']
             else:
                 return None
-        if 'classname' in data and data['classname'] != self.classname:
+        if 'classname' in data and data['classname'] != self.attributes['classname']:
             warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
             data.pop('classname')
         ## Set data in self and selected attributes

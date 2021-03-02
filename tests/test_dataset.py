@@ -131,6 +131,16 @@ def test_dataset_index():
     t = Dataset(x=[1,2,3,4,5])
     t.index([True,True,True,False,False,])
     assert list(t['x']) == [1,2,3]
+    t = Dataset()
+    t['x']=[1,2,3,4,5.]
+    t['x_unc']=[1,2,3,4,5]
+    t['x_step']=[1,2,3,4,5]
+    t['x_vary']=[False,True,True,True,True,]
+    t.index([True,True,True,False,False,])
+    assert list(t['x']) == [1,2,3]
+    assert list(t['x_unc']) == [1,2,3]
+    assert list(t['x_step']) == [1,2,3]
+    assert list(t['x_vary']) == [False,True,True,]
 
 def test_dataset_get_copy():
     t = Dataset(x=[1,2,3],y=['a','b','c'])
@@ -459,14 +469,15 @@ def test_find_common():
 
 def test_class_and_description_attributes():
     x = Dataset(description='abc', x=[1,2,3],z=['a','b','c'],y=[3,3,3],)
-    assert x.description == 'abc'
-    assert x.classname == 'Dataset'
+    assert x.attributes['description'] == 'abc'
+    assert x['description'] == 'abc'
+    print(x.attributes['classname'])
+    assert x.attributes['classname'] == 'dataset.Dataset'
     x = Dataset()
     x.description = 'abc'
     assert x.description == 'abc'
     x = Dataset()
     x['description'] = 'abc'
-    assert x.description == 'abc'
     assert x['description'] == 'abc'
 
 def test_get_common():
