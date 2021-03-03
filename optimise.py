@@ -94,10 +94,7 @@ def auto_construct_method(
         return new_function
     return actual_decorator
 
-def optimise_method(
-        format_single_line=None,
-        format_multi_line=None,
-):
+def optimise_method(format_single_line=None,format_multi_line=None):
     """A decorator factory for automatically adding parameters,
     construct_function, and input_format_function to a method in an
     Optimiser subclass.  The undecorated method must return any
@@ -148,10 +145,7 @@ def optimise_method(
         return new_function
     return actual_decorator
 
-def format_input_method(
-        format_single_line=None,
-        format_multi_line=None,
-):
+def format_input_method(format_single_line=None,format_multi_line=None):
     """Add function to format_input_functions and run it."""
     def actual_decorator(function):
         def new_function(self,*args,**kwargs):
@@ -189,7 +183,7 @@ class Optimiser:
             name='optimiser',           # used to generate evaluable python code
             *suboptimisers,     # Optimisers
             verbose=False,
-            description='',
+            description=None,
             **named_parameters,
     ):
         """Suboptimisers can be other Optimiser that are also
@@ -226,7 +220,7 @@ class Optimiser:
                 retval += ','.join([repr(t) for t in suboptimisers])+','
             if self.verbose:
                 retval += f'verbose={repr(self.verbose)},'
-            if self.description != '':
+            if self.description is not None:
                 retval += f'description={repr(self.description)},'
             if len(self._named_parameters) > 0:
                 retval += '\n'
@@ -402,15 +396,10 @@ class Optimiser:
     def __str__(self):
         return self.format_input()
 
-    def save_to_directory(
-            self,
-            directory,
-            trash_existing=False, # delete existing data, even if false overwriting may occur
-    ):
+
+    # @format_input_method()
+    def save_to_directory(self,directory,trash_existing=False):
         """Save results of model and optimisation to a directory."""
-        ## new input line
-        self.add_format_input_function(
-            lambda directory=directory: f'{self.name}.save_to_directory({repr(directory)},trash_existing={repr(trash_existing)})')
         directory = tools.expand_path(directory)
         tools.mkdir(directory,trash_existing=trash_existing)
         ## output self and all suboptimisers into a flat subdirectory
@@ -425,8 +414,6 @@ class Optimiser:
             tools.string_to_file(subdirectory+'/input.py',optimiser.format_input())
             if optimiser.residual is not None:
                 tools.array_to_file(subdirectory+'/residual' ,optimiser.residual,fmt='%+0.4e')
-            # else:
-                # tools.array_to_file(subdirectory+'/residual' ,[])
             if optimiser.description is not None:
                 tools.string_to_file(subdirectory+'/README' ,str(optimiser.description))
             for f in optimiser._save_to_directory_functions:
