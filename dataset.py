@@ -48,7 +48,6 @@ class Dataset(optimise.Optimiser):
             limit_to_match=None, # dict of things to match 
             **kwargs):
         ## deal with arguments
-        # self.description = description # A string describing this dataset
         self._data = dict()
         self.attributes = dict()
         self._length = 0
@@ -74,7 +73,8 @@ class Dataset(optimise.Optimiser):
         if name is None:
             # name = re.sub(r'(?<!^)(?=[A-Z])', '_', self.classname.lower())
             name = re.sub(r'[<!^.]', '_', self.attributes['classname'].lower())
-        ## init as optimiserg, make a custom form_input_function
+        ## init as optimiserg, make a custom form_input_function, save
+        ## some extra stuff if output to directory
         optimise.Optimiser.__init__(self,name=name)
         self.pop_format_input_function()
         def format_input_function():
@@ -88,6 +88,7 @@ class Dataset(optimise.Optimiser):
             retval += ')'
             return retval
         self.add_format_input_function(format_input_function)
+        self.add_save_to_directory_function(lambda directory: self.save(f'{directory}/data.h5'))
         ## copy from another dataset
         if copy_from is not None:
             self.copy_from(copy_from)
@@ -141,10 +142,6 @@ class Dataset(optimise.Optimiser):
         if index is None:
             ## decide whether to permit if non-prototyped
             if not self.permit_nonprototyped_data and self.get_prototype(key) is None:
-                # if not self.is_value_key(key):
-                    # ## is an uncertainty, vary, stepsize or something
-                    # pass
-                # else:
                 raise Exception(f'New data is not in prototypes: {repr(key)}')
             ## new data
             data = dict()
@@ -237,12 +234,18 @@ class Dataset(optimise.Optimiser):
 
     def set_uncertainty(self,key,value,index=None):
         if self._data[key]['kind'] != 'f':
-            raise Exception
-        if index is not None:
+            raise Exception('Uncertainty only defined for kind="f" floating-point data and {key=} has kind={self._data[key]["kind"]}')
+        if value is None:
+            ## unset uncertainty
+            self._data[key]['uncertainty'] = None
+        elif index is not None:
+            ## set some uncertainties -- if not defined set others to
+            ## NaN
             if self.get_uncertainty(key) is None:
                 self.set_uncertainty(key,nan)
             self.get_uncertainty(key)[index] = value
         else:
+            ## set all uncertainties
             if np.isscalar(value):
                 self._data[key]['uncertainty'] = np.full(len(self),value,dtype=float)
             else:
@@ -395,11 +398,30 @@ class Dataset(optimise.Optimiser):
                 self.set(key,value=parameter,index=index,**prototype_kwargs)
 
     @optimise_method()
-    def set_spline(self,xkey,ykey,knots,order=3,_cache=None):
+    def set_spline(self,xkey,ykey,knots,order=3,match=None,index=None,_cache=None):
         """Set ykey to spline function of xkey defined by knots at
-        [(x0,y0),(x1,y1),(x2,y2),...]."""
+        [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
+        given, then only set these."""
+        ## To do: cache values or match results so only update if
+        ## knots or match values have changed
         xspline,yspline = zip(*knots)
-        self[ykey] = tools.spline(xspline,yspline,self[xkey],order=order)
+        if index is not None:
+            i = index
+        elif match is not None:
+            i = self.match(**match)
+        else:
+            i = None
+        self.set(
+            ykey,
+            value=tools.spline(xspline,yspline,self.get(xkey,index=i),order=order),
+            index=i,
+        )
+        ## set previously-set uncertainties to NaN
+        if self.get_uncertainty(ykey) is not None:
+            if i is None:
+                self.set_uncertainty(ykey,None)
+            else:
+                self.set_uncertainty(ykey,nan,index=i)
 
     def keys(self):
         return list(self._data.keys())
@@ -1302,6 +1324,12 @@ def load(filename,classname=None,**kwargs):
     retval = make(classname,load_from_file=filename,**kwargs)
     return retval
 
+def copy_from(dataset,*args,**kwargs):
+    """Make a copy of dataset with additional initialisation args and
+    kwargs."""
+    classname = dataset['classname'] # use the same class as dataset
+    retval = make(classname,*args,copy_from=dataset,**kwargs)
+    return retval
 
     
 
