@@ -20,9 +20,8 @@ from .optimise import optimise_method,Parameter
 
 class Dataset(optimise.Optimiser):
 
-    """A collection of scalar or array values, possibly with uncertainties."""
+    """A set of data."""
 
-    default_zkeys = []
 
     ## perhaps better as instance variable?
     _kind_defaults = {
@@ -34,6 +33,7 @@ class Dataset(optimise.Optimiser):
     }
 
     default_attributes = ('classname','description',)
+    default_zkeys = []
 
     def __init__(
             self,
@@ -386,7 +386,6 @@ class Dataset(optimise.Optimiser):
                     or ((not np.isnan(parameter.uncertainty)) and (np.any(self.get_uncertainty(key,index=index) != parameter.uncertainty))) # data has changed some other way and differs from parameter
                 ):
                 self.set(key,value=parameter.value,uncertainty=parameter.uncertainty,index=index,**prototype_kwargs)
-
         else:
             ## only reconstruct for the following reasons
             if (
@@ -394,7 +393,14 @@ class Dataset(optimise.Optimiser):
                     or np.any(self.get(key,index=index) != parameter) # data has changed some other way and differs from parameter
                 ):
                 self.set(key,value=parameter,index=index,**prototype_kwargs)
-        
+
+    @optimise_method()
+    def set_spline(self,xkey,ykey,knots,order=3,_cache=None):
+        """Set ykey to spline function of xkey defined by knots at
+        [(x0,y0),(x1,y1),(x2,y2),...]."""
+        xspline,yspline = zip(*knots)
+        self[ykey] = tools.spline(xspline,yspline,self[xkey],order=order)
+
     def keys(self):
         return list(self._data.keys())
 
@@ -469,17 +475,6 @@ class Dataset(optimise.Optimiser):
         """Delete data.  Also clean up inferences."""
         self.unset_inferences(key)
         self._data.pop(key)
-
-    # def unset_inferences(self,key):
-    #     """Delete any record of inferences to or from this key and any data
-    #     inferred from it."""
-    #     for inferred_from in list(self._data[key]['inferred_from']):
-    #         self._data[inferred_from]['inferred_to'].remove(key)
-    #         self._data[key]['inferred_from'].remove(inferred_from)
-    #     for inferred_to in list(self._data[key]['inferred_to']):
-    #         self._data[inferred_to]['inferred_from'].remove(key)
-    #         self._data[key]['inferred_to'].remove(inferred_to)
-    #         self.unset(inferred_to)
 
     def unset_inferences(self,*keys):
         """Delete any record of inferences to or from the given
@@ -630,10 +625,11 @@ class Dataset(optimise.Optimiser):
         return [(d,self.matches(**d)) for d in self.unique_dicts(*keys)]
 
     def get_unique_value(self,key,**matching_keys_vals):
-        """Return value of key that is the uniquely matches
+        """Return value of key from a row that uniquely matches
         matching_keys_vals."""
         i = tools.find(self.match(**matching_keys_vals))
-        assert len(i)==1,f'Non-unique matches for {matching_keys_vals=}'
+        if len(i)!=1:
+            raise Excecption(f'Non-unique ({len(i)}) matches for {matching_keys_vals=}')
         return self.get_value(key,i)
 
     def _infer(self,key,already_attempted=None,depth=0):
@@ -646,7 +642,6 @@ class Dataset(optimise.Optimiser):
         if key in already_attempted:
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key)
-
         if key not in self._prototypes:
             raise InferException(f"No prototype for {key=}")
         ## loop through possible methods of inferences.
@@ -730,7 +725,7 @@ class Dataset(optimise.Optimiser):
             yield t
 
     def matching_row(self,return_index=False,**matching_keys_vals):
-        """Return uniquely-matching row."""
+        """Return uniquely-matching row as a dictionary."""
         i = tools.find(self.match(**matching_keys_vals))
         if len(i)==0:
             raise Exception(f'No matching row found: {matching_keys_vals=}')
@@ -870,7 +865,7 @@ class Dataset(optimise.Optimiser):
         )
 
     def save(self,filename,keys=None,**format_kwargs,):
-        """Save some or all data to a text file."""
+        """Save some or all data to a file."""
         if keys is None:
             keys = self.keys()
         if re.match(r'.*\.npz',filename):
@@ -883,13 +878,8 @@ class Dataset(optimise.Optimiser):
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
             data = {key:self[key] for key in keys}
-            # data['attributes'] = self.attributes
-            # # for key,val in self.attributes.items():
-                # # if val is not None:
-                    # # data[key] = val
             tools.dict_to_hdf5(
-                filename,
-                data,
+                filename, data,
                 attributes={key:val for key,val in self.attributes.items() if val is not None})
         else:
             ## text file
@@ -913,8 +903,7 @@ class Dataset(optimise.Optimiser):
             return_classname_only=False, # do not load the file -- just try and load the classname and return it
             **set_keys_vals   # set this data after loading is done
     ):
-        '''Load data from a text file in standard format generated by
-        save_to_file.'''
+        '''Load data from a file.'''
         if re.match(r'.*\.(h5|hdf5)',filename):
             ## hdf5 archive, load data then top-level attributes
             data =  tools.hdf5_to_dict(filename)
@@ -998,7 +987,7 @@ class Dataset(optimise.Optimiser):
             delimiter='|',      # column delimiter
             **load_kwargs       # other kwargs passed to self.load
     ):     
-        """Load data from a string."""
+        """Load data from a delimter and newline separated string."""
         ## Write a temporary file and then uses the regular file load
         tmpfile = tools.tmpfile()
         tmpfile.write(string.encode())
@@ -1007,7 +996,8 @@ class Dataset(optimise.Optimiser):
         self.load(tmpfile.name,delimiter=delimiter,**load_kwargs)
 
     def load_from_lists(self,keys,*values):
-        """Add many lines of data efficiently, with values possible optimised."""
+        """Add many lines of data efficiently, with values possible
+        optimised."""
         cache = {}
         if len(cache) == 0:
             ## first construct
@@ -1119,25 +1109,23 @@ class Dataset(optimise.Optimiser):
         
     def plot(
             self,
-            xkey,
-            ykeys,
-            zkeys=None,
+            xkey,               # key to use for x-axis data
+            ykeys,              # list of keys to use for y-axis data
+            zkeys=None,         # plot x-y data separately for unique combinations of zkeys
             fig=None,           # otherwise automatic
             ax=None,            # otherwise automatic
-            ynewaxes=True,
-            znewaxes=False,
-            legend=True,
+            ynewaxes=True,      # plot y-keys on separates axes -- else as different lines
+            znewaxes=False,     # plot z-keys on separates axes -- else as different lines
+            legend=True,        # plot a legend or not
             zlabel_format_function=None, # accept key=val pairs, defaults to printing them
             plot_errorbars=True, # if uncertainty available
             xscale='linear',     # 'log' or 'linear'
             yscale='linear',     # 'log' or 'linear'
-            ncolumns=None,
-            show=False,
+            ncolumns=None,       # number of columsn of subplot -- None to automatically select
+            show=False,          # show figure after issuing plot commands
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
-        """Plot a few standard values for looking at. If ax is set then all
-        keys will be printed on that axes, otherwise new ones will be appended
-        to figure."""
+        """Plot data."""
         from matplotlib import pyplot as plt
         from spectr import plotting
         if len(self)==0:
@@ -1298,7 +1286,7 @@ def _get_class(classname):
             return getattr(levels,subclass)
     raise Exception(f'Could not find a class matching {classname=}')
     
-def make(classname='Dataset',*args,**kwargs):
+def make(classname='dataset.Dataset',*args,**kwargs):
     """Make an instance of the this classname."""
     return _get_class(classname)(*args,**kwargs)
 
