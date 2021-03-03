@@ -552,7 +552,6 @@ class Generic(levels.Base):
 
 
 
-
 class LinearTriatomic(Generic):
     """E.g., CO2, CS2."""
 
@@ -578,6 +577,9 @@ class LinearTriatomic(Generic):
         'Γ','ΓD',
         levels_class = _levels_class
     )
+
+    label_key = 'J_l'
+    label_zkeys = ['species_u', 'ν1_u', 'ν2_u', 'ν3_u', 'l2_u', 'species_l', 'ν1_l', 'ν2_l', 'ν3_l', 'l2_l', 'ΔJ']
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""

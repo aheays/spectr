@@ -293,7 +293,7 @@ class LinearTriatomic(Generic):
         'Teq','Tex','Z','α',
         'Nself',
     )
-    defining_qn = ('species','label','ν1','ν2','ν3','l2',)
+    defining_qn = ('species','label','ν1','ν2','ν3','l2','J')
         
 
 class Diatomic(Base):
