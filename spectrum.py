@@ -18,6 +18,8 @@ from . import hitran
 from . import bruker
 from . import lineshapes
 from . import lines
+from . import levels
+from . import exceptions
 from .dataset import Dataset
 
 class Experiment(Optimiser):
@@ -1423,8 +1425,9 @@ class Model(Optimiser):
             plot_labels=False,
             plot_branch_heads=False,
             qn_defining_branch=('speciesp','speciespp','labelp','labelpp','vp','vpp','Fp'),
-            label_key=None,
-            label_match_qn=None,
+            label_match=None,   # label only matching things
+            label_key=None,     # this key is used to label series
+            label_zkeys=None,   # divide series by these keys
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
             plot_title= True,
@@ -1499,12 +1502,15 @@ class Model(Optimiser):
             for line in self.suboptimisers:
                 if not isinstance(line,lines.Generic):
                     continue
-                ## limit to qn
-                if label_match_qn is None:
-                    label_match_qn = {}
-                if not line.is_known(*label_match_qn):
+                ## limit to qn -- if fail to match to label_match then
+                ## do not label at all
+                if label_match is None:
+                    label_match = {}
+                try:
+                    i = line.match(**label_match)
+                except exceptions.InferException:
+                    # warnings.warn(f'Not labelling because InferException on {label_match=}')
                     continue
-                i = line.match(**label_match_qn)
                 ## limit to ν-range and sufficiently strong line
                 i &= (line['ν']>self.xexp[0])&(line['ν']<self.xexp[-1])
                 if minimum_τ_to_label is not None:
@@ -1514,16 +1520,18 @@ class Model(Optimiser):
                 line = line[i]
                 if len(line)==0:
                     continue
-                zkeys = [key for key in line.defining_qn if line.is_known(key)]
+                ## get labelling keys
+                zkeys = (label_zkeys if label_zkeys is not None else line.label_zkeys)
+                ## plot annotations
                 branch_annotations = plotting.annotate_spectrum_by_branch(
                     line,
                     ymax+ystep/2.,
                     ystep,
-                    zkeys=zkeys,
+                    zkeys=zkeys,  
                     length=-0.02, # fraction of axes coords
                     color_by=('branch' if 'branch' in zkeys else zkeys),
                     labelsize='xx-small',namesize='x-small', namepos='float',    
-                    label_key=label_key,
+                    label_key=(label_key if label_key is not None else line.label_key),
                 )
                 ymax += ystep*(len(branch_annotations)+1)
         ## plot branch heads

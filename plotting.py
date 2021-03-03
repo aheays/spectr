@@ -2297,8 +2297,8 @@ def annotate_spectrum_by_branch(
         lines,             # Lines object
         ybeg = 1,               # y position of first coord
         ystep = 0.1, # separation between branch annotations in data coords
-        zkeys = ('branch',), # how to divide up into separate annotations
-        xkey = 'ν',
+        zkeys = ('branch',), # how to divide up into separate annotations, 
+        xkey = 'ν',          # 
         label_key='J_l', # what quantum number to give as a rotational label
         label_frequency=False,
         match_qn=None,        # only annotate matching qn
