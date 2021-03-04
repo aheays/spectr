@@ -226,7 +226,7 @@ class AtmosphericChemistry():
             **plot_kwargs,
     ):
         if ax is None:
-            ax = plotting.gca()
+            ax = plotting.plt.gca()
         for ixkey,xkey in enumerate(xkeys):
             kw = {'color':plotting.newcolor(ixkey),}
             kw.update(plot_kwargs)
