@@ -163,12 +163,11 @@ class Experiment(Optimiser):
                     self.set_spectrum(x,yscaled[0],xbeg=xbeg,xend=xend)
             self.add_construct_function(f)
 
-    @auto_construct_method('scalex')
+    @optimise_method()
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
-        def construct_function():
-            self.x *= float(scale)
-        return construct_function
+        t0 = self.x[0]
+        self.x *= float(scale)
 
     # def interpolate(self,dx):
         # """Interpolate experimental spectrum to a grid of width dx, may change
@@ -500,8 +499,7 @@ class Model(Optimiser):
         if self.x is None:
             ## x not set yet
             return
-
-
+        
         ## recompute spectrum if is necessary for some reason --
         ## do various tests to see if a cached version is ok
         if (
@@ -518,8 +516,16 @@ class Model(Optimiser):
                 j = np.any([ tlines[key] != _cache['tlines'][key] for key in tlines.keys()], axis=0)
             else:
                 j = None
+
+                
             ## compute entire spectrum
-            if  'τ' not in _cache or j is None or np.sum(j) > (len(tlines)/2):
+            if  (
+                 'τ' not in _cache # first run
+                 or j is None      # first run?
+                 or np.sum(j) > (len(tlines)/2) # most lines change--- just recompute everything
+                 or len(self.x) != len(_cache['x']) # x-grid has changed
+                 or np.any(self.x!=_cache['x']) # x-grid has changed
+                 ):
                 x,y = tlines.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
@@ -537,6 +543,7 @@ class Model(Optimiser):
             _cache['tlines'] = tlines
             _cache['τ'] = y
             _cache['absorbance'] = np.exp(-y)
+            _cache['x'] = self.x
         ## set absorbance in self
         self.y *= _cache['absorbance']
 
