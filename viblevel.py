@@ -13,7 +13,7 @@ from . import quantum_numbers
 from . import tools
 from .dataset import Dataset
 from .tools import find,cache
-from .optimise import Optimiser,P,auto_construct_method
+from .optimise import Optimiser,P,optimise_method,format_input_method
 from .kinetics import get_species,Species
 
 
@@ -86,6 +86,7 @@ class VibLevel(Optimiser):
         # self.eigenvalue_ordering = (eigenvalue_ordering if eigenvalue_ordering is not None else 'maximise coefficients')
         self.eigenvalue_ordering = eigenvalue_ordering
         ## outputs of diagonalisation
+        self._H_subblocks = []
         self.H = None
         self.eigvals = None
         self.eigvects = None
@@ -101,7 +102,7 @@ class VibLevel(Optimiser):
             t = self.get_vibronic_interactions()
             t.save_to_file(directory+'/vibronic_interactions') # 
         self.add_save_to_directory_function(f)
-        self.add_construct_function(self._initialise_construct)
+        # self.add_construct_function(self._initialise_construct)
         self.add_post_construct_function(self._finalise_construct)
         ## if experimental data is present this might be an adjustable
         ## thing to so add as a suboptimiser
@@ -141,26 +142,52 @@ class VibLevel(Optimiser):
         # if input_vibrational_level is not None:
             # self.add_spin_manifolds_from_dynamic_array(input_vibrational_level)
 
-    def _initialise_construct(self):
-        """Runs before anything else."""
-        if self._modify_time > self._construct_time:
-            ## blank Hamiltonian
-            self.H = np.full((len(self.J),
-                              len(self.vibrational_spin_level),
-                              len(self.vibrational_spin_level)),0.)
+    # def _initialise_construct(self):
+        # """Runs before anything else."""
+        # if self._last_add_construct_function_time > self._last_construct_time:
+            # ## blank Hamiltonian
+            # self.H = np.full((len(self.J),
+                              # len(self.vibrational_spin_level),
+                              # len(self.vibrational_spin_level)),0.)
+            # ## create a rotational level with all quantum numbers
+            # ## inserted and limit to allowed levels
+            # self.rotational_level.clear()
+            # if len(self.vibrational_spin_level) == 0:
+                # return
+            # self.rotational_level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
+            # for key in self.vibrational_spin_level:
+                # self.rotational_level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
+            # self._iallowed = self.rotational_level['J'] >= self.rotational_level['Ω']
+            # self.rotational_level = self.rotational_level[self._iallowed]
+
+    def _finalise_construct(self):
+        """The actual matrix diagonlisation is done last."""
+        ## if first run or model changed then construct Hamiltonian
+        ## and blank rotational level, and determine which levels are
+        ## actually allowed
+        if True or self.H is None or self._last_add_construct_function_time > self._last_construct_time:
+            ## construct Hamiltonian
+            self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.)
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
             self.rotational_level.clear()
             self.rotational_level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
             for key in self.vibrational_spin_level:
                 self.rotational_level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
-            self._iallowed = self.rotational_level['J'] >= self.rotational_level['Ω']
-            self.rotational_level = self.rotational_level[self._iallowed]
-
-    def _finalise_construct(self):
-        """The actual matrix diagonlisation is done last."""
+            # self._iallowed = self.rotational_level['J'] >= self.rotational_level['Ω']
+            # self.rotational_level = self.rotational_level[self._iallowed]
+        ## compure  H from subblocks
+        for ibeg,fH in self._H_subblocks:
+            for i in range(len(fH)):
+                for j in range(i,len(fH)): 
+                    self.H[:,i+ibeg,j+ibeg] = self.H[:,j+ibeg,i+ibeg] = fH[i][j](self.J)
+        ## nothing to be done
+        if len(self.vibrational_spin_level) == 0:
+            return
+        ## compute mixed energies and mixing coefficients
         self.c = {}             # mixing coefficients
         self.E = {}             # eignvalues
+        ibeg = 0
         for iJ,J in enumerate(self.J):
             H = self.H[iJ,:,:]
             iallowed = self.vibrational_spin_level['Ω']<=J
@@ -178,37 +205,41 @@ class VibLevel(Optimiser):
             self.E[J] = eigvals.real
             self.c[J] = eigvects
         ## insert energies into rotational_level
-        self.rotational_level['E'] = np.concatenate(list(self.E.values()))[self._iallowed]
+        self.rotational_level['E'] = np.concatenate(list(self.E.values()))
+        self.rotational_level.index((self.rotational_level['J']>self.rotational_level['Ω']))
 
-    @auto_construct_method('add_level')
-    def add_level(self,name='level',**kwargs):
+    @optimise_method()
+    def add_level(self,name='level',_cache=None,**kwargs):
         """Add a new electronic vibrational level. kwargs contains fitting
         parameters and optionally extra quantum numbers."""
-        ## get all quantum numbers
-        for key,val in quantum_numbers.decode_level(name).items():
-            kwargs.setdefault(key,val)
-        kwargs['species'] = self.species.isotopologue
-        self.vibrational_level.append(**kwargs)
-        ## Checks that integer/half-integer nature of J corresponds to
-        ## quantum number S
-        if kwargs['S']%1!=self.J[0]%1:
-            raise Exception(f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}')
-        ## get Hamiltonian and insert adjustable parameters into
-        ## functions
-        ef,Σ,H,fH = _get_linear_H(kwargs['S'],kwargs['Λ'],kwargs['s'])
-        fH = [[lambda J,f=fH[i,j]: f(J,**kwargs)
-                    for i in range(fH.shape[0])]
-                   for j in range(fH.shape[1])]
-        ## add to Hamiltonian
-        ibeg = len(self.vibrational_spin_level)
-        self.vibrational_spin_level.extend(ef=ef,Σ=Σ,**kwargs)
-        def construct_function():
-            for i in range(len(fH)):
-                for j in range(i,len(fH)): 
-                    self.H[:,ibeg+i,ibeg+j] = fH[i][j](self.J)
-                    if i!=j:
-                        self.H[:,ibeg+j,ibeg+i] = self.H[:,ibeg+i,ibeg+j]
-        return construct_function
+        ## first run define everything
+        if 'fH' not in _cache:
+            ## get all quantum numbers
+            for key,val in quantum_numbers.decode_level(name).items():
+                kwargs.setdefault(key,val)
+            kwargs['species'] = self.species.isotopologue
+            ## Checks that integer/half-integer nature of J corresponds to
+            ## quantum number S
+            if kwargs['S']%1!=self.J[0]%1:
+                raise Exception(f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}')
+            ## get Hamiltonian and insert adjustable parameters into
+            ## functions
+            ef,Σ,sH,fH = _get_linear_H(kwargs['S'],kwargs['Λ'],kwargs['s'])
+            fH = [[lambda J,f=fH[i,j]: f(J,**kwargs)
+                        for i in range(fH.shape[0])]
+                       for j in range(fH.shape[1])]
+            ## add to self
+            ibeg = len(self.vibrational_spin_level)
+            self.vibrational_spin_level.extend(ef=ef,Σ=Σ,**kwargs)
+            self._H_subblocks.append((ibeg,fH))
+            _cache['fH'] = fH
+
+
+    def get_spin_vibrational_level_index(self,ef,Σ,**other_quantum_numbers):
+        """Return index of a unique existing spin-vibrational level."""
+        retval = tools.find_unique(self.vibrational_spin_level.match(ef=ef,Σ=Σ,**other_quantum_numbers))
+        return retval
+
 
     # def set_experimental_level(self,*rotational_levels):
         # """Set a Rotational_Level as the experimental data to optimise. If
@@ -1465,7 +1496,7 @@ class VibLine(Optimiser):
         self.vibrational_line = lines.Diatomic(**tkwargs)
         self.vibrational_spin_line = lines.Diatomic(**tkwargs)
         self.μ = None
-
+        self._transition_moment_functions = []
 
         # self.vibrational_line.generate_from_levels(
             # self.level_u.vibrational_level,
@@ -1526,7 +1557,7 @@ class VibLine(Optimiser):
         Optimiser.__init__(self,name=self.name)
         # self.format_input_functions = [] # no formatted input
         self.add_suboptimiser(self.level_u,self.level_l)
-        self.add_construct_function(self._initialise_construct)
+        # self.add_construct_function(self._initialise_construct)
         self.add_post_construct_function(self._finalise_construct)
 
         self._μ = Dataset()
@@ -1602,33 +1633,65 @@ class VibLine(Optimiser):
     #             self.rotational_line[key] = np.ravel(np.tile(self.vibrational_spin_line[key],len(self.J_l)*len(self.ΔJ)))
     #     # self.rotational_line.remove_match(Sij=0)
 
-    def _initialise_construct(self):
-        ## cache this stuff
-        self.μ0 = np.full((
-            len(self.J_l),
-            len(self.ΔJ),
-            len(self.level_u.vibrational_spin_level),
-            len(self.level_l.vibrational_spin_level),),0.)
+    # def _initialise_construct(self):
+        # ## cache this stuff
+        # self.μ0 = np.full((
+            # len(self.J_l),
+            # len(self.ΔJ),
+            # len(self.level_u.vibrational_spin_level),
+            # len(self.level_l.vibrational_spin_level),),0.)
 
     def _finalise_construct(self):
 
-        # ## initialise rotational_line and cache it
-        # self.rotational_line.clear()
-        # for iJ_l,J_l in enumerate(self.J_l):
-            # for iΔJ,ΔJ in enumerate(self.ΔJ):
+        ## add J cache and change detection
+        if self._last_add_construct_function_time > self._last_construct_time:
+            self.μ0 = np.full((
+                len(self.J_l),
+                len(self.ΔJ),
+                len(self.level_u.vibrational_spin_level),
+                len(self.level_l.vibrational_spin_level),),0.)
+
+        for iu,jl,f in self._transition_moment_functions:
+            for iΔJ,ΔJ in enumerate(self.ΔJ):
+                self.μ0[:,iΔJ,iu,jl] = f(self.J_l,ΔJ)
+
+        ## initialise rotational_line and cache it
+        self.rotational_line.clear()
+        for iJ_l,J_l in enumerate(self.J_l):
+            for iΔJ,ΔJ in enumerate(self.ΔJ):
+                J_u = J_l + ΔJ
+                if J_u not in self.level_u.J:
+                    continue
+                # kw_l = self.level_l.vibrational_spin_level.as_dict()
+                # kw_u = self.level_u.vibrational_spin_level.as_dict()
+                # kw_l['E'] = self.level_l.E[J_l]
+                # kw_u['E'] = self.level_u.E[J_u]
+                n_l = len(self.level_l.vibrational_spin_level)
+                n_u = len(self.level_u.vibrational_spin_level)
+                self.rotational_line.extend(
+                    J_u=J_u,
+                    J_l=J_l,
+                    E_u=np.tile(self.level_u.E[J_u],n_l),
+                    E_l=np.repeat(self.level_l.E[J_l],n_u),
+                    **{key+'_u':np.tile(val,n_l) for key,val in self.level_u.vibrational_spin_level.items()},
+                    **{key+'_l':np.repeat(val,n_u) for key,val in self.level_l.vibrational_spin_level.items()},
+                )
                 # J_u = J_l + ΔJ
                 # if J_u not in self.level_u.J:
                     # continue
-                # qn_l = self.level_l.vibrational_spin_level[self.level_l.iallowed[J_l]].as_dict()
-                # qn_u = self.level_u.vibrational_spin_level[self.level_u.iallowed[J_u],].as_dict()
+                # qn_l = self.level_l.vibrational_spin_level[self.level_l._iallowed[J_l]].as_dict()
+                # qn_u = self.level_u.vibrational_spin_level[self.level_u._iallowed[J_u],].as_dict()
                 # self.rotational_line.extend(
                     # J_u=J_u, J_l=J_l,
                     # E_u=np.nan, E_l=np.nan, μ=np.nan,
                     # **{key+'_u':val for key,val in qn_u.items()},
                     # **{key+'_l':val for key,val in qn_l.items()},)
+        # print( len(self.rotational_line))
+
 
         # μ = np.full(self.μ0.shape,0.)
         nlines = 0
+        μs = []
         ## could vectorise linalg with np.dot
         for iJ_l,J_l in enumerate(self.J_l):
             for iΔJ,ΔJ in enumerate(self.ΔJ):
@@ -1643,6 +1706,7 @@ class VibLine(Optimiser):
                 ## get mixed line strengths
                 μ = np.dot(c_u,np.dot(μ0,np.transpose(c_l)))
                 # μ = μ[iallowed_u,:][:,iallowed_l]
+                μs.append(μ)
 
                 # iallowed_l = self.level_l.iallowed[J_l]
                 # iallowed_u = self.level_u.iallowed[J_u]
@@ -1652,50 +1716,53 @@ class VibLine(Optimiser):
                 # kw_u = self.level_u.vibrational_spin_level[iallowed_u].as_dict()
                 # kw_l['E'] = self.level_l.E[J_l][iallowed_l]
                 # kw_u['E'] = self.level_u.E[J_u][iallowed_u]
-                kw_l = self.level_l.vibrational_spin_level.as_dict()
-                kw_u = self.level_u.vibrational_spin_level.as_dict()
-                kw_l['E'] = self.level_l.E[J_l]
-                kw_u['E'] = self.level_u.E[J_u]
-                self.rotational_line.extend(
-                    J_l=J_l,J_u=J_u,
-                    μ=np.ravel(μ),
-                    **{key+'_u':np.tile(val,len(self.level_l.vibrational_spin_level)) for key,val in kw_u.items()},
-                    **{key+'_l':np.repeat(val,len(self.level_u.vibrational_spin_level)) for key,val in kw_l.items()},
-                )
+                # kw_l = self.level_l.vibrational_spin_level.as_dict()
+                # kw_u = self.level_u.vibrational_spin_level.as_dict()
+                # kw_l['E'] = self.level_l.E[J_l]
+                # kw_u['E'] = self.level_u.E[J_u]
+                # self.rotational_line.extend(
+                    # J_l=J_l,J_u=J_u,
+                    # μ=np.ravel(μ),
+                    # **{key+'_u':np.tile(val,len(self.level_l.vibrational_spin_level)) for key,val in kw_u.items()},
+                    # **{key+'_l':np.repeat(val,len(self.level_u.vibrational_spin_level)) for key,val in kw_l.items()},
+                # )
 
-                
-       
-    @auto_construct_method('add_transition_moment')
-    def add_transition_moment(self,name=None,μv=1,**extra_qn):
+        self.rotational_line['μ'] = np.ravel(μs)
+        ## remove forbidden lines
+        self.rotational_line.index(
+            (self.rotational_line['J_l']>self.rotational_line['Ω_l'])
+             & (self.rotational_line['J_u']>self.rotational_line['Ω_u']))
+
+
+    @optimise_method()
+    def add_transition_moment(self,name=None,μv=1,_cache=None,**extra_qn):
         """Add constant transition moment. μv can be optimised."""
         """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed
         transitions. μv should be in atomic units and can be specifed
         as a value (optimisable), a function of R or a suboptimiser
         given ['μ']."""
-        ## get all quantum numbers
-        qn = quantum_numbers.decode_transition(name)
-        qn.update(extra_qn)
-        self.vibrational_line.append(μv=μv,**qn)
-        qn_u,qn_l = quantum_numbers.separate_upper_lower_quantum_numbers(qn)
-        ## get transition moment functions for all ef/Σ
-        ## combinations and add optimisable parameter to functions
-        ef_u,Σ_u,ef_l,Σ_l,fμ = _get_linear_transition_moment(qn['S_u'],qn['Λ_u'],qn['s_u'], qn['S_l'],qn['Λ_l'],qn['s_l'],)
-        for i in range(fμ.shape[0]):
-            for j in range(fμ.shape[1]):
-                if fμ[i,j] is not None:
-                    fμ[i,j]=lambda J,ΔJ,f=fμ[i,j]: f(J,ΔJ)*μv
-        ## compute μ0
-        cache = {}
-        def construct_function():
+        if len(_cache) == 0:
+            ## get all quantum numbers
+            qn = quantum_numbers.decode_transition(name)
+            qn.update(extra_qn)
+            self.vibrational_line.append(μv=μv,**qn)
+            qn_u,qn_l = quantum_numbers.separate_upper_lower_quantum_numbers(qn)
+            ## get transition moment functions for all ef/Σ
+            ## combinations and add optimisable parameter to functions
+            ef_u,Σ_u,ef_l,Σ_l,fμ = _get_linear_transition_moment(qn['S_u'],qn['Λ_u'],qn['s_u'], qn['S_l'],qn['Λ_l'],qn['s_l'],)
+            ## find indices of transitioning state and add to
+            ## self._transition_moment_functions
             for i,(ef_ui,Σ_ui) in enumerate(zip(ef_u,Σ_u)):
                 for j,(ef_li,Σ_li) in enumerate(zip(ef_l,Σ_l)):
-                    row_u,i_u = self.level_u.vibrational_spin_level.matching_row(ef=ef_ui,Σ=Σ_ui,**qn_u,return_index=True)
-                    row_l,i_l = self.level_l.vibrational_spin_level.matching_row(ef=ef_li,Σ=Σ_li,**qn_l,return_index=True)
+                    i_u = self.level_u.get_spin_vibrational_level_index(ef=ef_ui,Σ=Σ_ui,**qn_u)
+                    i_l = self.level_l.get_spin_vibrational_level_index(ef=ef_li,Σ=Σ_li,**qn_l)
                     if fμ[i,j] is None:
                         continue
-                    for iΔJ,ΔJ in enumerate(self.ΔJ):
-                        self.μ0[:,iΔJ,i_u,i_l] = fμ[i,j](self.J_l,ΔJ)
-        return construct_function
+                    ## add tranasition moment Parameter to function
+                    f = lambda J,ΔJ,f=fμ[i,j]: f(J,ΔJ)*μv
+                    self._transition_moment_functions.append((i_u,i_l,f))
+
+
 
     # def add_transition_moment(
             # self,
@@ -2271,10 +2338,7 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp):
                     Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'],
                     Λp=qnppm['Λ'],Λpp=qnpppm['Λ'],
                     μsign=float(μsign), c=float(c)):
-                retval = np.full(len(Jpp),nan)
-                i = (Jpp>=qnpppm['Ω'])|((Jpp+ΔJ)>=qnppm['Ω'])
-                Jpp = Jpp[i]
-                retval[i] = (
+                retval = (
                     c       # contribution to ef-basis state
                     *np.sqrt((2*Jpp+1)*(2*(Jpp+ΔJ)+1)) # see hansson2005 eq. 13
                     *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
@@ -2282,6 +2346,7 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp):
                     *μsign # transition moment phase factor (+1 or -1)
                     *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') # Wigner 3J line strength factor vectorised over Jpp
                 )
+                retval[np.isnan(retval)] = 0. # not allowed
                 return retval
             fi.append(fij)
         fμrot[ip,ipp] = lambda Jpp,ΔJ,fi=fi: np.sum([fij(Jpp,ΔJ) for fij in fi])
