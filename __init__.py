@@ -1,6 +1,6 @@
 ## standard library
 from copy import copy,deepcopy
-from pprint import pprint
+from pprint import pprint,pformat
 import shutil
 
 ## nonstandard library
