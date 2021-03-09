@@ -5,6 +5,7 @@ import os
 # import sys
 from pprint import pprint
 from copy import copy
+import warnings
 
 import numpy as np
 from numpy import nan,inf
@@ -61,6 +62,7 @@ def auto_construct_method(
     input_format_function.  The undecorated method must return a
     construct_function. Parameters are picked out of the input
     kwargs. POSITIONAL ARGUMENTS NOT ALLOWED for simplicity."""
+    warnings.warn('deprecated')
     def actual_decorator(function):
         def new_function(self,*args,**kwargs):
             ## this block subtitutes into kwargs with keys taken from
@@ -541,7 +543,6 @@ class Optimiser:
         ## collect residuals from suboptimisers and self
         combined_residual = []  # from self and suboptimisers
         for optimiser in self._get_all_suboptimisers():
-            # print('DEBUG:', optimiser.name,optimiser.has_changed())
             if optimiser.has_changed() or recompute_all:
                 if self.verbose:
                     print(f'constructing optimiser: {optimiser.name}')
@@ -598,12 +599,12 @@ class Optimiser:
     def optimise(
             self,
             compute_uncertainty=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
-            xtol=1e-14,
             rms_noise=None,
             monitor_frequency='every iteration', # 'rms decrease', 'never'
             verbose=True,
             normalise_suboptimiser_residuals=False,
             max_nfev=None,         # max number of iterations
+            method=None,
     ):
         """Optimise parameters."""
         if compute_uncertainty:
@@ -628,15 +629,33 @@ class Optimiser:
             print(f'{self.name}: optimising')
             print('Number of varied parameters:',len(p))
         if len(p)>0:
-            try:
-                ## use leastsq Levenberg-Marquadt
-                ## p,dp = tools.leastsq(self._optimisation_function, p,s,xtol=xtol,rms_noise=rms_noise,)
-                ## use optimize.least_squares allowing for other methods and more tuning
-                result = optimize.least_squares(
-                    self._optimisation_function,
-                    p,
+            if method == 'lm' or len(p) == 1:
+                ## use 'lm' Levenberg-Marquadt
+                warnings.warn('lm options not optimised')
+                kwargs = dict(
+                    method='lm',
+                    jac='2-point',
+                    # ## xtol=1e-10,
+                    # ## ftol=,
+                    # ## gtol=,
+                    # ## bounds=(-inf,inf),
+                    # ## x_scale=s,
+                    # ## diff_step=1e-21,
+                    # ## diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
+                    # diff_step=np.asarray(s,dtype=float),
+                    # x_scale='jac',
+                    # ## x_scale=[t*100 for t in s],
+                    # ## loss='soft_l1',
+                    # loss='linear',
+                    # ## tr_solver='exact',
+                    # tr_solver='lsmr',
+                    # max_nfev=max_nfev,
+                    # ## jac_sparsity=None, 
+                )
+            else:
+                ## use 'trf' -- trust region
+                kwargs = dict(
                     method='trf',
-                    ## method='lm',
                     jac='2-point',
                     ## xtol=1e-10,
                     ## ftol=,
@@ -655,6 +674,11 @@ class Optimiser:
                     max_nfev=max_nfev,
                     ## jac_sparsity=None, 
                 )
+            try:
+                ## call optimisation routine
+                if verbose or self.verbose:
+                    print('Method:',kwargs['method'])
+                result = optimize.least_squares(self._optimisation_function,p,**kwargs)
                 if verbose or self.verbose:
                     print('Optimisation complete')
                     print('    Number parameters:    ',len(p))
@@ -713,7 +737,7 @@ class Parameter():
             value=1.,
             vary=False,
             step=None,
-            uncertainty=np.nan,
+            uncertainty=0.0,
             fmt='0.12g',
             description='parameter',
     ):
