@@ -201,6 +201,12 @@ def dict_to_kwargs(d,keys=None):
         keys = d.keys() # default to all keys
     return(','.join([key+'='+repr(d[key]) for key in keys]))
 
+def compute_matrix_of_function(A,*args,**kwargs):
+    """2D only"""
+    retval = np.matrix([[Aij(*args,**kwargs) for Aij in Ai] for Ai in A])
+    return retval
+
+
 ############################
 ## mathematical functions ##
 ############################
