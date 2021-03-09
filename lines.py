@@ -73,9 +73,9 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
                        ],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only (cm-1)", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate (s-1)", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
-prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer=[])
-prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)])
-prototypes['Ttr'] = dict(description="Translational temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)])
+prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer=[],default_step=0.1)
+prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)],default_step=0.1)
+prototypes['Ttr'] = dict(description="Translational temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
 prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer=[(('Jp','Jpp'),lambda self,Jp,Jpp: Jp-Jpp,)],)
 
 
@@ -107,7 +107,7 @@ prototypes['γ0X'] = dict(description="Pressure broadening coefficient in X (cm-
 prototypes['nγ0X'] = dict(description="Pressure broadening temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0X'] = dict(description="Pressure shift coefficient in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
+prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: 2*(296/T)**n*2*γ0*convert(P,'Pa','atm')),])
 prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert(P,'Pa','atm')),])
 
 ## HITRAN encoded pressure and temperature dependent Hartmann-Tran
