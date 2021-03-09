@@ -18,7 +18,9 @@ class OpusData:
         return 'ScRf' in self.data
 
     def get_spectrum(self):
-        assert self.has_spectrum(),'No spectrum (ScSm) found.'
+        if not self.has_spectrum():
+            print('No spectrum (ScSm) found, looking for background.')
+            return self.get_background()
         parameters = self.data[f'ScSm Data Parameter']
         x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
         y = self.data['ScSm'][:parameters['NPT']] # for some reason the data in the datablock can be too long
