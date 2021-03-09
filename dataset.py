@@ -14,7 +14,7 @@ from .tools import AutoDict
 from .exceptions import InferException
 from .conversions import convert
 from . import optimise
-from .optimise import optimise_method,Parameter
+from .optimise import optimise_method,Parameter,Fixed
 
 
 
@@ -88,7 +88,7 @@ class Dataset(optimise.Optimiser):
             retval += ')'
             return retval
         self.add_format_input_function(format_input_function)
-        self.add_save_to_directory_function(lambda directory: self.save(f'{directory}/data.h5'))
+        self.add_save_to_directory_function(lambda directory: self.save(f'{directory}/dataset.h5'))
         ## copy from another dataset
         if copy_from is not None:
             self.copy_from(copy_from)
@@ -173,6 +173,8 @@ class Dataset(optimise.Optimiser):
                     data[tkey] = self._kind_defaults[data['kind']][tkey]
             if 'default' not in data and self.permit_auto_defaults:
                 data['default'] = self._kind_defaults[data['kind']]['default']
+            if data['kind']=='f' and 'default_step' not in data:
+                data['default_step'] = 1e-8
             ## infer function dict,initialise inference lists, and units if needed
             for tkey,tval in (
                     ('infer',[]),
@@ -253,9 +255,12 @@ class Dataset(optimise.Optimiser):
                     raise Exception()
                 self._data[key]['uncertainty'] = np.asarray(value,dtype=float)
 
-    def get_step(self,key,index=None):
+    def get_step(self,key,index=None,return_default_if_necessary=False):
         if 'step' not in self._data[key]:
-            return None
+            if return_default_if_necessary:
+                return self._data[key]['default_step']
+            else:
+                return None
         if index is not None:
             return self.get_step(key)[index] 
         return self._data[key]['step'][:len(self)]
@@ -281,12 +286,11 @@ class Dataset(optimise.Optimiser):
         """Set boolean vary for optimisation. Strings 'True', 'False', and
         'None' also accepted."""
         ## interpret string represnation  of "True" and "False"
-        if np.isscalar(vary):
-            if vary in ('True',):
-                vary = True
-            if vary in ('False','None'): 
-                vary = False
-        elif isinstance(vary[0],str):
+        if vary is True:
+            vary = True
+        elif vary is False or vary is None or vary is Fixed: 
+            vary = False
+        elif len(vary) > 0 and isinstance(vary[0],str):
             tvary = vary
             vary = []
             for val in tvary:
@@ -388,7 +392,13 @@ class Dataset(optimise.Optimiser):
                     or np.any(self.get(key,index=index) != parameter.value) # data has changed some other way and differs from parameter
                     or ((not np.isnan(parameter.uncertainty)) and (np.any(self.get_uncertainty(key,index=index) != parameter.uncertainty))) # data has changed some other way and differs from parameter
                 ):
-                self.set(key,value=parameter.value,uncertainty=parameter.uncertainty,index=index,**prototype_kwargs)
+                self.set(
+                    key,
+                    value=parameter.value,
+                    uncertainty=parameter.uncertainty,
+                    step=parameter.step,
+                    index=index,
+                    **prototype_kwargs)
         else:
             ## only reconstruct for the following reasons
             if (
@@ -543,19 +553,39 @@ class Dataset(optimise.Optimiser):
         return retval
 
     @optimise_method()
-    def copy_from(self,source,keys=None,index=None,match=None):
+    def copy_from(
+            self,
+            source,             # Dataset to copy
+            keys=None,          # keys to copy
+            index=None,         # indices to copy
+            match=None,         # copy matching {key:val,...} 
+            copy_uncertainty= True, #
+            copy_step=False,
+            copy_vary=False,
+    ):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
         self.clear()            # total data reset
         if keys is None:
             keys = source.keys()
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
+        ## get matching indices
         if match is not None:
-            index = source.match(**match)
+            if index is None:
+                index = source.match(**match)
+            else:
+                ## requires index be a boolean mask array -- will fail
+                ## on index array or slice, could add logic for those
+                ## cases
+                index &= source.match(**match)
         for key in keys:
             self.set(key,source.get(key,index=index))
-            if (t:=source.get_uncertainty(key,index=index)) is not None:
+            if copy_uncertainty and (t:=source.get_uncertainty(key,index=index)) is not None:
                 self.set_uncertainty(key,t)
+            if copy_step and (t:=source.get_step(key,index=index)) is not None:
+                self.set_step(key,t)
+            if copy_vary and (t:=source.get_vary(key,index=index)) is not None:
+                self.set_vary(key,t)
         ## copy all attributes
         for key in source.attributes:
             self[key] = source[key]
@@ -685,14 +715,14 @@ class Dataset(optimise.Optimiser):
                 parameters = [self[t] for t in dependencies]
                 for i,dependency in enumerate(dependencies):
                     if (tuncertainty:=self.get_uncertainty(dependency)) is not None:
-                        diffstep = 1e-10*self[dependency]
-                        parameters[i] = self[dependency] + diffstep # shift one
+                        step = self.get_step(dependency,return_default_if_necessary=True)
+                        parameters[i] = self[dependency] + step # shift one
                         dvalue = value - function(self,*parameters)
                         parameters[i] = self[dependency] # put it back
                         data = self._data[dependency]
-                        squared_contribution.append((tuncertainty*dvalue/diffstep)**2)
+                        squared_contribution.append((tuncertainty*dvalue/step)**2)
                 if len(squared_contribution)>0:
-                    self.set_uncertainty(key,np.sqrt(sum(squared_contribution)))
+                    self.set_uncertainty(key,np.sqrt(np.sum(squared_contribution,axis=0)))
                 ## if we get this far without an InferException then
                 ## success!.  Record inference dependencies.
                 self._data[key]['inferred_from'].extend(dependencies)
@@ -992,7 +1022,7 @@ class Dataset(optimise.Optimiser):
             else:
                 return None
         if 'classname' in data and data['classname'] != self.attributes['classname']:
-            warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
+            warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self["classname"])}, and it will be ignored.')
             data.pop('classname')
         ## Set data in self and selected attributes
         for key,val in data.items():
@@ -1320,7 +1350,7 @@ def load(filename,classname=None,**kwargs):
         d = Dataset()
         classname = d.load(filename,return_classname_only=True)
         if classname is None:
-            classname = 'Dataset'
+            classname = 'dataset.Dataset'
     retval = make(classname,load_from_file=filename,**kwargs)
     return retval
 
