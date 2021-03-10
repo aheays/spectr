@@ -26,9 +26,13 @@ canonical_factors = {
     'au'          :(1/5.2917721092e-11,'length'), #  atomic units (Bohr radius, a0),
     'Å'           :(1e+10             ,'length'),
 
-    ## column density
+    ## column/surface density
     'm-2' : (1.                        ,'column density'), 
     'cm-2': (1e-4                       ,'column density'), 
+
+    ## volume density
+    'm-3' : (1.                        ,'volume density'), 
+    'cm-3': (1e-6                       ,'volume density'), 
 
     ## time
     's':(1.            ,'time'),
