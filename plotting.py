@@ -2041,7 +2041,7 @@ def set_tick_spacing(
             end, minor_spacing),minor=True)
 
 
-def show():
+def show(show_in_ipython=False):
     """ Show current plot in a customised way."""
     ## do nothing if in an ipython shell
     for n in plt.get_fignums():
@@ -2052,6 +2052,8 @@ def show():
         pass
     try:
         __IPYTHON__
+        if show_in_ipython:
+            plt.show()
         return
     except NameError:
         plt.show()
