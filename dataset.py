@@ -1170,6 +1170,7 @@ class Dataset(optimise.Optimiser):
             znewaxes=False,     # plot z-keys on separates axes -- else as different lines
             legend=True,        # plot a legend or not
             zlabel_format_function=None, # accept key=val pairs, defaults to printing them
+            label_prefix=None, # put this before label otherwise generated
             plot_errorbars=True, # if uncertainty available
             xscale='linear',     # 'log' or 'linear'
             yscale='linear',     # 'log' or 'linear'
@@ -1217,7 +1218,7 @@ class Dataset(optimise.Optimiser):
                     title = ylabel+' '+zlabel
                 elif ynewaxes and not znewaxes:
                     ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns)
-                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(0),plotting.newlinestyle(0)
+                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = (zlabel if len(zkeys)>0 else None) 
                     title = ylabel
                 elif not ynewaxes and znewaxes:
@@ -1227,10 +1228,12 @@ class Dataset(optimise.Optimiser):
                     title = zlabel
                 elif not ynewaxes and not znewaxes:
                     ax = fig.gca()
-                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iy),plotting.newlinestyle(iy)
+                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iy)
                     # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = ylabel+' '+zlabel
                     title = None
+                if label_prefix is not None:
+                    label = label_prefix + label
                 kwargs = copy(plot_kwargs)
                 kwargs.setdefault('marker',marker)
                 kwargs.setdefault('ls',linestyle)
@@ -1251,7 +1254,8 @@ class Dataset(optimise.Optimiser):
                     i = np.isnan(dy)|(dy==0)
                     if np.any(i):
                         kwargs['mfc'] = kwargs['color']
-                        kwargs['fillstyle'] = 'full'
+                        if 'fillstyle' not in kwargs:
+                            kwargs['fillstyle'] = 'full'
                         if 'ls' in kwargs:
                             kwargs['ls'] = ''
                         else:
