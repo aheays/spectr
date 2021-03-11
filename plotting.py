@@ -2372,3 +2372,15 @@ def plot_stick_spectrum(x,y,ax=None,**plot_kwargs):
     x = np.reshape(x.transpose(),np.prod(x.shape))                                                                                                                                                              
     y = np.reshape(y.transpose(),np.prod(y.shape))
     ax.plot(x,y,**plot_kwargs)
+
+
+def plot_hist_with_fitted_gaussian(y,bins=100,ax=None):
+    if ax is None:
+        ax = plt.gca()
+    ax.hist(y,bins=bins,density=True)
+    σ = np.std(y)
+    μ = np.mean(y)
+    x = np.linspace(*ax.get_xlim(),1000)
+    yf = 1/(σ*np.sqrt(2*constants.pi))*np.exp(-1/2*((x-μ)/σ)**2)
+    ax.plot(x,yf,label=f'μ={μ:0.5g}, σ={σ:0.5g}')
+    legend(ax=ax)
