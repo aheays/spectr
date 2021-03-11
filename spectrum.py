@@ -85,11 +85,19 @@ class Experiment(Optimiser):
             self.x,self.y = copy(x),copy(y) # make copy -- more memory but survive other changes
         return f
 
-    def set_spectrum_from_file(self,filename,xbeg=None,xend=None,**file_to_array_kwargs):
+    @optimise_method()
+    def set_spectrum_from_file(
+            self,
+            filename,
+            xkey=None,ykey=None,
+            xcol=None,ycol=None,
+            xbeg=None,xend=None,
+            # **load_function_kwargs
+    ):
         """Load a spectrum to fit from an x,y file."""
-        self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(file_to_array_kwargs)})')
-        x,y = tools.file_to_array_unpack(filename,**file_to_array_kwargs)
-        self.experimental_parameters['filename'] = filename
+        # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(load_function_kwargs)})')
+        # x,y = tools.file_to_array_unpack(filename,**load_function_kwargs)
+        x,y = tools.loadxy(filename, xcol=xcol,ycol=ycol, xkey=xkey,ykey=ykey,)
         self.set_spectrum(x,y,xbeg,xend)
 
     def set_spectrum_from_dataset(self,filename,xbeg=None,xend=None,xkey='x',ykey='y'):
@@ -184,20 +192,21 @@ class Experiment(Optimiser):
     def __len__(self):
         return len(self.x)
 
+
+    @format_input_method()
     def fit_noise(
             self,
-            xbeg,xend,
+            xbeg=None,
+            xend=None,
             n=1,
             figure_number=None,
             interpolation_factor=None,
+            
     ):
         """Estimate the noise level by fitting a polynomial of order n
         between xbeg and xend to the experimental data. Also rescale
         if the experimental data has been interpolated."""
-        ## new input line
-        self.add_format_input_function(
-            lambda: f'{self.name}.fit_noise({xbeg},{xend},n={n},figure_number={figure_number})')
-        self.construct_experiment() # need experimental data to be already loaded
+        
         ## deal with interpolation factor (4 means 3 intervening extra points added)
         if (interpolation_factor is None 
              and 'interpolation_factor' not in self.experimental_parameters):
@@ -209,16 +218,24 @@ class Experiment(Optimiser):
               and 'interpolation_factor' in self.experimental_parameters
               and interpolation_factor != self.experimental_parameters['interpolation_factor']):
             raise Exception(f'interpolation_factor={repr(interpolation_factor)} does not match the value in self.experimental_parameters={self.experimental_parameters["interpolation_factor"]}')
-        assert interpolation_factor>=1,'Down sampling will cause problems in this method.'
+        if interpolation_factor<1:
+            raise Exception('Down sampling will cause problems in this method.')
         if interpolation_factor!=1:
             print(f'warning: {self.name}: RMS rescaled to account for data interpolation_factor = {interpolation_factor}')
+        if self.verbose:
+            print(f'fit_noise: {interpolation_factor=}')
         ## compute noise resiudal of polynomial fit
-        i = (self.xexp>xbeg)&(self.xexp<xend)
-        if sum(i)==0:
+        x,y = self.x,self.y
+        if xbeg is not None:
+            i = x >= xbeg
+            x,y = x[i],y[i]
+        if xend is not None:
+            i = x <= xbeg
+            x,y = x[i],y[i]
+        if len(x) == 0:
             warnings.warn(f'{self.name}: No data in range for fit_noise, not done.')
             return
-        x,y = self.xexp[i],self.yexp[i]
-        xt = x-x.mean()
+        xt = x - x.mean()
         p = np.polyfit(xt,y,n)
         yf = np.polyval(p,xt)
         r = y-yf
@@ -232,17 +249,17 @@ class Experiment(Optimiser):
         self.residual_scale_factor = 1/rms*np.sqrt(interpolation_factor)
         ## plot to check it looks ok
         if figure_number is not None:
-            fig,ax = tools.fig(figure_number)
+            ax = plotting.qax(n=figure_number)
             ax.plot(x,y,label='exp')
             ax.plot(x,yf,label='fit')
             ax.plot(x,r,label=f'residual, rms={rms}')
             ax.set_title(f'fit rms to data\n{self.name}')
-            tools.legend(ax=ax)
-            ax = tools.subplot(fig=fig)
+            plotting.legend(ax=ax)
+            ax = plotting.subplot()
             ax.plot(tools.autocorrelate(r),marker='o',)
             ax.set_title(f'noise autocorrelation\n{self.name}')
-            ax = tools.subplot(fig=fig)
-            tools.plot_hist_with_fitted_gaussian(r,ax=ax)
+            ax = plotting.subplot()
+            plotting.plot_hist_with_fitted_gaussian(r,ax=ax)
             ax.set_title(f'noise distribution\n{self.name}')
 
     def plot(self,ax=None):
