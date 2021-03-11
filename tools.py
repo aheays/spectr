@@ -6,7 +6,7 @@ from copy import copy
 from pprint import pprint
 import itertools
 
-from scipy import interpolate,constants,integrate
+from scipy import interpolate,constants,integrate,linalg,stats
 import csv
 import glob as glob_module
 import numpy as np
@@ -1603,128 +1603,128 @@ def dirname(path):
     except ValueError:
         return('./')
 
-# def polyfit(x,y,dy=None,order=0,fixed=None,extended_output=True,
-            # print_output=False,plot_output=False,return_style='dict',
-            # error_on_missing_dy=True,**plotkwargs):
-    # """
-    # Polyfit with weights calculated from provided standard
-    # deviation. Will ignore data with NaNs in any of x, y, or dy. If
-    # dy=None, or a dy is a constant, or dy is all 0., then a constant
-    # value (default 1) will be used. If some dy is 0, then these will
-    # be set to NaN and ignored.
-    # \nInputs:\n
-    # x - independent variables
-    # y - dependent variable
-    # dy - standard error of y
-    # order - order of polynomial to fit
-    # fixed - parameter to not vary, fixed values in dict
-            # indexed by order, e.g. {0:100,} fixes constant term
-    # extended_output - output more, default is False
-    # print_output - print some data, default is False
-    # plot_output - issue plotting commands, default is False
-    # return_style - 'list' or 'dict'.
-    # plotkwargs - a dictionary of kwargs passed to plot
-    # \nOutputs:\n
-    # p - the polynomial coefficients
-    # If extended_output=True then also returns:
-    # dp - standard error in p, will only be accurate if order is correct
-    # f - a function representing this polynomial
-    # residuals - of fit
-    # chisqprob - probability of arriving at these residuals 
-                # (or greater ones given the standard errors dy with the
-                # proposed polynomial model.
-    # """
-    # x,y = np.array(x),np.array(y) # ensure types
-    # if dy is None: dy = np.full(x.shape,1.,dtype=float) # default uncertainty if Noneprovided
-    # if type(dy) in [float,int,np.float64,np.int64]: dy = dy*np.ones(y.shape) # vectorise dy if constant given
-    # dy = np.array(dy)           # ensure array
-    # if error_on_missing_dy and (np.any(np.isnan(dy)) or np.any(dy==0)): raise Exception("Incomplete dy data, zero or nan.") # raise error bad dy 
-    # xin,yin,dyin = copy(x),copy(y),copy(dy) # save original data
-    # ## deal with nan or zero data by not fitting to them. If all zero or nan then set error to 1.
-    # dy[dy==0] = np.nan
-    # i = ~(np.isnan(x)|np.isnan(y)|np.isnan(dy))
-    # if np.any(i):
-        # x,y,dy = x[i],y[i],dy[i] # reduce data to known uncertianteis
-    # else:
-        # dy = np.full(dy.shape,1.) # set all uncertainties to 1 if none are known
-        # i = np.full(dy.shape,True)
-    # ## reduce polynomial order to match data length
-    # order = min(order,len(x)-1)
-    # ## solve linear least squares equation, do not include fixed parameters in matrix
-    # W = np.diag(1/dy)
-    # if fixed is None:
-        # At = np.array([x**n for n in range(order+1)])
-        # A = At.transpose()
-        # AtW = np.dot(At,W)
-        # AtWA = np.dot(AtW,A)
-        # invAtWA = linalg.inv(AtWA)
-        # invAtWAdotAtW  = np.dot(invAtWA,AtW)
-        # p = np.dot(invAtWAdotAtW,y)
-    # else:
-        # y_reduced = copy(y)
-        # At = []
-        # for n in range(order+1):
-            # if n in fixed:  y_reduced = y_reduced - fixed[n]*x**n
-            # else:           At.append(x**n)
-        # At = np.array([t for t in At])
-        # A = At.transpose()
-        # AtW = np.dot(At,W)
-        # AtWA = np.dot(AtW,A)
-        # invAtWA = linalg.inv(AtWA)
-        # invAtWAdotAtW  = np.dot(invAtWA,AtW)
-        # p_reduced = list(np.dot(invAtWAdotAtW,y_reduced))
-        # p = []
-        # for n in range(order+1):
-            # if n in fixed:
-                # p.append(fixed[n])
-            # else: 
-                # p.append(p_reduced.pop(0))
-    # p = np.flipud(p) # to conform to polyfit convention
-    # ## calc extra information
-    # if extended_output or print_output or plot_output:
-        # ## function
-        # f = lambda x: np.polyval(p,x)
-        # ## fitted values
-        # yf = f(xin)
-        # ## residuals
-        # residuals = yin-yf
-        # ## chi-square probability
-        # if dy is None:
-            # chisq = chisqnorm = chisqprob = None
-        # else:
-            # chisq = (residuals[i]**2/dy**2).sum()
-            # chisqnorm = chisq/(len(x)-order-1-1)
-            # # chisqprob = stats.chisqprob(chisq,len(x)-order-1-1)
-            # chisqprob = stats.distributions.chi2.sf(chisq,len(x)-order-1-1)
-        # ## stdandard error paramters (IGNORING CORRELATION!)
-        # if dy is None:
-            # dp = None
-        # else:
-            # dp = np.sqrt(np.dot(invAtWAdotAtW**2,dy**2))
-            # dp = np.flipud(dp) # to conform to polyfit convention
-    # ## a nice summary message
-    # if print_output:
-        # print(('\n'.join(
-            # ['             p             dp']
-            # +[format(a,'14.7e')+' '+format(b,'14.7e') for (a,b) in zip(p,dp)]
-            # +['chisq: '+str(chisq),'chisqprob: '+str(chisqprob),
-              # 'rms: '+str(rms(residuals)),
-              # 'max_abs_residual: '+str(abs(residuals).max())]
-            # )))
-    # ## a nice plot
-    # if plot_output:
-        # ax=plt.gca()
-        # ax.errorbar(x,residuals,dy,**plotkwargs) # plot residual
-    # ## what to return
-    # if extended_output:
-        # if return_style=='list':
-            # return(p,dp,f,residuals,chisqprob)
-        # elif return_style=='dict':
-            # return(dict(x=xin,y=yin,dy=dyin,p=p,dp=dp,yf=f(xin),f=f,residuals=residuals,
-                        # chisqprob=chisqprob,chisq=chisq,chisqnorm=chisqnorm,fixed=fixed))
-        # else: raise Exception()
-    # else:
-        # return(p)
+def polyfit(x,y,dy=None,order=0,fixed=None,extended_output=True,
+            print_output=False,plot_output=False,return_style='dict',
+            error_on_missing_dy=True,**plotkwargs):
+    """
+    Polyfit with weights calculated from provided standard
+    deviation. Will ignore data with NaNs in any of x, y, or dy. If
+    dy=None, or a dy is a constant, or dy is all 0., then a constant
+    value (default 1) will be used. If some dy is 0, then these will
+    be set to NaN and ignored.
+    \nInputs:\n
+    x - independent variables
+    y - dependent variable
+    dy - standard error of y
+    order - order of polynomial to fit
+    fixed - parameter to not vary, fixed values in dict
+            indexed by order, e.g. {0:100,} fixes constant term
+    extended_output - output more, default is False
+    print_output - print some data, default is False
+    plot_output - issue plotting commands, default is False
+    return_style - 'list' or 'dict'.
+    plotkwargs - a dictionary of kwargs passed to plot
+    \nOutputs:\n
+    p - the polynomial coefficients
+    If extended_output=True then also returns:
+    dp - standard error in p, will only be accurate if order is correct
+    f - a function representing this polynomial
+    residuals - of fit
+    chisqprob - probability of arriving at these residuals 
+                (or greater ones given the standard errors dy with the
+                proposed polynomial model.
+    """
+    x,y = np.array(x),np.array(y) # ensure types
+    if dy is None: dy = np.full(x.shape,1.,dtype=float) # default uncertainty if Noneprovided
+    if type(dy) in [float,int,np.float64,np.int64]: dy = dy*np.ones(y.shape) # vectorise dy if constant given
+    dy = np.array(dy)           # ensure array
+    if error_on_missing_dy and (np.any(np.isnan(dy)) or np.any(dy==0)): raise Exception("Incomplete dy data, zero or nan.") # raise error bad dy 
+    xin,yin,dyin = copy(x),copy(y),copy(dy) # save original data
+    ## deal with nan or zero data by not fitting to them. If all zero or nan then set error to 1.
+    dy[dy==0] = np.nan
+    i = ~(np.isnan(x)|np.isnan(y)|np.isnan(dy))
+    if np.any(i):
+        x,y,dy = x[i],y[i],dy[i] # reduce data to known uncertianteis
+    else:
+        dy = np.full(dy.shape,1.) # set all uncertainties to 1 if none are known
+        i = np.full(dy.shape,True)
+    ## reduce polynomial order to match data length
+    order = min(order,len(x)-1)
+    ## solve linear least squares equation, do not include fixed parameters in matrix
+    W = np.diag(1/dy)
+    if fixed is None:
+        At = np.array([x**n for n in range(order+1)])
+        A = At.transpose()
+        AtW = np.dot(At,W)
+        AtWA = np.dot(AtW,A)
+        invAtWA = linalg.inv(AtWA)
+        invAtWAdotAtW  = np.dot(invAtWA,AtW)
+        p = np.dot(invAtWAdotAtW,y)
+    else:
+        y_reduced = copy(y)
+        At = []
+        for n in range(order+1):
+            if n in fixed:  y_reduced = y_reduced - fixed[n]*x**n
+            else:           At.append(x**n)
+        At = np.array([t for t in At])
+        A = At.transpose()
+        AtW = np.dot(At,W)
+        AtWA = np.dot(AtW,A)
+        invAtWA = linalg.inv(AtWA)
+        invAtWAdotAtW  = np.dot(invAtWA,AtW)
+        p_reduced = list(np.dot(invAtWAdotAtW,y_reduced))
+        p = []
+        for n in range(order+1):
+            if n in fixed:
+                p.append(fixed[n])
+            else: 
+                p.append(p_reduced.pop(0))
+    p = np.flipud(p) # to conform to polyfit convention
+    ## calc extra information
+    if extended_output or print_output or plot_output:
+        ## function
+        f = lambda x: np.polyval(p,x)
+        ## fitted values
+        yf = f(xin)
+        ## residuals
+        residuals = yin-yf
+        ## chi-square probability
+        if dy is None:
+            chisq = chisqnorm = chisqprob = None
+        else:
+            chisq = (residuals[i]**2/dy**2).sum()
+            chisqnorm = chisq/(len(x)-order-1-1)
+            # chisqprob = stats.chisqprob(chisq,len(x)-order-1-1)
+            chisqprob = stats.distributions.chi2.sf(chisq,len(x)-order-1-1)
+        ## stdandard error paramters (IGNORING CORRELATION!)
+        if dy is None:
+            dp = None
+        else:
+            dp = np.sqrt(np.dot(invAtWAdotAtW**2,dy**2))
+            dp = np.flipud(dp) # to conform to polyfit convention
+    ## a nice summary message
+    if print_output:
+        print(('\n'.join(
+            ['             p             dp']
+            +[format(a,'14.7e')+' '+format(b,'14.7e') for (a,b) in zip(p,dp)]
+            +['chisq: '+str(chisq),'chisqprob: '+str(chisqprob),
+              'rms: '+str(rms(residuals)),
+              'max_abs_residual: '+str(abs(residuals).max())]
+            )))
+    ## a nice plot
+    if plot_output:
+        ax=plt.gca()
+        ax.errorbar(x,residuals,dy,**plotkwargs) # plot residual
+    ## what to return
+    if extended_output:
+        if return_style=='list':
+            return(p,dp,f,residuals,chisqprob)
+        elif return_style=='dict':
+            return(dict(x=xin,y=yin,dy=dyin,p=p,dp=dp,yf=f(xin),f=f,residuals=residuals,
+                        chisqprob=chisqprob,chisq=chisq,chisqnorm=chisqnorm,fixed=fixed))
+        else: raise Exception()
+    else:
+        return(p)
 
 # def dot(x,y):
     # """Like numpy dot but sums over last dimension of first argument
@@ -3121,22 +3121,10 @@ def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=Fals
     # myf.cross_correlate(y0,y1,yc,imax_shift,iconv_width)
     # return(xc,yc)
 
-# def autocorrelate(x):
-    # """Calculates an autocorrelation y of a a 1D array, x.  That is,
-# correlates x with itself as a function of relative shift, truncates
-# the vectors rather than pad with zeros (like convolve
-# does). Normalised by the square root of the sum of squres for the two
-# sections of x being correlated.
-    # SLOW: USES A LOOP!!
-    # """
-    # x = np.asarray(x)
-    # ks = np.arange(0,int(len(x)/2)+1,dtype=int)
-    # y = np.zeros(ks.shape,dtype=float)
-    # for (i,k) in enumerate(ks):
-        # a = x[k:-1]
-        # b = x[0:-k-1]
-        # y[i] = (a*b).sum() / ( np.sqrt( np.sum(a**2)*np.sum(b**2) )  )
-    # return y
+def autocorrelate(x):
+    result = np.correlate(x, x, mode='full')
+    result  = result[int(len(result-1)/2):]
+    return result
 
 # def sinc(x,fwhm=1.,mean=0.,strength=1.,norm='area',):
     # """ Calculate sinc function. """
@@ -3230,6 +3218,28 @@ def array_to_file(filename,*args,make_leading_directories=True,**kwargs):
     # y[i] = spline(xn,yn,x[i])
     # y[~i] = missing_data
     # return y
+
+def loadxy(
+        filename,
+        xkey=None,ykey=None,
+        xcol=None,ycol=None,
+        **kwargs
+):
+    """Load x and y data from a file."""
+    if xkey is not None:
+        ## load by key
+        from .dataset import Dataset
+        d = Dataset()
+        d.load(filename,**kwargs)
+        x,y = d['x'],d['y']
+    else:
+        if xcol is None:
+            xcol = 0
+        if ycol is None:
+            ycol = 1
+        d = file_to_array(filename,**kwargs)
+        x,y = d[:,xcol],d[:,ycol]
+    return x,y
 
 def file_to_array(
         filename,
