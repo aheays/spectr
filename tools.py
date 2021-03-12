@@ -1603,9 +1603,16 @@ def dirname(path):
     except ValueError:
         return('./')
 
-def polyfit(x,y,dy=None,order=0,fixed=None,extended_output=True,
-            print_output=False,plot_output=False,return_style='dict',
-            error_on_missing_dy=True,**plotkwargs):
+def polyfit(
+        x,y,
+        dy=None,
+        order=0,
+        fixed=None,
+        do_print=False,
+        do_plot=False,
+        error_on_missing_dy=True,
+        # plot_kwargs=None,
+):
     """
     Polyfit with weights calculated from provided standard
     deviation. Will ignore data with NaNs in any of x, y, or dy. If
@@ -1680,30 +1687,28 @@ def polyfit(x,y,dy=None,order=0,fixed=None,extended_output=True,
             else: 
                 p.append(p_reduced.pop(0))
     p = np.flipud(p) # to conform to polyfit convention
-    ## calc extra information
-    if extended_output or print_output or plot_output:
-        ## function
-        f = lambda x: np.polyval(p,x)
-        ## fitted values
-        yf = f(xin)
-        ## residuals
-        residuals = yin-yf
-        ## chi-square probability
-        if dy is None:
-            chisq = chisqnorm = chisqprob = None
-        else:
-            chisq = (residuals[i]**2/dy**2).sum()
-            chisqnorm = chisq/(len(x)-order-1-1)
-            # chisqprob = stats.chisqprob(chisq,len(x)-order-1-1)
-            chisqprob = stats.distributions.chi2.sf(chisq,len(x)-order-1-1)
-        ## stdandard error paramters (IGNORING CORRELATION!)
-        if dy is None:
-            dp = None
-        else:
-            dp = np.sqrt(np.dot(invAtWAdotAtW**2,dy**2))
-            dp = np.flipud(dp) # to conform to polyfit convention
+    ## function
+    f = lambda x: np.polyval(p,x)
+    ## fitted values
+    yf = f(xin)
+    ## residuals
+    residuals = yin-yf
+    ## chi-square probability
+    if dy is None:
+        chisq = chisqnorm = chisqprob = None
+    else:
+        chisq = (residuals[i]**2/dy**2).sum()
+        chisqnorm = chisq/(len(x)-order-1-1)
+        # chisqprob = stats.chisqprob(chisq,len(x)-order-1-1)
+        chisqprob = stats.distributions.chi2.sf(chisq,len(x)-order-1-1)
+    ## stdandard error paramters (IGNORING CORRELATION!)
+    if dy is None:
+        dp = None
+    else:
+        dp = np.sqrt(np.dot(invAtWAdotAtW**2,dy**2))
+        dp = np.flipud(dp) # to conform to polyfit convention
     ## a nice summary message
-    if print_output:
+    if do_print:
         print(('\n'.join(
             ['             p             dp']
             +[format(a,'14.7e')+' '+format(b,'14.7e') for (a,b) in zip(p,dp)]
@@ -1712,19 +1717,24 @@ def polyfit(x,y,dy=None,order=0,fixed=None,extended_output=True,
               'max_abs_residual: '+str(abs(residuals).max())]
             )))
     ## a nice plot
-    if plot_output:
-        ax=plt.gca()
-        ax.errorbar(x,residuals,dy,**plotkwargs) # plot residual
-    ## what to return
-    if extended_output:
-        if return_style=='list':
-            return(p,dp,f,residuals,chisqprob)
-        elif return_style=='dict':
-            return(dict(x=xin,y=yin,dy=dyin,p=p,dp=dp,yf=f(xin),f=f,residuals=residuals,
-                        chisqprob=chisqprob,chisq=chisq,chisqnorm=chisqnorm,fixed=fixed))
-        else: raise Exception()
-    else:
-        return(p)
+    if do_plot:
+        fig=plotting.plt.gcf()
+        fig.clf()
+        ax = subplot(0)
+        ax.errorbar(x,y,dy,label='data') 
+        ax.errorbar(x,yf,label='fit') 
+        plotting.legend()
+        ax = subplot(1)
+        ax.errorbar(x,residuals,dy,label='residual error')
+        plotting.legend()
+    ## return 
+    return dict(
+        x=xin,y=yin,dy=dyin,
+        p=p,dp=dp,
+        yf=f(xin),f=f,
+        residuals=residuals,
+        chisqprob=chisqprob,chisq=chisq,chisqnorm=chisqnorm,
+        fixed=fixed)
 
 # def dot(x,y):
     # """Like numpy dot but sums over last dimension of first argument
