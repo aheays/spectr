@@ -7,7 +7,7 @@ from scipy import constants,integrate
 import numpy as np
 
 from .dataset import Dataset
-from .conversions import convert
+from . import convert
 from . import kinetics
 from . import tools
 from . import database
@@ -373,7 +373,7 @@ class AtmosphericChemistry():
             f'total column production rate  (s-1.cm-2): {production_column_rate:10.3e}',
             f'total column destruction rate (s-1.cm-2): {destruction_column_rate:10.3e}',
             f'mean destruction rate              (s-1): {destruction_mean_loss_rate:10.3e}',
-            f'mean destruction lifetime           (yr): {convert(destruction_mean_lifetime,"s","yr"):10.3e}',
+            f'mean destruction lifetime           (yr): {convert.units(destruction_mean_lifetime,"s","yr"):10.3e}',
             ]
         print('\n'.join(lines))
 

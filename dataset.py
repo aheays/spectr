@@ -12,7 +12,7 @@ from numpy import nan
 from . import tools
 from .tools import AutoDict
 from .exceptions import InferException
-from .conversions import convert
+from . import convert
 from . import optimise
 from .optimise import optimise_method,Parameter,Fixed
 
@@ -221,7 +221,7 @@ class Dataset(optimise.Optimiser):
             self._infer(key)
         retval = self._data[key]['value'][:self._length]
         if units is not None:
-            retval = convert(retval,self.get_units(key),units)
+            retval = convert.units(retval,self.get_units(key),units)
         return retval
 
     def get_uncertainty(self,key,index=None,units=None):
@@ -231,7 +231,7 @@ class Dataset(optimise.Optimiser):
             return self.get_uncertainty(key,units=units)[index]
         retval = self._data[key]['uncertainty'][:self._length]
         if units is not None:
-            retval = convert(retval,self.get_units(key),units)
+            retval = convert.units(retval,self.get_units(key),units)
         return retval
 
     def set_uncertainty(self,key,value,index=None):

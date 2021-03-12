@@ -9,7 +9,7 @@ import numpy as np
 from numpy import nan,array
 
 from .dataset import Dataset
-from .conversions import convert
+from . import convert
 from .tools import vectorise,cache,file_to_dict
 from . import tools
 from . import database
@@ -105,11 +105,11 @@ def _f3(self,species,Tex,E,g):
         raise InferException(f'Zsource not "self".')
     retval = np.full(species.shape,nan)
     for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
-        kT = convert(constants.Boltzmann,'J','cm-1')*Texi
+        kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
         retval[i] = np.sum(g[i]*np.exp(-E[i]/kT))
     return retval
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[(('species','Tex','E','g'),_f3), (('species','Tex'),_f5),])
-prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer=[(('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert(constants.Boltzmann,'J','cm-1')*Tex))/Z,)])
+prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer=[(('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,)])
 prototypes['Nself'] = dict(description="Column density (cm2)",kind='f',fmt='<11.3e', infer=[])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])

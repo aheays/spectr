@@ -5,7 +5,7 @@ from numpy import array,arange,linspace
 from scipy import constants,special
 
 from . import tools
-from .conversions import convert
+from . import convert
 
 def calculate_spectrum(
         x,
@@ -231,7 +231,7 @@ def hartmann_tran(
     10.1016/j.jqsrt.2013.05.034."""
     ## full calculation
     if nfwhmG is None:
-        vtilde = np.sqrt(2*constants.Boltzmann*T/convert(m,'amu','kg'))
+        vtilde = np.sqrt(2*constants.Boltzmann*T/convert.units(m,'amu','kg'))
         C0 = νVC+(1-η)*(Γ0-1j*Δ0-3*(Γ2-1j*Δ2)/2) # Eq. (5)
         C2 = (1-η)*(Γ2-1j*Δ2)                  # Eq. (5)
         X = (1j*(x-x0)+C0)/C2                # Eq. (5)

@@ -16,7 +16,7 @@ from .tools import file_to_dict,vectorise,cache
 from . import hitran
 from . import database
 from . import plotting
-from .conversions import convert
+from . import convert
 from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
@@ -52,12 +52,12 @@ prototypes['f'] = dict(description="Line f-value (dimensionless)",kind='f',fmt='
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section (cm2.cm-1).", kind='f', fmt='<10.5e',infer=[
     (('τa','Nself_l'),lambda self,τ,column_densitypp: τ/column_densitypp), 
     (('f','α_l'),lambda self,f,α_l: f/1.1296e12*α_l),
-    (('S','ν','Tex'),lambda self,S,ν,Tex,: S/(1-np.exp(-convert(constants.Boltzmann,'J','cm-1')*ν/Tex))),])
+    (('S','ν','Tex'),lambda self,S,ν,Tex,: S/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/Tex))),])
 ## prototypes['σ'] =dict(description="Integrated cross section (cm2.cm-1).", kind='f',  fmt='<10.5e', infer={('τ','column_densitypp'):lambda self,τ,column_densitypp: τ/column_densitypp, ('f','populationpp'):lambda self,f,populationpp: f/1.1296e12*populationpp,})
 def _f0(self,S296K,species,Z,E_l,Tex,ν):
     """See Eq. 9 of simeckova2006"""
     Z296K = hitran.get_partition_function(species,296)
-    c = convert(constants.Boltzmann,'J','cm-1') # hc/kB
+    c = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
     return (S296K
             *((np.exp(-E_l/(c*Tex))/Z)*(1-np.exp(-c*ν/Tex)))
             /((np.exp(-E_l/(c*296))/Z296K)*(1-np.exp(-c*ν/296))))
@@ -81,7 +81,7 @@ prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer=[(('J
 
 ## column 
 prototypes['L'] = dict(description="Optical path length (m)", kind='f', fmt='0.5f', infer=[])
-prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
+prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
 
 ## pressure broadening and shift parameters
 prototypes['pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
@@ -89,8 +89,8 @@ prototypes['γ0air'] = dict(description="Pressure broadening coefficient in air 
 prototypes['nγ0air'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0air'] = dict(description="Pressure shift coefficient in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['Γair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert(P,'Pa','atm')),])
-prototypes['Δνair'] = dict(description="Pressure shift due to air (cm-1)" , kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert(P,'Pa','atm')),])
+prototypes['Γair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert.units(P,'Pa','atm')),])
+prototypes['Δνair'] = dict(description="Pressure shift due to air (cm-1)" , kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert.units(P,'Pa','atm')),])
 
 prototypes['νvc'] = dict(description="Frequency of velocity changing collisions (which profile?) (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 
@@ -99,16 +99,16 @@ prototypes['γ0self'] = dict(description="Pressure broadening coefficient in sel
 prototypes['nγ0self'] = dict(description="Pressure broadening temperature dependence in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0self'] = dict(description="Pressure shift coefficient in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0self'] = dict(description="Pressure shift temperature dependence in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['Γself'] = dict(description="Pressure broadening due to self (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0self','nγ0self','pself','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert(P,'Pa','atm')),])
-prototypes['Δνself'] = dict(description="Pressure shift due to self (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0self','nδ0self','pself','Ttr'),lambda self,δ0,n,P,T: (296/T)**n*δ0*convert(P,'Pa','atm')),])
+prototypes['Γself'] = dict(description="Pressure broadening due to self (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0self','nγ0self','pself','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert.units(P,'Pa','atm')),])
+prototypes['Δνself'] = dict(description="Pressure shift due to self (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0self','nδ0self','pself','Ttr'),lambda self,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
 
 prototypes['pX'] = dict(description="Pressure of X (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
 prototypes['γ0X'] = dict(description="Pressure broadening coefficient in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0X'] = dict(description="Pressure broadening temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0X'] = dict(description="Pressure shift coefficient in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: 2*(296/T)**n*2*γ0*convert(P,'Pa','atm')),])
-prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert(P,'Pa','atm')),])
+prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: 2*(296/T)**n*2*γ0*convert.units(P,'Pa','atm')),])
+prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
 
 ## HITRAN encoded pressure and temperature dependent Hartmann-Tran
 ## line broadening and shifting coefficients
@@ -118,7 +118,7 @@ def _f0(x):
     x = np.asarray(x,dtype=float)
     x[x<1e-50] = 1e-50
     return x
-prototypes['HT_HITRAN_p'] = dict(description='Pressure  HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=_f0,infer=[('pX',lambda self,pX:convert(pX,'Pa','atm'))])
+prototypes['HT_HITRAN_p'] = dict(description='Pressure  HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=_f0,infer=[('pX',lambda self,pX:convert.units(pX,'Pa','atm'))])
 prototypes['HT_HITRAN_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f')
 prototypes['HT_HITRAN_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
 prototypes['HT_HITRAN_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
@@ -190,7 +190,7 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
     ## calculate separately for all (species,Tex) combinations
     for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
         i = tools.find(i)
-        kT = convert(constants.Boltzmann,'J','cm-1')*Texi
+        kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
         ## sum for all unique upper levels
         k = []
         for qn,j in tools.unique_combinations_mask(

@@ -1,91 +1,131 @@
-# from . import *
 from scipy import constants
 import numpy as np
 
-###########
-## units ##
-###########
-setattr(constants,'a0',5.291772108e-11) # Bohr radius, not in scipy.constants
-setattr(constants,'Eh',4.35974417e-18) # Hatree energy, not in scipy.constants
+"""Convert between units and rigorously related quantities."""
 
-## relationship between units and canonical SI unit
-canonical_factors = {
 
-    ## lengths
-    'm'           :(1.                ,'length'),  # astronomical units       ,
-    'pc'          :(1/3.0857e16       ,'length'),    # parsecs
-    'μm'          :(1e6               ,'length'),
-    'mm'          :(1e3               ,'length'),
-    'cm'          :(1e2               ,'length'),
-    'km'          :(1e-3              ,'length'),
-    'Mm'          :(1e-6              ,'length'),
-    'Gm'          :(1e-9              ,'length'),
-    'nm'          :(1e9               ,'length'),
-    'solar_radius':(1/6.955e8         ,'length'),
-    'AU'          :(1/1.496e11        ,'length'),  # astronomical units       ,
-    'au'          :(1/5.2917721092e-11,'length'), #  atomic units (Bohr radius, a0),
-    'Å'           :(1e+10             ,'length'),
+## relationship between units and a standard SI unit.  Elements can be
+## conversion factors to SI, or a pair of conversion and inverse
+## conversion functions
+groups = {
 
-    ## column/surface density
-    'm-2' : (1.                        ,'column density'), 
-    'cm-2': (1e-4                       ,'column density'), 
+    'length': {
+        'm'           :1.                ,  # astronomical units       ,
+        'pc'          :3.0857e16       ,    # parsecs
+        'fm'          :1e-15               ,
+        'pm'          :1e-12               ,
+        'nm'          :1e-9               ,
+        'μm'          :1e-6               ,
+        'mm'          :1e-3               ,
+        'cm'          :1e-2               ,
+        'km'          :1e3              ,
+        'Mm'          :1e6              ,
+        'Gm'          :1e9              ,
+        'solar_radius':6.955e8         ,
+        'AU'          :1.496e11        ,  # astronomical units       ,
+        'au'          :5.2917721092e-11, #  atomic units (Bohr radius, a0),
+        'Å'           :1e-10             ,
+    },
 
-    ## volume density
-    'm-3' : (1.                        ,'volume density'), 
-    'cm-3': (1e-6                       ,'volume density'), 
+    'inverse_length': {
+        'm-1' :1   ,
+        'cm-1':1e2,
+        'mm-1':1e3,
+        'μm-1':1e6,
+        'nm-1':1e9,
+    },
 
-    ## time
-    's':(1.            ,'time'),
-    'min':(1/60          ,'time'),
-    'hour':(1/60/60       ,'time'),
-    'day':(1/60/60/24    ,'time'),
-    'week':(1/60/60/24/7  ,'time'),
-    'yr':(1/60/60/24/365,'time'),
+    'area': {
+        'm2'   :  1., 
+        'cm2'  :  1e-4, 
+        'Mb'   :  1e-20, 
+    },
 
-    ## energy
-    'J'         :(1.                    ,'energy'),
-    'K'         :(1/constants.Boltzmann ,'energy'),
-    'cal'       :(1/4.184               ,'energy'),
-    'eV'        :(1/1.602176634e-19     ,'energy'),
-    'erg'       :(1e7                   ,'energy'),
-    'Hartree'   :(1/4.35974434e-18      ,'energy'), # atomic units /hartree
-    'au_energy' :(1/4.35974434e-18      ,'energy'), # atomic units /hartree
-    'kJ.mol-1'  :(constants.Avogadro/1e3,'energy'),
-    'kcal.mol-1':(1/6.9477e-21          ,'energy'),
+    'inverse_area': {
+        'm-2' : 1., 
+        'cm-2': 1e4,
+    },
 
-    ## frequency
-    'Hz' :(1  ,'frequency'),
-    'kHz':(1e3,'frequency'),
-    'MHz':(1e6,'frequency'),
-    'GHz':(1e9,'frequency'),
-    'radians':(2*constants.pi  ,'frequency'),
+    'volume': {
+        'm3' : 1., 
+        'cm-3': 1e6,
+    },
 
-    ## wavenumbers
-    'm-1' :(1   ,'wavenumber'),
-    'cm-1':(1e-2,'wavenumber'),
+    'inverse_volume': {
+        'm-3' : 1., 
+        'cm-3': 1e6,
+    },
 
-    ## mass
-    'kg'        :(1                      ,'mass'),
-    'g'         :(1e3                    ,'mass'),
-    'solar_mass':(1/1.98855e30           ,'mass'),
-    'amu'       :(1/constants.atomic_mass,'mass'),
+    'time': {
+        's':1.,
+        'minute':60,
+        'hour':60*60,
+        'day':60*60*24,
+        'week':60*60*24*7,
+        'year':60*60*24*7*365,
+    },
 
-    ## velocity
-    'm.s-1'     :(1.,          'velocity')         ,
-    'km.s-1'    :(1e-3,        'velocity')         ,
+    'frequency': {
+        'Hz' :1  ,
+        'kHz':1e3,
+        'MHz':1e6,
+        'GHz':1e9,
+        'radians':2*constants.pi,
+    },
 
-    ## dipole moment
-    'Debye' : (1.,          'dipole moment'),
-    'au'    : (1/2.541765,  'dipole moment'),
+    'energy': {
+        'J'         :1.                    ,
+        'K'         :1/constants.Boltzmann ,
+        'cal'       :4.184               ,
+        'eV'        :1.602176634e-19     ,
+        'erg'       :1e-7                   ,
+        'Hartree'   :4.35974434e-18      , # atomic units /hartree
+        'au'        :4.35974434e-18      , # atomic units /hartree
+        'kJ.mol-1'  :1e3/constants.Avogadro,
+        'kcal.mol-1':6.9477e-21          ,
+    },
 
-    ## pressure
-    'Pa'      :  (1.        ,  'pressure'),
-    'kPa'     :  (1e-3      ,  'pressure'),
-    'bar'     :  (1e-5      ,  'pressure'),
-    'mbar'    :  (1e-2      ,  'pressure'),
-    'atm'     :  (1./101325.,  'pressure'),
-    'Torr'    :  (1/133.322 ,  'pressure'),
-    'dyn.cm-2':  (1e5*1e-4  ,  'pressure'),
+    'mass': {
+        'kg'        :1                      ,
+        'g'         :1e-3                    ,
+        'solar_mass':1.98855e30           ,
+        'amu'       :constants.atomic_mass,
+    },
+    
+    'velocity': {
+        'm.s-1'     :1.         ,
+        'km.s-1'    :1e3         ,
+    },
+
+    'dipole moment': {
+        'Debye' : 1.,
+        'au'    : 2.541765,
+    },
+
+    'pressure': {
+        'Pa'      :  1.        ,
+        'kPa'     :  1e3      ,
+        'bar'     :  1e5      ,
+        'mbar'    :  1e2      ,
+        'atm'     :  101325.,
+        'Torr'    :  133.322 ,
+        'dyn.cm-2':  1/(1e5*1e-4)  ,
+    },
+
+    'photon': {
+        'Hz' : 1,
+        'kHz': 1e3,
+        'MHz': 1e6,
+        'GHz': 1e9,
+        'J':   1/constants.h,
+        'eV':  constants.electron_volt/constants.h,
+        'm':   (lambda m: constants.c/m,lambda Hz: constants.c/Hz),
+        'μm':  (lambda μm: constants.c/(μm*1e-6),lambda Hz: 1e6*constants.c/Hz),
+        'nm':  (lambda nm: constants.c/(nm*1e-9),lambda Hz: 1e9*constants.c/Hz),
+        'm-1': (lambda m: m*constants.c,lambda Hz: Hz/constants.c,),
+        'cm-1':(lambda invcm: constants.c*(1e2*invcm),lambda Hz: 1e-2/(constants.c/Hz)),
+    },
+
     # unit_conversions[('Debye','au')] = lambda x: x/2.541765
     # unit_conversions[('au','Debye')] = lambda x: x*2.541765
     # unit_conversions[('Debye','Cm')] = lambda x: x*3.33564e-30 # 1 Debye is 1e-18.statC.cm-1 -- WARNING: these are not dimensionally similar units!!!
@@ -93,91 +133,55 @@ canonical_factors = {
     # unit_conversions[('C','statC')] = lambda x: 3.33564e-10*x # 1 Couloub = sqrt(4πε0/1e9)×stat Coulomb -- WARNING: these are not dimensionally similar units!!!
     # unit_conversions[('statC','C')] = lambda x: 2997924580*x  # 1 stat Couloub = sqrt(1e9/4πε0)×Coulomb -- WARNING: these are not dimensionally similar units!!!
 
-    ## area / cross section
-    'cm2'   :  (1.        ,  'area'),
-    'Mb'    :  (1e+18     ,  'area'),
-}
 
-## formula for converting between canonical units in SI units --
-## pretty contextual
-canonical_conversion_functions = {
-    ## photon energy / frequency / wavelength / wavenumber
-    ('frequency' ,'time'      ): lambda x: 1/x, 
-    ('time'      ,'frequency' ): lambda x: 1/x, 
-    ('frequency' ,'energy'    ): lambda x: x*constants.h            , 
-    ('energy'    ,'frequency' ): lambda x: x/constants.h            ,
-    ('wavenumber','energy'    ): lambda x: x*(constants.h*constants.c), 
-    ('energy'    ,'wavenumber'): lambda x: x/(constants.h*constants.c), 
-    ('length'    ,'energy'    ): lambda x: constants.h*constants.c/x, 
-    ('energy'    ,'length'    ): lambda x: constants.h*constants.c/x, 
-    ('wavenumber','frequency' ): lambda x: x*constants.speed_of_light,
-    ('frequency' ,'wavenumber'): lambda x: x/constants.speed_of_light,
-    ('length'    ,'frequency' ): lambda x: constants.speed_of_light/x,
-    ('frequency' ,'wavelength'): lambda x: constants.speed_of_light/x,
-    ## frequency / wavelength / wavenumber
-    ('length'    ,'wavenumber'): lambda x: 1/x                       ,
-    ('wavenumber','length'    ): lambda x: 1/x                       ,
 }
-
-## this is checked first, overrides all other conversion logic, some
-## have extra arguments
-special_case_conversion_functions = {
-    ## convert between various Doppler widths
-    # ('dcm-1'       ,'dnm'    ): lambda dν ,ν:  1e+7/ν**2*np.abs(dν),
-    # ('dnm'         ,'dcm-1'  ): lambda dnm,nm: 1e+7/nm**2*np.abs(dnm),
-    # ('dnm'         ,'dm.s-1 FWHM' ): lambda dnm,nm: constants.c*dnm/nm ,
-    # ('dnm'         ,'dkm.s-1 FWHM'): lambda dnm,nm: constants.c*dnm/nm/1e3 ,
-    # ('dm.s-1 FWHM' ,'dnm'    ): lambda b  ,nm: nm/constants.c*b , 
-    # ('dkm.s-1 FWHM','dnm'    ): lambda b  ,nm: nm/constants.c*b*1e3 ,
-    # ('dm.s-1 FHHM' ,'dcm-1'  ): lambda b  ,ν : b*ν/299792.458,
-}
-        
-def convert(
-        value,                  # value to convert
-        unit_in,                # units from
-        unit_out,               # units to
-        *args,                  # additional other args
-):       
-    """Convert units."""
-    ## trivial case
-    if unit_in == unit_out:
-        return(value)
+def units(value,unit_in,unit_out,group=None):       
+    """Convert units. Group might be needed for units with common
+    names."""
     ## cast to array if necessary
     if not np.isscalar(value):
         value = np.asarray(value)
-    ## check special_cases
-    if (unit_in,unit_out) in special_case_conversion_functions:
-        f = special_case_conversion_functions[unit_in,unit_out]
-        return(f(value,*args))
-    ## get canonical units
-    assert unit_in  in canonical_factors,f'Unknown unit: {repr(unit_in)}'
-    assert unit_out in canonical_factors,f'Unknown unit: {repr(unit_out)}'
-    factor_in,canonical_unit_in = canonical_factors[unit_in]
-    factor_out,canonical_unit_out = canonical_factors[unit_out]
-    ## compute
-    if canonical_unit_in == canonical_unit_out:
-        return(factor_out*value/factor_in)
+    ## trivial case
+    if unit_in == unit_out:
+        return value
+    ## find group containing this conversion if not specified
+    if group is None:
+        for factors in groups.values():
+                if unit_in in factors and unit_out in factors:
+                    break
+        else:
+            raise Exception(f"Could not find conversion group for {unit_in=} to {unit_out=}.")
     else:
-        f = canonical_conversion_functions[canonical_unit_in,canonical_unit_out]
-        return(factor_out*f(value/factor_in))
+        try:
+            factors = groups[group]
+        except KeyError:
+            raise Exception(f"No conversion for {unit_in=} to {unit_out=} in {group=}.")
+    ## convert to SI from unit_in
+    factor = factors[unit_in]
+    if isinstance(factor,(float,int)):
+        value = value*factor
+    else:
+        value = factor[0](value)
+    ## convert to unit_out from SI
+    factor = factors[unit_out]
+    if isinstance(factor,(float,int)):
+        value = value/factor
+    else:
+        value = factor[1](value)
+    return value
 
-convert_units = convert         # deprecated
+def difference(difference,value,unit_in,unit_out,group=None):
+    """Convert an absolute finite difference -- not a linear
+    approximation."""
+    return(np.abs(
+        +units(value+difference/2.,unit_in,unit_out,group)
+        -units(value-difference/2.,unit_in,unit_out,group)))
 
-def convert_difference(
-        difference,             # difference to convert
-        value,                  # value to convert
-        unit_in,                # units from
-        unit_out,               # units to
-        # differentiation_step_size = 1e-10,
-):
-    """Convert a finite difference between units."""
-    return(abs(
-        +convert_units(value+difference/2.,unit_in,unit_out)
-        -convert_units(value-difference/2.,unit_in,unit_out)))
         
 ###################################
 ## quantum mechanical quantities ##
 ###################################
+
 def lifetime_to_linewidth(lifetime):
     """Convert lifetime (s) of transition to linewidth (cm-1 FWHM). tau=1/2/pi/gamma/c"""
     return 5.309e-12/lifetime

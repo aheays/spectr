@@ -30,7 +30,7 @@ from . import lineshapes
 
 ## import more explicitly for interactive use
 from .dataset import Dataset
-from .conversions import convert
+from . import convert
 from matplotlib.pyplot import * # before plotting
 from .plotting import *
 from .tools import *
