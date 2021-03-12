@@ -199,32 +199,29 @@ class Experiment(Optimiser):
             xbeg=None,
             xend=None,
             n=1,
+            make_plot=False,
             figure_number=None,
-            interpolation_factor=None,
-            
+            # interpolation_factor=None,
     ):
         """Estimate the noise level by fitting a polynomial of order n
         between xbeg and xend to the experimental data. Also rescale
         if the experimental data has been interpolated."""
-        
-        ## deal with interpolation factor (4 means 3 intervening extra points added)
-        if (interpolation_factor is None 
-             and 'interpolation_factor' not in self.experimental_parameters):
-            interpolation_factor = 1
-        elif (interpolation_factor is None 
-              and 'interpolation_factor' in self.experimental_parameters):
-            interpolation_factor = self.experimental_parameters['interpolation_factor']
-        elif (interpolation_factor is not None 
-              and 'interpolation_factor' in self.experimental_parameters
-              and interpolation_factor != self.experimental_parameters['interpolation_factor']):
-            raise Exception(f'interpolation_factor={repr(interpolation_factor)} does not match the value in self.experimental_parameters={self.experimental_parameters["interpolation_factor"]}')
-        if interpolation_factor<1:
-            raise Exception('Down sampling will cause problems in this method.')
-        if interpolation_factor!=1:
-            print(f'warning: {self.name}: RMS rescaled to account for data interpolation_factor = {interpolation_factor}')
-        if self.verbose:
-            print(f'fit_noise: {interpolation_factor=}')
-        ## compute noise resiudal of polynomial fit
+        # ## deal with interpolation factor (4 means 3 intervening extra points added)
+        # if interpolation_factor is None:
+             # if 'interpolation_factor'  in self.experimental_parameters:
+                 # interpolation_factor = self.experimental_parameters['interpolation_factor']
+             # else:
+                 # interpolation_factor = 1
+        # else:
+            # if ('interpolation_factor' in self.experimental_parameters
+                # and interpolation_factor != self.experimental_parameters['interpolation_factor']):
+                # raise Exception(f'interpolation_factor={repr(interpolation_factor)} does not match the value in self.experimental_parameters={self.experimental_parameters["interpolation_factor"]}')
+        # if interpolation_factor < 1:
+            # raise Exception('Down sampling will cause problems in this method.')
+        # if interpolation_factor != 1:
+            # print(f'warning: {self.name}: RMS rescaled to account for data interpolation_factor = {interpolation_factor}')
+        # # print(f'fit_noise: {interpolation_factor=}')
+        # ## compute noise residual of polynomial fit
         x,y = self.x,self.y
         if xbeg is not None:
             i = x >= xbeg
@@ -235,24 +232,20 @@ class Experiment(Optimiser):
         if len(x) == 0:
             warnings.warn(f'{self.name}: No data in range for fit_noise, not done.')
             return
+        # assert interpolation_factor%1 == 0
+        # # x,y = x[::int(interpolation_factor)],y[::int(interpolation_factor)]
         xt = x - x.mean()
         p = np.polyfit(xt,y,n)
         yf = np.polyval(p,xt)
         r = y-yf
         rms = np.sqrt(np.mean(r**2))
-        ## set residual scale factor bearing in mind the rms and
-        ## amount of model interpolation.  This is a bit of a hack to
-        ## cancel out the incorrect sqrt(n) underestimate of
-        ## uncertainty where interpolation artificially increases the
-        ## apparent degrees of freedom in the fit but without adding
-        ## any new independent data.
-        self.residual_scale_factor = 1/rms*np.sqrt(interpolation_factor)
-        ## plot to check it looks ok
-        if figure_number is not None:
+        self.experimental_parameters['noise_rms'] = rms
+        ## make optional plot
+        if make_plot:
             ax = plotting.qax(n=figure_number)
             ax.plot(x,y,label='exp')
             ax.plot(x,yf,label='fit')
-            ax.plot(x,r,label=f'residual, rms={rms}')
+            ax.plot(x,r,label=f'residual, rms={rms:0.3e}')
             ax.set_title(f'fit rms to data\n{self.name}')
             plotting.legend(ax=ax)
             ax = plotting.subplot()
