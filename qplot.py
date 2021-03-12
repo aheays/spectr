@@ -2,7 +2,7 @@
 
 import argparse,warnings,os,signal,sys,collections,re
 from spectr import tools,plotting
-from spectr.conversions import convert
+from spectr.convert import units
 import numpy as np
 import matplotlib as mpl
 from copy import deepcopy
@@ -38,8 +38,8 @@ parser.add_argument('--xbeg', dest='xbeg',type=float,default=None, help='Lower b
 parser.add_argument('--xend', dest='xend',type=float,default=None, help='Lower bound of x-axis scale.')
 parser.add_argument('--ybeg', dest='ybeg',type=float,default=None, help='Lower bound of y-axis scale.')
 parser.add_argument('--yend', dest='yend',type=float,default=None, help='Lower bound of y-axis scale.')
-parser.add_argument('--xconvert', dest='xconvert',type=str,nargs=2,default=None, help='Convert x units (from,to).')
-parser.add_argument('--yconvert', dest='yconvert',type=str,nargs=2,default=None, help='Convert y units (from,to).')
+parser.add_argument('--xunits', dest='xunits',type=str,nargs=2,default=None, help='Convert x units (from,to).')
+parser.add_argument('--yunits', dest='yunits',type=str,nargs=2,default=None, help='Convert y units (from,to).')
 parser.add_argument('--xaltaxis', dest='xaltaxis',type=str,default=None, help='Display an alternative x axis with this transform of units. TRANSFORM BREAKS ON ZOOM.')
 parser.add_argument('--linestyle', dest='linestyle',type=str,default=None, help='Use this linestyle, else adjust for uniqueness.')
 parser.add_argument('--color', dest='color',type=str,default=None, help='Use this color, else adjust for uniqueness.')
@@ -151,11 +151,11 @@ for f in args.filenames:
         args.ykeys = [key for key in list(data.keys()) if key!=args.xkey and len(data[key])==xlen]
 
     ## unit conversions
-    if args.xconvert is not None:
-        data[args.xkey] = convert(data[args.xkey],args.xconvert[0],args.xconvert[1])
-    if args.yconvert is not None:
+    if args.xunits is not None:
+        data[args.xkey] = units(data[args.xkey],args.xunits[0],args.xunits[1])
+    if args.yunits is not None:
         for key in args.ykeys:
-            data[key] = convert(data[key],args.yconvert[0],args.yconvert[1])
+            data[key] = units(data[key],args.yunits[0],args.yunits[1])
 
     ## loop through all ykeys and plot
     for ykey in args.ykeys:
