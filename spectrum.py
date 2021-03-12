@@ -192,7 +192,6 @@ class Experiment(Optimiser):
     def __len__(self):
         return len(self.x)
 
-
     @format_input_method()
     def fit_noise(
             self,
@@ -227,7 +226,7 @@ class Experiment(Optimiser):
             i = x >= xbeg
             x,y = x[i],y[i]
         if xend is not None:
-            i = x <= xbeg
+            i = x <= xend
             x,y = x[i],y[i]
         if len(x) == 0:
             warnings.warn(f'{self.name}: No data in range for fit_noise, not done.')
@@ -238,8 +237,9 @@ class Experiment(Optimiser):
         p = np.polyfit(xt,y,n)
         yf = np.polyval(p,xt)
         r = y-yf
-        rms = np.sqrt(np.mean(r**2))
+        rms = np.sqrt(np.sum(r**2)/(len(r)-n+1))
         self.experimental_parameters['noise_rms'] = rms
+        self.residual_scale_factor = 1/rms
         ## make optional plot
         if make_plot:
             ax = plotting.qax(n=figure_number)
@@ -312,12 +312,13 @@ class Model(Optimiser):
         self._figure = None
 
     def _initialise(self):
-        """Function run before everything else to set x and y model
-        grid."""
+        """Function run before everything else to set x and y model grid and
+        residual_scale_factor if experimental noise_rms is known."""
         if self._xin is not None:
             ## x is from a call to get_spectrum
             self.x = self._xin
             self.xexp = self.yexp = None
+            self.residual_scale_factor = 1
         elif self.experiment is not None:
             ## get domain from experimental data
             self.xexp = self.experiment.x
@@ -329,6 +330,10 @@ class Model(Optimiser):
                 i = self.xexp<=self.xend
                 self.xexp,self.yexp = self.xexp[i],self.yexp[i]
             self.x = copy(self.xexp)
+            ## if known use experimental noise RMS to normalise
+            ## residuals
+            if 'noise_rms' in self.experiment.experimental_parameters:
+                self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
         else:
             raise Exception('Cannot determine x')
         self.y = np.zeros(self.x.shape,dtype=float)
