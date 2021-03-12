@@ -224,6 +224,9 @@ class Dataset(optimise.Optimiser):
             retval = convert.units(retval,self.get_units(key),units)
         return retval
 
+    def has_uncertainty(self,key):
+        return 'uncertainty' in self._data[key]
+        
     def get_uncertainty(self,key,index=None,units=None):
         if 'uncertainty' not in self._data[key]:
             return None
@@ -750,14 +753,16 @@ class Dataset(optimise.Optimiser):
         for key in self._data:
             yield key
 
-    def as_dict(self,keys=None,index=None):
+    def as_dict(self,keys=None,index=None,):
         """Return as a dict of arrays."""
         if keys is None:
             keys = self.keys()
-        if index is None:
-            return {key:self[key]for key in keys}
-        else:
-            return {key:self[key][index] for key in keys}
+        retval = {}
+        for key in keys:
+            retval[key] = self.get(key,index=index)
+            if self.has_uncertainty(key):
+                retval[key+'_unc'] = self.get_uncertainty(key,index=index)
+        return retval
         
     def rows(self,keys=None):
         """Iterate over data row by row, returns as a dictionary of
@@ -922,16 +927,16 @@ class Dataset(optimise.Optimiser):
             keys = self.keys()
         if re.match(r'.*\.npz',filename):
             ## numpy archive
-            data = {key:self[key] for key in keys}
-            for key,val in self.attributes.items():
-                if val is not None:
-                    data[key] = val
-            np.savez(filename,**data)
+            np.savez(
+                filename,
+                **self.as_dict(),
+                **{key:val for key,val in self.attributes.items() if val is not None}
+            )
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
-            data = {key:self[key] for key in keys}
             tools.dict_to_hdf5(
-                filename, data,
+                filename,
+                self.as_dict(),
                 attributes={key:val for key,val in self.attributes.items() if val is not None})
         else:
             ## text file
@@ -1276,6 +1281,13 @@ class Dataset(optimise.Optimiser):
         if show:
             plotting.show()
         return(fig)
+
+    def polyfit(self,xkey,ykey,index=None,**polyfit_kwargs):
+        return tools.polyfit(
+            self.get(xkey,index),
+            self.get(ykey,index),
+            self.get_uncertainty(ykey,index),
+            **polyfit_kwargs)
 
 def find_common(x,y,*keys,verbose=False):
     """Return indices of two Datasets that have uniquely matching
