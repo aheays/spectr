@@ -311,6 +311,9 @@ class Optimiser:
         for key in self._named_parameters:
             yield key
 
+    def keys():
+        return self._named_parameters.keys()
+
     def add_construct_function(self,*functions):
         """Add one or more functions that are called each iteration when the
         model is optimised. Optionally these may return an array that is added
@@ -500,7 +503,7 @@ class Optimiser:
             for parameter in optimiser.parameters:
                 if id(parameter) not in already_set and parameter.vary:
                     parameter.value = p.pop(0)
-                    parameter.dp = dp.pop(0)
+                    parameter.uncertainty = dp.pop(0)
                     already_set.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
@@ -688,14 +691,10 @@ class Optimiser:
                 p = result['x']
                 ## compute 1σ standard error
                 try:
-                    jacobean = result['jac']
-                    hessian = np.dot(np.transpose(jacobean),jacobean)
-                    covariance = linalg.inv(hessian)
+                    jacobian = result['jac']
+                    covariance = linalg.inv(
+                        np.dot(np.transpose(jacobian),jacobian))
                     if rms_noise is None:
-                        ## Find the RMS of the noise if not given as an
-                        ## input argument, or standard deviation for
-                        ## normally-distributed noise. This
-                        ## uniformly-noise experimental data (gavin2011)
                         chisq=np.sum(result["fun"]*result["fun"])
                         dof=len(result["fun"])-len(result['x'])+1        # degrees of freedom
                         rms_noise = np.sqrt(chisq/dof)
@@ -716,6 +715,36 @@ class Optimiser:
                     and len(suboptimiser.residual)>0):
                     print(f'suboptimiser {suboptimiser.name} RMS:',tools.rms(suboptimiser.residual))
         return residual
+
+    # def get_hessian(self,p=None):
+        # if p is not None:
+            # self._set_parameters(p)
+        # value,step,uncertainty = self._get_parameters()
+        # x = self.construct()
+        # tvalue = copy(value)
+        # hessian = np.full((len(value),len(x)),0.0)
+        # for i,(valuei,stepi) in enumerate(zip(value,step)):
+            # tvalue[i] = valuei+stepi
+            # self._set_parameters(tvalue)
+            # xp = self.construct()
+            # tvalue[i] = valuei-stepi
+            # self._set_parameters(tvalue)
+            # xm = self.construct()
+            # hessian[i,:] = (xm-2*x+xp)/stepi**2
+            # tvalue[i] = valuei
+        # return hessian
+
+    # def get_jacobian(self,p=None):
+        # if p is None:
+            # self._set_parameters(p)
+        # value,step,uncertainty = self.get_parameter()
+        # for i,
+        # self._set_parameters(value+step/2)
+        # xp = self.construct()
+        # self._set_parameters(value-step/2)
+        # xm = self.construct()
+        # return (xp-xm)/step**2
+
 
     def _get_rms(self):
         """Compute root-mean-square error."""
