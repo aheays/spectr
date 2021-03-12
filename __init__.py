@@ -31,6 +31,7 @@ from . import lineshapes
 ## import more explicitly for interactive use
 from .dataset import Dataset
 from . import convert
+from .convert import units
 from matplotlib.pyplot import * # before plotting
 from .plotting import *
 from .tools import *
