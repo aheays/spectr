@@ -967,7 +967,7 @@ class Dataset(optimise.Optimiser):
             import h5py
             with h5py.File(tools.expand_path(filename),'r') as fid:
                 for key,val in fid.attrs.items():
-                    self.attributes[key] = val
+                    data[key] = val
         elif re.match(r'.*\.npz',filename):
             ## numpy npz archive.  get as scalar rather than
             ## zero-dimensional numpy array

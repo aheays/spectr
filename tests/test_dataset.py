@@ -489,6 +489,9 @@ def test_get_common():
 
 def test_load():
     x = dataset.load('data/test_load.psv')
+    assert x['classname'] == 'dataset.Dataset'
+    x = dataset.load('data/test_load_2.psv')
+    assert x['classname'] == 'lines.Generic'
 
 def test_units():
     x = Dataset(x=[1,2,3])
@@ -502,9 +505,9 @@ def test_units():
     x['x'] = [1,2,3]
     assert x.get_units('x') == 'm'
     assert all(x.get('x') == [1,2,3])
-    assert all(x.get('x',units='nm') == [1e9,2e9,3e9])
+    assert x.get('x',units='nm') == approx([1e9,2e9,3e9])
     x.set_uncertainty('x',[0.1,0.2,0.3])
-    assert all(x.get_uncertainty('x',units='nm') == [0.1e9,0.2e9,0.3e9])
+    assert x.get_uncertainty('x',units='nm') == approx([0.1e9,0.2e9,0.3e9])
 
 def test_format_description():
     x = Dataset()
