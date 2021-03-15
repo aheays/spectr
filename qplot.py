@@ -59,7 +59,7 @@ if not args.verbose:
         print()
         sys.exit(1)
     signal.signal(signal.SIGINT,signal_handler)
- 
+
 ## default to stdinput 
 if len(args.filenames)==0:
     args.filenames = ['/dev/stdin']
@@ -91,6 +91,11 @@ else:
         plotting.presetRcParams('a4landscape')
         fig = plt.figure()
     ax = fig.gca()
+
+if args.verbose:
+    for attr in dir(args):
+        if attr[0]!='_':
+            print(f'{attr} = {getattr(args,attr)}')
 
 ## loop through each file, plotting as best one can
 plot_count = 0
