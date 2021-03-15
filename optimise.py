@@ -4,7 +4,7 @@ import re
 import os
 # import sys
 from pprint import pprint
-from copy import copy
+from copy import copy,deepcopy
 import warnings
 
 import numpy as np
@@ -601,7 +601,7 @@ class Optimiser:
     @format_input_method()
     def optimise(
             self,
-            compute_uncertainty=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
+            # compute_uncertainty_only=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
             rms_noise=None,
             monitor_frequency='every iteration', # 'rms decrease', 'never'
             verbose=True,
@@ -610,8 +610,8 @@ class Optimiser:
             method=None,
     ):
         """Optimise parameters."""
-        if compute_uncertainty:
-            max_nfev = 1
+        # if compute_uncertainty_only:
+            # max_nfev = 1
         if normalise_suboptimiser_residuals:
             ## normalise all suboptimiser residuals before handing to
             ## the least-squares routine
@@ -716,35 +716,40 @@ class Optimiser:
                     print(f'suboptimiser {suboptimiser.name} RMS:',tools.rms(suboptimiser.residual))
         return residual
 
-    # def get_hessian(self,p=None):
-        # if p is not None:
-            # self._set_parameters(p)
-        # value,step,uncertainty = self._get_parameters()
-        # x = self.construct()
-        # tvalue = copy(value)
-        # hessian = np.full((len(value),len(x)),0.0)
-        # for i,(valuei,stepi) in enumerate(zip(value,step)):
-            # tvalue[i] = valuei+stepi
-            # self._set_parameters(tvalue)
-            # xp = self.construct()
-            # tvalue[i] = valuei-stepi
-            # self._set_parameters(tvalue)
-            # xm = self.construct()
-            # hessian[i,:] = (xm-2*x+xp)/stepi**2
-            # tvalue[i] = valuei
-        # return hessian
-
-    # def get_jacobian(self,p=None):
-        # if p is None:
-            # self._set_parameters(p)
-        # value,step,uncertainty = self.get_parameter()
-        # for i,
-        # self._set_parameters(value+step/2)
-        # xp = self.construct()
-        # self._set_parameters(value-step/2)
-        # xm = self.construct()
-        # return (xp-xm)/step**2
-
+    def calculate_uncertainty(self,p=None,rms_noise=None,verbose=True):
+        """Compute 1σ uncertainty by first computing forward-difference
+        Jacobian.  Only accurate for a well-optimised model."""
+        ## get parameter and uncertainties
+        if p is not None:
+            self._set_parameters(p)
+        value,step,uncertainty = self._get_parameters()
+        ## compute model at p
+        self._number_of_optimisation_function_calls = 0
+        self._previous_time = timestamp()
+        self._rms_minimum = np.inf
+        self.monitor_frequency = 'every iteration'
+        residual = self._optimisation_function(value)
+        ## compute Jacobian by forward finite differencing
+        tvalue = deepcopy(value)
+        jacobian = np.full((len(residual),len(value)),0.0)
+        for i,(valuei,stepi) in enumerate(zip(value,step)):
+            tvalue[i] = valuei+stepi
+            residuali = self._optimisation_function(tvalue)
+            jacobian[:,i] = (residuali-residual)/stepi
+            tvalue[i] = valuei # change it back
+        ## compute 1σ uncertainty from Jacobian
+        covariance = linalg.inv(
+            np.dot(np.transpose(jacobian),jacobian))
+        if rms_noise is None:
+            chisq = np.sum(residual**2)
+            dof = len(residual)-len(value)+1
+            rms_noise = np.sqrt(chisq/dof)
+        uncertainty = np.sqrt(covariance.diagonal())*rms_noise
+        ## set back to best fit
+        self._set_parameters(value,uncertainty) # set param
+        self._optimisation_function(value)      # construct
+        self._set_parameters(value,uncertainty) # reset uncertainties
+        return uncertainty
 
     def _get_rms(self):
         """Compute root-mean-square error."""
