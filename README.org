@@ -4,33 +4,19 @@
  
  - Add interactions 
 
- - Add quantum numbers of VibLevel
-
- - Add interactions to VibLevel 
-
 ** lines.py / levels.py
 
- - change partition to Q -- uncorporate HITRAN partition functions
-   into a database
+ - change partition to Q -- incorporate HITRAN or similar partition
+   functions into database
 
 ** dataset.py
-
- - infer functions as (dependencies,function)  rather than
-   dependencies:function to permit multiple functions with the same
-   dependencies that may fail internally
 
  - A simpler implementation of self.permit_reference_breaking?
    Currently appears in many places in Dataset
 
- - If setting existing data, then copy into array rather than making a
-   new array?
+ - Overload array __setitem__ to delete inferences?
 
  - Use internal infer data to infer necessary things in extend/append
-   without creating an entire Dataset object
+   without creating an entire Dataset object?
 
-** optimise.py
-
- - optim: add new output of parameters based on
-   index/optimiser/function/arg_parameter
- 
  
