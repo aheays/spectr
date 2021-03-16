@@ -170,7 +170,7 @@ def format_input_method(format_single_line=None,format_multi_line=None):
                     return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
             self.add_format_input_function(f)
             ## run the function
-            function(self,*args,**kwargs)
+            function(self,**kwargs)
         return new_function
     return actual_decorator
 
@@ -608,6 +608,8 @@ class Optimiser:
             normalise_suboptimiser_residuals=False,
             max_nfev=None,         # max number of iterations
             method=None,
+            xtol=1e-10,
+            ftol=1e-10,
     ):
         """Optimise parameters."""
         # if compute_uncertainty_only:
@@ -632,14 +634,15 @@ class Optimiser:
             print(f'{self.name}: optimising')
             print('Number of varied parameters:',len(p))
         if len(p)>0:
-            if method == 'lm' or len(p) == 1:
+            if method == 'lm' or (method is None and len(p) == 1):
                 ## use 'lm' Levenberg-Marquadt
-                warnings.warn('lm options not optimised')
+                # warnings.warn('lm options not optimised')
                 kwargs = dict(
                     method='lm',
                     jac='2-point',
                     # ## xtol=1e-10,
-                    # ## ftol=,
+                    # ftol=ftol,
+                    # xtol=xtol,
                     # ## gtol=,
                     # ## bounds=(-inf,inf),
                     # ## x_scale=s,
@@ -660,8 +663,8 @@ class Optimiser:
                 kwargs = dict(
                     method='trf',
                     jac='2-point',
-                    ## xtol=1e-10,
-                    ## ftol=,
+                    # ftol=ftol,
+                    # xtol=xtol,
                     ## gtol=,
                     ## bounds=(-inf,inf),
                     ## x_scale=s,
@@ -698,7 +701,11 @@ class Optimiser:
                         chisq=np.sum(result["fun"]*result["fun"])
                         dof=len(result["fun"])-len(result['x'])+1        # degrees of freedom
                         rms_noise = np.sqrt(chisq/dof)
-                    dp = np.sqrt(covariance.diagonal())*rms_noise
+                    if np.any(covariance<0):
+                        print('Covariance < 0')
+                        dp = np.full(p.shape,nan)
+                    else:
+                        dp = np.sqrt(covariance.diagonal())*rms_noise
                 except linalg.LinAlgError as err:
                     print(f'warning: failed to computed uncertainty: {err}')
                     dp = None
