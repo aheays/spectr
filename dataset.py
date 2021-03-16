@@ -1188,12 +1188,14 @@ class Dataset(optimise.Optimiser):
         from spectr import plotting
         if len(self)==0:
             return
+        ## re-use or make a new figure/axes
         if ax is not None:
             ynewaxes,znewaxes = False,False
             fig = ax.figure
         if fig is None:
             fig = plt.gcf()
             fig.clf()
+        ## xkey, ykeys, zkeys
         if xkey == 'index':
             if 'index'  in self.keys():
                 raise Exception("Index already exists")
@@ -1203,8 +1205,9 @@ class Dataset(optimise.Optimiser):
             zkeys = self.default_zkeys
         zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
         ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
-        ymin = {}
         self.assert_known(xkey,*ykeys,*zkeys)
+        ## plot each 
+        ymin = {}
         for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
             ylabel = ykey
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
@@ -1271,7 +1274,8 @@ class Dataset(optimise.Optimiser):
                     kwargs.setdefault('mfc',kwargs['color'])
                     kwargs.setdefault('fillstyle','full')
                     ax.plot(x,y,**kwargs)
-                if title is not None: ax.set_title(title)
+                if title is not None:
+                    ax.set_title(title)
                 if legend and 'label' in kwargs:
                     plotting.legend(fontsize='x-small')
                 ax.set_xlabel(xkey)

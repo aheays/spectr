@@ -83,7 +83,19 @@ prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer=[(('J
 prototypes['L'] = dict(description="Optical path length (m)", kind='f', fmt='0.5f', infer=[])
 prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
 
-## pressure broadening and shift parameters
+####################################
+## pressure broadening and shifts ##
+####################################
+def _f0(self,J_l,ΔJ):
+    mJ_l = np.full(J_l.shape,np.nan)
+    i = ΔJ==-1
+    mJ_l[i] = -J_l[i]
+    i = ΔJ==+1
+    mJ_l[i] = J_l[i]+1
+    if np.any(np.isnan(mJ_l)):
+        raise InferException('Could not compute mJ_l for all (J_l,ΔJ)')
+    return mJ_l
+prototypes['mJ_l'] = dict(description="Pressure broadening J-coordinate. m(P-branch) = -J_l, m(R-branch) = J_l+1", kind='f', fmt='>3g',infer=[(('J_l','ΔJ'),_f0)])
 prototypes['pair'] = dict(description="Pressure of air (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
 prototypes['γ0air'] = dict(description="Pressure broadening coefficient in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0air'] = dict(description="Pressure broadening temperature dependence in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
@@ -91,9 +103,7 @@ prototypes['δ0air'] = dict(description="Pressure shift coefficient in air (cm-1
 prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['Γair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert.units(P,'Pa','atm')),])
 prototypes['Δνair'] = dict(description="Pressure shift due to air (cm-1)" , kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert.units(P,'Pa','atm')),])
-
 prototypes['νvc'] = dict(description="Frequency of velocity changing collisions (which profile?) (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
-
 prototypes['pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
 prototypes['γ0self'] = dict(description="Pressure broadening coefficient in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0self'] = dict(description="Pressure broadening temperature dependence in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
@@ -101,7 +111,6 @@ prototypes['δ0self'] = dict(description="Pressure shift coefficient in self (cm
 prototypes['nδ0self'] = dict(description="Pressure shift temperature dependence in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['Γself'] = dict(description="Pressure broadening due to self (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0self','nγ0self','pself','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert.units(P,'Pa','atm')),])
 prototypes['Δνself'] = dict(description="Pressure shift due to self (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0self','nδ0self','pself','Ttr'),lambda self,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
-
 prototypes['pX'] = dict(description="Pressure of X (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
 prototypes['γ0X'] = dict(description="Pressure broadening coefficient in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0X'] = dict(description="Pressure broadening temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
@@ -109,7 +118,6 @@ prototypes['δ0X'] = dict(description="Pressure shift coefficient in X (cm-1.atm
 prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in X (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: 2*(296/T)**n*2*γ0*convert.units(P,'Pa','atm')),])
 prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
-
 ## HITRAN encoded pressure and temperature dependent Hartmann-Tran
 ## line broadening and shifting coefficients
 prototypes['HT_HITRAN_X'] = dict(description='Broadening species for a HITRAN-encoded Hartmann-Tran profile',kind='U')
@@ -126,7 +134,7 @@ def _f0(x):
     """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
     x = np.asarray(x,dtype=float)
     x[x<1e-10] = 1e-10
-    # x[x>0.03] = 0.03
+    ## x[x>0.03] = 0.03
     return x
 prototypes['HT_HITRAN_γ2'] = dict(description='Speed-dependence of the halfwidth in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=_f0)
 prototypes['HT_HITRAN_δ0'] = dict(description='Speed-averaged line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
@@ -134,14 +142,13 @@ prototypes['HT_HITRAN_δp'] = dict(description='Linear temperature dependence co
 prototypes['HT_HITRAN_δ2'] = dict(description='Speed-dependence of the line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
 prototypes['HT_HITRAN_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
 prototypes['HT_HITRAN_κ'] = dict(description='Temperature dependence of νVC in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
-# def _f0(x):
-    # """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
-    # x = np.abs(np.asarray(x),dtype=float)
-    # x[x>1] = 0.99999
-    # return x
+### def _f0(x):
+##    # """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
+##    # x = np.abs(np.asarray(x),dtype=float)
+##    # x[x>1] = 0.99999
+##    # return x
 prototypes['HT_HITRAN_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',cast=tools.cast_abs_float_array,default_step=1e-5)
 prototypes['HT_HITRAN_Y'] = dict(description='First-order (Rosenkranz) line coupling coefficient in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
-
 ## coefficients of the Hartmann-Tran lineshape
 prototypes['HT_Γ0'] = dict(description='Speed-averaged halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_γ0','HT_HITRAN_Tref','Ttr','HT_HITRAN_n'),lambda self,p,γ0,Tref,T,n: γ0*p*(Tref/T)**n)])
 prototypes['HT_Γ2'] = dict(description='Speed-dependence for the halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_γ2',),lambda self,p,γ2: p*γ2),])
@@ -149,6 +156,8 @@ prototypes['HT_Δ0'] = dict(description='Speed-averaged line shift for the Hartm
 prototypes['HT_Δ2'] = dict(description='Speed-dependence for the line shift for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_δ2'),lambda self,p,δ2: p*δ2),])
 prototypes['HT_νVC'] = dict(description='Frequency of velocity changing collisions for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_νVC','HT_HITRAN_Tref','Ttr','HT_HITRAN_κ'),lambda self,p,νVC,Tref,T,κ: p*νVC*(Tref/T)**κ),])
 prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-Tran profile',units='dimensionless',kind='f',infer=[(('HT_HITRAN_η',),lambda self,η:η),])
+
+
 
 ## linewidths
 prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or transition (cm-1 FWHM)" , kind='f', fmt='<10.5g',infer=[
@@ -327,19 +336,19 @@ class Generic(levels.Base):
         'ΔJ',
         'f','σ','S','S296K','τ','Ae',
 
+        'Nself',
+        'Teq','Tex','Ttr','Z',
+        'Γ','ΓD',
+
+        ## pressure broadening stuff
+        'mJ_l',
         'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
         'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
         'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
-
-        # 'νvc',                  # test Rautian profile
-
         ## test HITRAN Hartmann-Tran
         'HT_HITRAN_X','HT_HITRAN_p', 'HT_HITRAN_Tref', 'HT_HITRAN_γ0', 'HT_HITRAN_n', 'HT_HITRAN_γ2', 'HT_HITRAN_δ0', 'HT_HITRAN_δp', 'HT_HITRAN_δ2', 'HT_HITRAN_νVC', 'HT_HITRAN_κ', 'HT_HITRAN_η', 'HT_HITRAN_Y',
         'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
 
-        'Nself',
-        'Teq','Tex','Ttr','Z',
-        'Γ','ΓD',
         levels_class = _levels_class
     )
 
@@ -563,18 +572,18 @@ class LinearTriatomic(Generic):
         # 'λ',
         'ΔJ',
         'f','σ','S','S296K','τ','Ae',
-
-        'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
-        'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
-        'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
-        # 'νvc',                  # test Rautian profile
-        ## test HITRAN Hartmann-Tran
-        'HT_HITRAN_X','HT_HITRAN_p', 'HT_HITRAN_Tref', 'HT_HITRAN_γ0', 'HT_HITRAN_n', 'HT_HITRAN_γ2', 'HT_HITRAN_δ0', 'HT_HITRAN_δp', 'HT_HITRAN_δ2', 'HT_HITRAN_νVC', 'HT_HITRAN_κ', 'HT_HITRAN_η', 'HT_HITRAN_Y',
-        'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
-
         'Nself',
         'Teq','Tex','Ttr','Z',
         'Γ','ΓD',
+
+        ## pressure broadening and shifts
+        'mJ_l',
+        'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
+        'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
+        'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
+        'HT_HITRAN_X','HT_HITRAN_p', 'HT_HITRAN_Tref', 'HT_HITRAN_γ0', 'HT_HITRAN_n', 'HT_HITRAN_γ2', 'HT_HITRAN_δ0', 'HT_HITRAN_δp', 'HT_HITRAN_δ2', 'HT_HITRAN_νVC', 'HT_HITRAN_κ', 'HT_HITRAN_η', 'HT_HITRAN_Y',
+        'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
+
         levels_class = _levels_class
     )
 
