@@ -5,12 +5,12 @@ import itertools
 
 import numpy as np
 import sympy
-from frozendict import frozendict
+from immutabledict import immutabledict
 
 from .dataset import Dataset
 
 # ## non-standard library
-# from frozendict import frozendict
+# from immutabledict import immutabledict
 
 ## form here
 from .exceptions import MissingDataException,InvalidEncodingException
@@ -771,7 +771,7 @@ def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
         print('\nNNef:'); pprint(NNef)
         print('\nNSpm:'); pprint(NSpm)
         print('\nNSef:'); pprint(NSef)
-    return(frozendict(
+    return(immutabledict(
         n=len(qnpm),
         qnpm=qnpm,qnef=qnef,
         Mpm=Mpm,Mef=Mef,
@@ -805,7 +805,7 @@ def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
                 # Maef=Maef, Mbpm=Mbpm, Mbef=Mbef,))
 
 # # @my.lru_cache_copy
-# @my.frozendict_args
+# @my.immutabledict_args
 # @functools.lru_cache
 # def get_multistate_case_a_basis(*states_qn,verbose=False):
     # """Determine wavefunctions of case a states in signed-Ω and e/f
@@ -847,7 +847,7 @@ def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
         # NNef[i:i+j,i:i+j],NNpm[i:i+j,i:i+j] = NNefi,NNpmi
         # i += j
     # ## convert to numpy arrays if requested and return
-    # return(frozendict(n=len(qnpm),qnpm=qnpm,qnef=qnef,Mpm=Mpm,Mef=Mef,NNpm=NNpm,NNef=NNef))
+    # return(immutabledict(n=len(qnpm),qnpm=qnpm,qnef=qnef,Mpm=Mpm,Mef=Mef,NNpm=NNpm,NNef=NNef))
 
 # def get_rotational_coupling_matrix(name1='',name2='', qn1=None,qn2=None,verbose=False):
     # """Compute a symbolic matrix rotationally coupling two spin manifolds."""
