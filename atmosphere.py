@@ -373,7 +373,7 @@ class AtmosphericChemistry():
             f'total column production rate  (s-1.cm-2): {production_column_rate:10.3e}',
             f'total column destruction rate (s-1.cm-2): {destruction_column_rate:10.3e}',
             f'mean destruction rate              (s-1): {destruction_mean_loss_rate:10.3e}',
-            f'mean destruction lifetime           (yr): {convert.units(destruction_mean_lifetime,"s","yr"):10.3e}',
+            f'mean destruction lifetime           (year): {convert.units(destruction_mean_lifetime,"s","year"):10.3e}',
             ]
         print('\n'.join(lines))
 
@@ -410,5 +410,4 @@ class AtmosphericChemistry():
         ax.set_title(f'Production and destruction rates of {species}')
         return ax
 
-    # def get_total_column(self,species):
         
