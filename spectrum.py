@@ -8,6 +8,7 @@ from scipy import signal,constants,fft,interpolate
 from scipy.constants import pi as π
 import numpy as np
 from numpy import arange
+import h5py
 
 
 from . import optimise
@@ -50,40 +51,40 @@ class Experiment(Optimiser):
         self.add_save_to_directory_function(
             lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
 
-    @auto_construct_method('set_spectrum')
-    def set_spectrum(self,x,y,xbeg=None,xend=None,**experimental_parameters):
+    @optimise_method()
+    def set_spectrum(self,x,y,xbeg=None,xend=None,_cache=None,**experimental_parameters):
         """Set x and y as the experimental spectrum. With various safety
         checks. Not optimisable, no format_input_function."""
-        x,y = np.array(x),np.array(y)
-        i = np.argsort(x); x,y = x[i],y[i] # sort
-        ## set range
-        if xbeg is None:
-            xbeg = x[0]
-        else:
-            assert x[0]<=xbeg,'xbeg is outside range of spectrum: '+repr(xbeg)+' , '+repr(x[0])
-            i = np.array(x>=xbeg)
-            x,y = x[i],y[i]
-        if xend is None:
-            xend = x[-1]
-        else:
-            assert x[-1]>=xend,'xend is outside range of spectrum: '+repr(xend)
-            i = np.array(x<=xend)
-            x,y = x[i],y[i]
-        self.experimental_parameters['xbeg'] = xbeg 
-        self.experimental_parameters['xend'] = xend
-        ## check for regular x grid
-        t0,t1 = np.diff(x).min(),np.diff(x).max()
-        assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
-        ##
-        self.experimental_parameters.update(experimental_parameters)
-        ## verbose info
-        if self.verbose:
-            print('experimental_parameters:')
-            pprint(self.experimental_parameters)
-        ## construct function
-        def f():
-            self.x,self.y = copy(x),copy(y) # make copy -- more memory but survive other changes
-        return f
+        if len(_cache) == 0:
+            x,y = np.array(x),np.array(y)
+            i = np.argsort(x); x,y = x[i],y[i] # sort
+            ## set range
+            if xbeg is None:
+                xbeg = x[0]
+            else:
+                assert x[0]<=xbeg,'xbeg is outside range of spectrum: '+repr(xbeg)+' , '+repr(x[0])
+                i = np.array(x>=xbeg)
+                x,y = x[i],y[i]
+            if xend is None:
+                xend = x[-1]
+            else:
+                assert x[-1]>=xend,'xend is outside range of spectrum: '+repr(xend)
+                i = np.array(x<=xend)
+                x,y = x[i],y[i]
+            self.experimental_parameters['xbeg'] = xbeg 
+            self.experimental_parameters['xend'] = xend
+            ## check for regular x grid
+            t0,t1 = np.diff(x).min(),np.diff(x).max()
+            assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
+            self.experimental_parameters.update(experimental_parameters)
+            ## verbose info
+            if self.verbose:
+                print('experimental_parameters:')
+                pprint(self.experimental_parameters)
+            _cache['x'],_cache['y'] = x,y
+        ## every iteration make a copy -- more memory but survive
+        ## other changes
+        self.x,self.y = copy(_cache['x']),copy(_cache['y']) 
 
     @optimise_method()
     def set_spectrum_from_file(
@@ -107,6 +108,20 @@ class Experiment(Optimiser):
         experimental_parameters = {key:val for key,val in d.items() if  key not in (xkey,ykey)}
         self.set_spectrum(d[xkey],d[ykey],xbeg,xend,filename=filename,**d.attributes)
 
+    @format_input_method()
+    def set_spectrum_from_hdf5(self,filename,xkey='x',ykey='y',xbeg=None,xend=None,):
+        """Load a spectrum to fit from an x,y file."""
+        self.experimental_parameters['filename'] = filename
+        with h5py.File(tools.expand_path(filename),'r') as data:
+            ## get x and y data
+            x = np.asarray(data[xkey],dtype=float)
+            y = np.asarray(data[ykey],dtype=float)
+            ## get any experimental_parameters as attributes
+            for key,val in data.attrs.items():
+                self.experimental_parameters[key] = val
+        self.set_spectrum(x,y,xbeg,xend)
+        self.pop_format_input_function()
+
     def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
         opusdata = bruker.OpusData(filename)
@@ -122,7 +137,6 @@ class Experiment(Optimiser):
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
         self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
-
     
     def set_spectrum_from_SOLEIL_file(
             self,
@@ -865,12 +879,10 @@ class Model(Optimiser):
             self.y *= 1. + tools.spline(ν,amplitude.plist,self.x)*np.sin(tools.spline(ν,phase.plist,self.x))
         self.add_construct_function(f)
 
-    @auto_construct_method('add_intensity')
+    @optimise_method()
     def add_intensity(self,intensity=1):
         """Shift by a spline defined function."""
-        def f():
-            self.y += float(intensity)
-        return f 
+        self.y += float(intensity)
 
     def auto_add_intensity_spline(self,xstep=1000.,y=1.):
         """Quickly add an evenly-spaced intensity spline."""
@@ -947,37 +959,35 @@ class Model(Optimiser):
         """Shift by a constant amount."""
         self.y += float(shift)
 
-    @auto_construct_method('convolve_with_gaussian')
+    @optimise_method()
     def convolve_with_gaussian(self,width=1,fwhms_to_include=100):
         """Convolve with gaussian."""
-        def f():
-            x,y = self.x,self.y
-            if width == 0:
-                ## nothing to be done
-                return
-            abswidth = abs(width)
-            max_width = 1
-            if abswidth > 1e2:
-                raise Exception(f'Gaussian width > 100')
-            if self.verbose and abswidth<3*np.diff(self.xexp).min(): 
-                warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
-            ## get padded spectrum to minimise edge effects
-            dx = (x[-1]-x[0])/(len(x)-1)
-            padding = np.arange(dx,fwhms_to_include*abswidth+dx,dx)
-            xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-            ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-            ## generate gaussian to convolve with
-            xconv_beg = -fwhms_to_include*abswidth
-            xconv_end =  fwhms_to_include*abswidth
-            # if ((xconv_end-xconv_beg)/dx) > 1e6:
-                # warnings.warn('Convolution domain length very long.')
-            xconv = np.arange(xconv_beg,xconv_end,dx)
-            if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-            yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abswidth**2) # peak normalised gaussian
-            yconv = yconv/yconv.sum() # sum normalised
-            ## convolve and return, discarding padding
-            self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        return f
+        x,y = self.x,self.y
+        if width == 0:
+            ## nothing to be done
+            return
+        abswidth = abs(width)
+        max_width = 1
+        if abswidth > 1e2:
+            raise Exception(f'Gaussian width > 100')
+        if self.verbose and abswidth<3*np.diff(self.xexp).min(): 
+            warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        ## get padded spectrum to minimise edge effects
+        dx = (x[-1]-x[0])/(len(x)-1)
+        padding = np.arange(dx,fwhms_to_include*abswidth+dx,dx)
+        xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+        ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
+        ## generate gaussian to convolve with
+        xconv_beg = -fwhms_to_include*abswidth
+        xconv_end =  fwhms_to_include*abswidth
+        # if ((xconv_end-xconv_beg)/dx) > 1e6:
+            # warnings.warn('Convolution domain length very long.')
+        xconv = np.arange(xconv_beg,xconv_end,dx)
+        if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
+        yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abswidth**2) # peak normalised gaussian
+        yconv = yconv/yconv.sum() # sum normalised
+        ## convolve and return, discarding padding
+        self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
         """Convolve with lorentzian."""
@@ -1296,7 +1306,9 @@ class Model(Optimiser):
         ## generate sinc to convolve with
         xconv = np.arange(0,xwindow,dx)
         xconv = np.concatenate((-xconv[::-1],xconv[1:]))
-        yconv = amplitude/xconv/len(xconv)               # signum function
+        yconv = np.empty(xconv.shape,dtype=float)
+        inonzero = np.abs(xconv) != 0
+        yconv[inonzero] = amplitude/xconv[inonzero]/len(xconv)               # signum function
         yconv[int((len(yconv)-1)/2)] = 1.       # add δ function at center
         yconv /= yconv.sum()                    # normalised
         self.y[i] = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
