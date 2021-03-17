@@ -17,17 +17,17 @@ C       isolated line by the pCqSDHC model
 C
 C       Input/Output Parameters of Routine (Arguments or Common)
 C       ---------------------------------
-C       T           : Temperature in Kelvin (Input).
+C       T          : Temperature in Kelvin (Input).
 C       amM1       : Molar mass of the absorber in g/mol(Input).
-C       sg0              : Unperturbed line position in cm-1 (Input).
-C     GamD       : Doppler HWHM in cm-1 (Input)
+C       sg0        : Unperturbed line position in cm-1 (Input).
+C       GamD       : Doppler HWHM in cm-1 (Input)
 C       Gam0       : Speed-averaged line-width in cm-1 (Input).        
 C       Gam2       : Speed dependence of the line-width in cm-1 (Input).
-C       anuVC       : Velocity-changing frequency in cm-1 (Input).
-C       eta              : Correlation parameter, No unit (Input).
-C       Shift0       : Speed-averaged line-shift in cm-1 (Input).
-C       Shift2       : Speed dependence of the line-shift in cm-1 (Input)        
-C       sg              : Current WaveNumber of the Computation in cm-1 (Input).
+C       anuVC      : Velocity-changing frequency in cm-1 (Input).
+C       eta        : Correlation parameter, No unit (Input).
+C       Shift0     : Speed-averaged line-shift in cm-1 (Input).
+C       Shift2     : Speed dependence of the line-shift in cm-1 (Input)        
+C       sg         : Current WaveNumber of the Computation in cm-1 (Input).
 C
 C       Output Quantities (through Common Statements)
 C       -----------------
@@ -44,17 +44,21 @@ C     Double Precision Version
 C
 C-------------------------------------------------
        implicit none
-        double precision sg0,GamD
-        double precision Gam0,Gam2,anuVC,eta,Shift0,Shift2
-        double precision sg
-        double precision pi,rpi,cte
-        double precision xz1,xz2,yz1,yz2,xXb,yXb
-        double precision wr1,wi1,wr2,wi2,wrb,wib
-        double precision SZ1,SZ2,DSZ,SZmx,SZmn
-        double precision LS_pCqSDHC_R,LS_pCqSDHC_I
+       double precision sg0,GamD
+       double precision Gam0,Gam2,anuVC,eta,Shift0,Shift2
+       double precision sg
+       double precision pi,rpi,cte
+       double precision xz1,xz2,yz1,yz2,xXb,yXb
+       double precision wr1,wi1,wr2,wi2,wrb,wib
+       double precision SZ1,SZ2,DSZ,SZmx,SZmn
+       double precision LS_pCqSDHC_R,LS_pCqSDHC_I
        double complex c0,c2,c0t,c2t
        double complex X,Y,iz,Z1,Z2
        double complex Aterm,Bterm,LS_pCqSDHC
+
+Cf2py intent(in) sg0,GamD,Gam0,Gam2,anuVC,eta,Shift0,Shift2,sg
+Cf2py intent(out) LS_pCqSDHC_R,LS_pCqSDHC_I 
+       
 C
 C-------------------------------------------------
 C
@@ -307,6 +311,7 @@ c
 
        subroutine qSDV(sg0,GamD,Gam0,Gam2,Shift0,Shift2,
      &sg,LS_qSDV_R,LS_qSDV_I)
+
 C-------------------------------------------------
 C       "qSDV": quadratic-Speed-Dependent Voigt
 C       Subroutine to Compute the complex normalized spectral shape of an 
@@ -475,6 +480,8 @@ C
         Integer I
        double complex zm1,zm2,zterm,zsum,zone,zi
       Double Precision X,Y,WR,WI
+Cf2py intent(in) x,y
+Cf2py intent(out) wr,wi
       Double Precision T,U,S,Y1,Y2,Y3,R,R2,D,D1,D2,D3,D4
       Double Precision TT(15),pipwoeronehalf
 C      
