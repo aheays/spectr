@@ -1602,10 +1602,15 @@ def annotate_corner(string,loc='top left',ax=None,fig=None,xoffset=5,yoffset=5,*
     else: ValueError('Bad input loc')
     return ax.annotate(string,xy,xycoords='axes fraction',ha=ha,va=va,**kwargs)
 
-def annotate_line(string=None,xpos='ymax',ypos='above',
-                  line=None,ax=None,color=None,
-                  xoffset=0,yoffset=0,   # pts
-                  **annotate_kwargs):
+def annotate_line(
+        string=None,
+        xpos='ymax',            # ymax,ymin,left,right,peak,minimum
+        ypos='above',
+        line=None,
+        ax=None,
+        color=None,
+        xoffset=0,yoffset=0,   # pts
+        **annotate_kwargs):
     """Put a label above or below a line. Defaults to legend label and
     all lines in axes.  xpos can be [min,max,left,right,peak,a
     value]. ypos in [above,below,a value].  First plots next to first
