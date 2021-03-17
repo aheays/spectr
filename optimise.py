@@ -8,7 +8,7 @@ from copy import copy,deepcopy
 import warnings
 
 import numpy as np
-from numpy import nan,inf
+from numpy import nan,inf,array
 from scipy import optimize,linalg
 
 # from . import dataset
@@ -403,16 +403,17 @@ class Optimiser:
 
 
     # @format_input_method()
-    def save_to_directory(self,directory,trash_existing=False):
-        """Save results of model and optimisation to a directory."""
+    def save_to_directory(self,directory):
+        """Save results of model and optimisation to a directory. WILL
+        FIRST DELETE CONTENTS OF DIRECTORY!"""
         directory = tools.expand_path(directory)
-        tools.mkdir(directory,trash_existing=trash_existing)
+        tools.mkdir(directory,trash_existing=True)
         ## output self and all suboptimisers into a flat subdirectory
         ## structure
         used_subdirectories = []
         for optimiser in self._get_all_suboptimisers():
             subdirectory = directory+'/'+optimiser.name+'/'
-            tools.mkdir(subdirectory,trash_existing=True)
+            tools.mkdir(subdirectory,trash_existing=False)
             if subdirectory in used_subdirectories:
                 raise Exception(f'Non-unique optimiser names producting subdirectory: {repr(subdirectory)}')
             used_subdirectories.append(subdirectory)
@@ -730,6 +731,11 @@ class Optimiser:
         if p is not None:
             self._set_parameters(p)
         value,step,uncertainty = self._get_parameters()
+        if verbose or self.verbose:
+            print(f'{self.name}: computing uncertainty')
+            print('Number of varied parameters:',len(value))
+        if len(value) == 0:
+            return array([],dtype=float)
         ## compute model at p
         self._number_of_optimisation_function_calls = 0
         self._previous_time = timestamp()
