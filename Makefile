@@ -20,10 +20,10 @@ FC := gfortran -fopenmp  -lgomp -O3 -llapack -Wall -ffree-line-length-none # nor
 F2PY_SUFFIX := $(shell python3-config --extension-suffix)
 
 ## compiler command with flags built in
-F2PY := f2py3 -c --quiet -lgomp -llapack --f90flags="-Wall -fopenmp -ffree-line-length-none" --opt="-O3" # normal / optimised / parallel
+F2PY := f2py3 -c --quiet -lgomp -llapack --f90flags="-Wall -fopenmp -ffree-line-length-none" --opt="-O3"
 
 ## the generic make rule for a fortran file ending with the f2py
-## suffix
+## suffix.  
 %$(F2PY_SUFFIX): %.f ; $(F2PY)  -m $* $< 
 %$(F2PY_SUFFIX): %.f90 ; $(F2PY)  -m $* $< 
 

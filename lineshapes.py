@@ -222,46 +222,85 @@ def hartmann_tran(
         Γ2,       # quadratic halfwidth
         Δ0,       # speed-averaged shift
         Δ2,       # quadratic shift
-        # Y,        # First-order (Rosenkranz) line coupling coefficient
+        ## Y,        # First-order (Rosenkranz) line coupling coefficient
         yin=None, # add line in place to this array
         nfwhmL=None,            # how many widths of the approximate Lorentzian component to include before cutting off line
         nfwhmG=None,            # how many widths of approximate Gaussian component to include before switching to a pure Lorentzian
+        method='python',        # uses scipy functiosn
+        ## method='tran2014',        # uses scipy functions
 ):
     """The Hartmann-Tran line profile, based on ngo2013 doi:
     10.1016/j.jqsrt.2013.05.034."""
-    ## full calculation
-    if nfwhmG is None:
-        vtilde = np.sqrt(2*constants.Boltzmann*T/convert.units(m,'amu','kg'))
-        C0 = νVC+(1-η)*(Γ0-1j*Δ0-3*(Γ2-1j*Δ2)/2) # Eq. (5)
-        C2 = (1-η)*(Γ2-1j*Δ2)                  # Eq. (5)
-        X = (1j*(x-x0)+C0)/C2                # Eq. (5)
-        Y = (x0*vtilde/(2*constants.c*C2))**2 # Eq. (5)
-        Z1 = np.sqrt(X+Y) - np.sqrt(Y)        # Eq. (5)
-        Z2 = np.sqrt(X+Y) + np.sqrt(Y)        # Eq. (5)
-        A = np.sqrt(constants.pi)*constants.c/(x0*vtilde)*(special.wofz(1j*Z1)-special.wofz(1j*Z2)) # Eq. (6)
-        B = vtilde**2/C2*(-1+np.sqrt(constants.pi)/(2*np.sqrt(Y))*(1-Z1**2)*special.wofz(1j*Z1)-np.sqrt(constants.pi)/(2*np.sqrt(Y))*(1-Z2**2)*special.wofz(1j*Z2)) # Eq. (6)
-        y = S*1/constants.pi*np.real(A/(1-(νVC-η*(C0-3*C2/2))*A + (η*C2/vtilde)*B )) # Eq. (1)
+    if method == 'python':
+        π = constants.pi
+        w = special.wofz
+        kB = constants.Boltzmann
+        sqrt = np.sqrt
+        c = constants.c
+        ## full calculation
+        if nfwhmG is None:
+            ## ## using equation in tran2013
+            ## vtilde = sqrt(2*kB*T/convert.units(m,'amu','kg')) # test tran2013
+            ## C0 = Γ0-1j*Δ0                # Eq. (3) tran2013
+            ## C2 = Γ2-1j*Δ2                # Eq. (3) tran2013
+            ## C0t = νVC+(1-η)*(C0-3*C2/2)  # text and Eq. (3) tran2013
+            ## C2t = (1-η)*C2               # text and Eq. (3) tran2013
+            ## X = (1j*(x-x0)+C0t)/C2t      # Eq. (8) tran2013
+            ## Y = (x0*vtilde/(2*c*C2t))**2 # Eq. (8) tran2013
+            ## Z1 = sqrt(X+Y) - sqrt(Y)     # Eq. (7) tran2013
+            ## Z2 = sqrt(X+Y) + sqrt(Y)     # Eq. (7) tran2013
+            ## A = sqrt(π)*c/(x0*vtilde)*(w(1j*Z1)-w(1j*Z2)) # Eq. (5) tran2013
+            ## B = vtilde**2/C2t*(-1+sqrt(π)/(2*sqrt(Y))*(1-Z1**2)*w(1j*Z1)-sqrt(π)/(2*sqrt(Y))*(1-Z2**2)*w(1j*Z2)) # Eq. (5) tran2013
+            ## y = S*1/π*np.real(A/(1-(νVC-η*(C0-3*C2/2))*A+(η*C2/vtilde**2)*B)) # Eq. (4) tran2013
+            ##
+            ## using equation in tran2013 with correction of tran2014
+            vtilde = sqrt(2*kB*T/convert.units(m,'amu','kg')) # test tran2013
+            C0 = Γ0+1j*Δ0                # Eq. (3) tran2013
+            C2 = Γ2+1j*Δ2                # Eq. (3) tran2013
+            C0t = νVC+(1-η)*(C0-3*C2/2)  # text and Eq. (3) tran2013
+            C2t = (1-η)*C2               # text and Eq. (3) tran2013
+            X = (-1j*(x-x0)+C0t)/C2t      # Eq. (8) tran2013
+            Y = (x0*vtilde/(2*c*C2t))**2 # Eq. (8) tran2013
+            Z1 = sqrt(X+Y) - sqrt(Y)     # Eq. (7) tran2013
+            Z2 = sqrt(X+Y) + sqrt(Y)     # Eq. (7) tran2013
+            A = sqrt(π)*c/(x0*vtilde)*(w(1j*Z1)-w(1j*Z2)) # Eq. (5) tran2013
+            B = vtilde**2/C2t*(-1+sqrt(π)/(2*sqrt(Y))*(1-Z1**2)*w(1j*Z1)-sqrt(π)/(2*sqrt(Y))*(1-Z2**2)*w(1j*Z2)) # Eq. (5) tran2013
+            y = S*1/π*np.real(A/(1-(νVC-η*(C0-3*C2/2))*A+(η*C2/vtilde**2)*B)) # Eq. (4) tran2013
+            ##
+            if yin is None:
+                return y
+            else:
+                yin += y
+                return yin
+        ## Hartmann-Tran within nfwhmG and Lorentzian wings outside, if
+        ## nfwhmL is not None then cut off completely outide this
+        ## Γ0*nfwhmL
+        else:
+            ΓG = 2.*6.331e-8*np.sqrt(T*32./m)*x0
+            i0,i1 = np.searchsorted(x,[x0-nfwhmG*ΓG,x0+nfwhmG*ΓG])
+            if yin is None:
+                y = np.zeros(x.shape,dtype=float)
+            else:
+                y = yin    
+            lorentzian(x[:i0],x0,S,Γ0*2,nfwhm=nfwhmL,yin=y[:i0])
+            hartmann_tran(x[i0:i1],x0,S,m,T,νVC,η,Γ0,Γ2,Δ0,Δ2,nfwhmL=None,nfwhmG=None,yin=y[i0:i1])
+            lorentzian(x[i1:],x0,S,Γ0*2,nfwhm=nfwhmL,yin=y[i1:])
+            return y
+    elif method == 'tran2014':
+        ## use f77 implementation in line_profiles_tran2014.f
+        from .line_profiles_tran2014 import pcqsdhc
+        ΓD = 2.*6.331e-8*np.sqrt(T*32./m)*x0/2 # Doppler width HWHM
         if yin is None:
+            yreal,yimag = np.array([pcqsdhc(x0,ΓD,Γ0,Γ2,Δ0,Δ2,νVC,η,xi) for xi in x]).transpose()
+            y = yreal
             return y
         else:
-            yin += y
-            return yin
+            yreal,yimag = np.array([pcqsdhc(x0,ΓD,Γ0,Γ2,Δ0,Δ2,νVC,η,xi) for xi in x]).transpose()
+            yin += yreal
+            
 
-    ## Hartmann-Tran within nfwhmG and Lorentzian wings outside, if
-    ## nfwhmL is not None then cut off completely outide this
-    ## Γ0*nfwhmL
-    else:
-        ΓG = 2.*6.331e-8*np.sqrt(T*32./m)*x0
-        i0,i1 = np.searchsorted(x,[x0-nfwhmG*ΓG,x0+nfwhmG*ΓG])
-        if yin is None:
-            y = np.zeros(x.shape,dtype=float)
-        else:
-            y = yin    
-        lorentzian(x[:i0],x0,S,Γ0*2,nfwhm=nfwhmL,yin=y[:i0])
-        hartmann_tran(x[i0:i1],x0,S,m,T,νVC,η,Γ0,Γ2,Δ0,Δ2,nfwhmL=None,nfwhmG=None,yin=y[i0:i1])
-        lorentzian(x[i1:],x0,S,Γ0*2,nfwhm=nfwhmL,yin=y[i1:])
-        return y
-
+            
+        
     # ## Lorentzian wings and cutoff
     # elif nfwhmL is not None and nfwhmG is not None:
         # i0,i1 = np.searchsorted(x,[x0-(nfwhmG*ΓG+nfwhmL*ΓL),x0+(nfwhmG*ΓG+nfwhmL*ΓL)])
@@ -277,6 +316,9 @@ def hartmann_tran(
             # y[j0:j1] += voigt(x[j0:j1],x0,S,ΓL,ΓG)
             # y[j1:i1] += lorentzian(x[j1:i1],x0,S,ΓL)
     # else:
+
+    else:
+        raise Exception(f"Invalid Hartmann-Tran method: {repr(method)}")
 
     
 
