@@ -1582,7 +1582,15 @@ def arrow(x1y1,x2y2,
 
 myArrow=arrow
 
-def annotate_corner(string,loc='top left',ax=None,fig=None,xoffset=5,yoffset=5,**kwargs):
+def annotate_corner(
+        string,
+        loc='top left',
+        ax=None,
+        fig=None,
+        xoffset=5,
+        yoffset=5,
+        **kwargs
+):
     """Put string in the corner of the axis. Location as in
     legend. xoffset and yoffset in points."""
     if fig is None: fig = plt.gcf()
