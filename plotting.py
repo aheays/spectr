@@ -574,10 +574,10 @@ def _extra_interaction_on_scroll_event(event):
     """what do to when mouse wheel is rolled -- zoom in and out"""
     if event.inaxes:
         axes = event.inaxes
-        if event.button == 'down':
+        if event.button == 'up':
             _extra_interaction_zoom_in('x',axes,)
             _extra_interaction_zoom_in('y',axes,)
-        if event.button == 'up':
+        if event.button == 'down':
             _extra_interaction_zoom_out('x',axes,)
             _extra_interaction_zoom_out('y',axes,)
         plt.draw()
