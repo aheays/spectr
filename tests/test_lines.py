@@ -54,7 +54,6 @@ def test_calculate_plot_spectrum():
 def test_get_upper_lower_levels():
     t = lines.Generic()
     t.load('data/test_lines')
-    assert t.description == "Fitted rovibronic transitions."
     u = t.get_upper_level()
     l = t.get_lower_level()
     assert len(u) == 32
@@ -76,7 +75,7 @@ def test_spectrum_calc_against_hapi():
     l.load(f'data/hitran_data/CO/[12C][16O]/lines.h5')
     l['Zsource'] = 'HITRAN'
     l['Teq'] = 296
-    l['pair'] = convert(1,'atm','Pa')
+    l['pair'] = convert.units(1,'atm','Pa')
     l.limit_to_match(ν_min=νbeg,ν_max=νend)
     xspectr,yspectr = l.calculate_spectrum(np.arange(νbeg,νend,0.001),ykey='σ')
     from scipy import integrate

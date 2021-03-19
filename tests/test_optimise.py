@@ -127,8 +127,8 @@ def test_optimise():
     t = optimise.Optimiser()
     x = t.add_parameter(0.1, True,1e-5)
     t.add_construct_function(lambda: x-1)
-    residual = t.optimise()
-    assert tools.rms(residual) < 1e-5
+    t.optimise()
+    assert tools.rms(t.residual) < 1e-5
     assert abs(x.value-1) < 1e-5
 
 def test_optimiser_format_input():

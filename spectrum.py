@@ -328,11 +328,11 @@ class Model(Optimiser):
     def _initialise(self):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
+        self.residual_scale_factor = 1
         if self._xin is not None:
             ## x is from a call to get_spectrum
             self.x = self._xin
             self.xexp = self.yexp = None
-            self.residual_scale_factor = 1
         elif self.experiment is not None:
             ## get domain from experimental data
             self.xexp = self.experiment.x
@@ -349,7 +349,7 @@ class Model(Optimiser):
             if 'noise_rms' in self.experiment.experimental_parameters:
                 self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
         else:
-            raise Exception('Cannot determine x')
+            self.x = np.array([],dtype=float,ndmin=1)
         self.y = np.zeros(self.x.shape,dtype=float)
         
     def get_spectrum(self,x):
@@ -525,7 +525,7 @@ class Model(Optimiser):
             ncpus=1,
             _cache=None
     ):
-        if self.x is None:
+        if len(self.x) == 0:
             ## x not set yet
             return
         

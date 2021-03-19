@@ -17,23 +17,10 @@ def test_viblevel():
         t.add_level(name=f'A.3Πu(v={v})',Tv=3000+100*v,Bv=1.2,Av=100)
     t.construct()
     print( t.rotational_level)
-    # assert len(t.rotational_level) == 3151
-    # assert len(t.vibrational_spin_level) == 63
-    # assert len(t.vibrational_level) == 11
     if make_plot:
         qfig()
         t.rotational_level.plot('J','E')
         show()
-    # t.rotational_level['Tex'] = 300
-    # t.rotational_level.partition_source = 'self'
-    # t.rotational_level['Inuclear'] = 1
-    # t.rotational_level['species']
-    # t.rotational_level['Tex']
-    # t.rotational_level.verbose = True 
-    # t.rotational_level['g']
-    # t.rotational_level['partition']
-    # t.rotational_level.sort('J')
-    # print( t.rotational_level)
 
 
 def test_vibline():
@@ -41,8 +28,8 @@ def test_vibline():
     x = viblevel.VibLevel('x','[14N]2')
     y = viblevel.VibLevel('y','[14N]2')
     x.add_level(name='X.3Σ+u(v=0)',Tv=1000,Bv=1)
-    z = viblevel.VibLine('z',y,x,J_l=range(0,100),)
-    for v in range(30):
+    z = viblevel.VibLine('z',y,x,J_l=range(0,10),)
+    for v in range(3):
         y.add_level(name=f'A.3Πu(v={v:d})',Tv=3000+v*1000,Bv=1.2,Av=100)
         z.add_transition_moment(name=f'A.3Πu(v={v:d})-X.3Σ+u(v=0)',μv=v)
     z.construct()
@@ -72,8 +59,8 @@ def test_vibline():
     # # # # # # print( z.rotational_line)
     # # # # # # print(x.rotational_level)
 
-# test_viblevel()        
-test_vibline()
+test_viblevel()        
+# test_vibline()
 
     # # print( len(z.vibrational_spin_line))
     # # print( z.rotational_line[:5])

@@ -89,7 +89,6 @@ def test_model_some_lines():
         plotting.qfig()
         mod.plot()
 
-
 # def test_add_absorption_lines():
     # t = spectrum.Model()
     # l = lines.TriatomicDinfh()
