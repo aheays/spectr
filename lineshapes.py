@@ -226,8 +226,8 @@ def hartmann_tran(
         yin=None, # add line in place to this array
         nfwhmL=None,            # how many widths of the approximate Lorentzian component to include before cutting off line
         nfwhmG=None,            # how many widths of approximate Gaussian component to include before switching to a pure Lorentzian
-        method='python',        # uses scipy functiosn
-        ## method='tran2014',        # uses scipy functions
+        # method='python',        # uses scipy functiosn
+        method='tran2014',        # uses tran2014/trans2015 fortran subroutine
 ):
     """The Hartmann-Tran line profile, based on ngo2013 doi:
     10.1016/j.jqsrt.2013.05.034."""
@@ -291,11 +291,11 @@ def hartmann_tran(
         from .line_profiles_tran2014 import pcqsdhc
         ΓD = 2.*6.331e-8*np.sqrt(T*32./m)*x0/2 # Doppler width HWHM
         if yin is None:
-            yreal,yimag = np.array([pcqsdhc(x0,ΓD,Γ0,Γ2,Δ0,Δ2,νVC,η,xi) for xi in x]).transpose()
+            yreal,yimag = S*np.array([pcqsdhc(x0,ΓD,Γ0,Γ2,Δ0,Δ2,νVC,η,xi) for xi in x]).transpose()
             y = yreal
             return y
         else:
-            yreal,yimag = np.array([pcqsdhc(x0,ΓD,Γ0,Γ2,Δ0,Δ2,νVC,η,xi) for xi in x]).transpose()
+            yreal,yimag = S*np.array([pcqsdhc(x0,ΓD,Γ0,Γ2,Δ0,Δ2,νVC,η,xi) for xi in x]).transpose()
             yin += yreal
             
 
