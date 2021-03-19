@@ -1012,6 +1012,9 @@ def hdf5_to_dict(filename_or_hdf5_object):
     for key in filename_or_hdf5_object.keys():
         ## make a new subdict recursively
         if isinstance(filename_or_hdf5_object[key],h5py.Dataset):
+            if filename_or_hdf5_object[key].shape == ():
+                print(f'warning: Cannot import hdf5 dataset with shape () from {key=}')
+                continue
             value = filename_or_hdf5_object[key][()]
             ## convert bytes string to unicode
             if np.isscalar(value):
