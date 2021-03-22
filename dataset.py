@@ -1164,6 +1164,18 @@ class Dataset(optimise.Optimiser):
             self._data[key]['value'][original_length:total_length] = kwargs[key]
         self._length = total_length
         
+    def __add__(self,other):
+        """Adding dataset combines each key."""
+        retval = self.copy()
+        retval.extend(**other)
+        return retval
+
+    def __radd__(self,other):
+        """Adding dataset combines each key."""
+        retval = self.copy()
+        retval.extend(**other)
+        return retval
+
     def plot(
             self,
             xkey,               # key to use for x-axis data
