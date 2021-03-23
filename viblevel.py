@@ -125,8 +125,14 @@ class VibLevel(Optimiser):
         self.H[:] = 0.0
         for ibeg,jbeg,fH in self._H_subblocks:
             for (i,j),fHi in np.ndenumerate(fH):
-                # self.H[:,i+ibeg,j+jbeg] += fHi(self.J)
-                self.H[:,j+jbeg,i+ibeg] += fHi(self.J)
+                if ibeg == jbeg:
+                    ## manifold 
+                    self.H[:,i+ibeg,j+jbeg] += fHi(self.J)
+                else:
+                    ## coupling between manifolds
+                    t = fHi(self.J)
+                    self.H[:,i+ibeg,j+jbeg] += t
+                    self.H[:,j+jbeg,i+ibeg] += t
         ## nothing to be done
         if len(self.vibrational_spin_level) == 0:
             return
@@ -193,7 +199,7 @@ class VibLevel(Optimiser):
         self.manifolds[name] = dict(ibeg=ibeg,ef=ef,Σ=Σ,n=len(ef),**kw) 
 
     @format_input_method()
-    def add_LS_coupling(self,name1,name2,ηv=0):
+    def add_LS_coupling(self,name1,name2,ηv=0,ηDv=0):
         kw1 = self.manifolds[name1]
         kw2 = self.manifolds[name2]
         ## get coupling matrices -- cached
@@ -201,9 +207,8 @@ class VibLevel(Optimiser):
             kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
         ## substitute in adjustable parameter
         H = np.full(LS.shape,None)
-        for i,Hi in np.ndenumerate(LS):
-            if Hi is not None:
-                H[i] = lambda J,Hi=Hi: ηv*Hi(J)
+        for i in np.ndindex(JL.shape):
+            H[i] = lambda J,i=i: ηv*LS[i](J) + ηDv*NNLS[i](J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
 
     @format_input_method()
@@ -215,12 +220,12 @@ class VibLevel(Optimiser):
             kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
         ## substitute in adjustable parameter
         H = np.full(JL.shape,None)
-        for i,JLi in np.ndenumerate(JL):
-            H[i] = lambda J,JLi=JLi: -ξv*JLi(J)# - ξDv*NNJL(J)
+        for i in np.ndindex(H.shape):
+            H[i] = lambda J,i=i: -ξv*JL[i](J) - ξDv*NNJL[i](J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
 
     @format_input_method()
-    def add_S_uncoupling(self,name1,name2,what_namev=0):
+    def add_JS_coupling(self,name1,name2,pv=0):
         kw1 = self.manifolds[name1]
         kw2 = self.manifolds[name2]
         ## get coupling matrices -- cached
@@ -228,9 +233,8 @@ class VibLevel(Optimiser):
             kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
         ## substitute in adjustable parameter
         H = np.full(JL.shape,None)
-        for i,Hi in np.ndenumerate(LS):
-            if Hi is not None:
-                H[i] = lambda J,H=Hi: what_namev*Hi(J)
+        for i in np.ndindex(H.shape):
+            H[i] = lambda J,i=i: pv*JS[i](J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
 
 class VibLine(Optimiser):
@@ -602,6 +606,7 @@ def _get_offdiagonal_coupling(S1,Λ1,s1,S2,Λ2,s2,verbose=False):
     ## transform to e/f basis
     JLef = Mef*JL*Mef.T
     JSef = Mef*JS*Mef.T
+    JSef = np.abs(JSef)         # HACK
     LSef = Mef*LS*Mef.T
     ## get rotationally commutated versions -- could compute higher
     ## orders here
