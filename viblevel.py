@@ -4,7 +4,7 @@ from functools import lru_cache
 import itertools
 
 import numpy as np
-from numpy import nan
+from numpy import nan,array
 import sympy
 from scipy import linalg
 
@@ -122,24 +122,45 @@ class VibLevel(Optimiser):
             for key in self.vibrational_spin_level:
                 self.rotational_level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
         ## compute upper-triangular part of H from subblocks
+        self.H[:] = 0.0
         for ibeg,jbeg,fH in self._H_subblocks:
             for (i,j),fHi in np.ndenumerate(fH):
-                self.H[:,i+ibeg,j+jbeg] = self.H[:,j+jbeg,i+ibeg] = fHi(self.J)
+                # self.H[:,i+ibeg,j+jbeg] += fHi(self.J)
+                self.H[:,j+jbeg,i+ibeg] += fHi(self.J)
         ## nothing to be done
         if len(self.vibrational_spin_level) == 0:
             return
         ## compute mixed energies and mixing coefficients
         self.eigvals = {}             # eignvalues
         self.eigvects = {}             # mixing coefficients
-        ibeg = 0
+        je = self.vibrational_spin_level['ef'] == +1
+        jf = self.vibrational_spin_level['ef'] == -1
+        if np.sum(je) == 0:
+            je = None
+        if np.sum(jf) == 0:
+            jf = None
         for iJ,J in enumerate(self.J):
             H = self.H[iJ,:,:]
-            iallowed = self.vibrational_spin_level['Ω']<=J
-            H[~iallowed,:] = H[:,~iallowed] = 0. # because sometimes NaN, probably should be zero in the first place
-            eigvals,eigvects = linalg.eigh(H,lower=False)
-            eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
+            H[np.isnan(H)] = 0.0 # better to solve at source
+            ## compute e- and f-parity matrcies separatesly.  Might be
+            ## nice to automatically convert matrix into blocks
+            eigvals = np.zeros(self.H.shape[2],dtype=complex)
+            eigvects = np.zeros((self.H.shape[2],self.H.shape[2]),dtype=float)
+            if je is not None:
+                eigvals_e,eigvects_e = linalg.eigh(H[np.ix_(je,je)])
+                eigvals_e,eigvects_e = _diabaticise_eigenvalues(eigvals_e,eigvects_e)
+                eigvals[je] = eigvals_e
+                eigvects[np.ix_(je,je)] = eigvects_e
+            if jf is not None:
+                eigvals_f,eigvects_f = linalg.eigh(H[np.ix_(jf,jf)])
+                eigvals_f,eigvects_f = _diabaticise_eigenvalues(eigvals_f,eigvects_f)
+                eigvals[jf] = eigvals_f
+                eigvects[np.ix_(jf,jf)] = eigvects_f
+            ## diagonaliase all at one
+            # eigvals,eigvects = linalg.eigh(H)
+            # eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
             self.eigvals[J] = eigvals.real
-            self.eigvects[J] = eigvects.real.transpose()
+            self.eigvects[J] = eigvects.real
         ## insert energies into rotational_level
         self.rotational_level['E'] = np.concatenate(list(self.eigvals.values()))
         self.rotational_level.index((self.rotational_level['J']>self.rotational_level['Ω']))
@@ -177,16 +198,16 @@ class VibLevel(Optimiser):
         kw2 = self.manifolds[name2]
         ## get coupling matrices -- cached
         JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
-            kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'])
+            kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
         ## substitute in adjustable parameter
         H = np.full(LS.shape,None)
         for i,Hi in np.ndenumerate(LS):
             if Hi is not None:
-                H[i] = lambda J,H=Hi: ηv*Hi(J)
+                H[i] = lambda J,Hi=Hi: ηv*Hi(J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
 
     @format_input_method()
-    def add_JL_coupling(self,name1,name2,ξv=0):
+    def add_JL_coupling(self,name1,name2,ξv=0,ξDv=0):
         kw1 = self.manifolds[name1]
         kw2 = self.manifolds[name2]
         ## get coupling matrices -- cached
@@ -195,7 +216,7 @@ class VibLevel(Optimiser):
         ## substitute in adjustable parameter
         H = np.full(JL.shape,None)
         for i,JLi in np.ndenumerate(JL):
-            H[i] = lambda J,JLi=JLi: -ξv*JLi(J)
+            H[i] = lambda J,JLi=JLi: -ξv*JLi(J)# - ξDv*NNJL(J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
 
     @format_input_method()
@@ -204,7 +225,7 @@ class VibLevel(Optimiser):
         kw2 = self.manifolds[name2]
         ## get coupling matrices -- cached
         JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
-            kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'])
+            kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
         ## substitute in adjustable parameter
         H = np.full(JL.shape,None)
         for i,Hi in np.ndenumerate(LS):
@@ -281,8 +302,6 @@ class VibLine(Optimiser):
             for iΔJ,ΔJ in enumerate(self.ΔJ):
                 self.μ0[:,iΔJ,iu,jl] = fμ(self.J_l,ΔJ)
 
-
-
         ## initialise rotational_line and cache it
         self.rotational_line.clear()
         for iJ_l,J_l in enumerate(self.J_l):
@@ -299,10 +318,14 @@ class VibLine(Optimiser):
                 self.rotational_line.extend(
                     J_u=J_u,
                     J_l=J_l,
-                    E_u=np.tile(self.level_u.eigvals[J_u],n_l),
-                    E_l=np.repeat(self.level_l.eigvals[J_l],n_u),
-                    **{key+'_u':np.tile(val,n_l) for key,val in self.level_u.vibrational_spin_level.items()},
-                    **{key+'_l':np.repeat(val,n_u) for key,val in self.level_l.vibrational_spin_level.items()},
+                    # E_u=np.tile(self.level_u.eigvals[J_u],n_l),
+                    # E_l=np.repeat(self.level_l.eigvals[J_l],n_u),
+                    # **{key+'_u':np.tile(val,n_l) for key,val in self.level_u.vibrational_spin_level.items()},
+                    # **{key+'_l':np.repeat(val,n_u) for key,val in self.level_l.vibrational_spin_level.items()},
+                    E_u=np.repeat(self.level_u.eigvals[J_u],n_l),
+                    E_l=np.tile(self.level_l.eigvals[J_l],n_u),
+                    **{key+'_u':np.repeat(val,n_l) for key,val in self.level_u.vibrational_spin_level.items()},
+                    **{key+'_l':np.tile(val,n_u) for key,val in self.level_l.vibrational_spin_level.items()},
                 )
                 # J_u = J_l + ΔJ
                 # if J_u not in self.level_u.J:
@@ -316,22 +339,32 @@ class VibLine(Optimiser):
                     # **{key+'_l':val for key,val in qn_l.items()},)
         # print( len(self.rotational_line))
 
-
         # μ = np.full(self.μ0.shape,0.)
         nlines = 0
         μs = []
+        # print(self.level_u.vibrational_spin_level) #  DEBUG
+        # print(self.level_l.vibrational_spin_level) #  DEBUG
 
         ## could vectorise linalg with np.dot
         for iJ_l,J_l in enumerate(self.J_l):
             for iΔJ,ΔJ in enumerate(self.ΔJ):
+                # print('DEBUG:', J_l,ΔJ)
                 J_u = J_l + ΔJ
                 if J_u not in self.level_u.J:
                     continue
                 μ0 = self.μ0[iJ_l,iΔJ,:,:]
                 c_l = self.level_l.eigvects[J_l]
                 c_u = self.level_u.eigvects[J_u]
+
+                # print('DEBUG: μ0')
+                # pprint(μ0)      #  DEBUG
+                # print('DEBUG: c_l')
+                # print(c_l)     #  DEBUG
+                # print('DEBUG: c_u')
+                # print(c_u)     #  DEBUG
+                
                 ## get mixed line strengths
-                μ = np.dot(c_u,np.dot(μ0,np.transpose(c_l)))
+                μ = np.dot(np.transpose(c_u),np.dot(μ0,c_l))
                 μs.append(μ)
         self.rotational_line['μ'] = np.ravel(μs)
         ## remove forbidden lines
@@ -379,7 +412,7 @@ def _get_linear_H(S,Λ,s):
     of a linear molecule."""
     ## symbolic variables, Note that expected value of ef is +1 or -1 for 'e' and 'f'
     p = {key:sympy.Symbol(key) for key in (
-        'Tv','Bv','Dv','Hv','Av','ADv','λv','λDv','λHv', 'γv','γDv','ov','pv','pDv','qv','qDv')}
+        'Tv','Bv','Dv','Hv','Av','ADv','λv','λDv','λHv','γv','γDv','ov','pv','pDv','qv','qDv')}
     J = sympy.Symbol('J')
     case_a = quantum_numbers.get_case_a_basis(S,Λ,s,print_output=False)
     efs = case_a['qnef']['ef']
@@ -399,8 +432,9 @@ def _get_linear_H(S,Λ,s):
     ## add Λ-doubling terms here, element-by-element.
     for i,(Σi,efi) in enumerate(zip(Σs,efs)):
         for j,(Σj,efj) in enumerate(zip(Σs,efs)):
-            if efi!=efj: continue
-            ef = (1 if efi=='e' else -1) # Here ef is +1 for 'e' and -1 for 'f'
+            if efi != efj:
+                continue
+            # ef = (1 if efi=='e' else -1) # Here ef is +1 for 'e' and -1 for 'f'
             ## 1Π state
             if Λ>0 and S==0: 
                 if efi=='f' and efj=='f': H[i,j] += p['qv']*J*(J+1)   # coefficient
@@ -434,18 +468,18 @@ def _get_linear_H(S,Λ,s):
             elif Λ==1 and S==1:
                 ## diagonal elements
                 if   Σi==-1 and Σj==-1:
-                    H[i,j] += -ef*(p['ov']+p['pv']+p['qv'])
+                    H[i,j] += -efi*(p['ov']+p['pv']+p['qv'])
                 elif Σi== 0 and Σj== 0:
-                    H[i,j] += -ef*p['qv']*J*(J+1)/2
+                    H[i,j] += -efi*p['qv']*J*(J+1)/2
                 elif Σi==+1 and Σj==+1:
                     H[i,j] += 0
                 ## off-diagonal elements
                 elif Σi==-1 and Σj==+0:
-                    H[i,j] += -sympy.sqrt(2*J*(J+1))*-1/2*(p['pv']+2*p['qv'])*ef
-                    H[j,i] += -sympy.sqrt(2*J*(J+1))*-1/2*(p['pv']+2*p['qv'])*ef
+                    H[i,j] += -sympy.sqrt(2*J*(J+1))*-1/2*(p['pv']+2*p['qv'])*efi
+                    H[j,i] += -sympy.sqrt(2*J*(J+1))*-1/2*(p['pv']+2*p['qv'])*efi
                 elif Σi==-1 and Σj==+1:
-                    H[i,j] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*ef
-                    H[j,i] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*ef
+                    H[i,j] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*efi
+                    H[j,i] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*efi
                 elif Σi==+0 and Σj==+1:
                     pass # zero
             # else:
@@ -456,6 +490,7 @@ def _get_linear_H(S,Λ,s):
         # print( )
         # print(self.format_input_functions[-1]())
         # print_matrix_elements(case_a['qnef'],H,'H')
+    # print( H)                  #  DEBUG
     ## Convert elements of symbolic Hamiltonian into lambda functions
     fH = np.full(H.shape,None)
     for i in range(len(Σs)):
@@ -587,7 +622,7 @@ def _get_offdiagonal_coupling(S1,Λ1,s1,S2,Λ2,s2,verbose=False):
             for i,qn1 in enumerate(casea1['qnef'].rows()):
                 for j,qn2 in enumerate(casea2['qnef'].rows()):
                     if matrix[i,j] != 0:
-                        print(_format_matrix_element(qn1,qn2,matrix[i,j],operator))
+                        print(_format_matrix_element(qn1,qn2,operator,matrix[i,j]))
     ## lambdify and add parameter 
     JL = np.full(JLef.shape,None)
     JS = np.full(JSef.shape,None)
@@ -740,18 +775,28 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp,verbose=False):
                     Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'],
                     Λp=qnppm['Λ'],Λpp=qnpppm['Λ'],
                     μsign=float(μsign), c=float(c)):
+
+                tJpp = (2*Jpp+1)*(2*(Jpp+ΔJ)+1)
+                tJpp[tJpp<0] = 0 # avoid sqrt <0 warnings
                 retval = (
                     c       # contribution to ef-basis state
-                    *np.sqrt((2*Jpp+1)*(2*(Jpp+ΔJ)+1)) # see hansson2005 eq. 13
+                    *np.sqrt(tJpp) # see hansson2005 eq. 13
                     *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
                     *(-1 if Λp==0 else 1)   # phase factor, a hack that should be understood
                     *μsign # transition moment phase factor (+1 or -1)
-                    *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') # Wigner 3J line strength factor vectorised over Jpp
+                    *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj')  # Wigner 3J line strength factor vectorised over Jpp
                 )
                 retval[np.isnan(retval)] = 0. # not allowed
+                # print('DEBUG:', Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp)
+                # print('DEBUG:', quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj'))
+                # print('DEBUG:', retval)
                 return retval
             fi.append(fij)
         fμ[ip,ipp] = lambda Jpp,ΔJ,fi=fi: np.sum([fij(Jpp,ΔJ) for fij in fi],axis=0)
+        if verbose:
+            for ΔJ in (-1,0,1):
+                if (val:=float(fμ[ip,ipp](array([10]),ΔJ))) != 0:
+                    print(_format_matrix_element(qnpef,qnppef,f'μ(ΔJ={ΔJ:+2},Jpp=10)',format(val,'+0.4f')))
     return fμ
 
 def encode_level(**kwargs):
@@ -811,9 +856,14 @@ def encode_bra_op_ket(qn1,operator,qn2):
     """Output a nicely encode ⟨A|O|B⟩."""
     return('⟨'+encode_level(**qn1)+'|'+operator+'|'+encode_level(**qn2)+'⟩')
 
-def _format_matrix_element(qn1,qn2,value,operator='L'):
-    """Print nonzero matrix elements neatly."""
-    return f'⟨{",".join([key+"="+repr(val) for key,val in qn1.items()])}|{operator}|{",".join([key+"="+repr(val) for key,val in qn2.items()])}⟩ = {value}'
+def _format_matrix_element(qn1,qn2,operator=None,value=None):
+    retval = f'⟨ {" ".join([format(key+"="+format(val,"g"),"5") for key,val in qn1.items()])} |' # bra
+    if operator is not None:
+        retval += f' {operator} '
+    retval += f'| {" ".join([format(key+"="+format(val,"g"),"5") for key,val in qn2.items()])} ⟩' # ket
+    if value is not None:
+        retval += f' = {value}'
+    return retval
 
 def _diabaticise_eigenvalues(eigvals,eigvects):
     ## fractional character array

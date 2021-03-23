@@ -19,6 +19,17 @@ def test_one_level():
         t.rotational_level.plot('J','E')
         show()
 
+def t():
+    # t = viblevel.VibLevel('test','[32S][16O]',J=range(11))
+    t = viblevel.VibLevel('test','[32S][16O]',J=[4])
+    t.add_level(name=f'B.3Π(v=0)',Tv=50000,Bv=1.1,Av=10)
+    t.construct()
+    # if make_plot:
+        # qfig()
+        # t.rotational_level.plot('J','E')
+        # show()
+t()
+
 def test_multiple_levels():
     t = viblevel.VibLevel('test','[14N]2',J=range(11))
     for v in range(4):
@@ -50,7 +61,7 @@ def test_JL_interaction():
         qfig()
         t.rotational_level.plot('J','E')
         show()
-test_JL_interaction()
+# test_JL_interaction()
 
 def test_line():
     x = viblevel.VibLevel('x','[14N]2')
