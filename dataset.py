@@ -648,6 +648,7 @@ class Dataset(optimise.Optimiser):
 
     def unique(self,key):
         """Return unique values of one key."""
+        self[key]
         if self.get_kind(key) == 'O':
             return self[key]
         else:

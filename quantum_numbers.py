@@ -2,8 +2,10 @@ import re
 from copy import copy
 import functools
 import itertools
+from pprint import pprint
 
 import numpy as np
+from scipy import linalg
 import sympy
 from immutabledict import immutabledict
 
@@ -706,7 +708,7 @@ def decode_transition(transition,return_separately=False):
                 # print( encode_bra_op_ket(qn.row(i),operator_name,qn.row(j))+' = '+str(H[i,j]))
 
 @functools.lru_cache
-def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
+def get_case_a_basis(S,Λ,s,verbose=False,**kwargs):
     """Determine wavefunctions of a case a state in signed-Ω (pm, +/-)
     and e/f bases. As well as transformation matrices between them."""
     assert Λ>=0 and (s==0 or s==1) and S>=0,'Some quantum number has an invalid value.'
@@ -805,49 +807,31 @@ def get_case_a_basis(Λ,s,S,verbose=False,**kwargs):
                 # Maef=Maef, Mbpm=Mbpm, Mbef=Mbef,))
 
 # # @my.lru_cache_copy
-# @my.immutabledict_args
+# # @my.immutabledict_args
 # @functools.lru_cache
-# def get_multistate_case_a_basis(*states_qn,verbose=False):
+# def get_multistate_case_a_basis(*states_qn):
     # """Determine wavefunctions of case a states in signed-Ω and e/f
     # bases. As well as transformation matrices between them. All states
     # are noninteracting and are given as a list of dictionaries with
     # keys label,Λ,s,S. """
-    # ## get individual state data
-    # qnpms,qnefs,Mpms,Mefs,NNpms,NNefs = [],[],[],[],[],[]
+    # ## get individual state data and make combined lists and block
+    # ## diagonal matrices
+    # qnpm,qnef = Dataset(),Dataset()
+    # Mpm,Mef,NNpm,NNef = [],[],[],[]
     # for i,state in enumerate(states_qn):
-        # d = get_case_a_basis(state['Λ'],state['s'],state['S'])
-        # ## d['qnpm'],d['qnef'] = my.append_fields_to_recarray(d['qnpm'],label=state['label']),my.append_fields_to_recarray(d['qnef'],label=state['label']) # add a state index
-        # d['qnpm']['label'] = state['label'] # add a state index
-        # d['qnef']['label'] = state['label'] # add a state index
-        # qnpms.append(d['qnpm']); qnefs.append(d['qnef'])
-        # Mpms.append(d['Mpm']); Mefs.append(d['Mef'])
-        # NNpms.append(d['NNpm']); NNefs.append(d['NNef'])
-        # if verbose:
-            # print('qnpm'); my.print_columns(d['qnpm'])
-            # print('qnef'); my.print_columns(d['qnef'])
-            # print('Mpm'); pprint(d['Mpm'])
-            # print('Mef'); pprint(d['Mef'])
+        # d = get_case_a_basis(*state)
+        # qnpm.extend(state_index=i,**d['qnpm'])
+        # qnef.extend(state_index=i,**d['qnef'])
+        # Mpm.append(d['Mpm'])
+        # Mef.append(d['Mef'])
+        # NNpm.append(d['NNpm'])
+        # NNef.append(d['NNef'])
     # ## combine
-    # # qnpm,qnef = np.concatenate(qnpms),np.concatenate(qnefs)
-    # # qnpm,qnef = my.concatenate_recarrays_unify_dtype(qnpms),my.concatenate_recarrays_unify_dtype(qnefs)
-    # qnpm,qnef = Rotational_Level(),Rotational_Level()
-    # qnpm.extend(*qnpms)
-    # qnef.extend(*qnefs)
-    # n = np.sum([len(t) for t in qnpms])
-    # Mef,Mpm = sympy.zeros(int(n)),sympy.zeros(int(n))
-    # i = 0
-    # for Mefi,Mpmi in zip(Mefs,Mpms):
-        # j = Mefi.shape[0]
-        # Mef[i:i+j,i:i+j],Mpm[i:i+j,i:i+j] = Mefi,Mpmi
-        # i += j
-    # NNef,NNpm = sympy.zeros(int(n)),sympy.zeros(int(n))
-    # i = 0
-    # for NNefi,NNpmi in zip(NNefs,NNpms):
-        # j = NNefi.shape[0]
-        # NNef[i:i+j,i:i+j],NNpm[i:i+j,i:i+j] = NNefi,NNpmi
-        # i += j
-    # ## convert to numpy arrays if requested and return
-    # return(immutabledict(n=len(qnpm),qnpm=qnpm,qnef=qnef,Mpm=Mpm,Mef=Mef,NNpm=NNpm,NNef=NNef))
+    # Mef = linalg.block_diag(*Mef)
+    # Mpm = linalg.block_diag(*Mpm)
+    # NNpm = linalg.block_diag(*NNpm)
+    # NNef = linalg.block_diag(*NNef)
+    # return immutabledict(n=len(qnpm),qnpm=qnpm,qnef=qnef,Mpm=Mpm,Mef=Mef,NNpm=NNpm,NNef=NNef)
 
 # def get_rotational_coupling_matrix(name1='',name2='', qn1=None,qn2=None,verbose=False):
     # """Compute a symbolic matrix rotationally coupling two spin manifolds."""

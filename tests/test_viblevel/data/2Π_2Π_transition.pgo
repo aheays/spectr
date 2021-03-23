@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<Mixture Version="Pgopher 10.0.505 13 Feb 2017 17:57  64 bit (fpc 3.1.1 x86_64-Linux)">
+  <Species Name="Species" Jmax="60">
+    <LinearMolecule Name="LinearMolecule">
+      <LinearManifold Name="Ground" Initial="True" LimitSearch="True">
+        <Linear Name="X(0)" S="1" Lambda="Pi">
+          <Parameter Name="Origin" Value="100"/>
+          <Parameter Name="B" Value="1.6"/>
+          <Parameter Name="A" Value="120"/>
+          <Parameter Name="gamma" Value="-0.01"/>
+        </Linear>
+      </LinearManifold>
+      <LinearManifold Name="Excited" LimitSearch="True">
+        <Linear Name="B(0)" S="1" Lambda="Pi">
+          <Parameter Name="Origin" Value="50000"/>
+          <Parameter Name="B" Value="1.1"/>
+          <Parameter Name="A" Value="100"/>
+          <Parameter Name="gamma" Value="10"/>
+          <Parameter Name="D" Value="6E-6"/>
+          <Parameter Name="gammaD" Value="-0.0001"/>
+        </Linear>
+      </LinearManifold>
+      <TransitionMoments Bra="Excited" Ket="Ground">
+        <SphericalTransitionMoment Bra="B(0)" Ket="X(0)"/>
+      </TransitionMoments>
+    </LinearMolecule>
+  </Species>
+  <Parameter Name="Gaussian" Value="0.2"/>
+  <Parameter Name="Lorentzian" Value="0.2"/>
+  <Parameter Name="Foffset" Value="0.717948544189"/>
+  <Parameter Name="Fmin" Value="49172.2965484976"/>
+  <Parameter Name="Fmax" Value="49993.8425152826"/>
+  <FormSettings Name="ConstantsWindow" ActiveObject="Linear: Species - LinearMolecule - Excited - B(0)"/>
+  <FormSettings Name="LevelWindow" XMax="70">
+    <Parameter Name="Ymax" Value="44450"/>
+    <Parameter Name="Ymin" Value="44130"/>
+    <Parameter Name="Reduction" Value="0.5"/>
+  </FormSettings>
+</Mixture>

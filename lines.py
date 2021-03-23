@@ -1,6 +1,7 @@
 import itertools
 from copy import copy,deepcopy
 from pprint import pprint
+import re
 
 import numpy as np
 from numpy import nan,array,linspace
@@ -17,6 +18,7 @@ from . import hitran
 from . import database
 from . import plotting
 from . import convert
+from . import quantum_numbers
 from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
@@ -191,9 +193,9 @@ prototypes['ν'] = dict(description="Transition wavenumber (cm-1)", kind='f', fm
 ])
 
 ## partition functions
-def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
+def _f3(self,species,Tex,E_u,E_l,g_u,g_l,Σ_l,Σ_u,ef_l,ef_u):
     """Compute partition function from data in self."""
-    if self.Zsource != 'self':
+    if self['Zsource'] != 'self':
         raise InferException(f'Zsource not "self".')
     Z = np.full(len(species),0.)
     ## calculate separately for all (species,Tex) combinations
@@ -203,7 +205,8 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l):
         ## sum for all unique upper levels
         k = []
         for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_u'][i] for key in self._levels_class.defining_qn]):
+                *[self[key+'_u'][i] for key in self._levels_class.defining_qn]
+        ):
             k.append((i[j])[0])
         Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
         ## sum for all unique lower levels
@@ -219,7 +222,10 @@ def _f5(self,species,Tex):
         raise InferException(f'Zsource not "HITRAN".')
     from . import hitran
     return hitran.get_partition_function(species,Tex)
-prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[(('species','Tex'),_f5),( ('species','Tex','E_u','E_l','g_u','g_l'),_f3,)])
+prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[
+    (('species','Tex'),_f5),
+    (('species','Tex','E_u','E_l','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3,),
+])
 
 ## vibrational transition frequencies
 prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber (cm-1)", kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
@@ -552,6 +558,99 @@ class Generic(levels.Base):
         self.extend(**new)
         return data             # return raw HITRAN data
         
+    def load_from_pgopher(
+            self,
+            filename, # a csv file from the pgopher linelist export menu
+            search_re='.*', # Limit the reading of lines to those lines matching this regexp against the Label field. 
+            **append_to_self_kwargs, # given to self.append
+    ):
+        """Load data from an export pgopher model linelist. The
+        constants are also in this file. To get such a file out of
+        pgopher: File -> Export -> Line list -> some csv file. The
+        output file might need to be renamed to have a csv suffix."""
+        ## load pgopher output file
+        with open(tools.expand_path(filename),mode='r',errors='ignore') as fid:
+            ## find beginning of linelist
+            for line in fid:
+                if line=='''Molecule,Upper Manifold,J',Sym',#',Lower Manifold,"J""","Sym""","#""",Position,Intensity,Eupper,Elower,Spol,A,Width,Branch,Label\n''':
+                    break
+            else:
+                raise Exception("Could not find beginning of linelist in file: "+repr(filename))
+            ## loop through each line in linelist -- saving to dict of lists
+            data = {key:[] for key in (
+                'ν','E_l','E_u','v_u', 'label_u', 'J_u', 'N_u', 'F_u', 'ef_u', 
+                'v_l', 'label_l', 'J_l', 'N_l', 'F_l', 'ef_l', 
+                'Sij',
+                # 'Ae',
+            )}
+            for line in fid:
+                ## split on tabs
+                line = line.split(',')
+                # if len(line)!=30: continue # a quick and cheap test for a valid linelist line
+                if len(line)!=18: break # a quick and cheap test for a valid linelist line
+                if not re.match(search_re,line[17]): continue # skip this line as requested
+                upper_manifold = line[1]
+                lower_manifold = line[5]
+                data['J_u'].append(float(line[2]))
+                data['ef_u'].append((1 if line[3].strip()=='e' else -1))
+                data['J_l'].append(float(line[6]))
+                data['ef_l'].append((1 if line[7].strip()=='e' else -1))
+                data['ν'].append(float(line[9]))
+                data['E_u'].append(float(line[11]))
+                data['E_l'].append(float(line[12]))
+                data['Sij'].append(float(line[13])*3) # 3x PGopher Spol (single polarisation only)
+                ## data['σ'].append(float(line[10])) # actually a cross section?
+                # data['Ae'].append(float(line[14]))
+                ## Decode transition name. Split into upper and lower
+                ## levels. Get J, F, ef from pgopher encoded parts of
+                ## the string. Use decode_lower_name_re and
+                ## decode_upper_name_re to get the label and v which
+                ## are influenced by the user.
+                def decode_pgo_level_name(name,manifold_name):
+                    """Try various ways to decode a pgopher level name."""
+                    r = re.match(r"(Excited|Ground) ([a-zA-Z0-9']+)v=([0-9]+) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$",name) # e.g., "Excited Av=1 0.5  1 F2f"
+                    if r:
+                        return(dict(
+                            label = r.group(2),
+                            v = int(r.group(3)),
+                            N = float(r.group(5)),
+                            F = float(r.group(6)),
+                        ))
+                    r = re.match(r'(.*) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$',name) # e.g., "Excited A(v=1) 0.5  1 F2f"
+                    if r:
+                        retval = {}
+                        label_v = r.group(1)
+                        retval['N'] = float(r.group(3))
+                        retval['F'] = float(r.group(4))
+                        decoded_level_name = quantum_numbers.decode_level(label_v.strip()[len(manifold_name):])
+                        if 'label' in decoded_level_name: 
+                            retval['label'] = decoded_level_name['label']
+                        else:
+                            retval['label'] = '?'
+                        if 'v' in decoded_level_name:
+                            retval['v'] = decoded_level_name['v']
+                        else:
+                            retval['v'] = -1
+                        return retval
+                    r = re.match(r'(.*) +([a-zA-Z]+)\(([0-9.]+)\) +([0-9.]+) +([ef]) *$',name) # e.g., "Excited C(0)  3 e"
+                    if r:
+                        return(dict(label = r.group(2), v = r.group(3),))
+                    raise Exception('Could not decode pgo level name: '+repr(name))
+                transition_name = line[17]
+                upper_level_name,lower_level_name = transition_name.strip().split(' - ')
+                tdata = decode_pgo_level_name(lower_level_name.strip(),lower_manifold)
+                for key,val in tdata.items():
+                    data[key+'_l'].append(val)
+                tdata = decode_pgo_level_name(upper_level_name.strip(),upper_manifold)
+                for key,val in tdata.items():
+                    data[key+'_u'].append(val)
+        ## submit
+        for key in [t for t in data.keys()]:
+            if len(data[key])==0: data.pop(key) # remove empty keys
+            
+        self.extend(**data)
+
+
     def generate_from_levels(self,level_upper,level_lower):
         """Combeiong all combination of upper and lower levels into a line list."""
         for key in level_upper:

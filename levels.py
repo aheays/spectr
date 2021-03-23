@@ -94,21 +94,23 @@ prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt
 
 # @vectorise(cache=True,vargs=(1,2))
 def _f5(self,species,Tex):
-    if self.Zsource != 'HITRAN':
+    if self['Zsource'] != 'HITRAN':
         raise InferException(f'Zsource not "HITRAN".')
     from . import hitran
     return hitran.get_partition_function(species,Tex)
-
 def _f3(self,species,Tex,E,g):
     """Compute partition function from data in self."""
-    if self.Zsource != 'self':
+    if self['Zsource'] != 'self':
         raise InferException(f'Zsource not "self".')
     retval = np.full(species.shape,nan)
     for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
         kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
         retval[i] = np.sum(g[i]*np.exp(-E[i]/kT))
     return retval
-prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[(('species','Tex','E','g'),_f3), (('species','Tex'),_f5),])
+prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
+    # (('species','Tex','E','g'),_f3),
+    (('species','Tex'),_f5),
+])
 prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer=[(('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,)])
 prototypes['Nself'] = dict(description="Column density (cm2)",kind='f',fmt='<11.3e', infer=[])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
@@ -269,6 +271,7 @@ class Generic(Base):
     """A generic level."""
     _prototypes = _collect_prototypes(
         'species',
+        'label',
         'point_group',
         'E','Eref',
         'Γ','ΓD',

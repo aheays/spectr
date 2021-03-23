@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<Mixture Version="Pgopher 10.0.505 13 Feb 2017 17:57  64 bit (fpc 3.1.1 x86_64-Linux)">
+  <Species Name="Species" Jmax="100">
+    <LinearMolecule Name="LinearMolecule">
+      <LinearManifold Name="Ground" Initial="True" LimitSearch="True">
+        <Linear Name="X(0)">
+          <Parameter Name="B" Value="1"/>
+        </Linear>
+      </LinearManifold>
+      <LinearManifold Name="Excited" LimitSearch="True">
+        <Linear Name="B(0)" Lambda="Pi">
+          <Parameter Name="Origin" Value="50000"/>
+          <Parameter Name="B" Value="1.1"/>
+        </Linear>
+        <Linear Name="C(0)">
+          <Parameter Name="Origin" Value="49950"/>
+          <Parameter Name="B" Value="1.4"/>
+        </Linear>
+        <LinearPerturbation Op="Luncouple" Bra="B(0)" Ket="C(0)">
+          <Parameter Name="Value" Value="1"/>
+        </LinearPerturbation>
+      </LinearManifold>
+      <TransitionMoments Bra="Excited" Ket="Ground">
+        <SphericalTransitionMoment Bra="B(0)" Ket="X(0)"/>
+        <SphericalTransitionMoment Bra="C(0)" Ket="X(0)">
+          <Parameter Name="Strength" Value="0.5"/>
+        </SphericalTransitionMoment>
+      </TransitionMoments>
+    </LinearMolecule>
+  </Species>
+  <Parameter Name="Gaussian" Value="0.2"/>
+  <Parameter Name="Lorentzian" Value="0.2"/>
+  <Parameter Name="Foffset" Value="0.717948544189"/>
+  <Parameter Name="Fmin" Value="49923.5340944811"/>
+  <Parameter Name="Fmax" Value="51100.1336746803"/>
+  <FormSettings Name="ConstantsWindow" ActiveObject="SphericalTransitionMoment: Species - LinearMolecule - &lt;Excited|mu|Ground&gt; - &lt;C(0)|T(1)|X(0)&gt;"/>
+  <FormSettings Name="LevelWindow" XMax="70">
+    <Parameter Name="Ymax" Value="44450"/>
+    <Parameter Name="Ymin" Value="44130"/>
+    <Parameter Name="Reduction" Value="0.5"/>
+  </FormSettings>
+</Mixture>
