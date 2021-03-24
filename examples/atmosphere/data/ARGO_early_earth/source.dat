@@ -1,0 +1,38 @@
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c	input_parameter.dat
+c	February 2015 Paul B Rimmer & Wakelam Valentine
+c	input file of the parameters
+c	Please respect the format
+c	If you are running the uncertainties, the gas temperature and density 
+c	will not be read from this file
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+N			/ Do you want to run in the uncertainty mode ? Y or N
+Y			/ Do you want to run with Diffusion?
+YN1			/ Do you want to run with Photochemistry?
+YN2			/ Do you want to run with Condensation?
+YN3			/ Is there a Cold Trap?
+YN4			/ Is this a Venus-like Planet?
+YN5			/ Is there isoprene?
+SIDEWAYS			/ Going up or going down?
+F			/ Tidally Locked (T), Free Rotating (F), Snapshot (S)
+XXXXXXXXX		/ H tot Density (cm-3) = n(H)+2*n(H2)
+XXXXABOVE		/ H tot Density Above
+XXXXBELOW		/ H tot Density Below
+YYYYYYYYY		/ Temperature (K)
+YYYYABOVE		/ Temperature Above (K)
+YYYYBELOW		/ Temperature Below (K)
+EEEEEEEEE		/ Electron Temperature (K)
+ZZZZZZZZZ		/ Vertical velocity, or relevant time-scale in units of cm/s
+ZZZZABOVE		/ Vertical velocity above
+ZZZZBELOW		/ Vertical velocity below
+TTTTTTTTT		/ Height step in cm
+TTTTABOVE		/ Above height step in cm
+TTTTBELOW		/ Below height step in cm
+VVVVVVVVV		/ Cosmic-ray ionization rate (s-1)
+1.000D-10       	/ Dust to gas ratio (usuallu 1e-17 - 1e-16 cm-3)
+5.000D-05     		/ Dust grain radius (in cm)
+3.000D+00		/ particle mass density (in g cm-3)
+WWWWWWWWW		/ Average molecular weight
+SIGMAXXXX		/ Average molecular cross-section
+LOGGXXXXX		/ log g (with g in units of cm s-2)

@@ -1,14 +1,25 @@
-* To do
+* Install
 
-** viblevel.py 
- 
- - Add interactions 
+** Makefile
+
+ - Run "make". This requires the program make.
+
+ - A fortran compiler and some libraries are needed. The current
+   Makefile is configure for gfortran (gcc compiler) and uses LAPACK
+   and openMP libraries which must be installed somehow.
+
+ - python 3 (probably 3.8 or 3.9) required.
+
+ - Many python libraries are used, and are available from linux
+   distributions of pip.
+
+* To do
 
 ** lines.py / levels.py
 
  - change partition to Q -- incorporate HITRAN or similar partition
    functions into database
-
+   
 ** dataset.py
 
  - A simpler implementation of self.permit_reference_breaking?

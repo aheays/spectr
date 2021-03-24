@@ -265,7 +265,7 @@ class Base(Dataset):
         # self.automatic_format_input_function(multiline=True )
         # self.pop_format_input_function()
         # self.automatic_format_input_function(limit_to_args=('name',))
-        self.default_zkeys = self.defining_qn
+        # self.default_zkeys = self.defining_qn
 
 class Generic(Base):
     """A generic level."""

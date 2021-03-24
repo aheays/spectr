@@ -96,7 +96,12 @@ def auto_construct_method(
         return new_function
     return actual_decorator
 
-def optimise_method(format_single_line=None,format_multi_line=None):
+def optimise_method(
+        add_construct_function=True,
+        add_format_input_function=True,
+        format_single_line=None,
+        format_multi_line=None,
+):
     """A decorator factory for automatically adding parameters,
     construct_function, and input_format_function to a method in an
     Optimiser subclass.  The undecorated method must return any
@@ -128,17 +133,19 @@ def optimise_method(format_single_line=None,format_multi_line=None):
             ## signature kwargs but not provided in arguments
             if '_cache' in signature_keys:
                 kwargs.setdefault('_cache',{})
-            self.add_construct_function(lambda: function(self,**kwargs))
-            ## make a foramt_input_function
-            def f():
-                kwargs_to_format = {key:val for key,val in kwargs.items() if key != '_cache' and val is not None}
-                if (len(kwargs_to_format)<2 or format_single_line) and not format_multi_line:
-                    formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
-                    return f'{self.name}.{function.__name__}({formatted_kwargs},)'
-                else:
-                    formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
-                    return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
-            self.add_format_input_function(f)
+            if add_construct_function:
+                self.add_construct_function(lambda: function(self,**kwargs))
+            ## make a format_input_function
+            if add_format_input_function:
+                def f():
+                    kwargs_to_format = {key:val for key,val in kwargs.items() if key != '_cache' and val is not None}
+                    if (len(kwargs_to_format)<2 or format_single_line) and not format_multi_line:
+                        formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                        return f'{self.name}.{function.__name__}({formatted_kwargs},)'
+                    else:
+                        formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                        return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
+                self.add_format_input_function(f)
             ## returns all args as a dictionary -- but not _cache
             retval = copy(kwargs)
             if "_cache" in retval:
@@ -670,8 +677,8 @@ class Optimiser:
                     ## bounds=(-inf,inf),
                     ## x_scale=s,
                     ## diff_step=1e-21,
-                    # diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
-                    diff_step=s,
+                    diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
+                    # diff_step=s,
                     x_scale='jac',
                     ## x_scale=[t*100 for t in s],
                     ## loss='soft_l1',
@@ -704,9 +711,10 @@ class Optimiser:
                         rms_noise = np.sqrt(chisq/dof)
                     if np.any(covariance<0):
                         print('Covariance < 0')
-                        dp = np.full(p.shape,nan)
-                    else:
-                        dp = np.sqrt(covariance.diagonal())*rms_noise
+                        # dp = np.full(p.shape,nan)
+                    # else:
+                        # dp = np.sqrt(covariance.diagonal())*rms_noise
+                    dp = np.sqrt(np.abs(covariance.diagonal()))*rms_noise
                 except linalg.LinAlgError as err:
                     print(f'warning: failed to computed uncertainty: {err}')
                     dp = None

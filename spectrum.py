@@ -317,7 +317,7 @@ class Model(Optimiser):
         self._interpolate_factor = None
         optimise.Optimiser.__init__(self,name)
         self.pop_format_input_function()
-        # self.automatic_format_input_function()
+        self.automatic_format_input_function()
         if self.experiment is not None:
             self.add_suboptimiser(self.experiment)
         self.add_construct_function(self._initialise)
@@ -962,6 +962,9 @@ class Model(Optimiser):
     @optimise_method()
     def convolve_with_gaussian(self,width=1,fwhms_to_include=100):
         """Convolve with gaussian."""
+        ## get x-grid -- skip whole convolution if it does not exist
+        if len(self.x) == 0:
+            return
         x,y = self.x,self.y
         if width == 0:
             ## nothing to be done

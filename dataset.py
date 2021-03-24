@@ -78,7 +78,7 @@ class Dataset(optimise.Optimiser):
         optimise.Optimiser.__init__(self,name=name)
         self.pop_format_input_function()
         def format_input_function():
-            retval = f'{self.name} = {self.attributes["classname"]}({self.name},'
+            retval = f'{self.name} = {self.attributes["classname"]}({repr(self.name)},'
             if load_from_file is not None:
                 retval += f'load_from_file={repr(load_from_file)},'
             if len(kwargs)>0:
@@ -270,7 +270,7 @@ class Dataset(optimise.Optimiser):
 
     def set_step(self,key,step,index=None):
         if index is not None:
-            get_step(key)[index] = step
+            self.get_step(key)[index] = step
         if np.isscalar(step):
             self._data[key]['step'] = np.full(len(self),step,dtype=float)
         else:
@@ -384,7 +384,8 @@ class Dataset(optimise.Optimiser):
             index=None,         # only apply to these indices
             **prototype_kwargs,
     ):
-        """Set a value to be optimised."""
+        """Set a value and it will be updated every construction and possible
+        optimised."""
         ## if not a parameter then treat as a float -- could use set(
         ## instead and branch there, requiring a Parameter here
         if isinstance(parameter,Parameter):
@@ -402,6 +403,8 @@ class Dataset(optimise.Optimiser):
                     step=parameter.step,
                     index=index,
                     **prototype_kwargs)
+        elif key in self.attributes:
+            self.attributes[key] = parameter
         else:
             ## only reconstruct for the following reasons
             if (
@@ -435,6 +438,14 @@ class Dataset(optimise.Optimiser):
                 self.set_uncertainty(ykey,None)
             else:
                 self.set_uncertainty(ykey,nan,index=i)
+
+
+    @optimise_method()
+    def set_parameters(self,index=None,**keys_vals):
+        """Call set_parameters for eacy key_val pair."""
+        for key,val in keys_vals.items():
+            self.set_parameter(key,val,index=index)
+            self.pop_format_input_function()
 
     def keys(self):
         return list(self._data.keys())
@@ -922,7 +933,12 @@ class Dataset(optimise.Optimiser):
             include_description=False,
         )
 
-    def save(self,filename,keys=None,**format_kwargs,):
+    def save(
+            self,
+            filename,
+            keys=None,
+            **format_kwargs,
+    ):
         """Save some or all data to a file."""
         if keys is None:
             keys = self.keys()

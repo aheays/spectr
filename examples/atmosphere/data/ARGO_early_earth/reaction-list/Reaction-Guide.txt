@@ -1,0 +1,25 @@
+B = Neutral Termolecular and Thermal Decomposition Reactions
+BS = Neutral Termolecular and Thermal Decomposition Reactions (added to model Venus)
+BI = Neutral Termolecular and Thermal Decomposition Reactions (added to model Isoprene)
+G = Reverse Neutral Termolecular and Thermal Decomposition Reactions
+
+Q = Ion-Neutral Termolecular and Thermal Decomposition Reactions
+R = Reverse Ion-Neutral Termolecular and Thermal Decomposition Reactions
+
+T = Three-Body Recombination Reactions
+I = Thermal Ionization Reactions
+
+A = Neutral Bimolecular Reactions
+AS = Neutral Bimolecular Reactions (added to model Venus)
+AS = Neutral Bimolecular Reactions (added to model Isoprene)
+F = Reverse Neutral Bimolecular Reactions
+
+D = Ion-Neutral Bimolecular Reactions
+L = Reverse Ion-Neutral Bimolecular Reactions
+
+V = Photochemical Reactions
+EV = Condensation/Evaporation Reactions
+Z = Cosmic Ray Reactions (All of these are set equal zero for the Venus model)
+
+U = Dissociative Recombination Reactions
+RA = Radiative Association Reactions
