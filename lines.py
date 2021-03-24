@@ -398,20 +398,22 @@ class Generic(levels.Base):
             ax=None,
             **plot_kwargs # can be calculate_spectrum or plot kwargs
     ):
-        from matplotlib import pyplot as plt
         """Plot a nice cross section. If zkeys given then divide into multiple
         lines accordings."""
         if ax is None:
-            ax = plt.gca()
-        if zkeys==None:
-            plotting.plot_sticks(self[xkey],self[ykey],**plot_kwargs)
-        else:
-            for iz,(qn,t) in enumerate(self.unique_dicts_matches(*zkeys)):
-                t_plot_kwargs = copy(plot_kwargs)
-                t_plot_kwargs.setdefault('color',my.newcolor(iz))
-                t_plot_kwargs.setdefault('label',my.dict_to_kwargs(qn))
-                t.plot_stick_spectrum(ykey=ykey,zkeys=None,ax=ax,**t_plot_kwargs)
-        return(ax)
+            ax = plotting.plt.gca()
+        if zkeys is None:
+            zkeys = self.default_zkeys
+        for iz,(qn,t) in enumerate(self.unique_dicts_matches(*tools.ensure_iterable(zkeys))):
+            t_plot_kwargs = plot_kwargs | {
+                'color':plotting.newcolor(iz),
+                'label':repr(qn),
+            }
+            plotting.plot_sticks(t[xkey],t[ykey],**t_plot_kwargs)
+        plotting.legend(ax=ax,fontsize='x-small')
+        ax.set_xlabel(xkey)
+        ax.set_ylabel(ykey)
+        return ax
 
     def calculate_spectrum(
             self,
@@ -742,10 +744,18 @@ class Diatomic(Generic):
         'Teq','Ttr','Z',
         'Γ','ΓD',
         'Teq', 'Tex', 'Ttr', 'L',
-        # 'γ0air', 'δ0air', 'γself', 'nair', 'pself', 'pair', 'Nself',
+        # 'γ0air', 'δ0air', 'γself', 'nair', 'pself', 'pair',
+        'Nself',
         'branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ',
         levels_class = _levels_class
     )
+
+    default_zkeys = list(defining_qn)
+    default_zkeys.remove('J_l')
+    default_zkeys.remove('J_u')
+    default_zkeys.append('ΔJ')
+    label_key = 'J_u'
+    label_zkeys = default_zkeys
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""

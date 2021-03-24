@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<Mixture PrintLevel="plDetail" Version="Pgopher 10.0.505 13 Feb 2017 17:57  64 bit (fpc 3.1.1 x86_64-Linux)" nDF="50000" IntensityUnits="HzperMolecule">
+  <Species Name="Species" Jmax="150">
+    <LinearMolecule Name="N2" Symmetric="True" SymWt="2">
+      <LinearManifold Name="g" Initial="True" LimitSearch="True" AutoQConverge="False">
+        <Linear Name="B3Pigv=1" S="2" Lambda="Pi">
+          <Parameter Name="Origin" Value="11255.2022481198" Float="true" Increment="9.80996952970889E-7" StdDev="0.000019668233343034"/>
+          <Parameter Name="B" Value="1.61055197123672" Float="true" Increment="2.64450387603375E-9" StdDev="1.27169892170865E-7"/>
+          <Parameter Name="A" Value="42.1931892760726" Float="true" Increment="7.3992157657888E-7" StdDev="0.000014867126997369"/>
+          <Parameter Name="LambdaSS" Value="-0.203999083562305" Float="true" Increment="3.43882736869903E-7" StdDev="0.0000177635531579377"/>
+          <Parameter Name="o" Value="1.1501692165472" Float="true" Increment="9.81424053365787E-8" StdDev="0.0000129185435795884"/>
+          <Parameter Name="gamma" Value="-0.00367735438186836" Float="true" Increment="6.73068273356893E-7" StdDev="8.85342102780952E-7"/>
+          <Parameter Name="p" Value="0.00431673339643963" Float="true" Increment="2.13321745242382E-8" StdDev="9.91253202398828E-7"/>
+          <Parameter Name="q" Value="0.0000834856440323546" Increment="1.18646165520097E-9"/>
+          <Parameter Name="D" Value="5.89799091560545E-6" Increment="5.38529696421864E-12"/>
+          <Parameter Name="H" Value="-3.94390841603638E-13" Increment="3.10528559875015E-15"/>
+          <Parameter Name="AD" Value="-0.0004216350929" Increment="5.55934595152049E-8"/>
+          <Parameter Name="LambdaD" Value="-6.3485674818232E-7" Increment="1.27365684823994E-9"/>
+          <Parameter Name="oD" Increment="5.04971051824957E-8"/>
+          <Parameter Name="pD" Increment="2.80565143567055E-9"/>
+          <Parameter Name="qD" Increment="1.56914866343625E-12"/>
+          <Parameter Name="gammaD" Increment="2.08814790389477E-11"/>
+        </Linear>
+      </LinearManifold>
+      <LinearManifold Name="u" Initial="True" LimitSearch="True" AutoQConverge="False">
+        <Linear Name="W3Deltauv=3" S="2" Lambda="Delta" gerade="False" Colour="Red">
+          <Parameter Name="Origin" Value="13989.7342873796" Float="true" StdDev="0.000235246106173548"/>
+          <Parameter Name="B" Value="1.41063812606428" Float="true" StdDev="9.10526169187661E-7"/>
+          <Parameter Name="A" Value="5.66360247050507"/>
+          <Parameter Name="LambdaSS" Value="0.678329570423529"/>
+          <Parameter Name="gamma" Value="-0.00288008320520051"/>
+          <Parameter Name="D" Value="5.65922580274037E-6"/>
+          <Parameter Name="H" Value="-6.5403673901198E-13"/>
+          <Parameter Name="AD" Value="3.92925945164995E-6"/>
+          <Parameter Name="LambdaD" Value="1.51497320908468E-6"/>
+        </Linear>
+      </LinearManifold>
+      <TransitionMoments Bra="g" Ket="u">
+        <SphericalTransitionMoment Component="2" Bra="B3Pigv=1" Ket="W3Deltauv=3"/>
+      </TransitionMoments>
+    </LinearMolecule>
+  </Species>
+  <Parameter Name="Gaussian" Value="0.04"/>
+  <Parameter Name="Temperature" Value="487" Increment="0.032276616557246"/>
+  <Parameter Name="Fmin" Value="924.780352560414"/>
+  <Parameter Name="Fmax" Value="2885.62803716946"/>
+  <Parameter Name="Tvib" Value="4850"/>
+  <FormSettings Name="ConstantsWindow" ActiveObject="Species: Species"/>
+  <FormSettings Name="TransitionWindow" UpperObject="g B3Pigv=0" LowerObject="u A3Sigmau+v=4"/>
+  <FormSettings Name="LineWindow" AcceptEdit="0.005" AdvancedItem="True"/>
+  <FormSettings Name="LevelWindow" CalcBoth="False" CalcLine="True" XMax="106" JoinObs="False" ObsLower="True" ObsUpper="True" LabelsStyle="Start">
+    <Parameter Name="Ymax" Value="22300"/>
+    <Parameter Name="Ymin" Value="12500"/>
+    <Parameter Name="Reduction" Value="1.4"/>
+  </FormSettings>
+  <FormSettings Name="LogWindow" ObsFileName="../../../../in/combined.obs"/>
+  <FormSettings Name="OverlayWindow" ActiveObject="IntensityCorrection: 25W.ovr - tab3_025 unflagged - FittedIntensityCorrection"/>
+</Mixture>

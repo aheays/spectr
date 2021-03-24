@@ -329,6 +329,7 @@ class Diatomic(Base):
         'α',
     )
     defining_qn = ('species','label','v','Σ','ef','J')
+    default_zkeys = ('species','label','v','Σ','ef')
 
     def load_from_duo(self,filename):
         """Load an output level list computed by DUO (yurchenko2016)."""

@@ -2222,10 +2222,11 @@ def annotate_spectrum(
     plotkwargs.setdefault('color',color)
     plotkwargs.setdefault('linewidth',1.)
     plotkwargs.setdefault('clip_on',clip)
-    plotkwargs.setdefault('label','_nolegend_')
+    plotkwargs.setdefault('in_layout',False)
     if textkwargs==None: textkwargs={}
     textkwargs.setdefault('annotation_clip',clip)
     textkwargs.setdefault('color',color)
+    textkwargs.setdefault('in_layout',False)
     if ax==None: ax = plt.gca()
     (xlim,ylim,) = (ax.get_xlim(),ax.get_ylim(),) # save limits so not changed by this function
     if namepad==None:

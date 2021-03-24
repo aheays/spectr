@@ -101,6 +101,7 @@ def optimise_method(
         add_format_input_function=True,
         format_single_line=None,
         format_multi_line=None,
+        execute_now= True,
 ):
     """A decorator factory for automatically adding parameters,
     construct_function, and input_format_function to a method in an
@@ -135,6 +136,9 @@ def optimise_method(
                 kwargs.setdefault('_cache',{})
             if add_construct_function:
                 self.add_construct_function(lambda: function(self,**kwargs))
+            ## execute the function now
+            if execute_now:
+                function(self,**kwargs)
             ## make a format_input_function
             if add_format_input_function:
                 def f():
@@ -327,7 +331,7 @@ class Optimiser:
         to the list of residuals."""
         for f in functions:
             self._construct_functions[timestamp()] = f
-        f()                  # run function now
+        # f()                  # run function now
         # self._last_construct_time = timestamp()
         self._last_add_construct_function_time = timestamp()
 
@@ -634,7 +638,7 @@ class Optimiser:
                         suboptimiser.residual_scale_factor /= tools.rms(suboptimiser.residual)
         ## get initial values and reset uncertainties
         p,s,dp = self._get_parameters()
-        self.monitor_frequency = monitor_frequency
+        self.moniqtor_frequency = monitor_frequency
         assert monitor_frequency in ('rms decrease','every iteration','never'),f"Valid monitor_frequency: {repr(('rms decrease','every iteration','never'))}"
         self._rms_minimum,self._previous_time = inf,timestamp()
         self._number_of_optimisation_function_calls = 0
@@ -677,7 +681,7 @@ class Optimiser:
                     ## bounds=(-inf,inf),
                     ## x_scale=s,
                     ## diff_step=1e-21,
-                    diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
+                    diff_step=[(si/pi if pi!=0 else si) for si,pi in zip(s,p)],
                     # diff_step=s,
                     x_scale='jac',
                     ## x_scale=[t*100 for t in s],

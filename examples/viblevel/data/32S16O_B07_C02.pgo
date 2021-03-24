@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<Mixture Version="Pgopher 10.0.505 13 Feb 2017 17:57  64 bit (fpc 3.1.1 x86_64-Linux)" ShowParts="True" ShowSum="False">
+  <Species Name="Species" Jmax="100">
+    <LinearMolecule Name="LinearMolecule">
+      <LinearManifold Name="Ground" Initial="True" LimitSearch="True">
+        <Linear Name="X(0)" S="2" Lambda="Sigma-">
+          <Parameter Name="B" Value="0.717948544189"/>
+        </Linear>
+      </LinearManifold>
+      <LinearManifold Name="Excited" LimitSearch="True">
+        <Linear Name="B(7)" S="2" Lambda="Sigma-">
+          <Parameter Name="Origin" Value="45522"/>
+          <Parameter Name="B" Value="0.433"/>
+          <Parameter Name="LambdaSS" Value="3.7"/>
+          <Parameter Name="LambdaD" Float="true"/>
+        </Linear>
+        <Linear Name="C(2)" S="2" Lambda="Pi">
+          <Parameter Name="Origin" Value="45533"/>
+          <Parameter Name="B" Value="0.589"/>
+          <Parameter Name="A" Value="-180"/>
+          <Parameter Name="LambdaSS" Value="20"/>
+        </Linear>
+        <LinearPerturbation Bra="C(2)" Ket="B(7)">
+          <Parameter Name="Value" Value="40"/>
+        </LinearPerturbation>
+        <LinearPerturbation Op="Luncouple" Bra="C(2)" Ket="B(7)">
+          <Parameter Name="Value" Value="0.3"/>
+        </LinearPerturbation>
+      </LinearManifold>
+      <TransitionMoments Bra="Excited" Ket="Ground">
+        <SphericalTransitionMoment Bra="B(7)" Ket="X(0)">
+          <Parameter Name="Strength" Value="0.1"/>
+        </SphericalTransitionMoment>
+        <SphericalTransitionMoment Bra="C(2)" Ket="X(0)">
+          <Parameter Name="Strength" Value="0.03"/>
+        </SphericalTransitionMoment>
+      </TransitionMoments>
+    </LinearMolecule>
+  </Species>
+  <Parameter Name="Gaussian" Value="0.2"/>
+  <Parameter Name="Lorentzian" Value="0.2"/>
+  <Parameter Name="Fmin" Value="44695.3387015651"/>
+  <Parameter Name="Fmax" Value="45812.9414704743"/>
+  <FormSettings Name="ConstantsWindow" ActiveObject="SphericalTransitionMoment: Species - LinearMolecule - &lt;Excited|mu|Ground&gt; - &lt;C(2)|T(1)|X(0)&gt;"/>
+  <FormSettings Name="LevelWindow" XMax="70">
+    <Parameter Name="Ymax" Value="44450"/>
+    <Parameter Name="Ymin" Value="44130"/>
+    <Parameter Name="Reduction" Value="0.5"/>
+  </FormSettings>
+</Mixture>

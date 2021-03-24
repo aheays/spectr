@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<Mixture Version="Pgopher 10.0.505 13 Feb 2017 17:57  64 bit (fpc 3.1.1 x86_64-Linux)">
+  <Species Name="Species" Jmax="100">
+    <LinearMolecule Name="LinearMolecule">
+      <LinearManifold Name="Ground" Initial="True" LimitSearch="True">
+        <Linear Name="v=0" S="2" Lambda="Sigma-">
+          <Parameter Name="Origin" Value="573.79105"/>
+          <Parameter Name="B" Value="0.71794874"/>
+          <Parameter Name="LambdaSS" Value="5.2784506"/>
+          <Parameter Name="gamma" Value="-0.0056139085"/>
+          <Parameter Name="D" Value="1.1313242E-6"/>
+          <Parameter Name="H" Value="-2.1611497E-13"/>
+          <Parameter Name="LambdaD" Value="0.000010213915"/>
+          <Parameter Name="LambdaH" Value="1.6510442E-11"/>
+          <Parameter Name="gammaD" Value="1.7618215E-8"/>
+        </Linear>
+      </LinearManifold>
+      <LinearManifold Name="Excited" LimitSearch="True">
+        <Linear Name="B(v=1)" S="2" Lambda="Sigma-">
+          <Parameter Name="Origin" Value="41991.97"/>
+          <Parameter Name="B" Value="0.49426"/>
+          <Parameter Name="LambdaSS" Value="3.2"/>
+          <Parameter Name="gamma" Value="-0.0137"/>
+          <Parameter Name="D" Value="1.61E-6"/>
+        </Linear>
+        <Linear Name="A(10)" S="2" Lambda="Pi">
+          <Parameter Name="Origin" Value="41990"/>
+          <Parameter Name="B" Value="0.4618"/>
+          <Parameter Name="A" Value="134.86"/>
+          <Parameter Name="LambdaSS" Value="1.67"/>
+          <Parameter Name="o" Value="0.45"/>
+          <Parameter Name="D" Value="4E-7"/>
+        </Linear>
+        <Linear Name="App(14)" S="2">
+          <Parameter Name="Origin" Value="42007.35"/>
+          <Parameter Name="B" Value="0.256"/>
+          <Parameter Name="LambdaSS" Value="-2.66"/>
+          <Parameter Name="gamma" Value="0.81"/>
+        </Linear>
+        <LinearPerturbation Op="Suncouple" Bra="B(v=1)" Ket="App(14)"/>
+        <LinearPerturbation Op="Luncouple" Bra="B(v=1)" Ket="A(10)"/>
+        <LinearPerturbation Bra="B(v=1)" Ket="App(14)">
+          <Parameter Name="Value" Value="-0.161"/>
+        </LinearPerturbation>
+      </LinearManifold>
+      <TransitionMoments Bra="Excited" Ket="Ground">
+        <SphericalTransitionMoment Bra="B(v=1)" Ket="v=0"/>
+      </TransitionMoments>
+    </LinearMolecule>
+  </Species>
+  <Parameter Name="Fmin" Value="40661.4287303815"/>
+  <Parameter Name="Fmax" Value="41449.8657137618"/>
+  <FormSettings Name="ConstantsWindow" ActiveObject="LinearPerturbation: Species - LinearMolecule - Excited - &lt;B(v=1)|J+S-|App(14)&gt;"/>
+</Mixture>

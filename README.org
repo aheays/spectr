@@ -2,7 +2,7 @@
 
 ** Makefile
 
- - Run "make". This requires the program make.
+ - Run "make". This requires the program m
 
  - A fortran compiler and some libraries are needed. The current
    Makefile is configure for gfortran (gcc compiler) and uses LAPACK

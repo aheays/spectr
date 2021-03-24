@@ -35,17 +35,11 @@ class Experiment(Optimiser):
         optimise.Optimiser.__init__(self,name)
         self.pop_format_input_function()
         self.automatic_format_input_function()
-        # def f():
-            # retval = f'{self.name} = spectrum.Experiment({repr(self.name)}'
-            # if filename is not None:
-                # retval += f',filename={repr(filename)}'
-            # return retval+')'
-        # self.add_format_input_function(f)
         self.x = None
         self.y = None
         self.experimental_parameters = {} # a dictionary containing any additional known experimental parameters
         if filename is not None:
-            self.set_spectrum_from_file(filename,xbeg,xend)
+            self.set_spectrum_from_file(filename,xbeg=xbeg,xend=xend)
         if x is not None and y is not None:
             self.set_spectrum(x,y,xbeg,xend)
         self.add_save_to_directory_function(
@@ -138,54 +132,15 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
         self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
     
-    def set_spectrum_from_SOLEIL_file(
-            self,
-            filename,
-            xbeg=None,
-            xend=None,
-            xscale=None,
-    ):
-        """ Load SOLEIL spectrum from file with given path."""
-        x,y,header = load_SOLEIL_spectrum_from_file(filename)
+    @optimise_method()
+    def set_spectrum_from_soleil_file(self,filename,xbeg=None,xend=None,_cache=None):
+        """ Load soleil spectrum from file with given path."""
+        x,y,header = load_soleil_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
         self.experimental_parameters.update(header)
-        p = self.add_parameter_set('load_SOLEIL_spectrum_from_file',xscale=xscale,step_default={'xscale':1e-8},)
-        def f():
-            retval = f'{self.name}.load_SOLEIL_spectrum_from_file({repr(filename)}'
-            if xbeg is not None:
-                retval += f',xbeg={copy(xbeg):g}'
-            if xend is not None:
-                retval += f',xend={copy(xend):g}'
-            if xscale is not None:
-                retval += f',{p.format_input()}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(f)
-        ## Limit xbeg/xend to fall within limits of actual data. If
-        ## there is no data then self.x and self.y are None
-        if xbeg is None:
-            xbeg = x.min()
-        if xend is None:
-            xend = x.max()
-        if xbeg>x.max() or xend<x.min():
-            self.x = self.y = None
-            warnings.warn(f"SOLEIL spectrum has no data in x-range: {repr(filename)}")
-            return
-        xbeg,xend = max(xbeg,x.min()),min(xend,x.max())
-        self.set_spectrum(x,y,xbeg=xbeg,xend=xend)
-        if xscale is not None:
-            i = (x>xbeg-10.)&(x<xend+10.)
-            x,y = x[i],y[i]
-            yscaled = [None]
-            def f():
-                if (xscale is not None
-                    and (yscaled[0] is None
-                         or p.timestamp>self.timestamp)):
-                    yscaled[0] = tools.spline(x*p['xscale'],y,x)
-                    self.set_spectrum(x,yscaled[0],xbeg=xbeg,xend=xend)
-            self.add_construct_function(f)
+        self.set_spectrum(x,y,xbeg,xend)
+        self.pop_format_input_function() 
 
-    @optimise_method()
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
         t0 = self.x[0]
@@ -320,11 +275,13 @@ class Model(Optimiser):
         self.automatic_format_input_function()
         if self.experiment is not None:
             self.add_suboptimiser(self.experiment)
-        self.add_construct_function(self._initialise)
+        self._initialise()
         self.add_post_construct_function(self._get_residual,self._remove_interpolation)
         self.add_save_to_directory_function(self.output_data_to_directory)
         self._figure = None
 
+
+    @optimise_method(add_format_input_function=False)
     def _initialise(self):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
@@ -1316,117 +1273,104 @@ class Model(Optimiser):
         yconv /= yconv.sum()                    # normalised
         self.y[i] = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
-    def convolve_with_SOLEIL_instrument_function(
+    @optimise_method()
+    def convolve_with_soleil_instrument_function(
             self,
             sinc_fwhm=None,
             gaussian_fwhm=None,
-            lorentzian_fwhm=(0,None,1e-3),
-            signum_magnitude=(0,None,1e-3),
+            lorentzian_fwhm=None,
+            signum_magnitude=None,
             sinc_fwhms_to_include=200,
             gaussian_fwhms_to_include=10,
             lorentzian_fwhms_to_include=10,
+            _cache=None,
     ):
-        """Convolve with SOLEIL instrument function."""
+        """Convolve with soleil instrument function."""
+        ## first run only
+        # if len(_cache) == 0:
         ## get automatically set values if not given explicitly
         if sinc_fwhm is None:
-            sinc_fwhm = (self.experiment.experimental_parameters['sinc_FWHM'],None,1e-3)
+            sinc_fwhm = self.experiment.experimental_parameters['sinc_FWHM']
+        if abs(self.experiment.experimental_parameters['sinc_FWHM']-sinc_fwhm)>(1e-5*sinc_fwhm):
+            warnings.warn('sinc FWHM does not match soleil data file header')
         if gaussian_fwhm is None:
-            gaussian_fwhm = (0.1,None,1e-3)
-        p = self.add_parameter_set(
-            'convolve_with_instrument_function',
-            sinc_fwhm=sinc_fwhm,
-            gaussian_fwhm=gaussian_fwhm,
-            lorentzian_fwhm=lorentzian_fwhm,
-            signum_magnitude=signum_magnitude,
-            step_default={'sinc_fwhm':1e-3, 'gaussian_fwhm':1e-3,
-                          'lorentzian_fwhm':1e-3, 'signum_magnitude':1e-4,},)
-        if abs(self.experiment.experimental_parameters['sinc_FWHM']-p['sinc_fwhm'])>(1e-5*p['sinc_fwhm']):
-            warnings.warn('sinc FWHM does not match SOLEIL data file header')
-        ## rewrite input line
-        def f():
-            retval = f'{self.name}.convolve_with_SOLEIL_instrument_function({p.format_input()}'
-            if p['sinc_fwhm']      !=0: retval += f',sinc_fwhms_to_include={sinc_fwhms_to_include}'
-            if p['gaussian_fwhm']  !=0: retval += f',gaussian_fwhms_to_include={gaussian_fwhms_to_include}'
-            if p['lorentzian_fwhm']!=0: retval += f',lorentzian_fwhms_to_include={lorentzian_fwhms_to_include}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(f)
-        ## generate instrument function and broaden
-        cache = dict(y=None,width=None,) # for persistence between optimisation function calls
-        def f():
-            dx = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1) # ASSUMES EVEN SPACED GRID
-            assert (abs((self.xexp[-1]-self.xexp[-2])-(self.xexp[1]-self.xexp[0]))
-                    <((self.xexp[1]-self.xexp[0])/1e5)),'Experimental x-domain must be regular.' # poor test of grid regularity
-            ## get cached instrument function or recompute
-            # if cache['y'] is None or p.has_changed():
-            if cache['y'] is None or p.timestamp>self.timestamp:
-                ## get total extent of instrument function
-                width = (abs(p['sinc_fwhm'])*sinc_fwhms_to_include
-                         + abs(p['gaussian_fwhm'])*gaussian_fwhms_to_include
-                         + abs(p['lorentzian_fwhm'])*lorentzian_fwhms_to_include)
-                cache['width'] = width
-                ## if necessary compute instrument function on a reduced
-                ## subsampling to ensure accurate convolutions -- this wont
-                ## help with an accurate convolution against the actual
-                ## data!
-                required_points_per_fwhm = 10
-                subsample_factor = int(np.ceil(max(
-                    1,
-                    (required_points_per_fwhm*dx/p['sinc_fwhm'] if p['sinc_fwhm']!=0. else 1),
-                    (required_points_per_fwhm*dx/p['gaussian_fwhm'] if p['gaussian_fwhm']!=0. else 1),
-                    )))
-                ## create the instrument function on a regular grid -- odd length with 0 in the middle
-                x = np.arange(0,width+dx/subsample_factor*0.5,dx/subsample_factor,dtype=float)
-                x = np.concatenate((-x[-1:0:-1],x))
-                imidpoint = int((len(x)-1)/2)
-                ## initial function is a delta function
-                y = np.full(x.shape,0.)
-                y[imidpoint] = 1.
-                ## convolve with sinc function
-                if p['sinc_fwhm']!=0:
-                    y = signal.convolve(y,lineshapes.sinc(x,Γ=abs(p['sinc_fwhm'])),'same')
-                ## convolve with gaussian function
-                if p['gaussian_fwhm']!=0:
-                    y = signal.convolve(y,lineshapes.gaussian(x,Γ=abs(p['gaussian_fwhm'])),'same')
-                ## convolve with lorentzian function
-                if p['lorentzian_fwhm']!=0:
-                    y = signal.convolve(y,lineshapes.lorentzian(x,Γ=abs(p['lorentzian_fwhm'])),'same')
-                ## if necessary account for phase correction by convolving with a signum
-                if p['signum_magnitude']!=0:
-                    ty = 1/x*p['signum_magnitude'] # hyperbolically decaying signum on either side
-                    ty[imidpoint] = 1 # the central part  -- a delta function
-                    y = signal.convolve(y,ty,'same')
-                ## convert back to data grid if it has been subsampled
-                if subsample_factor!=1:
-                    a = y[imidpoint-subsample_factor:0:-subsample_factor][::-1]
-                    b = y[imidpoint::subsample_factor]
-                    b = b[:len(a)+1] 
-                    y = np.concatenate((a,b))
-                ## normalise 
-                y = y/y.sum()
-                cache['y'] = y
-            ## convolve model with instrument function
-            padding = np.arange(dx,cache['width']+dx, dx)
-            xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
-            ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-            self.y = signal.oaconvolve(ypad,cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
-        self.add_construct_function(f)
+            gaussian_fwhm = 0.1
 
-    def add_SOLEIL_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
-        """Adds two copies of SOLEIL spectrum onto the model (after
+        ## compute instrument function
+        dx = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1) # ASSUMES EVEN SPACED GRID
+        _cache['dx'] = dx
+
+        ## get total extent of instrument function
+        width = 0.0
+        if sinc_fwhm is not None:
+            width += abs(sinc_fwhm)*sinc_fwhms_to_include
+        if gaussian_fwhm is not None:
+            width += abs(gaussian_fwhm)*gaussian_fwhms_to_include
+        if lorentzian_fwhm is not None:
+            width += abs(lorentzian_fwhm)*lorentzian_fwhms_to_include
+        _cache['width'] = width
+        ## if necessary compute instrument function on a reduced
+        ## subsampling to ensure accurate convolutions -- this wont
+        ## help with an accurate convolution against the actual
+        ## data!
+        required_points_per_fwhm = 10
+        subsample_factor = int(np.ceil(max(
+            1,
+            (required_points_per_fwhm*dx/sinc_fwhm if sinc_fwhm is not None else 1),
+            (required_points_per_fwhm*dx/gaussian_fwhm if gaussian_fwhm is not None else 1),
+            )))
+        ## create the instrument function on a regular grid -- odd length with 0 in the middle
+        x = np.arange(0,width+dx/subsample_factor*0.5,dx/subsample_factor,dtype=float)
+        x = np.concatenate((-x[-1:0:-1],x))
+        imidpoint = int((len(x)-1)/2)
+        ## initial function is a delta function
+        y = np.full(x.shape,0.)
+        y[imidpoint] = 1.
+        ## convolve with sinc function
+        if sinc_fwhm is not None:
+            y = signal.oaconvolve(y,lineshapes.sinc(x,Γ=abs(sinc_fwhm)),'same')
+        ## convolve with gaussian function
+        if gaussian_fwhm is not None:
+            y = signal.oaconvolve(y,lineshapes.gaussian(x,Γ=abs(gaussian_fwhm)),'same')
+        ## convolve with lorentzian function
+        if lorentzian_fwhm is not None:
+            y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
+        ## if necessary account for phase correction by convolving with a signum
+        if signum_magnitude is not None:
+            ty = 1/x*signum_magnitude # hyperbolically decaying signum on either side
+            ty[imidpoint] = 1 # the central part  -- a delta function
+            y = signal.oaconvolve(y,ty,'same')
+        ## convert back to data grid if it has been subsampled
+        if subsample_factor!=1:
+            a = y[imidpoint-subsample_factor:0:-subsample_factor][::-1]
+            b = y[imidpoint::subsample_factor]
+            b = b[:len(a)+1] 
+            y = np.concatenate((a,b))
+        ## normalise 
+        y = y/y.sum()
+        _cache['y'] = y
+
+        ## convolve model with instrument function
+        padding = np.arange(dx,_cache['width']+dx, dx)
+        xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
+        ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
+        self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+
+    def add_soleil_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
+        """Adds two copies of soleil spectrum onto the model (after
         convolution with instrument function perhaps). One copy shifted up by
         shift(cm-1) and one shifted down. Shifted up copy is scaled by
         magnitude, copy shifted down is scaled by -magnitude. This is to deal
         with periodic errors aliasing the spectrum due to periodic
         vibrations."""
         filename = self.experiment.experimental_parameters['filename']
-        x,y,header = load_SOLEIL_spectrum_from_file(filename)
+        x,y,header = load_soleil_spectrum_from_file(filename)
         yshifted ={'left':None,'right':None}
-        p = self.add_parameter_set('add_SOLEIL_double_shifted_delta_function',
+        p = self.add_parameter_set('add_soleil_double_shifted_delta_function',
                                    magnitude=magnitude,shift=shift,
                                    step_default={'magnitude':1e-3,'shift':1e-3},)
         previous_shift = [p['shift']]
-        self.add_format_input_function(lambda: f'{self.name}.add_SOLEIL_double_shifted_delta_function({p.format_input()})')
+        self.add_format_input_function(lambda: f'{self.name}.add_soleil_double_shifted_delta_function({p.format_input()})')
         def f():
             ## +shift from left -- use cached value of splined shifted
             ## spectrum if shift has not changed
@@ -1511,27 +1455,21 @@ class Model(Optimiser):
             # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
             ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            tkwargs = copy(plot_kwargs)
-            tkwargs.setdefault('color',plotting.newcolor(0))
-            tkwargs.setdefault('label','Experimental spectrum')
+            tkwargs = dict(color=plotting.newcolor(0), label='Experimental spectrum', lw=1, **plot_kwargs)
             ax.plot(self.xexp,self.yexp,**tkwargs)
         if plot_model and self.y is not None:
             if invert_model:
                 self.y *= -1
             ymin,ymax = min(ymin,self.y.min(),-0.1*self.y.max()),max(ymax,self.y.max()*1.1)
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
-            tkwargs = copy(plot_kwargs)
-            tkwargs.setdefault('color',plotting.newcolor(1))
-            tkwargs.setdefault('label','Model spectrum')
+            tkwargs = dict(color=plotting.newcolor(1), label='Model spectrum', lw=1, **plot_kwargs)
             ax.plot(self.x,self.y,**tkwargs)
             if invert_model:
                 self.y *= -1
         if plot_residual and self.residual is not None and len(self.residual)>0:
             ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            tkwargs = copy(plot_kwargs)
-            tkwargs.setdefault('color',plotting.newcolor(2))
-            tkwargs.setdefault('label','Exp-Mod residual error')
+            tkwargs = dict(color=plotting.newcolor(2), label='Exp-Mod residual error', lw=1, **plot_kwargs)
             ax.plot(self.xexp,self.residual+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
@@ -1729,6 +1667,125 @@ class Model(Optimiser):
         # if self.residual_weighting is not None:
             # self.residual *= self.residual_weighting
         # return self.residual
+
+def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
+    """ Load soleil spectrum from file with given path."""
+    ## resolve soleil filename
+    if os.path.exists(tools.expand_path(filename)):
+        ## filename is an actual path to a file
+        filename = tools.expand_path(filename)
+    elif os.path.exists(f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.hdf5'):
+        ## filename is a scan base name in default data directory
+        filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.hdf5'
+    elif os.path.exists(f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'):
+        ## filename is a scan base name in default data directory
+        filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'
+    else:
+        ## else look for unique prefix in scan database
+        t = tools.sheet_to_dict('~/exp/SOLEIL/summary_of_scans.rs',comment='#')
+        i = tools.find_regexp(r'^'+re.escape(filename)+'.*',t['filename'])
+        if len(i)==1:
+            filename = t['filename'][int(i)]
+            filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'
+        else:
+            raise Exception(f"Could not find SOLEIL spectrum: {repr(filename)}")
+    extension = os.path.splitext(filename)[1]
+    ## get header data if possible, not possible if an hdf5 file is used.
+    header = dict(filename=filename,header=[])
+    if extension in ('.TXT','.wavenumbers'): 
+        with open(filename,'r',encoding='latin-1') as fid:
+            header['header'] = []
+            while True:
+                line = fid.readline()[:-1]
+                if re.match(r'^ *[0-9.eE+-]+[, ]+[0-9.eE+-]+ *$',line): break # end of header
+                header['header'].append(line) # save all lines to 'header'
+                ## post-processing zero-adding leads to an
+                ## interpolation of data by this factor
+                r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
+                if r:
+                    header['interpolation_factor'] = float(r.group(1))
+                ## the resolution before any interpolation
+                r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
+                if r: header['ds'] = float(r.group(1))
+                ## NMAX parameter indicates that the spectrometer is
+                ## being run at maximum resolution. This is not an
+                ## even power of two. Then the spectrum is zero padded
+                ## to have 2**21 points. This means that there is an
+                ## additional interpolation factor of 2**21/NMAX. This
+                ## will likely be non-integer.
+                r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
+                if r:
+                    header['interpolation_factor'] *= 2**21/float(r.group(1))
+                ## extract pressure from header
+                r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
+                if r:
+                    header['date_time'] = r.group(1)
+                    header['pressure_pirani'] = float(r.group(2))
+                    header['pressure_baratron'] = float(r.group(3))
+            header['header'] = '\n'.join(header['header'])
+            ## compute instrumental resolution, FWHM
+    elif extension in ('.hdf5','.h5'): # expect header stored in 'README'
+        data = tools.hdf5_to_dict(filename)
+        header['header'] = data['README']
+        for line in header['header'].split('\n'):
+            ## post-processing zero-adding leads to an
+            ## interpolation of data by this factor
+            r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
+            if r:
+                header['interpolation_factor'] = float(r.group(1))
+            ## the resolution before any interpolation
+            r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
+            if r: header['ds'] = float(r.group(1))
+            ## NMAX parameter -- see above
+            r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
+            if r:
+                header['interpolation_factor'] *= 2**21/float(r.group(1))
+            ## extract pressure from header
+            r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
+            if r:
+                header['date_time'] = r.group(1)
+                header['pressure_pirani'] = float(r.group(2))
+                header['pressure_baratron'] = float(r.group(3))
+    else:
+        raise Exception(f"bad extension: {repr(extension)}")
+    ## compute instrumental resolution, FWHM
+    header['sinc_FWHM'] = 1.2*header['interpolation_factor']*header['ds'] 
+    ## get spectrum
+    if extension=='.TXT':
+        x,y = [],[]
+        data_started = False
+        for line in tools.file_to_lines(filename,encoding='latin-1'):
+            r = re.match(r'^([0-9]+),([0-9.eE+-]+)$',line) # data point line
+            if r:
+                data_started = True # header is passed
+                x.append(float(r.group(1))),y.append(float(r.group(2))) # data point
+            else:
+                if data_started: break            # end of data
+                else: continue                    # skip header line
+        x,y = np.array(x)*header['ds'],np.array(y)
+    elif extension=='.wavenumbers':
+        x,y = tools.file_to_array(filename,unpack=True,comments='#',encoding='latin-1')
+    elif extension in ('.hdf5','.h5'):
+        data = tools.hdf5_to_dict(filename)
+        x,y = data['data'].transpose()
+    else:
+        raise Exception(f"bad extension: {repr(extension)}")
+    ## process a bit. Sort and remove HeNe line profile and jitter
+    ## estimate. This is done assumign the spectrum comes
+    ## first. and finding the first index were the wavenumber
+    ## scale takes a backward step
+    if remove_HeNe:
+        i = x>31600
+        x,y = x[i],y[i]
+    t = tools.find(np.diff(x)<0)
+    if len(t)>0:
+        i = t[0]+1 
+        x,y = x[:i],y[:i]
+    ## get x range
+    header['xmin'],header['xmax'] = x.min(),x.max()
+    header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
+    return (x,y,header)
+
 
         
 def load_spectrum(filename,**kwargs):
