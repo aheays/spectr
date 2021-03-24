@@ -277,7 +277,6 @@ class Optimiser:
                 retval = f'{caller_locals["name"]} = {submodule_name}.{class_name}(\n    '+'\n    '.join(args)+'\n)'
             else:
                 retval = f'{caller_locals["name"]} = {submodule_name}.{class_name}('+','.join(args)+')'
-
             return retval
         self.add_format_input_function(f)
 
@@ -412,8 +411,6 @@ class Optimiser:
     def __str__(self):
         return self.format_input()
 
-
-    # @format_input_method()
     def save_to_directory(self,directory):
         """Save results of model and optimisation to a directory. WILL
         FIRST DELETE CONTENTS OF DIRECTORY!"""

@@ -11,6 +11,7 @@ from scipy import linalg
 from . import levels,lines
 from . import quantum_numbers
 from . import tools
+from . import dataset
 from .dataset import Dataset
 from .tools import find,cache
 from .optimise import Optimiser,P,optimise_method,format_input_method
@@ -26,23 +27,23 @@ class VibLevel(Optimiser):
             name='viblevel',
             species='14N2',
             J=None,                       # compute on this, or default added
-            ef=None,                      # compute for these e/f parities , default ('e','f')
+            # ef=None,                      # compute for these e/f parities , default ('e','f')
             experimental_level=None,      # a Level object for optimising relative to 
-            eigenvalue_ordering='maximise coefficients', # for deciding on the quantum number assignments of mixed level, options are 'minimise residual', 'maximise coefficients', 'preserve energy ordering' or None
+            # eigenvalue_ordering='maximise coefficients', # for deciding on the quantum number assignments of mixed level, options are 'minimise residual', 'maximise coefficients', 'preserve energy ordering' or None
             Eref=0.,       # energy reference relative to equilibrium energy, defaults to 0. -- not well defined
-            **qn,               # applies to all levels
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
-        tkwargs = {
-            'Eref':Eref,
-            'permit_auto_defaults':True, 
-            'permit_nonprototyped_data':False,
-        }
-        self.manifolds = {}                                   # unique manifold names
-        self.rotational_level = levels.Diatomic(**tkwargs) # includes forbidden levels
-        self.vibrational_level = levels.Diatomic(**tkwargs)
+        tkwargs = {'Eref':Eref, 'permit_auto_defaults':True,
+                   'permit_nonprototyped_data':False,}
+        self.manifolds = {}                                   
+        self.level = levels.Diatomic(name=f'{self.name}.level',**tkwargs)
+        self.level.pop_format_input_function()
+        self.level.add_suboptimiser(self)
+        self.level.pop_format_input_function()
+        # self.vibrational_level = levels.Diatomic(**tkwargs)
         self.vibrational_spin_level = levels.Diatomic(**tkwargs) 
+        self.interactions = Dataset() 
         species_object = get_species(species)
         J_is_half_integer = species_object['nelectrons']%2==1
         if J is None:
@@ -57,9 +58,8 @@ class VibLevel(Optimiser):
             else:
                 assert np.all(np.mod(self.J,1)==0),f'Integer J required for {repr(species)}'
         self.verbose = False
-        self.qn = qn            # quantum numbers describing this model, the only really applicable element in species
         ## various options for how to assign the perturbed levels: None
-        self.eigenvalue_ordering = eigenvalue_ordering
+        # self.eigenvalue_ordering = eigenvalue_ordering
         ## inputs / outputs of diagonalisation
         self._H_subblocks = []
         self.H = None
@@ -69,44 +69,14 @@ class VibLevel(Optimiser):
         self._exp = None # an array of experimental data matching the model data in shape
         ## the optimiser
         Optimiser.__init__(self,name=self.name)
-        self.format_input_functions = [] # no formatted input
+        self.pop_format_input_function()
+        self.automatic_format_input_function(
+            multiline=False,
+            limit_to_args=('name', 'species', 'J', 'Eref',))
         def f(directory):
-            pass
-            # self.rotational_level.save(directory+'/rotational_level.h5')
-            # self.vibrational_level.save_to_file(directory+'/vibrational_level') # 
-            # t = self.get_vibronic_interactions()
-            # t.save_to_file(directory+'/vibronic_interactions') # 
+            self.level.save(directory+'/level.h5')
         self.add_save_to_directory_function(f)
-        # self.add_construct_function(self._initialise_construct)
         self.add_post_construct_function(self.construct_levels)
-        ## if experimental data is present this might be an adjustable
-        def f():
-            # retval = '\nfrom anh import *\n'
-            # retval += f"{self.name} = spectra.VibLevel(name={repr(self.name)},species={repr(self.species)},"
-            retval = f"{self.name} = spectra.VibLevel(name={repr(self.name)},species={repr(self.species)},"
-            if Rbeg is not None: 
-                retval += f'Rbeg={repr(Rbeg)},'
-            if Rend is not None:
-                retval += f'Rend={repr(Rend)},'
-            if Rstep is not None:
-                retval += f'Rstep={repr(Rstep)},'
-            if J is not None:
-                retval += f'J={repr(J)},'
-            if ef is not None:
-                retval += f'ef={repr(ef)},'
-            if experimental_level is not None:
-                retval += f'experimental_level={experimental_level.name},'
-            if eigenvalue_ordering is not None:
-                retval += f'eigenvalue_ordering={repr(eigenvalue_ordering)},'
-            if fitΓ is not None:
-                retval += f'fitΓ={repr(fitΓ)},'
-            if Eref is not None:
-                retval += f'Eref={repr(Eref)},'
-            if len(self.qn)>0:
-                retval += f"{my.dict_to_kwargs(self.qn)})"
-            retval += ')'
-            return retval
-        self.format_input_functions.append(f)
 
     def construct_levels(self):
         """The actual matrix diagonlisation is done last."""
@@ -118,10 +88,10 @@ class VibLevel(Optimiser):
             self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.)
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
-            self.rotational_level.clear()
-            self.rotational_level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
+            self.level.clear()
+            self.level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
             for key in self.vibrational_spin_level:
-                self.rotational_level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
+                self.level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
         ## compute upper-triangular part of H from subblocks
         self.H[:] = 0.0
         for ibeg,jbeg,fH in self._H_subblocks:
@@ -168,9 +138,9 @@ class VibLevel(Optimiser):
             # eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
             self.eigvals[J] = eigvals.real
             self.eigvects[J] = eigvects.real
-        ## insert energies into rotational_level
-        self.rotational_level['E'] = np.concatenate(list(self.eigvals.values()))
-        self.rotational_level.index((self.rotational_level['J']>self.rotational_level['Ω']))
+        ## insert energies into level
+        self.level['E'] = np.concatenate(list(self.eigvals.values()))
+        self.level.index((self.level['J']>self.level['Ω']))
 
     @optimise_method(add_construct_function=False)
     def add_level(self,name,**kwargs):
@@ -195,8 +165,7 @@ class VibLevel(Optimiser):
         ibeg = len(self.vibrational_spin_level)
         self.vibrational_spin_level.extend(
             ef=ef,Σ=Σ,
-            **{key:kw[key] for key in (
-                'species','label','S','Λ','s','v')})
+            **{key:kw[key] for key in ('species','label','S','Λ','s','v')})
         self._H_subblocks.append((ibeg,ibeg,fH))
         if name in self.manifolds:
             raise Exception(f'Non-unique name: {repr(name)}')
@@ -244,7 +213,7 @@ class VibLevel(Optimiser):
     def plot(self,**kwargs):
         kwargs.setdefault('xkey','J')
         kwargs.setdefault('ykeys','E')
-        return self.rotational_level.plot(**kwargs)
+        return self.level.plot(**kwargs)
         
 class VibLine(Optimiser):
     
@@ -255,10 +224,10 @@ class VibLine(Optimiser):
     def __init__(
             self,
             name,
-            level_u,level_l,
-            J_l=None,ΔJ=None,
-            # # experimental_transition=None,
-            # verbose=None,
+            level_u,
+            level_l,
+            J_l=None,
+            ΔJ=None,
     ):
         ## add upper and lower levels
         self.name = name
@@ -269,14 +238,17 @@ class VibLine(Optimiser):
             'permit_auto_defaults':True, 
             'permit_nonprototyped_data':False,
         }
-        self.rotational_line = lines.Diatomic(**tkwargs)
-        self.vibrational_line = lines.Diatomic(**tkwargs)
-        self.vibrational_spin_line = lines.Diatomic(**tkwargs)
-        self.rotational_line.add_suboptimiser(self)
-        self.vibrational_spin_line.add_suboptimiser(self)
-        self.μ = None
+        self.line = lines.Diatomic(name=f'{self.name}.line',**tkwargs)
+        self.line.pop_format_input_function()
+        self.line.add_suboptimiser(self)
+        self.line.pop_format_input_function()
+        # self.vibrational_line = lines.Diatomic(**tkwargs)
+        # self.vibrational_spin_line = lines.Diatomic(**tkwargs)
+        # self.vibrational_spin_line.add_suboptimiser(self)
+        # self.μ = None
         self._transition_moment_functions = []
-        ## Decide on lower and upper state J values, and ΔJ transitions
+        ## decide on lower and upper state J values, and ΔJ
+        ## transitions
         if J_l is not None: 
             self.J_l = np.array(J_l,ndmin=1)
         elif J_l is None and self.level_l.J is not None:
@@ -296,12 +268,18 @@ class VibLine(Optimiser):
         self.level_u.J = self.level_u.J[self.level_u.J>=0]
         ## construct optimiser -- inheriting from states
         Optimiser.__init__(self,name=self.name)
+        self.pop_format_input_function()
+        self.automatic_format_input_function(
+            multiline=False,
+            limit_to_args=('name', 'level_u', 'level_l', 'J_l', 'ΔJ',))
         self.add_suboptimiser(self.level_u,self.level_l,add_format_function=False)
+        def f(directory):
+            self.line.save(directory+'/line.h5')
+        self.add_save_to_directory_function(f)
         self.add_post_construct_function(self.construct_lines)
 
     def construct_lines(self):
-
-        ## initialise μ0 and rotational_line arrays if model has changed
+        ## initialise μ0 and line arrays if model has changed
         if self._last_add_construct_function_time > self._last_construct_time:
             ## initialise μ0
             self.μ0 = np.full((
@@ -309,8 +287,8 @@ class VibLine(Optimiser):
                 len(self.ΔJ),
                 len(self.level_u.vibrational_spin_level),
                 len(self.level_l.vibrational_spin_level),),0.)
-            ## add quantum numbers to rotational_line
-            self.rotational_line.clear()
+            ## add quantum numbers to line
+            self.line.clear()
             for iJ_l,J_l in enumerate(self.J_l):
                 for iΔJ,ΔJ in enumerate(self.ΔJ):
                     J_u = J_l + ΔJ
@@ -318,7 +296,7 @@ class VibLine(Optimiser):
                         continue
                     n_l = len(self.level_l.vibrational_spin_level)
                     n_u = len(self.level_u.vibrational_spin_level)
-                    self.rotational_line.extend(
+                    self.line.extend(
                         J_u=J_u,
                         J_l=J_l,
                         # E_u=np.repeat(self.level_u.eigvals[J_u],n_l),
@@ -348,24 +326,24 @@ class VibLine(Optimiser):
                 E_us.append(np.repeat(self.level_u.eigvals[J_u],len(self.level_l.vibrational_spin_level)))
                 E_ls.append(np.tile(  self.level_l.eigvals[J_l],len(self.level_u.vibrational_spin_level)))
         ## add all new data to rotational line
-        self.rotational_line['μ'] = np.ravel(μs)
-        self.rotational_line['E_u'] = np.ravel(E_us)
-        self.rotational_line['E_l'] = np.ravel(E_ls)
+        self.line['μ'] = np.ravel(μs)
+        self.line['E_u'] = np.ravel(E_us)
+        self.line['E_l'] = np.ravel(E_ls)
         ## remove forbidden lines
-        # self.rotational_line.index(
+        # self.line.index(
             # ## levels do not exist
-            # (self.rotational_line['J_l'] >= self.rotational_line['Ω_l'])
-            # & (self.rotational_line['J_u'] >= self.rotational_line['Ω_u'])
+            # (self.line['J_l'] >= self.line['Ω_l'])
+            # & (self.line['J_u'] >= self.line['Ω_u'])
             # # ## no Q branch
-            # # & ((self.rotational_line['Λ_u'] > 0)
-            # #    | (self.rotational_line['Λ_l'] > 0)
-            # #    | (self.rotational_line['J_u'] != self.rotational_line['J_l']))
+            # # & ((self.line['Λ_u'] > 0)
+            # #    | (self.line['Λ_l'] > 0)
+            # #    | (self.line['J_u'] != self.line['J_l']))
             # ## no Q branch
-            # & ((self.rotational_line['Λ_u'] > 0)
-               # | (self.rotational_line['Λ_l'] > 0)
-               # | (self.rotational_line['J_u'] != self.rotational_line['J_l']))
+            # & ((self.line['Λ_u'] > 0)
+               # | (self.line['Λ_l'] > 0)
+               # | (self.line['J_u'] != self.line['J_l']))
         # )
-        # self.rotational_line.remove_match(Sij=0)
+        # self.line.remove_match(Sij=0)
 
 
     @format_input_method()
@@ -393,7 +371,7 @@ class VibLine(Optimiser):
     def plot(self,**kwargs):
         kwargs.setdefault('xkey','ν')
         kwargs.setdefault('ykey','Sij')
-        return self.rotational_line.plot_stick_spectrum(**kwargs)
+        return self.line.plot_stick_spectrum(**kwargs)
 
 @lru_cache
 def _get_linear_H(S,Λ,s):
