@@ -30,7 +30,7 @@ transition.line.set_parameters(
 
 experiment = spectrum.Experiment('experiment',)
 experiment.set_spectrum_from_soleil_file(
-    filename='data/170216-Jmoy13-538A-13C18O-73mb-coRa-RP.TXT.wavenumbers.h5',
+    filename='data/13C18O_spectrum.h5',
     xbeg=60700, xend=61000,)
 model = spectrum.Model('model',experiment)
 ## optimise background flux

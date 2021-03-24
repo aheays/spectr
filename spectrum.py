@@ -482,9 +482,10 @@ class Model(Optimiser):
             ncpus=1,
             _cache=None
     ):
-        if len(self.x) == 0:
+        if len(self.x) == 0 or len(lines) == 0:
             ## x not set yet
             return
+        
         ## recompute spectrum if is necessary for some reason --
         ## do various tests to see if a cached version is ok
         if (
