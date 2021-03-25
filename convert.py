@@ -305,3 +305,13 @@ def differential_oscillator_strength_to_cross_section(
     σ = df/1.1296e12            # from (cm-1)-1 to cm2
     return(convert_units(σ,'cm2',units_out))
      
+def pressure_temperature_to_density(p,T,punits='Pa',nunits='m-3'):
+    """p = nkT"""
+    p = units(p,punits,'Pa')
+    n = p/(constants.Boltzmann*T)
+    n = units(n,'m-3',nunits)
+    return n
+
+def pressure_to_column_density_density(p,T,L,punits='Pa',Lunits='cm',Nunits='cm-2'):
+    """p = NLkT"""
+    return units(units(p,punits,'Pa') /(constants.Boltzmann*T*unit(L,Lunits,'m')), 'm-3',Nunits)
