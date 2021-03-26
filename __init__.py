@@ -17,11 +17,13 @@ from . import tools
 from . import plotting
 from . import optimise
 from . import dataset
+from .dataset import Dataset
 from . import levels
 from . import lines 
 from . import database
 from . import spectrum
 from . import kinetics
+from . import thermochemistry
 from . import atmosphere
 from . import hitran
 from . import bruker

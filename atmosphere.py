@@ -406,8 +406,8 @@ class AtmosphericChemistry():
             normalise_to_species=(species if normalise else None),
             nsort=nsort
         )
-        plotting.legend(show_style=True)
-        ax.set_title(f'Production and destruction rates of {species}')
+        plotting.legend(show_style=True,title=f'Production and destruction rates of {species}')
+        # ax.set_title(f'Production and destruction rates of {species}')
         return ax
 
         

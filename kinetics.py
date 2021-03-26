@@ -6,6 +6,7 @@ from functools import lru_cache
 import numpy as np
 from bidict import bidict
 import periodictable
+from scipy import integrate
 
 from .dataset import Dataset
 from . import tools
@@ -451,8 +452,9 @@ class Reaction:
 class ReactionNetwork:
 
     def __init__(self):
-        self.density = Dataset()       # name:density
-        self.state = Dataset()         # name:value
+        self.density = {}       # name:density
+        self.state = {}         # name:value
+        self.species = set()
         self.reactions = []     # [Reactions]
         self.verbose = False
 
@@ -469,14 +471,65 @@ class ReactionNetwork:
                                   for reaction in self.reactions]
 
     def calc_rates(self):
-        # self.calc_rate_coefficients()
-        self.rates = []
         for r in self.reactions:
             k = copy(r.rate_coefficient)
             for s in r.reactants:
                 if s not in ['γ','e-']:
                     k *= self.density[s]
             r.rate = k
+
+    def integrate(
+            self,
+            time,                  # time
+            initial_density,
+            state=None,
+            nsave_points=10,
+    ):
+        ## collect all species names
+        for name in initial_density:
+            self.species.add(name)
+        ## assign each species an index
+        _species_index = {name:i for (i,name) in enumerate(self.species)} 
+        ## time steps
+        time = np.array(time,dtype=float)
+        if time[0]!=0:
+            time = np.concatenate(([0],time))
+        ## set initial conditions
+        density = np.zeros((len(self.species),len(time)),dtype=float)
+        for key,val in initial_density.items():
+            density[_species_index[key],0] = val
+        ## set state
+        if state is not None:
+            self.state.clear()
+            self.state.update(state)
+        ## faster rate calculation function
+        def _get_rates(time,density):
+            rates = np.zeros(len(self.species),float)
+            ## update rate coefficients
+            self.calc_rate_coefficients()
+            ## loop through reactions
+            for ir,r in enumerate(self.reactions):
+                ## compute reaction rate
+                k = copy(r.rate_coefficient)
+                for s in r.reactants:
+                    if s not in ['γ','e-']:
+                        k *= density[_species_index[s]]
+                ## add to product/destruction rates
+                for s in r.reactants:
+                    rates[_species_index[s]] -= k
+                for s in r.products:
+                    rates[_species_index[s]] += k
+            return rates
+        ## initialise integrator
+        r = integrate.ode(_get_rates)
+        r.set_integrator('lsoda', with_jacobian=True)
+        r.set_initial_value(density[:,0])
+        ## run saving data at requested number of times
+        for itime,timei in enumerate(time[1:]):
+            r.integrate(timei)
+            density[:,itime+1] = r.y
+        retval = Dataset(t=time,**{t0:t1 for t0,t1 in zip(self.species,density)})
+        return retval
 
     def plot_species(self, *species, ykey=None, ax=None,):
         if ax is None:
@@ -503,6 +556,8 @@ class ReactionNetwork:
         else:
             r = Reaction(*args,**kwargs)
         self.reactions.append(r)
+        for species in r.reactants + r.products:
+            self.species.add(species)
 
     def remove_unnecessary_reactions(self):
         """Remove all reactions containing species that have no
@@ -584,7 +639,8 @@ class ReactionNetwork:
     def __str__(self):
         retval = []
         for t in self.reactions:
-            retval.append(str(t))
+            # retval.append(str(t))
+            retval.append(repr(t))
         return('\n'.join(retval))
 
     def save(self,filename):
@@ -755,5 +811,6 @@ class ReactionNetwork:
                     raise Exception( 'unspecified line type',line['type'])
             ## verify
             self.check_reactions()
+
 
 
