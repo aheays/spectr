@@ -452,11 +452,11 @@ class Reaction:
 class ReactionNetwork:
 
     def __init__(self):
-        self.density = {}       # name:density
-        self.state = {}         # name:value
+        self.reactions = []
         self.species = set()
-        self.reactions = []     # [Reactions]
         self.verbose = False
+        self.density = Dataset()
+        self.state = Dataset()
 
     def __getitem__(self,key):
         if key in self.state:
@@ -467,10 +467,12 @@ class ReactionNetwork:
             raise KeyError
 
     def calc_rate_coefficients(self):
+        """Compute rate coefficients in current state."""
         self.rate_coefficients = [reaction.get_rate_coefficient(self.state)
                                   for reaction in self.reactions]
 
     def calc_rates(self):
+        """"Calculate reaction rates in current state and density."""
         for r in self.reactions:
             k = copy(r.rate_coefficient)
             for s in r.reactants:
@@ -478,58 +480,59 @@ class ReactionNetwork:
                     k *= self.density[s]
             r.rate = k
 
-    def integrate(
-            self,
-            time,                  # time
-            initial_density,
-            state=None,
-            nsave_points=10,
-    ):
-        ## collect all species names
-        for name in initial_density:
-            self.species.add(name)
-        ## assign each species an index
-        _species_index = {name:i for (i,name) in enumerate(self.species)} 
-        ## time steps
-        time = np.array(time,dtype=float)
-        if time[0]!=0:
-            time = np.concatenate(([0],time))
-        ## set initial conditions
-        density = np.zeros((len(self.species),len(time)),dtype=float)
-        for key,val in initial_density.items():
-            density[_species_index[key],0] = val
-        ## set state
-        if state is not None:
-            self.state.clear()
-            self.state.update(state)
-        ## faster rate calculation function
-        def _get_rates(time,density):
-            rates = np.zeros(len(self.species),float)
-            ## update rate coefficients
-            self.calc_rate_coefficients()
-            ## loop through reactions
-            for ir,r in enumerate(self.reactions):
-                ## compute reaction rate
-                k = copy(r.rate_coefficient)
-                for s in r.reactants:
-                    if s not in ['γ','e-']:
-                        k *= density[_species_index[s]]
-                ## add to product/destruction rates
-                for s in r.reactants:
-                    rates[_species_index[s]] -= k
-                for s in r.products:
-                    rates[_species_index[s]] += k
-            return rates
-        ## initialise integrator
-        r = integrate.ode(_get_rates)
-        r.set_integrator('lsoda', with_jacobian=True)
-        r.set_initial_value(density[:,0])
-        ## run saving data at requested number of times
-        for itime,timei in enumerate(time[1:]):
-            r.integrate(timei)
-            density[:,itime+1] = r.y
-        retval = Dataset(t=time,**{t0:t1 for t0,t1 in zip(self.species,density)})
-        return retval
+    # def integrate(
+            # self,
+            # time,
+            # initial_density,
+            # state=None,
+            # nsave_points=10,
+    # ):
+        # """Integrate density with time."""
+        # ## collect all species names
+        # for name in initial_density:
+            # self.species.add(name)
+        # ## assign each species an index
+        # _species_index = {name:i for (i,name) in enumerate(self.species)} 
+        # ## time steps
+        # time = np.array(time,dtype=float)
+        # if time[0]!=0:
+            # time = np.concatenate(([0],time))
+        # ## set initial conditions
+        # density = np.zeros((len(self.species),len(time)),dtype=float)
+        # for key,val in initial_density.items():
+            # density[_species_index[key],0] = val
+        # ## set state
+        # if state is not None:
+            # self.state.clear()
+            # self.state.update(state)
+        # ## faster rate calculation function
+        # def _get_rates(time,density):
+            # rates = np.zeros(len(self.species),float)
+            # ## update rate coefficients
+            # self.calc_rate_coefficients()
+            # ## loop through reactions
+            # for ir,r in enumerate(self.reactions):
+                # ## compute reaction rate
+                # k = copy(r.rate_coefficient)
+                # for s in r.reactants:
+                    # if s not in ['γ','e-']:
+                        # k *= density[_species_index[s]]
+                # ## add to product/destruction rates
+                # for s in r.reactants:
+                    # rates[_species_index[s]] -= k
+                # for s in r.products:
+                    # rates[_species_index[s]] += k
+            # return rates
+        # ## initialise integrator
+        # r = integrate.ode(_get_rates)
+        # r.set_integrator('lsoda', with_jacobian=True)
+        # r.set_initial_value(density[:,0])
+        # ## run saving data at requested number of times
+        # for itime,timei in enumerate(time[1:]):
+            # r.integrate(timei)
+            # density[:,itime+1] = r.y
+        # retval = Dataset(t=time,**{t0:t1 for t0,t1 in zip(self.species,density)})
+        # return retval
 
     def plot_species(self, *species, ykey=None, ax=None,):
         if ax is None:
@@ -570,10 +573,11 @@ class ReactionNetwork:
                 self.reactions.remove(r)
 
     def __iter__(self):
-        for t in self.reactions: yield(t)
+        for t in self.reactions: 
+            yield(t)
 
     def __len__(self):
-        return(len(self.reactions))
+        return len(self.reactions)
 
     def get_reactions(
             self,
@@ -814,3 +818,67 @@ class ReactionNetwork:
 
 
 
+def integrate_network(reaction_network,initial_density,state,time):
+    """Integrate density with time."""
+    ## get full list of species
+    species = copy(reaction_network.species)
+    for name in initial_density:
+        species.add(name)
+    ## assign each species an index
+    _species_index = {name:i for (i,name) in enumerate(species)} 
+    ## time steps
+    time = np.array(time,dtype=float)
+    if time[0]!=0:
+        time = np.concatenate(([0],time))
+    ## set initial conditions
+    density = np.zeros((len(species),len(time)),dtype=float)
+    for key,val in initial_density.items():
+        density[_species_index[key],0] = val
+    current_state = {}
+    def _get_current_state(time):
+        for key,val in state.items():
+            if callable(val):
+                current_state[key] = val(time)
+            else:
+                current_state[key] = val
+        return current_state
+    ## faster rate calculation function
+    def _get_rates(time,density):
+        rates = np.zeros(len(species),float)
+        ## rate coefficients
+        _get_current_state(time)
+        rate_coefficients = np.array(
+            [reaction.get_rate_coefficient(current_state)
+             for reaction in reaction_network],float)
+        ## loop through reactions
+        for ireaction,(reaction,rate_coefficient) in enumerate(zip(reaction_network,rate_coefficients)):
+            ## compute reaction rate
+            k = rate_coefficient
+            for s in reaction.reactants:
+                if s not in ['γ','e-']:
+                    k *= density[_species_index[s]]
+            ## add to product/destruction rates
+            for s in reaction.reactants:
+                rates[_species_index[s]] -= k
+            for s in reaction.products:
+                rates[_species_index[s]] += k
+        return rates
+    ## initialise integrator
+    r = integrate.ode(_get_rates)
+    r.set_integrator('lsoda', with_jacobian=True)
+    r.set_initial_value(density[:,0])
+    
+    ## run saving data at requested number of times
+    save_state = Dataset()
+    save_state.append(**_get_current_state(time=0))
+    for itime,timei in enumerate(time[1:]):
+        r.integrate(timei)
+        density[:,itime] = r.y
+        save_state.append(**current_state)
+    retval = Dataset(
+        time=time,
+        **{t0:t1 for t0,t1 in zip(species,density)},
+        **save_state
+    )
+    
+    return retval
