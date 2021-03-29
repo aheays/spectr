@@ -128,7 +128,7 @@ def _f0(x):
     x = np.asarray(x,dtype=float)
     x[x<1e-50] = 1e-50
     return x
-prototypes['HT_HITRAN_p'] = dict(description='Pressure  HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=_f0,infer=[('pX',lambda self,pX:convert.units(pX,'Pa','atm'))])
+prototypes['HT_HITRAN_p'] = dict(description='Pressure HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=_f0,infer=[('pX',lambda self,pX:convert.units(pX,'Pa','atm'))])
 prototypes['HT_HITRAN_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f')
 prototypes['HT_HITRAN_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
 prototypes['HT_HITRAN_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
@@ -386,6 +386,34 @@ class Generic(levels.Base):
             ax.plot(x,y,**plot_kwargs)
         return ax
 
+    def plot_transmission_spectrum(
+            self,
+            *args,
+            ax=None,
+            plot_kwargs=None,
+            zkeys=None,
+            **kwargs
+    ):
+        """Plot a nice cross section. If zkeys given then divide into multiple
+        lines accordings."""
+        ## deal with default args
+        if ax is None:
+            ax = plotting.qax()
+        if plot_kwargs is None:
+            plot_kwargs = {}
+        ## calculate spectrum
+        spectrum = self.calculate_transmission_spectrum(*args,zkeys=zkeys,**kwargs)
+        if zkeys is not None:
+            ## multiple zkeys -- plot and legend
+            for qn,x,y in spectrum:
+                ax.plot(x,y,label=tools.dict_to_kwargs(qn),**plot_kwargs)
+            plotting.legend(loc='upper left')
+        else:
+            ## single spectrum only
+            x,y = spectrum
+            ax.plot(x,y,**plot_kwargs)
+        return ax
+
     def plot_stick_spectrum(
             self,
             xkey='ν',
@@ -394,8 +422,7 @@ class Generic(levels.Base):
             ax=None,
             **plot_kwargs # can be calculate_spectrum or plot kwargs
     ):
-        """Plot a nice cross section. If zkeys given then divide into multiple
-        lines accordings."""
+        """No  lineshapes, just plot as sticks."""
         if ax is None:
             ax = plotting.plt.gca()
         if zkeys is None:
@@ -517,6 +544,24 @@ class Generic(levels.Base):
             multiprocess_divide='lines',
         )
         return x,y
+
+    def calculate_transmission_spectrum(
+            self,
+            *args_calculate_spectrum,
+            zkeys=None,
+            **kwargs_calculate_spectrum,
+    ):
+        retval = self.calculate_spectrum(
+            *args_calculate_spectrum,
+            ykey='τ',
+            zkeys=zkeys,
+            **kwargs_calculate_spectrum,)
+        if zkeys is None:
+            x,y = retval
+            retval = x,np.exp(-y)
+        else:
+            retval = [(d,x,np.exp(-y)) for d,x,y in retval]
+        return retval 
 
     def _get_level(self, u_or_l, reduce_to=None,):
         """Get all data corresponding to 'upper' or 'lower' level in
