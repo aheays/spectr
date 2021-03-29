@@ -244,7 +244,9 @@ class Experiment(Optimiser):
             ax.format_coord = format_coord
             ax.grid(True,color='gray')
             plotting.simple_tick_labels(ax=ax)
-        ax.plot(self.x,self.y)
+        ax.plot(self.x,self.y,label=self.name)
+        plotting.legend(ax=ax,loc='upper left')
+        return ax
 
 class Model(Optimiser):
 

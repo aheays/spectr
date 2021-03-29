@@ -360,35 +360,31 @@ class Generic(levels.Base):
 
     def plot_spectrum(
             self,
-            x=None,
-            xkey='ν',
-            ykey='σ',
-            zkeys=None,         # None or list of keys to plot as separate lines
-            ΓG='ΓD',
-            ΓL='Γ',
-            dx=None,
+            *calculate_spectrum_args,
             ax=None,
-            **plot_kwargs # can be calculate_spectrum or plot kwargs
+            plot_kwargs=None,
+            zkeys=None,
+            **calculate_spectrum_kwargs
     ):
-        from matplotlib import pyplot as plt
         """Plot a nice cross section. If zkeys given then divide into multiple
         lines accordings."""
+        ## deal with default args
         if ax is None:
-            ax = plt.gca()
-        if zkeys==None:
-            if ykey == 'transmission': # special case
-                x,y = self.calculate_spectrum(x,ykey='τ',xkey=xkey,ΓG=ΓG,ΓL=ΓL,dx=dx)
-                y = np.exp(-y)
-            else:
-                x,y = self.calculate_spectrum(x,ykey=ykey,xkey=xkey,ΓG=ΓG,ΓL=ΓL,dx=dx)
-                line = ax.plot(x,y,**plot_kwargs)[0]
+            ax = plotting.qax()
+        if plot_kwargs is None:
+            plot_kwargs = {}
+        ## calculate spectrum
+        spectrum = self.calculate_spectrum(*calculate_spectrum_args,zkeys=zkeys,**calculate_spectrum_kwargs)
+        if zkeys is not None:
+            ## multiple zkeys -- plot and legend
+            for qn,x,y in spectrum:
+                ax.plot(x,y,label=tools.dict_to_kwargs(qn),**plot_kwargs)
+            plotting.legend(loc='upper left')
         else:
-            for iz,(qn,t) in enumerate(self.unique_dicts_matches(*zkeys)):
-                t_plot_kwargs = copy(plot_kwargs)
-                t_plot_kwargs.setdefault('color',my.newcolor(iz))
-                t_plot_kwargs.setdefault('label',my.dict_to_kwargs(qn))
-                t.plot_spectrum(x=x,ykey=ykey,zkeys=None,ax=ax,**t_plot_kwargs)
-        return(ax)
+            ## single spectrum only
+            x,y = spectrum
+            ax.plot(x,y,**plot_kwargs)
+        return ax
 
     def plot_stick_spectrum(
             self,
@@ -420,6 +416,7 @@ class Generic(levels.Base):
             x=None,        # frequency grid (must be regular, I think), if None then construct a reasonable grid
             xkey='ν',      # strength to use, i.e., "ν", or "λ"
             ykey='σ',      # strength to use, i.e., "σ", "τ", or "I"
+            zkeys=None,    # if not None then calculate separate spectra for unique combinations of these keys
             lineshape=None, # None for auto selection, or else one of ['voigt','gaussian','lorentzian','hartmann-tran']
             nfwhmG=20, # how many Gaussian FWHMs to include in convolution
             nfwhmL=100,         # how many Lorentzian FWHMs to compute
@@ -427,18 +424,20 @@ class Generic(levels.Base):
             nx=10000, # number of grid points to use if x grid computed automatically
             ymin=None, # minimum value of ykey before a line is ignored, None for use all lines
             ncpus = 1, # 1 for single process, more to use up to this amount when computing spectrum
-            **set_keys_vals, # set some data first, e..g, the tempertaure
+            # **set_keys_vals, # set some data first, e..g, the tempertaure
     ):
         """Calculate a spectrum from the data in self. Returns (x,y)."""
         ## set some data
-        for key,val in set_keys_vals.items():
-            self[key] = val
+        # for key,val in set_keys_vals.items():
+            # self[key] = val
         ## no lines to add to cross section -- return quickly
         if len(self)==0:
             if x is None:
-                return(np.array([]),np.array([]))
+                return np.array([]),np.array([])
             else:
-                return(x,np.zeros(x.shape))
+                return x,np.zeros(x.shape)
+        ## get x and ykeys
+        self.assert_known(xkey,ykey)
         ## get a default frequency scale if none provided
         if x is None:
             if dx is not None:
@@ -447,6 +446,17 @@ class Generic(levels.Base):
                 x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
         else:
             x = np.asarray(x)
+        ## branch to calc separate spectrum for unique combinations of
+        ## zkeys if these are given -- common x-grid
+        if zkeys is not None:
+            retval = []
+            for qn,match in self.unique_dicts_matches(*zkeys):
+                x,y = match.calculate_spectrum(
+                    x=x,xkey=xkey,ykey=ykey,zkeys=None,
+                    lineshape=lineshape,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    dx=dx,nx=nx,ymin=ymin,ncpus=ncpus)
+                retval.append((qn,x,y))
+            return retval
         ## check frequencies, strengths, widths are as expected
         # self.assert_known(xkey,ykey)
         # assert np.all(~np.isnan(self[xkey])),f'NaN values in xkey: {repr(xkey)}'

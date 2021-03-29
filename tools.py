@@ -3134,10 +3134,15 @@ def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=Fals
     # myf.cross_correlate(y0,y1,yc,imax_shift,iconv_width)
     # return(xc,yc)
 
-def autocorrelate(x):
-    result = np.correlate(x, x, mode='full')
-    result  = result[int(len(result-1)/2):]
-    return result
+def autocorrelate(x,nmax=None):
+    if nmax is None:
+        retval = np.correlate(x, x, mode='full')
+        retval  = retval[int(len(retval-1)/2):]
+    else:
+        retval = np.empty(nmax,dtype=float)
+        for i in range(nmax):
+            retval[i] = np.sum(x[i:]*x[:len(x)-i])/np.sum(x[i:]**2)
+    return retval
 
 # def sinc(x,fwhm=1.,mean=0.,strength=1.,norm='area',):
     # """ Calculate sinc function. """

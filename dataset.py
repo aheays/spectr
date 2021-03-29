@@ -649,7 +649,7 @@ class Dataset(optimise.Optimiser):
 
     def matches(self,**keys_vals):
         """Returns a copy reduced to matching values."""
-        return(self.copy(index=self.match(**keys_vals)))
+        return self.copy(index=self.match(**keys_vals))
 
     def limit_to_match(self,**keys_vals):
         self.index(self.match(**keys_vals))
