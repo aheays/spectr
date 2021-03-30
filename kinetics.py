@@ -6,7 +6,7 @@ from functools import lru_cache
 import numpy as np
 from bidict import bidict
 import periodictable
-from scipy import integrate
+from scipy import integrate,constants
 
 from .dataset import Dataset
 from . import tools
@@ -325,8 +325,65 @@ class Species:
     mass = property(lambda self: self['mass'])
     reduced_mass = property(lambda self: self['reduced_mass'])
     point_group = property(lambda self: self['point_group'])
-    
-    
+
+
+class Mixture(Dataset):
+    """A zero-dimesional possibly time-dependent chemical mixture."""
+
+    ## any independent physical quantitie except species abundances
+    state_prototypes = {}
+    state_prototypes['p'] = dict(description="Pressure",units='Pa' ,kind=float ,infer=[])
+    state_prototypes['T'] = dict(description="Temperature",units='K' ,kind=float ,infer=[])
+    state_prototypes['t'] = dict(description="Time",units='s' ,kind=float ,infer=[])
+    default_prototypes = copy(state_prototypes)
+    def _f(self):
+        """Compute totoal density at every independent state."""
+        nt = np.zeros(len(self))
+        for d,i in self.unique_dicts_match(*self.state_keys):
+            nt[i] = np.sum([self[key][i] for key in self.species_keys],0)
+        return nt
+    default_prototypes['nt'] = dict(description="Total number density",units='cm-3',kind=float,infer=[((),_f)])
+
+    species_keys = property(lambda self: [key for key in self if key not in self.default_prototypes])
+    state_keys = property(lambda self: [key for key in self.state_prototypes if key in self])
+
+    def plot_density(
+            self,
+            xkey=None,
+            ykeys=10,
+            zkeys=None,
+            fractional=False,
+            **plot_kwargs):
+        """Plot density of species. If xkeys is an integer then plot that many
+        most abundant anywhere species. Or else give a list of species
+        names."""
+        plot_kwargs.setdefault('marker','')
+        plot_kwargs.setdefault('ynewaxes',False)
+        plot_kwargs.setdefault('znewaxes',False)
+        plot_kwargs.setdefault('annotate_lines',True)
+        plot_kwargs.setdefault('legend',False)
+        plot_kwargs.setdefault('yscale','log')
+        if xkey is None:
+            xkey = self.state_keys[0]
+        if ykeys is None:
+            ykeys = 99
+        if isinstance(ykeys,int):
+            ymaxneg = [-self[key].max() for key in self.species_keys]
+            i = np.argsort(ymaxneg)
+            ykeys = np.array(self.species_keys)[i[:ykeys]]
+        if zkeys is None:
+            zkeys = self.state_keys[1:]
+        if fractional:
+            data = self.copy()
+            self['nt']
+            for key in ykeys:
+                data[key] /= self['nt']
+            data_to_plot = data
+        else:
+            data_to_plot = self
+        fig = data_to_plot.plot(xkey, ykeys, zkeys, **plot_kwargs)
+        ax = fig.gca()
+
 ########################
 ## Chemical reactions ##
 ########################
@@ -364,22 +421,30 @@ def encode_reaction(reactants,products,encoding='standard'):
 
 ## formulae for computing rate coefficients from reaction constants c
 ## and state variables p
+def _rimmer2016_3_body(c,p):
+    """Eqs. 9-11 rimmer2016"""
+    k0 = c['α0']*(p['T']/300)**c['β0']*np.exp(-c['γ0']/p['T'])
+    kinf = c['αinf']*(p['T']/300)**c['βinf']*np.exp(-c['γinf']/p['T'])
+    pr = k0*p['nt']/kinf
+    k2 = (kinf*pr)/(1+pr)
+    return k2
+
 _reaction_coefficient_formulae = {
     'constant'               :lambda c,p: c['k'],
-    'arrhenius'              :lambda c,p: c['A']*(p['Ttr']/300.)**c['B'],
-    'KIDA modified arrhenius':lambda c,p: c['A']*(p['Ttr']/300.)**c['B']*np.exp(-c['C']*p['Ttr']),
-    'NIST'                   :lambda c,p: c['A']*(p['Ttr']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['Ttr']),
-    'NIST_3rd_body_hack'     :lambda c,p: 1e19*c['A']*(p['Ttr']/298.)**c['n']*np.exp(-c['Ea']/8.314472e-3/p['Ttr']),
-    'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['Ttr'])*p['I'],c['λ']),
-    'kooij'                  :lambda c,p: c['α']*(p['Ttr']/300.)**c['β']*np.exp(-c['γ']/p['Ttr']), # α[cm-3], T[K], β[], γ[K]
-    'impact_test_2020-12-07' :lambda c,p: p['Ttr']*0 ,
-    # 'kooij'                  :lambda c,p: np.full(p['T'].shape,c['α'])
+    'arrhenius'              :lambda c,p: c['A']*(p['T']/300.)**c['B'],
+    'KIDA modified arrhenius':lambda c,p: c['A']*(p['T']/300.)**c['B']*np.exp(-c['C']*p['T']),
+    'NIST'                   :lambda c,p: c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/(constants.R*p['T'])),
+    'NIST_3rd_body_hack'     :lambda c,p: 1e19*c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/(constants.R*p['T'])),
+    'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['T'])*p['I'],c['λ']),
+    'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']), # α[cm-3], T[K], β[], γ[K]
+    'impact_test_2020-12-07' :lambda c,p: p['T']*0 ,
+    'rimmer2016_3_body'      :_rimmer2016_3_body,
 } 
 
 def _f(c,p):
     """STAND 3-body reaction scheme. Eqs. 9,10,11 in rimmer2016."""
-    k0 = c['α0']*(p['Ttr']/300)**c['β0']*np.exp(-c['γ0']/p['Ttr']) 
-    kinf = c['αinf']*(p['Ttr']/300.)**c['βinf']*np.exp(-c['γinf']/p['Ttr'])
+    k0 = c['α0']*(p['T']/300)**c['β0']*np.exp(-c['γ0']/p['T']) 
+    kinf = c['αinf']*(p['T']/300.)**c['βinf']*np.exp(-c['γinf']/p['T'])
     pr = k0*p['nt']/kinf             # p['nt'] = total density = M 3-body density
     k2 = (kinf*pr)/(1+pr)
     return k2
@@ -816,8 +881,6 @@ class ReactionNetwork:
             ## verify
             self.check_reactions()
 
-
-
 def integrate_network(reaction_network,initial_density,state,time):
     """Integrate density with time."""
     ## get full list of species
@@ -867,7 +930,6 @@ def integrate_network(reaction_network,initial_density,state,time):
     r = integrate.ode(_get_rates)
     r.set_integrator('lsoda', with_jacobian=True)
     r.set_initial_value(density[:,0])
-    
     ## run saving data at requested number of times
     save_state = Dataset()
     save_state.append(**_get_current_state(time=0))
@@ -875,10 +937,8 @@ def integrate_network(reaction_network,initial_density,state,time):
         r.integrate(timei)
         density[:,itime] = r.y
         save_state.append(**current_state)
-    retval = Dataset(
-        time=time,
+    retval = Mixture(
+        t=time,
         **{t0:t1 for t0,t1 in zip(species,density)},
-        **save_state
-    )
-    
+        **save_state)
     return retval
