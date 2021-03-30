@@ -33,7 +33,8 @@ class Dataset(optimise.Optimiser):
     }
 
     default_attributes = ('classname','description',)
-    default_zkeys = []
+    default_prototypes = {}
+    default_zkeys = ()
 
     def __init__(
             self,
@@ -60,6 +61,8 @@ class Dataset(optimise.Optimiser):
         self.verbose = False
         ## init prototypes
         self._prototypes = {}
+        for key,val in self.default_prototypes.items():
+            self.set_prototype(key,**val)
         if prototypes is not None:
             for key,val in prototypes.items():
                 self.set_prototype(key,**val)
@@ -672,6 +675,8 @@ class Dataset(optimise.Optimiser):
     def unique_dicts(self,*keys):
         """Return an iterator where each element is a unique set of keys as a
         dictionary."""
+        if len(keys)==0:
+            return ({},)
         retval = [{key:val for key,val in zip(keys,vals)} for vals in self.unique_combinations(*keys)]
         retval = sorted(retval, key=lambda t: [t[key] for key in keys])
         return retval 
@@ -680,16 +685,20 @@ class Dataset(optimise.Optimiser):
         """Return pairs where the first element is a dictionary of unique
         combinations of keys and the second is a boolean array matching this
         combination."""
-        if len(keys)==0:
-            return((({},ndarray([],dtype=bool)),))
-        return [(d,self.match(**d)) for d in self.unique_dicts(*keys)]
+        retval = []
+        for d in self.unique_dicts(*keys):
+            retval.append((d,self.match(**d)))
+        return retval
 
     def unique_dicts_matches(self,*keys):
         """Return pairs where the first element is a dictionary of unique
         combinations of keys and the second is a copy of self reduced
         to matching values."""
-        if len(keys)==0: return((({},self),)) # nothing to do
-        return [(d,self.matches(**d)) for d in self.unique_dicts(*keys)]
+        retval = []
+        for d in self.unique_dicts(*keys):
+            retval.append((d,self.matches(**d)))
+        return retval
+                          
 
     def get_unique_value(self,key,**matching_keys_vals):
         """Return value of key from a row that uniquely matches
@@ -740,6 +749,7 @@ class Dataset(optimise.Optimiser):
                     self.set_uncertainty(key,np.sqrt(np.sum(squared_contribution,axis=0)))
                 ## if we get this far without an InferException then
                 ## success!.  Record inference dependencies.
+                ## replace this block with 
                 self._data[key]['inferred_from'].extend(dependencies)
                 for dependency in dependencies:
                     self._data[dependency]['inferred_to'].append(key)
@@ -753,6 +763,14 @@ class Dataset(optimise.Optimiser):
         ## complete failure to infer
         else:
             raise InferException(f"Could not infer key: {repr(key)}")
+
+    def _add_dependency(self,key_inferred_to,*keys_inferred_from):
+        """Set a dependence connection between a key and its
+        dependencies."""
+        self._data[key_inferred_to]['inferred_from'].extend(keys_inferred_from)
+        for key in keys_inferred_from:
+            self._data[key]['inferred_to'].append(key_inferred_to)
+        
 
     def _get_value_key_without_prefix(self,key):
         """Get value key from uncertainty key, or return None."""
@@ -1203,6 +1221,7 @@ class Dataset(optimise.Optimiser):
             ynewaxes=True,      # plot y-keys on separates axes -- else as different lines
             znewaxes=False,     # plot z-keys on separates axes -- else as different lines
             legend=True,        # plot a legend or not
+            annotate_lines=False, # annotate lines with their labels
             zlabel_format_function=None, # accept key=val pairs, defaults to printing them
             label_prefix=None, # put this before label otherwise generated
             plot_errorbars=True, # if uncertainty available
@@ -1242,10 +1261,11 @@ class Dataset(optimise.Optimiser):
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
                 z.sort(xkey)
                 if zlabel_format_function is None:
-                    if len(dz) == 1:
-                        zlabel = str(dz[list(dz.keys())[0]])
-                    else:
-                        zlabel = tools.dict_to_kwargs(dz)
+                    # if len(dz) == 1:
+                        # zlabel = str(dz[list(dz.keys())[0]])
+                    # else:
+                        # zlabel = tools.dict_to_kwargs(dz)
+                    zlabel = tools.dict_to_kwargs(dz)
                 else:
                     zlabel = zlabel_format_function(**dz)
                 if ynewaxes and znewaxes:
@@ -1265,11 +1285,11 @@ class Dataset(optimise.Optimiser):
                     title = zlabel
                 elif not ynewaxes and not znewaxes:
                     ax = fig.gca()
-                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iy)
+                    color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = ylabel+' '+zlabel
                     title = None
-                if label_prefix is not None:
+                if label_prefix is not None and label is not None:
                     label = label_prefix + label
                 kwargs = copy(plot_kwargs)
                 kwargs.setdefault('marker',marker)
@@ -1298,22 +1318,25 @@ class Dataset(optimise.Optimiser):
                         else:
                             kwargs['linestyle'] = ''
                         kwargs['label'] = None
-                        ax.plot(z[xkey][i],z[ykey][i],**kwargs)
+                        line = ax.plot(z[xkey][i],z[ykey][i],**kwargs)
                 else:
                     kwargs.setdefault('mfc',kwargs['color'])
                     kwargs.setdefault('fillstyle','full')
-                    ax.plot(x,y,**kwargs)
+                    line = ax.plot(x,y,**kwargs)
                 if title is not None:
                     ax.set_title(title)
-                if legend and 'label' in kwargs:
-                    plotting.legend(fontsize='x-small')
+                if 'label' in kwargs:
+                    if legend:
+                        plotting.legend(fontsize='x-small')
+                    if annotate_lines:
+                        plotting.annotate_line(line=line)
                 ax.set_xlabel(xkey)
                 ax.grid(True,color='gray',zorder=-5)
                 ax.set_yscale(yscale)
                 ax.set_xscale(xscale)
         if show:
             plotting.show()
-        return(fig)
+        return fig
 
     def polyfit(self,xkey,ykey,index=None,**polyfit_kwargs):
         return tools.polyfit(
