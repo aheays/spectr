@@ -1618,6 +1618,8 @@ def annotate_line(
         ax=None,
         color=None,
         xoffset=0,yoffset=0,   # pts
+        text_auto_offset=False,
+        text_x_offset=0,text_y_offset=0,
         **annotate_kwargs):
     """Put a label above or below a line. Defaults to legend label and
     all lines in axes.  xpos can be [min,max,left,right,peak,a
@@ -1637,7 +1639,8 @@ def annotate_line(
         if re.match('_line[0-9]+',line.get_label()): return None
         string = line.get_label()
     ## a shift to make space around text
-    text_x_offset,text_y_offset = transform_points_into_axis_fraction(matplotlib.rcParams['font.size']/2,matplotlib.rcParams['font.size']/2)
+    if text_auto_offset:
+        text_x_offset,text_y_offset = transform_points_into_axis_fraction(matplotlib.rcParams['font.size']/2,matplotlib.rcParams['font.size']/2)
     xlim,ylim = ax.get_xlim(),ax.get_ylim()
     xdata,ydata = line.get_data()
     if len(xdata)==0: return    # no line
@@ -1685,7 +1688,8 @@ def annotate_line(
     if string=='_nolegend_': string=''
     xoffset,yoffset = transform_points_into_data_coords(xoffset,yoffset)
     annotate_kwargs.setdefault('in_layout',False)
-    return(ax.annotate(string,(float(xpos+xoffset),float(ypos+yoffset)),color=color,**annotate_kwargs))
+    annotation = ax.annotate(string,(float(xpos+xoffset),float(ypos+yoffset)),color=color,**annotate_kwargs)
+    return annotation
 
 def annotate(*args,**kwargs):
     """Adds default arrow style to kwargs, otherwise the same as
