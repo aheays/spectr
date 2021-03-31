@@ -16,8 +16,8 @@ def test_get_rate_cofficient():
     t = Reaction('N2 + photon → N + N',formula='constant',coefficients={'k':1e10})
     assert t.get_rate_coefficient() == approx(1e10)
     t = Reaction('N2 + O2 → NO + NO',formula='arrhenius',coefficients={'A':1,'B':0.5,'C':0})
-    assert t.get_rate_coefficient(state={'Ttr':300}) == approx(1.)
-    assert t.get_rate_coefficient(state={'Ttr':500}) == approx(1.290994448)
+    assert t.get_rate_coefficient(state={'T':300}) == approx(1.)
+    assert t.get_rate_coefficient(state={'T':500}) == approx(1.290994448)
 
 def test_species_init():
     t = Species('N2')

@@ -20,11 +20,11 @@ from .optimise import optimise_method,Parameter,Fixed
 
 class Dataset(optimise.Optimiser):
 
-    """A set of data."""
+    """A set of data vectors of common length."""
 
 
-    ## perhaps better as instance variable?
-    _kind_defaults = {
+    ## basic properties for keys that have no or incomplete prototypes
+    default_kinds = {
         'f': {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt'   :'+12.8e','description':'float' ,'default':nan,},
         'i': {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt'   :'d'     ,'description':'int'   ,'default':-999,},
         'b': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt'   :''      ,'description':'bool'  ,'default':True,},
@@ -32,15 +32,22 @@ class Dataset(optimise.Optimiser):
         'O': {'cast':lambda x:np.asarray(x,dtype=object),'fmt'   :''      ,'description':'object','default':None,},
     }
 
-    default_attributes = ('classname','description',)
+    ## always available
+    default_attributes = {
+        'classname':None,
+        'description':None,
+    }
+
+    ## prototypes on instantiation
     default_prototypes = {}
+
+    ## used for plotting and sorting perhaps
     default_zkeys = ()
 
     def __init__(
             self,
             name=None,
             permit_nonprototyped_data = True,
-            # permit_reference_breaking = True,
             permit_auto_defaults = False,
             prototypes = None,  # a dictionary of prototypes
             load_from_file = None,
@@ -48,35 +55,36 @@ class Dataset(optimise.Optimiser):
             copy_from = None,
             limit_to_match=None, # dict of things to match 
             **kwargs):
-        ## deal with arguments
-        self._data = dict()
-        self.attributes = dict()
-        self._length = 0
-        self._over_allocate_factor = 2
-        self._last_modify_data_time = timestamp()  # used for triggering optimise construct
-        self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self._prototypes
-        # self.permit_reference_breaking = permit_reference_breaking  # not implemented -- I think
-        self.permit_auto_defaults = permit_auto_defaults         # set default values if necessary automatically
-        # self.permit_missing = True # add missing data if required
-        self.verbose = False
-        ## init prototypes
-        self._prototypes = {}
+        ## basic internal variables
+        self._data = {} # all table data and its properties stored here
+        self._length = 0    # length of data
+        self._over_allocate_factor = 2 # to speed up appending to data
+        self.attributes = {} # applies to all data
+        self._last_modify_data_time = timestamp() # when data is changed this is update
+        self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self.prototypes
+        self.permit_auto_defaults = permit_auto_defaults # set default values if necessary automatically
+        self.verbose = False                             # print extra information at various places
+        self.prototypes = {}                            # predefined data keys 
+        ## set default prototypes
         for key,val in self.default_prototypes.items():
             self.set_prototype(key,**val)
+        ## set prototypes given as an argument
         if prototypes is not None:
             for key,val in prototypes.items():
                 self.set_prototype(key,**val)
-        ## initialise attributes
-        for key in self.default_attributes:
-            self.attributes[key] = None
+        ## initialise default attributes
+        for key,val in self.default_attributes.items():
+            self.attributes[key] = val
         ## classname to identify type of Dataset
-        # self.classname = self.__class__.__name__
-        self.attributes['classname'] = re.sub(r"<class 'spectr.(.+)'>",r'\1',str(self.__class__))
-        ## default name is snake version of camel object name
+        self.attributes['classname'] = re.sub(
+            r"<class 'spectr.(.+)'>",
+            r'\1',
+            str(self.__class__))
+        ## default name is a valid symbol
         if name is None:
-            # name = re.sub(r'(?<!^)(?=[A-Z])', '_', self.classname.lower())
-            name = re.sub(r'[<!^.]', '_', self.attributes['classname'].lower())
-        ## init as optimiserg, make a custom form_input_function, save
+            name = tools.make_valid_python_symbol_name(
+                self.attributes['classname'].lower())
+        ## init as optimiser, make a custom form_input_function, save
         ## some extra stuff if output to directory
         optimise.Optimiser.__init__(self,name=name)
         self.pop_format_input_function()
@@ -92,28 +100,36 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
         self.add_save_to_directory_function(lambda directory: self.save(f'{directory}/dataset.h5'))
-        ## copy from another dataset
+        ## copy data from another dataset provided as argument
         if copy_from is not None:
             self.copy_from(copy_from)
-        ## load data from a file
+        ## load data from a file path provide as an argument
         if load_from_file is not None:
             self.load(load_from_file)
-        ## load data from an encode tabular string
+        ## load data from an encode tabular string provided as an
+        ## argument
         if load_from_string is not None:
             self.load_from_string(load_from_string)
-        ## kwargs to default values if scale, data values if vector,
-        ## set_parameter if Paramters
+        ## kwargs set data somehow
         for key,val in kwargs.items():
             if key in self.attributes:
-                self[key] = val
+                ## set attribute
+                self.attributes[key] = val
             elif isinstance(val,optimise.Parameter):
+                ## an optimisable parameter (input function already
+                ## handled)
                 self.set_parameter(key,val)
-                self.pop_format_input_function() # input function customised above
+                self.pop_format_input_function()
             elif tools.isiterable(val):
+                ## vector data -- set as data, this might get confused
+                ## with defaults for an object kind
+                if key in self.prototypes and self.prototypes[key]['kind'] == 'O':
+                    raise Exception("Setting key {repr(key)} of object kind in initialisaztion, but perhaps this is meant to be a scalar default value?")
                 self[key] = val
             else:
+                ## scalar value -- set as default for all future data
                 self.set_default(key,val)
-        ## limit_to_match of data inserted above
+        ## limit to matching data somehow loaded above
         if limit_to_match is not None:
             self.limit_to_match(**limit_to_match)
 
@@ -149,8 +165,8 @@ class Dataset(optimise.Optimiser):
             ## new data
             data = dict()
             ## get any prototype data
-            if key in self._prototypes:
-                data.update(self._prototypes[key])
+            if key in self.prototypes:
+                data.update(self.prototypes[key])
             ## apply prototype kwargs
             for tkey,tval in prototype_kwargs.items():
                 data[tkey] = tval
@@ -173,9 +189,9 @@ class Dataset(optimise.Optimiser):
             ## some other prototype data
             for tkey in ('description','fmt','cast'):
                 if tkey not in data:
-                    data[tkey] = self._kind_defaults[data['kind']][tkey]
+                    data[tkey] = self.default_kinds[data['kind']][tkey]
             if 'default' not in data and self.permit_auto_defaults:
-                data['default'] = self._kind_defaults[data['kind']]['default']
+                data['default'] = self.default_kinds[data['kind']]['default']
             if data['kind']=='f' and 'default_step' not in data:
                 data['default_step'] = 1e-8
             ## infer function dict,initialise inference lists, and units if needed
@@ -366,15 +382,15 @@ class Dataset(optimise.Optimiser):
             kind = 'O'
         if infer is None:
             infer = []
-        self._prototypes[key] = dict(kind=kind,infer=infer,**kwargs)
-        for tkey,tval in self._kind_defaults[kind].items():
-            self._prototypes[key].setdefault(tkey,tval)
+        self.prototypes[key] = dict(kind=kind,infer=infer,**kwargs)
+        for tkey,tval in self.default_kinds[kind].items():
+            self.prototypes[key].setdefault(tkey,tval)
 
     def get_prototype(self,key):
         """Get prototype as a dictionary."""
-        if key not in self._prototypes:
+        if key not in self.prototypes:
             return None
-        return self._prototypes[key]
+        return self.prototypes[key]
 
     def get_kind(self,key):
         return self._data[key]['kind']
@@ -547,8 +563,8 @@ class Dataset(optimise.Optimiser):
 
     def add_infer_function(self,key,dependencies,function):
         """Add a new method of data inference."""
-        assert key in self._prototypes
-        self._prototypes[key]['infer'].append((dependencies,function))
+        assert key in self.prototypes
+        self.prototypes[key]['infer'].append((dependencies,function))
 
     def index(self,index):
         """Index all array data in place."""
@@ -718,10 +734,10 @@ class Dataset(optimise.Optimiser):
         if key in already_attempted:
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key)
-        if key not in self._prototypes:
+        if key not in self.prototypes:
             raise InferException(f"No prototype for {key=}")
         ## loop through possible methods of inferences.
-        for dependencies,function in self._prototypes[key]['infer']:
+        for dependencies,function in self.prototypes[key]['infer']:
             if isinstance(dependencies,str):
                 ## sometimes dependencies end up as a string instead of a list of strings
                 dependencies = (dependencies,)
@@ -1102,62 +1118,32 @@ class Dataset(optimise.Optimiser):
             retval = f'{self.name}.load_from_lists(' + retval[1:-1] + ')'
             return retval
         self.add_format_input_function(format_input_function)
-                                  
 
-        # ## add data from name to common_keys_vals if it is provided
-        # keys_vals = collections.OrderedDict() # will contain line data
-        # parameters = []                       # save optimisation parameters in a list
-        # value_lists = [list(t) for t in value_lists]       # make mutable
-        # for ivals,vals in enumerate(value_lists):              # loop through all lines
-            # for ikey,(key,val) in enumerate(zip(keys,vals)):
-                # if key not in keys_vals: keys_vals[key] = [] # add to keys if first
-                # if np.isscalar(val):                         
-                    # keys_vals[key].append(val) # add data to append
-                # else:
-                    # p = self.add_parameter(key,*val) # add to optimiser
-                    # vals[ikey] = p
-                    # parameters.append((ivals+len(self),p)) # record which line in self will be after appending data
-                    # keys_vals[key].append(p.p)   # add data to append
-        # ## append lines to self
-        # self.append(**keys_vals,**common_keys_vals)
-        # ## add optimisation function
-        # def f():
-            # for i,p in parameters:
-                # ## update parameters and uncertainty
-                # self[p.name][i] = self.vector_data[p.name].cast(p.p) 
-                # if not self.is_set('d'+p.name):
-                    # self['d'+p.name] = np.nan
-                # self['d'+p.name][i] = self.vector_data['d'+p.name].cast(p.dp) 
-                # self.unset_inferences(p.name)
-        # self.add_construct(f)
-        # ## add format input function
-        # def f():
-            # retval = f'{self.name}.add_lines(\n    {repr(keys)},'
-            # retval += '\n    '+",\n    ".join([repr(vals) for vals in value_lists])+",\n    "
-            # if len(common_keys_vals)>0:
-                # retval += my.dict_to_kwargs(common_keys_vals)+','
-            # retval +=  ')'
-            # return(retval)
-        # self.format_input_functions.append(f)
-
-
-    def append(self,**kwargs):
+    def append(self,keys_vals_as_dict=None,**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
-        self.extend(**{key:[val] for key,val in kwargs.items()})
+        keys_vals = {}
+        if keys_vals_as_dict is not None:
+            for key,val in keys_vals_as_dict.items():
+                keys_vals[key] = [val]
+        for key,val in keys_vals_as_kwargs.items():
+            keys_vals[key] = [val]
+        self.extend(keys_vals)
 
-    def extend(self,**kwargs):
+    def extend(self,keys_vals_as_dict=None,**keys_vals_as_kwargs):
         """Extend self with data given as kwargs."""
-        keys = np.unique(self.keys() + list(kwargs.keys()))
+        if keys_vals_as_dict is None:
+            keys_vals_as_dict = {}
+        keys_vals = keys_vals_as_dict | keys_vals_as_kwargs
+        keys = np.unique(self.keys() + list(keys_vals.keys()))
         ## get data lengths 
         original_length = len(self)
         extending_length = 0
-        for val in kwargs.values():
+        for val in keys_vals.values():
             if not np.isscalar(val):
                 extending_length = max(extending_length,len(val))
         total_length = original_length + extending_length
         for key in keys:
             ## make sure key is in _data
-            # if not self.is_known(key):
             if key not in self:
                 if original_length == 0:
                     self.set(key,[])
@@ -1167,12 +1153,12 @@ class Dataset(optimise.Optimiser):
                 else:
                     raise Exception()
             ## get a default value for missing extended data
-            if key not in kwargs:
+            if key not in keys_vals:
                 if (default:=self.get_default(key)) is not None:
-                    kwargs[key] = default
+                    keys_vals[key] = default
                 elif (self.permit_auto_defaults
                       and (prototype:=self.get_prototype(key)) is not None):
-                    kwargs[key] = prototype['default']
+                    keys_vals[key] = prototype['default']
                 else:
                     raise Exception()
             ## increase unicode dtype length if new strings are
@@ -1196,7 +1182,7 @@ class Dataset(optimise.Optimiser):
                         int(total_length*self._over_allocate_factor-original_length),
                         dtype=self._data[key]['value'].dtype)))
             ## set extending data
-            self._data[key]['value'][original_length:total_length] = kwargs[key]
+            self._data[key]['value'][original_length:total_length] = keys_vals[key]
         self._length = total_length
         
     def __add__(self,other):

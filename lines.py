@@ -323,7 +323,7 @@ prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
 def _collect_prototypes(*keys,levels_class=None):
     """Take a list and return unique element.s"""
     keys = list(keys)
-    for key in levels_class._prototypes:
+    for key in levels_class.default_prototypes:
         keys.append(key+'_l')
         keys.append(key+'_u')
     retval_protoypes = {key:prototypes[key] for key in keys}
@@ -335,7 +335,7 @@ def _collect_prototypes(*keys,levels_class=None):
 
 class Generic(levels.Base):
     _levels_class = levels.Generic
-    _prototypes,defining_qn = _collect_prototypes(
+    default_prototypes,defining_qn = _collect_prototypes(
         'species', 'point_group','mass',
         'ν','ν0',
         # 'λ',
@@ -721,7 +721,7 @@ class LinearTriatomic(Generic):
     """E.g., CO2, CS2."""
 
     _levels_class = levels.LinearTriatomic
-    _prototypes,defining_qn = _collect_prototypes(
+    default_prototypes,defining_qn = _collect_prototypes(
 
         'species', 'point_group','mass',
         'ν','ν0',
@@ -787,7 +787,7 @@ class LinearTriatomic(Generic):
 class Diatomic(Generic):
 
     _levels_class = levels.Diatomic
-    _prototypes,defining_qn = _collect_prototypes(
+    default_prototypes,defining_qn = _collect_prototypes(
         'species', 'point_group','mass',
         'ν','νv',
         'μv',

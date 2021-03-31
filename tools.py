@@ -487,6 +487,13 @@ def mkdir(*directories,trash_existing=False):
 ## text formatting ##
 #####################
 
+def make_valid_python_symbol_name(string):
+    """Substitute characters in string so that it can be used as a symbol
+    name."""
+    string = re.sub(r'[<!^.]','_',string)
+    return string
+
+
 # def decode_format_string(s):
     # """Get the different arts of a format string, return as dictionary."""
     # g = re.match(r'([<>+-]*)([0-9]*).?([0-9]*)([fgsed])',s).groups()

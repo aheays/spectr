@@ -419,8 +419,11 @@ def encode_reaction(reactants,products,encoding='standard'):
         raise ImplementationError()
     return ' + '.join(reactants)+' → '+' + '.join(products)
 
-## formulae for computing rate coefficients from reaction constants c
-## and state variables p
+############################################################################
+## formulae for computing rate coefficients from reaction constants c and ##
+## state variables p                                                      ##
+############################################################################
+
 def _rimmer2016_3_body(c,p):
     """Eqs. 9-11 rimmer2016"""
     k0 = c['α0']*(p['T']/300)**c['β0']*np.exp(-c['γ0']/p['T'])
@@ -428,6 +431,48 @@ def _rimmer2016_3_body(c,p):
     pr = k0*p['nt']/kinf
     k2 = (kinf*pr)/(1+pr)
     return k2
+
+def _test(c,p):
+    nt = p['nt']
+    T = p['T']
+    ## forward reaction N + N → N2
+    k0 = c['α0']*(T/300)**c['β0']*np.exp(-c['γ0']/T)
+    kinf = c['αinf']*(T/300)**c['βinf']*np.exp(-c['γinf']/T)
+    pr = k0*nt/kinf
+    k2 = (kinf*pr)/(1+pr)
+    ## reverse it
+    a = {
+        'N':[    2.4159e+00,1.7489e-04,-1.1902e-07,3.0226e-11,-2.0361e-15,5.6134e+04,4.6496e+00],
+        'N2':[   2.9526e+00,1.3969e-03,-4.9263e-07,7.8601e-11,-4.6076e-15,-9.2395e+02,5.8719e+00],
+    }
+    reactants = ['N2']
+    products = ['N','N']
+    Greactants = 0.
+    for s in reactants:
+        a1,a2,a3,a4,a5,a6,a7 = a[s]
+        Greactants += a1*np.log(T-1) + a2*T/2 + a3*T**2/6 + a4*T**3/12 + a5*T**4/20 + a6/T + a7
+    Gproducts = 0.
+    for s in products:
+        a1,a2,a3,a4,a5,a6,a7 = a[s]
+        Gproducts += a1*np.log(T-1) + a2*T/2 + a3*T**2/6 + a4*T**3/12 + a5*T**4/20 + a6/T + a7
+    # Kc = (constants.R*T)**(len(products)-len(reactants))*np.exp(Gproducts-Greactants)
+    factor = np.exp(Greactants-Gproducts)
+    k2reversed =  k2/factor
+    # k2rev = 4e-32
+    # k2rev
+    # print('DEBUG:',nt,T,Gproducts,Greactants,k2,k2reversed)
+    print('DEBUG:',
+          
+          format(Greactants,'12.3e'),
+          format(Gproducts,'12.3e'),
+          format(T,'12.3e'),
+          format(nt,'12.3e'),
+          format(factor,'12.3e'),
+          format(k2,'12.3e'),
+          format(k2reversed,'12.3e'),
+          )
+    return k2reversed
+    
 
 _reaction_coefficient_formulae = {
     'constant'               :lambda c,p: c['k'],
@@ -439,6 +484,7 @@ _reaction_coefficient_formulae = {
     'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']), # α[cm-3], T[K], β[], γ[K]
     'impact_test_2020-12-07' :lambda c,p: p['T']*0 ,
     'rimmer2016_3_body'      :_rimmer2016_3_body,
+    'test'      :_test,
 } 
 
 def _f(c,p):
@@ -898,18 +944,19 @@ def integrate_network(reaction_network,initial_density,state,time):
     for key,val in initial_density.items():
         density[_species_index[key],0] = val
     current_state = {}
-    def _get_current_state(time):
+    def _get_current_state(time,density):
         for key,val in state.items():
             if callable(val):
                 current_state[key] = val(time)
             else:
                 current_state[key] = val
+            current_state['nt'] = np.sum(density)
         return current_state
     ## faster rate calculation function
     def _get_rates(time,density):
         rates = np.zeros(len(species),float)
         ## rate coefficients
-        _get_current_state(time)
+        _get_current_state(time,density)
         rate_coefficients = np.array(
             [reaction.get_rate_coefficient(current_state)
              for reaction in reaction_network],float)
@@ -932,7 +979,7 @@ def integrate_network(reaction_network,initial_density,state,time):
     r.set_initial_value(density[:,0])
     ## run saving data at requested number of times
     save_state = Dataset()
-    save_state.append(**_get_current_state(time=0))
+    save_state.append(**_get_current_state(time=0,density=density[:,0]))
     for itime,timei in enumerate(time[1:]):
         r.integrate(timei)
         density[:,itime] = r.y

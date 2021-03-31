@@ -12,17 +12,7 @@ def test_construct():
 
 def test_construct():
     t = levels.Generic()
-    # assert t.name == 'generic_level'
-    assert len(t._prototypes) > 0
-    # assert list(t._prototypes.keys()) == [
-        # 'species',
-        # 'E','Eref',
-        # 'Γ','ΓD',
-        # 'g',
-        # 'Teq','Tex','partition_source','partition','α',
-        # 'Nself',
-        # # 'species', 'E', 'Eref','Γ','ΓD',
-    # ]
+    assert len(t.default_prototypes) > 0
 
 def test_assignment():
     t = levels.Generic(name='ddd')

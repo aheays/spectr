@@ -1,13 +1,16 @@
+## standard libraries
 import itertools 
 import functools
 from copy import copy,deepcopy
 import re
 from pprint import pprint
 
+## nonstandard libraries
 from scipy import constants
 import numpy as np
 from numpy import nan,array
 
+## this module
 from .dataset import Dataset
 from . import convert
 from .tools import vectorise,cache,file_to_dict
@@ -15,7 +18,6 @@ from . import tools
 from . import database
 from . import kinetics
 from .exceptions import InferException,MissingDataException
-# from .levels_prototypes import prototypes
 
 
 prototypes = {}
@@ -251,25 +253,12 @@ def _collect_prototypes(*keys):
 
 class Base(Dataset):
     """Common stuff for for lines and levels."""
-    _prototypes = _collect_prototypes()
-    default_attributes = (*Dataset.default_attributes,'Zsource')
-
-    def __init__(self,name=None,**kwargs):
-        """Default_name is decoded to give default values. Kwargs ca be
-        scalar data, further default values of vector data, or if vetors
-        themselves will populate data arrays."""
-        Dataset.__init__(self,name=name,prototypes=self._prototypes,**kwargs)
-        self._cache = {}
-        # self.pop_format_input_function()
-        # self.automatic_format_input_function(limit_to_args=('name',))
-        # self.automatic_format_input_function(multiline=True )
-        # self.pop_format_input_function()
-        # self.automatic_format_input_function(limit_to_args=('name',))
-        # self.default_zkeys = self.defining_qn
+    default_prototypes = _collect_prototypes()
+    default_attributes = Dataset.default_attributes | {'Zsource':None,}
 
 class Generic(Base):
     """A generic level."""
-    _prototypes = _collect_prototypes(
+    default_prototypes = _collect_prototypes(
         'species',
         'label',
         'point_group',
@@ -284,7 +273,7 @@ class Generic(Base):
 
 class LinearTriatomic(Generic):
     """A generic level."""
-    _prototypes = _collect_prototypes(
+    default_prototypes = _collect_prototypes(
         'species',
         'label',
         'ν1','ν2','ν3','l2',
@@ -300,7 +289,7 @@ class LinearTriatomic(Generic):
         
 
 class Diatomic(Base):
-    _prototypes = _collect_prototypes(
+    default_prototypes = _collect_prototypes(
         'species',
         'point_group',
         'E','Eref',
@@ -385,12 +374,3 @@ class Diatomic(Base):
             data.pop(key)
         self.extend(**data)
 
-# class LinearTriatomic(Generic):
-    # """Rotational levels of a linear triatomic.  Constructed to load
-    # linear triatomic data from HITRAN (e.g., Table 3 in rothman2005."""
-    # _prototypes = _collect_prototypes(*Generic._prototypes,
-        # 'label', 'S',
-        # 'v1','v2','v3','l2',    # vibrational coordinates
-        # 'J',
-    # )
-    # default_zkeys = ('label','v1','v2','v3','l2',)

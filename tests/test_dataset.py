@@ -72,6 +72,29 @@ def test_dataset_prototypes():
     assert t._data['x']['description'] == "X is a thing."
     assert t.get_prototype('x')['description'] == "X is a thing."
 
+def test_dataset_default_prototypes():
+    ## without default prototype
+    class t(Dataset):
+        default_prototypes = {}
+    x = t(permit_nonprototyped_data=False)
+    with raises(Exception):
+        x['x'] = [1,2,3]
+    ## with default prototype
+    class t(Dataset):
+        default_prototypes = {'x':{'kind':'i',},}
+    x = t(permit_nonprototyped_data=False)
+    # assert 'x' in x.prototypes
+    x['x'] = [1,2,3]
+    assert np.all(x['x'] == [1,2,3])
+
+def test_dataset_permit_nonprototyped_data():
+    t = Dataset()
+    t.permit_nonprototyped_data = True
+    t['x'] = [5]
+    t.permit_nonprototyped_data = False
+    with raises(Exception):
+        qt['y'] = [5]
+
 def test_defaults():
     ## set and use a default
     t = Dataset(x=[1,2,3],y=['a','b','c'])
@@ -115,14 +138,6 @@ def test_auto_defaults():
     assert all(t['x'] == [1,2,3,1,3,4,5])
     assert t['y'][-1] == 2
     assert all([np.isnan(tt) for tt in t['y'][:-1]])
-
-def test_dataset_permit_nonprototyped_data():
-    t = Dataset()
-    t.permit_nonprototyped_data = True
-    t['x'] = [5]
-    t.permit_nonprototyped_data = False
-    with raises(Exception):
-        qt['y'] = [5]
 
 def test_dataset_index():
     t = Dataset(x=[1,2,3,4,5])
@@ -490,8 +505,6 @@ def test_get_common():
 def test_load():
     x = dataset.load('data/test_load.psv')
     assert x['classname'] == 'dataset.Dataset'
-    x = dataset.load('data/test_load_2.psv')
-    assert x['classname'] == 'lines.Generic'
 
 def test_units():
     x = Dataset(x=[1,2,3])
