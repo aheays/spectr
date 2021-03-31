@@ -2,7 +2,7 @@ import re
 from time import perf_counter as timestamp
 import ast
 from copy import copy,deepcopy
-from pprint import pprint
+from pprint import pprint,pformat
 import importlib
 import warnings
 
@@ -352,9 +352,6 @@ class Dataset(optimise.Optimiser):
             return None
         return self._data[key]['units']
 
-    def get_description(self,key):
-        return self._data[key]['description']
-
     def set_default(self,key=None,value=None,**more_keys_values):
         """Set a value that will be used if otherwise missing"""
         if key is not None:
@@ -469,6 +466,13 @@ class Dataset(optimise.Optimiser):
     def keys(self):
         return list(self._data.keys())
 
+    def optimised_keys(self):
+        return [key for key in self.keys() if self.get_vary(key) is not None]
+
+    def __iter__(self):
+        for key in self._data:
+            yield key
+
     def items(self):
         """Iterate over set keys and their values."""
         for key in self:
@@ -479,9 +483,6 @@ class Dataset(optimise.Optimiser):
         value = self[key]
         self.unset(key)
         return value
-
-    def optimised_keys(self):
-        return [key for key in self.keys() if self.get_vary(key) is not None]
 
     def assert_known(self,*keys):
         for key in keys:
@@ -557,13 +558,8 @@ class Dataset(optimise.Optimiser):
                     self._data[key]['inferred_to'].remove(inferred_to)
                     self.unset(inferred_to)
 
-    def is_inferred_from(self,key_to,key_from):
-        """Check whether data is calculated from other dats."""
-        return key_from in self._data[key_to]['inferred_from']
-
     def add_infer_function(self,key,dependencies,function):
         """Add a new method of data inference."""
-        assert key in self.prototypes
         self.prototypes[key]['infer'].append((dependencies,function))
 
     def index(self,index):
@@ -623,10 +619,10 @@ class Dataset(optimise.Optimiser):
         for key in source.attributes:
             self[key] = source[key]
 
-    def find(self,**matching_keys_vals):
+    def find(self,**keys_vals):
         """Return an array of indices matching key_vals."""
         length = 0
-        for val in matching_keys_vals.values():
+        for val in keys_vals.values():
             if not np.isscalar(val):
                 if length == 0:
                     length = len(val)
@@ -637,11 +633,11 @@ class Dataset(optimise.Optimiser):
             i = tools.find(
                 self.match(
                     **{key:(val if np.isscalar(val) else val[j])
-                       for key,val in matching_keys_vals.items()}))
+                       for key,val in keys_vals.items()}))
             if len(i)==0:
-                raise Exception(f'No matching row found: {matching_keys_vals=}')
+                raise Exception(f'No matching row found: {keys_vals=}')
             if len(i)>1:
-                raise Exception(f'Multiple matching rows found: {matching_keys_vals=}')
+                raise Exception(f'Multiple matching rows found: {keys_vals=}')
             retval[j] = i
         return retval
 
@@ -716,14 +712,6 @@ class Dataset(optimise.Optimiser):
         return retval
                           
 
-    def get_unique_value(self,key,**matching_keys_vals):
-        """Return value of key from a row that uniquely matches
-        matching_keys_vals."""
-        i = tools.find(self.match(**matching_keys_vals))
-        if len(i)!=1:
-            raise Excecption(f'Non-unique ({len(i)}) matches for {matching_keys_vals=}')
-        return self.get_value(key,i)
-
     def _infer(self,key,already_attempted=None,depth=0):
         """Get data, or try and compute it."""
         if key in self:
@@ -765,10 +753,8 @@ class Dataset(optimise.Optimiser):
                     self.set_uncertainty(key,np.sqrt(np.sum(squared_contribution,axis=0)))
                 ## if we get this far without an InferException then
                 ## success!.  Record inference dependencies.
-                ## replace this block with 
-                self._data[key]['inferred_from'].extend(dependencies)
-                for dependency in dependencies:
-                    self._data[dependency]['inferred_to'].append(key)
+                ## replace this block with
+                self._add_dependency(key,dependencies)
                 break           
             ## some kind of InferException, try next set of dependencies
             except InferException as err:
@@ -780,27 +766,15 @@ class Dataset(optimise.Optimiser):
         else:
             raise InferException(f"Could not infer key: {repr(key)}")
 
-    def _add_dependency(self,key_inferred_to,*keys_inferred_from):
+    def _add_dependency(self,key_inferred_to,keys_inferred_from):
         """Set a dependence connection between a key and its
         dependencies."""
         self._data[key_inferred_to]['inferred_from'].extend(keys_inferred_from)
         for key in keys_inferred_from:
             self._data[key]['inferred_to'].append(key_inferred_to)
-        
 
-    def _get_value_key_without_prefix(self,key):
-        """Get value key from uncertainty key, or return None."""
-        if '_' in key:
-            return key.split('_',1)
-        else:
-            return None,None
-        
-    def __iter__(self):
-        for key in self._data:
-            yield key
-
-    def as_dict(self,keys=None,index=None,):
-        """Return as a dict of arrays."""
+    def as_dict(self,keys=None,index=None):
+        """Return as a dict of arrays, including uncertainties."""
         if keys is None:
             keys = self.keys()
         retval = {}
@@ -827,18 +801,30 @@ class Dataset(optimise.Optimiser):
         for t in zip(*[self[key][index] for key in keys]):
             yield t
 
+    def find_unique(self,**matching_keys_vals):
+        """Return index of a uniquely matching row."""
+        i = tools.find(self.match(**matching_keys_vals))
+        if len(i) == 0:
+            raise Exception(f'No matching row found: {matching_keys_vals=}')
+        if len(i) > 1:
+            raise Exception(f'Multiple matching rows found: {matching_keys_vals=}')
+        return i[0]
+
     def matching_row(self,return_index=False,**matching_keys_vals):
         """Return uniquely-matching row as a dictionary."""
-        i = tools.find(self.match(**matching_keys_vals))
-        if len(i)==0:
-            raise Exception(f'No matching row found: {matching_keys_vals=}')
-        if len(i)>1:
-            raise Exception(f'Multiple matching rows found: {matching_keys_vals=}')
-        d = self.as_dict(index=i[0])
+        i = self.find_unique(**matching_keys_vals)
+        d = self.as_dict(index=i)
         if return_index:
             return d,i
         else:
             return d
+
+    def matching_value(self,key,**keys_vals):
+        """Return value of key from a row that uniquely matches
+        keys_vals."""
+        i = self.find_unique(**matching_keys_vals)
+        value = self.get(key,index=i)
+        return value
 
     def sort(self,*sort_keys,reverse_order=False):
         """Sort rows according to key or keys."""
@@ -880,7 +866,6 @@ class Dataset(optimise.Optimiser):
                 and ( (not format_step) or self.get_step(key) is None)
                 ):
                 ## format value for header
-                # header_values[key] = format(tval[0],self._data[key]['fmt'])
                 header_values[key] = tval[0]
             else:
                 ## two passes required on all data to align column
@@ -921,7 +906,7 @@ class Dataset(optimise.Optimiser):
                     line += f' = {repr(header_values[key]):20}'
                 else:
                     line += f'{"":23}'    
-                line += f' # {self.get_description(key)}'
+                line += f' # '+self._data[key]['description']
                 if (units:=self.get_units(key)) is not None:
                     line += f' [{units}]'
                 header.append(line)
@@ -1186,13 +1171,13 @@ class Dataset(optimise.Optimiser):
         self._length = total_length
         
     def __add__(self,other):
-        """Adding dataset combines each key."""
+        """Adding dataset concatenates data in all keys."""
         retval = self.copy()
         retval.extend(**other)
         return retval
 
     def __radd__(self,other):
-        """Adding dataset combines each key."""
+        """Adding dataset concatenates data in all keys."""
         retval = self.copy()
         retval.extend(**other)
         return retval
