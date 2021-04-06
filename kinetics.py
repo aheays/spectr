@@ -344,45 +344,42 @@ class Mixture(Dataset):
         return nt
     default_prototypes['nt'] = dict(description="Total number density",units='cm-3',kind=float,infer=[((),_f)])
 
-    species_keys = property(lambda self: [key for key in self if key not in self.default_prototypes])
-    state_keys = property(lambda self: [key for key in self.state_prototypes if key in self])
+    # species_keys = property(lambda self: [key for key in self if key not in self.default_prototypes])
+    # state_keys = property(lambda self: [key for key in self.state_prototypes if key in self])
+
+    def get_most_abundant(self,n=5):
+        """Return names of the n most abundance species."""
+        keys = [key for key in self if len(key)>2 and key[:2] == 'n_']
+        i = np.argsort([self[key].max() for key in keys])
+        retval = [keys[ii][2:] for ii in i[-1:-n:-1]]
+        return retval
+
 
     def plot_density(
             self,
-            xkey=None,
-            ykeys=10,
+            xkey,
+            species_list,
             zkeys=None,
-            fractional=False,
-            **plot_kwargs):
+            **plot_kwargs
+    ):
         """Plot density of species. If xkeys is an integer then plot that many
         most abundant anywhere species. Or else give a list of species
         names."""
         plot_kwargs.setdefault('marker','')
         plot_kwargs.setdefault('ynewaxes',False)
         plot_kwargs.setdefault('znewaxes',False)
-        plot_kwargs.setdefault('annotate_lines',True)
+        plot_kwargs.setdefault('annotate_lines', True)
         plot_kwargs.setdefault('legend',False)
         plot_kwargs.setdefault('yscale','log')
-        if xkey is None:
-            xkey = self.state_keys[0]
-        if ykeys is None:
-            ykeys = 99
-        if isinstance(ykeys,int):
-            ymaxneg = [-self[key].max() for key in self.species_keys]
-            i = np.argsort(ymaxneg)
-            ykeys = np.array(self.species_keys)[i[:ykeys]]
-        if zkeys is None:
-            zkeys = self.state_keys[1:]
-        if fractional:
-            data = self.copy()
-            self['nt']
-            for key in ykeys:
-                data[key] /= self['nt']
-            data_to_plot = data
-        else:
-            data_to_plot = self
-        fig = data_to_plot.plot(xkey, ykeys, zkeys, **plot_kwargs)
-        ax = fig.gca()
+        if species_list is None:
+            species_list = self.get_most_abundant()
+        if isinstance(species_list,int):
+            ## plot most abundant species
+            species_list = self.get_most_abundant(species_list)
+        ykeys = [f'n_{species}' for species in tools.ensure_iterable(species_list)]
+        ## plot
+        fig = self.plot(xkey, ykeys, zkeys, **plot_kwargs)
+        return fig
 
 ########################
 ## Chemical reactions ##
