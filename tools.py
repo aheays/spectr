@@ -5,6 +5,7 @@ import warnings
 from copy import copy
 from pprint import pprint
 import itertools
+import io
 
 from scipy import interpolate,constants,integrate,linalg,stats
 import csv
@@ -4103,8 +4104,10 @@ def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
     sheet_name=name.\n\nIf return_all_tables, return a dict of dicts,
     with keys given by all table names found in sheet. """
     ## deprecated kwargs
-    if 'tableName' in kwargs:   kwargs['table_name'] = kwargs.pop('tableName')
-    if 'commentChar' in kwargs: kwargs['comment'] = kwargs.pop('commentChar')
+    if 'tableName' in kwargs:
+        kwargs['table_name'] = kwargs.pop('tableName')
+    if 'commentChar' in kwargs:
+        kwargs['comment'] = kwargs.pop('commentChar')
     ## open generator reader according to file extension
     fid = None
     if isinstance(path,list):
@@ -4116,10 +4119,16 @@ def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
             fid,
             skipinitialspace=True,
             quotechar=(kwargs.pop('quotechar') if 'quotechar' in kwargs else '"'),)
-    elif isinstance(path,str) and path[-4:]=='.ods':
+    elif isinstance(path,str) and path[-4:] =='.ods':
         kwargs.setdefault('sheet_name',0)
         reader=odsReader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
-    elif isinstance(path,file):
+    elif isinstance(path,str) and path[-5:] =='.xlsx':
+        assert 'sheet_name' not in kwargs,'Not implemented'
+        import openpyxl
+        data = openpyxl.open(path,read_only=True,data_only=True,keep_links=False)
+        print( data)
+        reader=odsReader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
+    elif isinstance(path,io.IOBase):
         reader=csv.reader(expand_path(path),)
     else:
         raise Exception("Failed to open "+repr(path))
@@ -4184,7 +4193,8 @@ def stream_to_dict(
             if re.match(r'^ *'+re.escape(comment),line[0]): line = get_line()
         return line
     ## skip rows if requested
-    for i in range(skip_rows): next(reader)
+    for i in range(skip_rows): 
+        next(reader)
     ## if requested, scan through file until table found
     if table_name!=None:
         while True:

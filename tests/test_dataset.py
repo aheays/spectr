@@ -415,7 +415,7 @@ def test_dataset_load_save_to_file():
     assert list(u['x']) == list(t['x'])
     assert list(u['z']) == list(t['z'])
     assert all(u['f'] == t['f'])
-
+test_dataset_load_save_to_file()
 def test_load_from_string():
     t = Dataset()
     t.load_from_string('''
@@ -442,7 +442,7 @@ def test_load_from_string():
     assert all(t['a'] == [1,3,1])
 
 def test_step():
-    t = Dataset(x=[1,2,3],f=5)
+    t = Dataset(x=[1,2,3.0],f=5)
     t.set_step('x',0.1)
     assert all(t.get_step('x') == [0.1,0.1,0.1])
     t = Dataset(x=[1,2,3],f=5)

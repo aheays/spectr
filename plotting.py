@@ -2246,7 +2246,8 @@ def annotate_spectrum(
     ax.plot([min(x),max(x)],[ylevel,ylevel],**plotkwargs)
     ## draw lines in Jpp,energy lists and annotate labels
     labelkwargs = copy(textkwargs)
-    if labelsize is not None: labelkwargs['fontsize'] = labelsize
+    if labelsize is not None:
+        labelkwargs['fontsize'] = labelsize
     labelkwargs['horizontalalignment'] = 'center'
     if labelpad>0:
         labelkwargs['verticalalignment'] = 'bottom'
@@ -2266,12 +2267,17 @@ def annotate_spectrum(
             namekwargs['fontsize'] = namesize # possibly override textkwargs
         name_pad_left,name_pad_right = '',''
         if namepos=='float':
-            tline,tlabel = tools.annotate_hline(str(name),ylevel,ax=ax,linewidth=0,va='center',
-                                                 color=namekwargs['color'],fontsize=namekwargs['fontsize'],)
-            ## tlabel.set_backgroundcolor('white')
+            tline,tlabel = tools.annotate_hline(
+                str(name),
+                ylevel,ax=ax,
+                linewidth=0,
+                va='center',
+                color=namekwargs['color'],
+                fontsize=namekwargs['fontsize'],
+            )
             tlabel.set_bbox({'facecolor':'white', 'alpha':0.8, 'pad':0})
             tlabel.set_color(color)
-            # tlabel.set_alpha(0.8)
+            tlabel.set_in_layout(False)
         else:
             if tools.isiterable(namepos): # must be shift coordinates
                 if np.abs(x[0]-x.min())<np.abs(x[0]-x.max()):
@@ -2312,7 +2318,6 @@ def annotate_spectrum(
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     
-
 def annotate_spectrum_by_branch(
         lines,             # Lines object
         ybeg = 1,               # y position of first coord
@@ -2344,15 +2349,10 @@ def annotate_spectrum_by_branch(
         if len(zlines)==0: continue
         ## get annotation name
         if name_function is None:
-            # name = encode_lines(**qn)
-            # name = str(qn)
-            # name = ','.join([f'{key}={val}' for key,val in qn.items()])
-            name = ' '.join([f'{val}' for key,val in qn.items()])
-
+            # name = ' '.join([f'{val}' for key,val in qn.items()])
+            name = repr(qn)
         else:
             name = name_function(qn)
-        # if match_name_re is not None and not re.match(match_name_re,name):
-            # continue
         ## update kwargs for this annotation
         kwargs = copy(kwargs_annotate_spectrum)
         kwargs.setdefault('name',name)

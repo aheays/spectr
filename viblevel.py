@@ -14,7 +14,7 @@ from . import tools
 from . import dataset
 from .dataset import Dataset
 from .tools import find,cache
-from .optimise import Optimiser,P,optimise_method,format_input_method
+from .optimise import Optimiser,P,optimise_method
 from .kinetics import get_species,Species
 
 
@@ -83,7 +83,7 @@ class VibLevel(Optimiser):
         ## if first run or model changed then construct Hamiltonian
         ## and blank rotational level, and determine which levels are
         ## actually allowed
-        if True or self.H is None or self._last_add_construct_function_time > self._last_construct_time:
+        if self.H is None or self._last_add_construct_function_time > self._last_construct_time:
             ## construct Hamiltonian
             self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.)
             ## create a rotational level with all quantum numbers
@@ -133,14 +133,14 @@ class VibLevel(Optimiser):
                 eigvals_f,eigvects_f = _diabaticise_eigenvalues(eigvals_f,eigvects_f)
                 eigvals[jf] = eigvals_f
                 eigvects[np.ix_(jf,jf)] = eigvects_f
-            ## diagonaliase all at one
-            # eigvals,eigvects = linalg.eigh(H)
-            # eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
+            ## diagonaliase all at once
+            ## eigvals,eigvects = linalg.eigh(H)
+            ## eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
             self.eigvals[J] = eigvals.real
             self.eigvects[J] = eigvects.real
         ## insert energies into level
         self.level['E'] = np.concatenate(list(self.eigvals.values()))
-        self.level.index((self.level['J']>self.level['Ω']))
+        # self.level.index((self.level['J']>self.level['Ω']))
 
     @optimise_method(add_construct_function=False)
     def add_level(self,name,**kwargs):
@@ -171,7 +171,7 @@ class VibLevel(Optimiser):
             raise Exception(f'Non-unique name: {repr(name)}')
         self.manifolds[name] = dict(ibeg=ibeg,ef=ef,Σ=Σ,n=len(ef),**kw) 
 
-    @format_input_method()
+    @optimise_method(add_construct_function=False)
     def add_LS_coupling(self,name1,name2,ηv=0,ηDv=0):
         kw1 = self.manifolds[name1]
         kw2 = self.manifolds[name2]
@@ -184,7 +184,7 @@ class VibLevel(Optimiser):
             H[i] = lambda J,i=i: ηv*LS[i](J) + ηDv*NNLS[i](J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
 
-    @format_input_method()
+    @optimise_method(add_construct_function=False)
     def add_JL_coupling(self,name1,name2,ξv=0,ξDv=0):
         kw1 = self.manifolds[name1]
         kw2 = self.manifolds[name2]
@@ -197,7 +197,7 @@ class VibLevel(Optimiser):
             H[i] = lambda J,i=i: -ξv*JL[i](J) - ξDv*NNJL[i](J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
 
-    @format_input_method()
+    @optimise_method(add_construct_function=False)
     def add_JS_coupling(self,name1,name2,pv=0):
         kw1 = self.manifolds[name1]
         kw2 = self.manifolds[name2]
@@ -346,7 +346,7 @@ class VibLine(Optimiser):
         # self.line.remove_match(Sij=0)
 
 
-    @format_input_method()
+    @optimise_method(add_construct_function=False)
     def add_transition_moment(self,name_u,name_l,μv=1):
         """Add constant transition moment. μv can be optimised."""
         """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed

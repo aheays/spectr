@@ -222,7 +222,7 @@ class Dataset(optimise.Optimiser):
             self._data[key] = data
         else:
             if key not in self:
-                raise Exception(f'Cannot set data with index for unknown {key=}')
+                raise Exception(f'Cannot set data by index for unset key: {key}')
             self._data[key]['value'][:self._length][index] = self._data[key]['cast'](value)
         ## set uncertainty / variability / differentiation stepsize
         if uncertainty is not None:
@@ -243,109 +243,99 @@ class Dataset(optimise.Optimiser):
             retval = convert.units(retval,self.get_units(key),units)
         return retval
 
-    def has_uncertainty(self,key):
-        return 'uncertainty' in self._data[key]
+    def _uncertainty_is_set(self,key):
+        if 'uncertainty' in self._data[key]:
+            return True
+        else:
+            return False
         
     def get_uncertainty(self,key,index=None,units=None):
-        if 'uncertainty' not in self._data[key]:
-            return None
+        if self._uncertainty_is_set(key):
+            retval = self._data[key]['uncertainty'][:self._length]
+        else:
+            retval = np.full(len(self),0.0)
         if index is not None:
-            return self.get_uncertainty(key,units=units)[index]
-        retval = self._data[key]['uncertainty'][:self._length]
+            retval = retval[index]
         if units is not None:
             retval = convert.units(retval,self.get_units(key),units)
         return retval
 
     def set_uncertainty(self,key,value,index=None):
-        if self._data[key]['kind'] != 'f':
-            raise Exception('Uncertainty only defined for kind="f" floating-point data and {key=} has kind={self._data[key]["kind"]}')
-        if value is None:
-            ## unset uncertainty
-            self._data[key]['uncertainty'] = None
-        elif index is not None:
-            ## set some uncertainties -- if not defined set others to
-            ## NaN
-            if self.get_uncertainty(key) is None:
-                self.set_uncertainty(key,nan)
-            self.get_uncertainty(key)[index] = value
-        else:
-            ## set all uncertainties
-            if np.isscalar(value):
-                self._data[key]['uncertainty'] = np.full(len(self),value,dtype=float)
-            else:
-                if len(value) != len(self):
-                    raise Exception()
-                self._data[key]['uncertainty'] = np.asarray(value,dtype=float)
+        if self.get_kind(key) != 'f':
+            raise Exception('Uncertainty only defined for kind="f" floating-point data and {key=} has kind={self.get_kind(key)}')
+        ## set default value first
+        if not self._uncertainty_is_set(key):
+            self._data[key]['uncertainty'] = np.full(len(self),0.0,dtype=float)
+        if index is None:
+            index = slice(0,len(self))
+        self._data[key]['uncertainty'][:len(self)][index] = value
 
-    def get_step(self,key,index=None,return_default_if_necessary=False):
-        if 'step' not in self._data[key]:
-            if return_default_if_necessary:
-                return self._data[key]['default_step']
-            else:
-                return None
-        if index is not None:
-            return self.get_step(key)[index] 
-        return self._data[key]['step'][:len(self)]
-
-    def set_step(self,key,step,index=None):
-        if index is not None:
-            self.get_step(key)[index] = step
-        if np.isscalar(step):
-            self._data[key]['step'] = np.full(len(self),step,dtype=float)
+    def _step_is_set(self,key):
+        """Whether or not a step has been set."""
+        if 'step'  in self._data[key]:
+            return True
         else:
-            if len(step) != len(self):
-                raise Exception()
-            self._data[key]['step'] = np.asarray(step,dtype=float)
+            return False 
+
+    def get_step(self,key,index=None):
+        if self._step_is_set(key):
+            retval = self._data[key]['step'][:len(self)]
+        else:
+            retval = np.full(len(self),self._data[key]['default_step'],dtype=float)
+        if index is not None:
+            retval = retval[index]
+        return retval
+
+    def set_step(self,key,value,index=None):
+        if self.get_kind(key) != 'f':
+            raise Exception(f'Optimisation only possible for kind="f" floating-point data and {key=} has kind={self.get_kind(key)}')
+        if not self._step_is_set(key):
+            self._data[key]['step'] = np.full(len(self),self._data[key]['default_step'],dtype=float)
+        if index is None:
+            index = slice(0,len(self))
+        self._data[key]['step'][:len(self)][index] = value
+
+    def _vary_is_set(self,key):
+        """Whether or not a step has been set."""
+        if 'vary'  in self._data[key]:
+            return True
+        else:
+            return False 
 
     def get_vary(self,key,index=None):
-        if 'vary' not in self._data[key]:
-            return None
+        if self._vary_is_set(key):
+            retval = self._data[key]['vary'][:len(self)]
+        else:
+            retval = np.full(len(self),False,dtype=bool)
         if index is not None:
-            return self.get_vary(key)[index] 
-        return self._data[key]['vary'][:len(self)]
+            retval = retval[index]
+        return retval
 
-    def set_vary(self,key,vary,index=None):
+    def set_vary(self,key,value,index=None):
         """Set boolean vary for optimisation. Strings 'True', 'False', and
         'None' also accepted."""
+        if self.get_kind(key) != 'f':
+            raise Exception(f'Optimisation only possible for kind="f" floating-point data and {key=} has kind={self.get_kind(key)}')
         ## interpret string represnation  of "True" and "False"
-        if vary is True:
-            vary = True
-        elif vary is False or vary is None or vary is Fixed: 
-            vary = False
-        elif len(vary) > 0 and isinstance(vary[0],str):
-            tvary = vary
-            vary = []
-            for val in tvary:
+        if value is True:
+            value = True
+        elif value is False or value is None or value is Fixed: 
+            value = False
+        elif len(value) > 0 and isinstance(value[0],str):
+            tvalue = value
+            value = []
+            for val in tvalue:
                 if val in ('True',):
                     val = True
                 if val in ('False','None'): 
                     val = False
-                vary.append(val)
-        ## set if indexed values
-        if index is not None:
-            if self.get_vary(key) is None:
-                self.set_vary(key,False)
-            self.get_vary(key)[index] = vary
-            return
-        ## set if scalar
-        if np.isscalar(vary):
-            self._data[key]['vary'] = np.full(len(self),vary,dtype=bool)
-        ## set if vector
-        else:
-            if len(vary) != len(self):
-                raise Exception()
-            self._data[key]['vary'] = np.asarray(vary,dtype=bool)
-        ## set a default step size and uncertainty
-        if self.get_step(key) is None:
-            if (prototype:=self.get_prototype(key)) is not None and 'default_step' in prototype:
-                self.set_step(key,prototype['default_step'])
-            else:
-                step = np.full(len(self),1e-5)
-                i = self[key] != 0
-                step[i] = 10**np.round(np.log10(1e-5*np.abs(self[key][i])))
-                self.set_step(key,step)
-        if self.get_uncertainty(key) is None:
-            self.set_uncertainty(key,nan)
+                value.append(val)
+        ## set default value first
+        if not self._vary_is_set(key):
+            self._data[key]['vary'] = np.full(len(self),False,dtype=bool)
+        if index is None:
+            index = slice(0,len(self))
+        self._data[key]['vary'][:len(self)][index] = value
 
     def get_units(self,key):
         if 'units' not in self._data[key]:
@@ -396,38 +386,41 @@ class Dataset(optimise.Optimiser):
     def set_parameter(
             self,
             key,
-            parameter,          # a scalar or Parameter
+            value,          # a scalar or Parameter
             index=None,         # only apply to these indices
+            match=None,
             **prototype_kwargs,
     ):
         """Set a value and it will be updated every construction and possible
         optimised."""
+        if match is not None:
+            index = self.match(**match)
         ## if not a parameter then treat as a float -- could use set(
         ## instead and branch there, requiring a Parameter here
-        if isinstance(parameter,Parameter):
+        if isinstance(value,Parameter):
             ## only reconstruct for the following reasons
             if (
                     key not in self.keys() # key is unknown -- first run
-                    or parameter._last_modify_value_time > self._last_construct_time # parameter has been set
-                    or np.any(self.get(key,index=index) != parameter.value) # data has changed some other way and differs from parameter
-                    or ((not np.isnan(parameter.uncertainty)) and (np.any(self.get_uncertainty(key,index=index) != parameter.uncertainty))) # data has changed some other way and differs from parameter
+                    or value._last_modify_value_time > self._last_construct_time # parameter has been set
+                    or np.any(self.get(key,index=index) != value.value) # data has changed some other way and differs from parameter
+                    or ((not np.isnan(value.uncertainty)) and (np.any(self.get_uncertainty(key,index=index) != value.uncertainty))) # data has changed some other way and differs from parameter
                 ):
                 self.set(
                     key,
-                    value=parameter.value,
-                    uncertainty=parameter.uncertainty,
-                    step=parameter.step,
+                    value=value.value,
+                    uncertainty=value.uncertainty,
+                    step=value.step,
                     index=index,
                     **prototype_kwargs)
         elif key in self.attributes:
-            self.attributes[key] = parameter
+            self.attributes[key] = value
         else:
             ## only reconstruct for the following reasons
             if (
                     key not in self.keys() # key is unknown -- first run
-                    or np.any(self.get(key,index=index) != parameter) # data has changed some other way and differs from parameter
+                    or np.any(self.get(key,index=index) != value) # data has changed some other way and differs from parameter
                 ):
-                self.set(key,value=parameter,index=index,**prototype_kwargs)
+                self.set(key,value=value,index=index,**prototype_kwargs)
 
     @optimise_method()
     def set_spline(self,xkey,ykey,knots,order=3,match=None,index=None,_cache=None):
@@ -449,25 +442,25 @@ class Dataset(optimise.Optimiser):
             index=i,
         )
         ## set previously-set uncertainties to NaN
-        if self.get_uncertainty(ykey) is not None:
+        if self._uncertainty_is_set(ykey):
             if i is None:
                 self.set_uncertainty(ykey,None)
             else:
                 self.set_uncertainty(ykey,nan,index=i)
 
 
-    @optimise_method()
-    def set_parameters(self,index=None,**keys_vals):
-        """Call set_parameters for eacy key_val pair."""
-        for key,val in keys_vals.items():
-            self.set_parameter(key,val,index=index)
-            self.pop_format_input_function()
+    # @optimise_method()
+    # def set_parameters(self,index=None,**keys_vals):
+        # """Call set_parameters for each key_val pair."""
+        # for key,val in keys_vals.items():
+            # self.set_parameter(key,val,index=index)
+            # self.pop_format_input_function()
 
     def keys(self):
         return list(self._data.keys())
 
     def optimised_keys(self):
-        return [key for key in self.keys() if self.get_vary(key) is not None]
+        return [key for key in self.keys() if self._vary_is_set(key)]
 
     def __iter__(self):
         for key in self._data:
@@ -609,12 +602,12 @@ class Dataset(optimise.Optimiser):
                 index &= source.match(**match)
         for key in keys:
             self.set(key,source.get(key,index=index))
-            if copy_uncertainty and (t:=source.get_uncertainty(key,index=index)) is not None:
-                self.set_uncertainty(key,t)
-            if copy_step and (t:=source.get_step(key,index=index)) is not None:
-                self.set_step(key,t)
-            if copy_vary and (t:=source.get_vary(key,index=index)) is not None:
-                self.set_vary(key,t)
+            if copy_uncertainty and source._uncertainty_is_set(key):
+                self.set_uncertainty(key,source.get_uncertainty(key,index=index))
+            if copy_step and source._step_is_set(key):
+                self.set_step(key,source.get_step(key,index=index))
+            if copy_vary and source._vary_is_set(key):
+                self.set_vary(key,source.get_step(key,index=index))
         ## copy all attributes
         for key in source.attributes:
             self[key] = source[key]
@@ -742,13 +735,14 @@ class Dataset(optimise.Optimiser):
                 value = self[key]
                 parameters = [self[t] for t in dependencies]
                 for i,dependency in enumerate(dependencies):
-                    if (tuncertainty:=self.get_uncertainty(dependency)) is not None:
-                        step = self.get_step(dependency,return_default_if_necessary=True)
+                    # if (tuncertainty:=self.get_uncertainty(dependency)) is not None:
+                    if self._uncertainty_is_set(dependency):
+                        step = self.get_step(dependency)
                         parameters[i] = self[dependency] + step # shift one
                         dvalue = value - function(self,*parameters)
                         parameters[i] = self[dependency] # put it back
                         data = self._data[dependency]
-                        squared_contribution.append((tuncertainty*dvalue/step)**2)
+                        squared_contribution.append((self.get_uncertainty(dependency)*dvalue/step)**2)
                 if len(squared_contribution)>0:
                     self.set_uncertainty(key,np.sqrt(np.sum(squared_contribution,axis=0)))
                 ## if we get this far without an InferException then
@@ -780,7 +774,7 @@ class Dataset(optimise.Optimiser):
         retval = {}
         for key in keys:
             retval[key] = self.get(key,index=index)
-            if self.has_uncertainty(key):
+            if self._uncertainty_is_set(key):
                 retval[key+'_unc'] = self.get_uncertainty(key,index=index)
         return retval
         
@@ -861,9 +855,9 @@ class Dataset(optimise.Optimiser):
             formatted_key = ( "'"+key+"'" if quote_keys else key )
             if (unique_values_in_header
                 and len(tval:=self.unique(key)) == 1
-                and ( (not format_uncertainty) or self.get_uncertainty(key) is None)
-                and ( (not format_vary) or self.get_vary(key) is None)
-                and ( (not format_step) or self.get_step(key) is None)
+                and ( not format_uncertainty or not self._uncertainty_is_set(key))
+                and ( not format_vary or not self._vary_is_set(key))
+                and ( not format_step or not self._step_is_set(key))
                 ):
                 ## format value for header
                 header_values[key] = tval[0]
@@ -876,21 +870,22 @@ class Dataset(optimise.Optimiser):
                 width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
                 columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
                 ## add uncertinaties / vary /step
-                if format_uncertainty and self.get_uncertainty(key) is not None:
-                    formatted_key = ( "'"+key+"_unc'" if quote_keys else key+"_unc" )
-                    vals = [format(t,"0.1e") for t in self.get_uncertainty(key)]
-                    width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
-                    columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
-                if format_vary and self.get_vary(key) is not None:
-                    formatted_key = ( "'"+key+"_vary'" if quote_keys else key+"_vary" )
-                    vals = [repr(t) for t in self.get_vary(key)]
-                    width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
-                    columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
-                if format_step and self.get_step(key) is not None:
-                    formatted_key = ( "'"+key+"_step'" if quote_keys else key+"_step" )
-                    vals = [format(t,"0.1e") for t in self.get_step(key)]
-                    width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
-                    columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
+                if self.get_kind(key) == 'f':
+                    if format_uncertainty and self._uncertainty_is_set(key) is not None:
+                        formatted_key = ( "'"+key+"_unc'" if quote_keys else key+"_unc" )
+                        vals = [format(t,"0.1e") for t in self.get_uncertainty(key)]
+                        width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
+                        columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
+                    if format_vary and self._vary_is_set(key) is not None:
+                        formatted_key = ( "'"+key+"_vary'" if quote_keys else key+"_vary" )
+                        vals = [repr(t) for t in self.get_vary(key)]
+                        width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
+                        columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
+                    if format_step and self._step_is_set(key) is not None:
+                        formatted_key = ( "'"+key+"_step'" if quote_keys else key+"_step" )
+                        vals = [format(t,"0.1e") for t in self.get_step(key)]
+                        width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
+                        columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
         ## construct header before table
         header = []
         ## add attributes to header
@@ -1273,7 +1268,8 @@ class Dataset(optimise.Optimiser):
                 y = z[ykey]
                 if label is not None:
                     kwargs.setdefault('label',label)
-                if plot_errorbars and (dy:=z.get_uncertainty(ykey)) is not None:
+                if plot_errorbars and z._uncertainty_is_set(ykey):
+                    dy = z.get_uncertainty(ykey)
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
                     dy[np.isnan(dy)] = 0.

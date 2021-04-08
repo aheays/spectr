@@ -112,11 +112,8 @@ def test_optimiser_has_changed():
     t.construct()
     assert not t.has_changed()
     assert not u.has_changed()
-    print('DEBUG: a', u.has_changed())
     u['z'] = 5
-    print('DEBUG: b', u.has_changed())
     assert u.has_changed()
-    print('DEBUG:', 'ff')
     assert t.has_changed()
     t.construct()
     t['x'] = 2.5
@@ -152,11 +149,9 @@ def test_format_input_decorator():
     print(optimiser.format_input())
     ## decorate creation of method
     class c(Optimiser):
-        @auto_construct_method('m')
+        @optimise_method()
         def m(self,x):
-            def f():
-                return x-5
-            return f
+            return x-5
     optimiser = c()
     optimiser.m(x=P(25))
     assert len(optimiser._construct_functions)==1
@@ -165,11 +160,9 @@ def test_format_input_decorator():
     assert list(optimiser.construct()) == [20]
     ## also detect suboptimisers
     class c(Optimiser):
-        @auto_construct_method('m')
+        @optimise_method()
         def m(self,p,o):
-            def f():
-                return p-5
-            return f
+            return p-5
     optimiser = c()
     optimiser.m(p=P(25),o=Optimiser('hello'))
     assert len(optimiser._construct_functions)==1

@@ -31,10 +31,9 @@ class CustomBool():
 ## False, and not intended to be changed
 Fixed = CustomBool('Fixed',False)
 
-
 def _collect_parameters_and_optimisers(x):
-    """Iteratively collect Parameter and Optimiser objects from x
-    descending into any iterable children."""
+    """Iteratively and recursively collect Parameter and Optimiser objects
+    from x descending into any iterable children."""
     maximum_length_for_searching = 1000
     parameters,optimisers = [],[]
     if isinstance(x,Parameter):
@@ -50,51 +49,6 @@ def _collect_parameters_and_optimisers(x):
             parameters.extend(tp)
             optimisers.extend(to)
     return parameters,optimisers
-
-def auto_construct_method(
-        function_name,
-        format_single_line=None,
-        format_multi_line=None,
-):
-    """A decorator factory for automatically adding parameters,
-    construct_function, and input_format_function from a decorated
-    method.  function_name required to make the
-    input_format_function.  The undecorated method must return a
-    construct_function. Parameters are picked out of the input
-    kwargs. POSITIONAL ARGUMENTS NOT ALLOWED for simplicity."""
-    warnings.warn('deprecated')
-    def actual_decorator(function):
-        def new_function(self,*args,**kwargs):
-            ## this block subtitutes into kwargs with keys taken from
-            ## the function signature.  get signature argumets -- skip
-            ## first "self"
-            signature_keys = list(inspect.signature(function).parameters)[1:]
-            for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
-                if signature_key in kwargs:
-                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function_name)}.')
-                kwargs[signature_key] = arg
-            ## add parameters suboptimisers in args to self
-            parameters,suboptimisers =  _collect_parameters_and_optimisers(kwargs)
-            for t in parameters:
-                self.add_parameter(t)
-            for t in suboptimisers:
-                self.add_suboptimiser(t)
-            ## make a construct function
-            construct_function = function(self,**kwargs)
-            self.add_construct_function(construct_function)
-            ## make a foramt_input_function
-            def f():
-                if (len(kwargs)<2 or format_single_line) and not format_multi_line:
-                    formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs.items() if val is not None])
-                    return f'{self.name}.{function_name}({formatted_kwargs},)'
-                else:
-                    formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs.items() if val is not None])
-                    return f'{self.name}.{function_name}(\n    {formatted_kwargs},\n)'
-            self.add_format_input_function(f)
-            ## return kwargs
-            return kwargs
-        return new_function
-    return actual_decorator
 
 def optimise_method(
         add_construct_function=True,
@@ -158,33 +112,6 @@ def optimise_method(
         return new_function
     return actual_decorator
 
-def format_input_method(format_single_line=None,format_multi_line=None):
-    """Add function to format_input_functions and run it."""
-    def actual_decorator(function):
-        def new_function(self,*args,**kwargs):
-            ## this block subtitutes into kwargs with keys taken from
-            ## the function signature.  get signature arguments -- skip
-            ## first "self"
-            signature_keys = list(inspect.signature(function).parameters)[1:]
-            for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
-                if signature_key in kwargs:
-                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function_name)}.')
-                kwargs[signature_key] = arg
-            ## make a format_input_function
-            def f():
-                kwargs_to_format = {key:val for key,val in kwargs.items() if key != '_cache' and val is not None}
-                if (len(kwargs_to_format)<2 or format_single_line) and not format_multi_line:
-                    formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
-                    return f'{self.name}.{function.__name__}({formatted_kwargs},)'
-                else:
-                    formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
-                    return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
-            self.add_format_input_function(f)
-            ## run the function
-            function(self,**kwargs)
-        return new_function
-    return actual_decorator
-
 class Optimiser:
     """Defines adjustable parameters and model-building functions which
     may return a residual error. Then optimise the parameters with
@@ -210,7 +137,8 @@ class Optimiser:
         self._post_construct_functions = {} # run in reverse order after other construct functions
         self._plot_functions = [] 
         self._monitor_functions = [] # call these functions at special times during optimisation
-        self.monitor_frequency = 'rms decrease' # when to call monitor fuctions: 'never', 'every iteration', 'rms decrease'
+        self._monitor_frequency = 'every iteration' # when to call monitor fuctions: 'never', 'every iteration', 'rms decrease'
+        self._monitor_parameters = False            # print out each on monitor
         self._save_to_directory_functions = [] # call these functions when calling save_to_directory (input argument is the directory)
         self._format_input_functions = {}        # call these functions (return strings) to build a script recreating an optimisation
         self._suboptimisers = list(suboptimisers) # Optimiser objects optimised with this one, their construct functions are called first
@@ -498,11 +426,18 @@ class Optimiser:
                     step.extend(optimiser.get_step(key,vary))
         return value,step,uncertainty
 
-    def _set_parameters(self,p,dp=None):
+    def _set_parameters(self,p,dp=None,rescale=False):
         """Set assign elements of p and dp from optimiser to the
         correct Parameters."""
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
         p = list(p)
+        ## shift and scale optimised parameter back to its original scale
+        if rescale:
+            p = [tp*(tsi*1e8)+tpi for tp,tpi,tsi in zip(p,self._initial_p,self._initial_step)]
+        ## print parameters
+        if self._monitor_parameters:
+            print('  p =  ['+' ,'.join([format(t,'+#15.13e') for t in p])+' ]')
+        ## deal with missing dp
         if dp is None:
             dp = [np.nan for pi in p]
         else:
@@ -590,16 +525,16 @@ class Optimiser:
         parameters."""
         self._number_of_optimisation_function_calls += 1
         ## update parameters in internal model
-        self._set_parameters(p)
+        self._set_parameters(p,rescale=True)
         ## rebuild model and calculate residuals
         residuals = self.construct()
         ## monitor
-        if residuals is not None and len(residuals)>0 and self.monitor_frequency!='never':
+        if residuals is not None and len(residuals)>0 and self._monitor_frequency!='never':
             rms = tools.nanrms(residuals)
             assert not np.isinf(rms),'rms is inf'
             assert not np.isnan(rms),'rms is nan'
-            if (self.monitor_frequency=='every iteration'
-                or (self.monitor_frequency=='rms decrease' and rms<self._rms_minimum)):
+            if (self._monitor_frequency=='every iteration'
+                or (self._monitor_frequency=='rms decrease' and rms<self._rms_minimum)):
                 current_time = timestamp()
                 print(f'call: {self._number_of_optimisation_function_calls:<6d} time: {current_time-self._previous_time:<10.3g} RMS: {rms:<12.8e}')
                 self.monitor()
@@ -607,7 +542,7 @@ class Optimiser:
                 if rms<self._rms_minimum: self._rms_minimum = rms
         return residuals
 
-    @format_input_method()
+    @optimise_method(add_construct_function=False,)
     def optimise(
             self,
             # compute_uncertainty_only=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
@@ -619,10 +554,10 @@ class Optimiser:
             method=None,
             xtol=1e-10,
             ftol=1e-10,
+            gtol=1e-10,
+            monitor_parameters=None,
     ):
         """Optimise parameters."""
-        # if compute_uncertainty_only:
-            # max_nfev = 1
         if normalise_suboptimiser_residuals:
             ## normalise all suboptimiser residuals before handing to
             ## the least-squares routine
@@ -634,74 +569,62 @@ class Optimiser:
                     else:
                         suboptimiser.residual_scale_factor /= tools.rms(suboptimiser.residual)
         ## get initial values and reset uncertainties
-        p,s,dp = self._get_parameters()
-        self.moniqtor_frequency = monitor_frequency
+        self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
+        ## some communication variables between methods
+        self._monitor_frequency = monitor_frequency
+        self._monitor_parameters = monitor_parameters
         assert monitor_frequency in ('rms decrease','every iteration','never'),f"Valid monitor_frequency: {repr(('rms decrease','every iteration','never'))}"
         self._rms_minimum,self._previous_time = inf,timestamp()
         self._number_of_optimisation_function_calls = 0
+        ## describe the upcoming optimisation
         if verbose or self.verbose:
             print(f'{self.name}: optimising')
-            print('Number of varied parameters:',len(p))
-        if len(p)>0:
-            if method == 'lm' or (method is None and len(p) == 1):
+            print('Number of varied parameters:',len(self._initial_p))
+        ## the optimisation
+        if len(self._initial_p)>0:
+            optargs = {
+                'fun':self._optimisation_function,
+                'x0':[0. for t in self._initial_p],
+                # 'x0':[1. for t in self._initial_p],
+                # 'diff_step':np.full(len(self._initial_p),1.0),
+                'diff_step':np.full(len(self._initial_p),1e-8),
+                'xtol':xtol,
+                'ftol':ftol,
+                'gtol':gtol,
+                'max_nfev':max_nfev,
+                'method':method,
+                'jac':'2-point',
+                }
+            if optargs['method'] is None:
+                ## get a default method
+                if len(self._initial_p) == 1:
+                    optargs['method'] = 'lm'
+                else:
+                    optargs['method'] = 'trf'
+            if optargs['method'] == 'lm':
                 ## use 'lm' Levenberg-Marquadt
-                # warnings.warn('lm options not optimised')
-                kwargs = dict(
-                    method='lm',
-                    jac='2-point',
-                    # ## xtol=1e-10,
-                    # ftol=ftol,
-                    # xtol=xtol,
-                    # ## gtol=,
-                    # ## bounds=(-inf,inf),
-                    # ## x_scale=s,
-                    # ## diff_step=1e-21,
-                    # ## diff_step=[(si/pi if pi!=0 else 1/si) for si,pi in zip(s,p)],
-                    # diff_step=np.asarray(s,dtype=float),
-                    # x_scale='jac',
-                    # ## x_scale=[t*100 for t in s],
-                    # ## loss='soft_l1',
-                    # loss='linear',
-                    # ## tr_solver='exact',
-                    # tr_solver='lsmr',
-                    # max_nfev=max_nfev,
-                    # ## jac_sparsity=None, 
-                )
-            else:
+                pass
+            elif optargs['method'] == 'trf':
                 ## use 'trf' -- trust region
-                kwargs = dict(
-                    method='trf',
-                    jac='2-point',
-                    # ftol=ftol,
-                    # xtol=xtol,
-                    ## gtol=,
-                    ## bounds=(-inf,inf),
-                    ## x_scale=s,
-                    ## diff_step=1e-21,
-                    diff_step=[(si/pi if pi!=0 else si) for si,pi in zip(s,p)],
-                    # diff_step=s,
-                    x_scale='jac',
-                    ## x_scale=[t*100 for t in s],
-                    ## loss='soft_l1',
-                    loss='linear',
-                    ## tr_solver='exact',
-                    tr_solver='lsmr',
-                    max_nfev=max_nfev,
-                    ## jac_sparsity=None, 
-                )
+                optargs['x_scale'] = 'jac'
+                optargs['loss'] = 'linear'
+                optargs['tr_solver'] = 'lsmr'
+            else:
+                raise Exception(f'Unknown optimsiation method: {repr(optargs["method"])}')
             try:
                 ## call optimisation routine
                 if verbose or self.verbose:
-                    print('Method:',kwargs['method'])
-                result = optimize.least_squares(self._optimisation_function,p,**kwargs)
+                    print('Method:',optargs['method'])
+                result = optimize.least_squares(**optargs)
                 if verbose or self.verbose:
                     print('Optimisation complete')
-                    print('    Number parameters:    ',len(p))
+                    print('    Number parameters:    ',len(result['x']))
                     print('    Number of evaluations:',self._number_of_optimisation_function_calls)
                     print('    Number of iterations: ',result['nfev'])
                     print('    Termination reason:   ',result['message'])
                 p = result['x']
-                ## compute 1σ standard error
+                ## compute 1σ standard error from optimiser output --
+                ## or use calculate_uncertainty method
                 try:
                     jacobian = result['jac']
                     covariance = linalg.inv(
@@ -712,19 +635,18 @@ class Optimiser:
                         rms_noise = np.sqrt(chisq/dof)
                     if np.any(covariance<0):
                         print('Covariance < 0')
-                        # dp = np.full(p.shape,nan)
-                    # else:
-                        # dp = np.sqrt(covariance.diagonal())*rms_noise
                     dp = np.sqrt(np.abs(covariance.diagonal()))*rms_noise
                 except linalg.LinAlgError as err:
                     print(f'warning: failed to computed uncertainty: {err}')
                     dp = None
                 ## update parameters and uncertainties
-                self._set_parameters(p,dp)
+                self._set_parameters(p,dp,rescale=True)
             except KeyboardInterrupt:
                 pass
+        ## even if not optimsied collect residual and run monitor functions
         residual = self.construct(recompute_all=True) # run at least once, recompute_all to get uncertainties
-        self.monitor() # run monitor functions after optimisation
+        self.monitor() 
+        ## describe result
         if verbose or self.verbose:
             print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
             for suboptimiser in self._get_all_suboptimisers():
@@ -749,7 +671,7 @@ class Optimiser:
         self._number_of_optimisation_function_calls = 0
         self._previous_time = timestamp()
         self._rms_minimum = np.inf
-        self.monitor_frequency = 'every iteration'
+        self._monitor_frequency = 'every iteration'
         residual = self._optimisation_function(value)
         ## compute Jacobian by forward finite differencing
         tvalue = deepcopy(value)
@@ -781,8 +703,6 @@ class Optimiser:
         return(retval)
 
     rms = property(_get_rms)
-
-
 
 
 class Parameter():

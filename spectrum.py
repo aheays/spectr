@@ -102,7 +102,7 @@ class Experiment(Optimiser):
         experimental_parameters = {key:val for key,val in d.items() if  key not in (xkey,ykey)}
         self.set_spectrum(d[xkey],d[ykey],xbeg,xend,filename=filename,**d.attributes)
 
-    @format_input_method()
+    @optimise_method(add_construct_function=False)
     def set_spectrum_from_hdf5(self,filename,xkey='x',ykey='y',xbeg=None,xend=None,):
         """Load a spectrum to fit from an x,y file."""
         self.experimental_parameters['filename'] = filename
@@ -161,7 +161,7 @@ class Experiment(Optimiser):
     def __len__(self):
         return len(self.x)
 
-    @format_input_method()
+    @optimise_method(add_construct_function=False)
     def fit_noise(
             self,
             xbeg=None,
@@ -487,7 +487,6 @@ class Model(Optimiser):
         if len(self.x) == 0 or len(lines) == 0:
             ## x not set yet
             return
-        
         ## recompute spectrum if is necessary for some reason --
         ## do various tests to see if a cached version is ok
         if (
@@ -504,8 +503,6 @@ class Model(Optimiser):
                 j = np.any([ tlines[key] != _cache['tlines'][key] for key in tlines.keys()], axis=0)
             else:
                 j = None
-
-                
             ## compute entire spectrum
             if  (
                  'τ' not in _cache # first run
@@ -519,19 +516,20 @@ class Model(Optimiser):
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
             ## compute difference of changed lines
             else:
-                xnew,ynew = tlines[j].calculate_spectrum(
+                xnew,ynew = tlines.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-                xold,yold = _cache['tlines'][j].calculate_spectrum(
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
+                xold,yold = _cache['tlines'].calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
+                # plotting.show()
                 y = _cache['τ'] - yold + ynew             
             ## store _cache
-            # tlines.unset_inferences()
             _cache['tlines'] = tlines
             _cache['τ'] = y
             _cache['absorbance'] = np.exp(-y)
             _cache['x'] = self.x
+            
         ## set absorbance in self
         self.y *= _cache['absorbance']
 
@@ -1419,7 +1417,6 @@ class Model(Optimiser):
             plot_contaminants=True, # whether or not to label locations of reference contaminants
             # contaminants_to_plot=('default',), # what contaminant to label
             contaminants_to_plot=None, # what contaminant to label
-            linewidth=1,
             shift_residual=0.,
             xlabel=None,ylabel=None,
             invert_model=False,
@@ -1457,21 +1454,21 @@ class Model(Optimiser):
             # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
             ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            tkwargs = dict(color=plotting.newcolor(0), label='Experimental spectrum', lw=1, **plot_kwargs)
+            tkwargs = dict(color=plotting.newcolor(0), label='Experimental spectrum', **plot_kwargs)
             ax.plot(self.xexp,self.yexp,**tkwargs)
         if plot_model and self.y is not None:
             if invert_model:
                 self.y *= -1
             ymin,ymax = min(ymin,self.y.min(),-0.1*self.y.max()),max(ymax,self.y.max()*1.1)
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
-            tkwargs = dict(color=plotting.newcolor(1), label='Model spectrum', lw=1, **plot_kwargs)
+            tkwargs = dict(color=plotting.newcolor(1), label='Model spectrum', **plot_kwargs)
             ax.plot(self.x,self.y,**tkwargs)
             if invert_model:
                 self.y *= -1
         if plot_residual and self.residual is not None and len(self.residual)>0:
             ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
             xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
-            tkwargs = dict(color=plotting.newcolor(2), label='Exp-Mod residual error', lw=1, **plot_kwargs)
+            tkwargs = dict(color=plotting.newcolor(2), label='Exp-Mod residual error', **plot_kwargs)
             ax.plot(self.xexp,self.residual+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
@@ -1546,7 +1543,7 @@ class Model(Optimiser):
         if ylabel is not None:
             ax.set_ylabel(ylabel)
         self._figure = fig
-        return(fig)
+        return fig 
 
     def output_data_to_directory(
             self,

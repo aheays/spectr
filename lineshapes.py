@@ -226,8 +226,8 @@ def hartmann_tran(
         yin=None, # add line in place to this array
         nfwhmL=None,            # how many widths of the approximate Lorentzian component to include before cutting off line
         nfwhmG=None,            # how many widths of approximate Gaussian component to include before switching to a pure Lorentzian
-        # method='python',        # uses scipy functiosn
-        method='tran2014',        # uses tran2014/trans2015 fortran subroutine
+        method='python',        # uses scipy functiosn
+        # method='tran2014',        # uses tran2014/trans2015 fortran subroutine
 ):
     """The Hartmann-Tran line profile, based on ngo2013 doi:
     10.1016/j.jqsrt.2013.05.034."""

@@ -23,6 +23,7 @@ from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
 from .dataset import Dataset
+from .optimise import Parameter,P
 
 prototypes = {}
 
@@ -40,10 +41,10 @@ for key,val in levels.prototypes.items():
     tval = deepcopy(val)
     tval['infer'] = [(tuple(key+'_u' for key in tools.ensure_iterable(dependencies)),function)
                      for dependencies,function in val['infer']]
-    prototypes[key+'_u'] = tval
+    prototypes[key+'_u'] = copy(tval)
     tval['infer'] = [(tuple(key+'_l' for key in tools.ensure_iterable(dependencies)),function)
                      for dependencies,function in val['infer']]
-    prototypes[key+'_l'] = tval
+    prototypes[key+'_l'] = copy(tval)
 
 ## add lines things
 prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='U', cast=str, fmt='<10s')
@@ -450,7 +451,8 @@ class Generic(levels.Base):
             dx=None, # grid step to use if x grid computed automatically
             nx=10000, # number of grid points to use if x grid computed automatically
             ymin=None, # minimum value of ykey before a line is ignored, None for use all lines
-            ncpus = 1, # 1 for single process, more to use up to this amount when computing spectrum
+            ncpus=1, # 1 for single process, more to use up to this amount when computing spectrum
+            index=None,         # only calculate for these indices
             # **set_keys_vals, # set some data first, e..g, the tempertaure
     ):
         """Calculate a spectrum from the data in self. Returns (x,y)."""
@@ -488,6 +490,12 @@ class Generic(levels.Base):
         # self.assert_known(xkey,ykey)
         # assert np.all(~np.isnan(self[xkey])),f'NaN values in xkey: {repr(xkey)}'
         # assert np.all(~np.isnan(self[ykey])),f'NaN values in ykey: {repr(ykey)}'
+        ## indices given
+        if index is not None:
+            i = np.full(len(self),False)
+            i[index] = True
+        else:
+            i = np.full(len(self),True)
         ## neglect lines out of x-range -- NO ACCOUNTING FOR EDGES!!!!
         i = (self[xkey]>x[0]) & (self[xkey]<x[-1])
         ## neglect lines out of y-range
@@ -707,14 +715,46 @@ class Generic(levels.Base):
             
         self.extend(**data)
 
-
     def generate_from_levels(self,level_upper,level_lower):
         """Combeiong all combination of upper and lower levels into a line list."""
         for key in level_upper:
             self[key+'_u'] = np.ravel(np.tile(level_upper[key],len(level_lower)))
         for key in level_lower:
             self[key+'_l'] = np.ravel(np.repeat(level_lower[key],len(level_upper)))
-
+    
+    def set_levels(self,match=None,**keys_vals):
+        for key,val in keys_vals.items():
+            suffix = key[-2:]
+            assert suffix in ('_u','_l')
+            qn_keys = [t+suffix for t in self._levels_class.defining_qn]
+            ## find match if requested
+            if match is not None:
+                imatch = self.match(**match)
+            ## loop through all sets of common levels setting key=val
+            for d,i in self.unique_dicts_match(*qn_keys):
+                ## limit to match is requested
+                if match is not None:
+                    i &= imatch
+                    if not np.any(i):
+                        continue
+                ## make a copy of value -- and a Parameter if
+                ## necessary. Substitute current value into if is NaN
+                ## is given
+                if np.isscalar(val):
+                    vali = val
+                else:
+                    vali = Parameter(*val)
+                    if np.isnan(vali.value):
+                        vali.value = self[key][i][0]
+                self.set_parameter(key,vali,match=d)
+    
+    def vary_upper_level_energy(self,match=None,vary=False,step=None):
+        if match is not None:
+            raise ImplementationError()
+        keys = [key+'_u' for key in self._levels_class.defining_qn]
+        for d,m in self.unique_dicts_match(*keys):
+            i = tools.find(m)
+            self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)
 
 
 class LinearTriatomic(Generic):

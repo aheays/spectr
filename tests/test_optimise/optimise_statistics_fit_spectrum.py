@@ -1,7 +1,7 @@
 from spectr import *
 
-
-
+## fit the same model with noise multiple times to compare statistics
+## of fitted quantities mean estimated statistics
 results = {}
 for i in range(300):
     print( i)
@@ -35,31 +35,28 @@ for i in range(300):
             )))
 
     ## collect statistics
-    print( o)
     o.optimise(
         monitor_frequency='never',
         verbose=False,
         # rms_noise=0.2 
     )
+    # o.calculate_uncertainty()
+    for key in o:
+        if key not in results:
+            results[key] = []
+            results['d'+key] = []
+        results[key].append(o[key].value)
+        results['d'+key].append(o[key].uncertainty)
 
-    print( o)
-
-    o.calculate_uncertainty()
-    print( o)
-    break
-    
-    # for key in o:
-        # if key not in results:
-            # results[key] = []
-            # results['d'+key] = []
-        # results[key].append(o[key].value)
-        # results['d'+key].append(o[key].uncertainty)
-
-# ## plot statistics
-# qfig(1)
-# subplot()
-# plot(x,y)
-# plot(x,o.residual)
-# for key in o:
-    # subplot();plot_hist_with_fitted_gaussian(results[key]);title(key)
-    # subplot();plot_hist_with_fitted_gaussian(results['d'+key]);title('d'+key)
+## plot statistics
+qfig(1)
+subplot()
+plot(x,y)
+plot(x,o.residual)
+print(f'std(p)       mean(dp)')
+for key in o:
+    print(format(np.std(results[key]),'15.5e'),
+          format(np.mean(results['d'+key]),'15.5e'),)
+    subplot();plot_hist_with_fitted_gaussian(results[key]);title(key)
+    subplot();plot_hist_with_fitted_gaussian(results['d'+key]);title('d'+key)
+show()

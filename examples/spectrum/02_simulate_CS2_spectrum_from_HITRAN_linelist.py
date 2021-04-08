@@ -10,13 +10,11 @@ S296K_frac_max = 1e-2           # ignore lines this far below the strongest
 linelist = lines.Generic(load_from_file='data/H2O_HITRAN_2021.h5')
 linelist.limit_to_match(ν0_min=νbeg,ν0_max=νend)
 
-linelist.set_parameters(
-    Zsource='HITRAN', # source of partition function (hapi)
-    Teq=300,            # equilibrium temperature
-    L=10,             # optical path length (m)
-    pself = convert.units(0.01,'Torr','Pa'), # pressure
-    pair = convert.units(100,'Torr','Pa'),    # pressure
-)
+linelist['Zsource']='HITRAN' # source of partition function (hapi)
+linelist['Teq'] = 300         # equilibrium temperature
+linelist['L'] = 10            # optical path length (m)
+linelist['pself'] = convert.units(0.01,'Torr','Pa') # pressure
+linelist['pair'] = convert.units(100,'Torr','Pa')   # pressure
 
 ## define model spectrum
 mod = spectrum.Model()
