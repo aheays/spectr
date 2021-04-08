@@ -612,8 +612,8 @@ class Optimiser:
                 optargs['tr_solver'] = 'lsmr'
             else:
                 raise Exception(f'Unknown optimsiation method: {repr(optargs["method"])}')
+            ## call optimisation routine -- KeyboardInterrupt possible
             try:
-                ## call optimisation routine
                 if verbose or self.verbose:
                     print('Method:',optargs['method'])
                 result = optimize.least_squares(**optargs)
@@ -623,25 +623,11 @@ class Optimiser:
                     print('    Number of evaluations:',self._number_of_optimisation_function_calls)
                     print('    Number of iterations: ',result['nfev'])
                     print('    Termination reason:   ',result['message'])
-                p = result['x']
-                ## compute 1σ standard error from optimiser output --
-                ## or use calculate_uncertainty method
-                try:
-                    jacobian = result['jac']
-                    covariance = linalg.inv(
-                        np.dot(np.transpose(jacobian),jacobian))
-                    if rms_noise is None:
-                        chisq=np.sum(result["fun"]*result["fun"])
-                        dof=len(result["fun"])-len(result['x'])+1        # degrees of freedom
-                        rms_noise = np.sqrt(chisq/dof)
-                    if np.any(covariance<0):
-                        print('Covariance < 0')
-                    dp = np.sqrt(np.abs(covariance.diagonal()))*rms_noise
-                except linalg.LinAlgError as err:
-                    print(f'warning: failed to computed uncertainty: {err}')
-                    dp = None
-                ## update parameters and uncertainties
-                self._set_parameters(p,dp,rescale=True)
+            except KeyboardInterrupt:
+                pass
+            ## calculate uncertainties -- KeyboardInterrupt possible
+            try:
+                self.calculate_uncertainty()
             except KeyboardInterrupt:
                 pass
         ## even if not optimsied collect residual and run monitor functions
