@@ -704,7 +704,6 @@ class Dataset(optimise.Optimiser):
             retval.append((d,self.matches(**d)))
         return retval
                           
-
     def _infer(self,key,already_attempted=None,depth=0):
         """Get data, or try and compute it."""
         if key in self:
@@ -719,8 +718,15 @@ class Dataset(optimise.Optimiser):
             raise InferException(f"No prototype for {key=}")
         ## loop through possible methods of inferences.
         for dependencies,function in self.prototypes[key]['infer']:
+            ## if function is a tuple of two functions then the second
+            ## is for computing uncertainties
+            if tools.isiterable(function):
+                function,uncertainty_function = function
+            else:
+                uncertainty_function = None
             if isinstance(dependencies,str):
-                ## sometimes dependencies end up as a string instead of a list of strings
+                ## sometimes dependencies end up as a string instead
+                ## of a list of strings
                 dependencies = (dependencies,)
             if self.verbose:
                 print(''.join(['    ' for t in range(depth)])
@@ -731,20 +737,32 @@ class Dataset(optimise.Optimiser):
                 ## compute value if dependencies successfully inferred
                 self.set(key,function(self,*[self[dependency] for dependency in dependencies]),_inferred=True)
                 ## compute uncertainties by linearisation
-                squared_contribution = []
-                value = self[key]
-                parameters = [self[t] for t in dependencies]
-                for i,dependency in enumerate(dependencies):
-                    # if (tuncertainty:=self.get_uncertainty(dependency)) is not None:
-                    if self._uncertainty_is_set(dependency):
-                        step = self.get_step(dependency)
-                        parameters[i] = self[dependency] + step # shift one
-                        dvalue = value - function(self,*parameters)
-                        parameters[i] = self[dependency] # put it back
-                        data = self._data[dependency]
-                        squared_contribution.append((self.get_uncertainty(dependency)*dvalue/step)**2)
-                if len(squared_contribution)>0:
-                    self.set_uncertainty(key,np.sqrt(np.sum(squared_contribution,axis=0)))
+                if uncertainty_function is None:
+                    squared_contribution = []
+                    value = self[key]
+                    parameters = [self[t] for t in dependencies]
+                    for i,dependency in enumerate(dependencies):
+                        if self._uncertainty_is_set(dependency):
+                            step = self.get_step(dependency)
+                            parameters[i] = self[dependency] + step # shift one
+                            dvalue = value - function(self,*parameters)
+                            parameters[i] = self[dependency] # put it back
+                            data = self._data[dependency]
+                            squared_contribution.append((self.get_uncertainty(dependency)*dvalue/step)**2)
+                    if len(squared_contribution)>0:
+                        self.set_uncertainty(key,np.sqrt(np.sum(squared_contribution,axis=0)))
+                else:
+                    ## args for uncertainty_function.  First is the
+                    ## result of calculating keys, after that paris of
+                    ## dependencies and their uncertainties, if they
+                    ## have no uncertainty then None is substituted.
+                    args = [self,self[key]]
+                    for dependency in dependencies:
+                        if self._uncertainty_is_set(dependency):
+                            args.extend((self[dependency],self.get_uncertainty(dependency)))
+                        else:
+                            args.extend((self[dependency],None))
+                    self.set_uncertainty(key,uncertainty_function(*args))
                 ## if we get this far without an InferException then
                 ## success!.  Record inference dependencies.
                 ## replace this block with

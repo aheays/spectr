@@ -433,7 +433,8 @@ class Optimiser:
         p = list(p)
         ## shift and scale optimised parameter back to its original scale
         if rescale:
-            p = [tp*(tsi*1e8)+tpi for tp,tpi,tsi in zip(p,self._initial_p,self._initial_step)]
+            p = [tp*tsi/1e-8+tpi for tp,tpi,tsi in zip(p,self._initial_p,self._initial_step)]
+            dp = [tdp*tsi/1e-8 for tdp,tsi in zip(p,self._initial_step)]
         ## print parameters
         if self._monitor_parameters:
             print('  p =  ['+' ,'.join([format(t,'+#15.13e') for t in p])+' ]')
@@ -520,12 +521,12 @@ class Optimiser:
         self.combined_residual = combined_residual # this includes residuals from construct_functions combined with suboptimisers
         return combined_residual
 
-    def _optimisation_function(self,p):
+    def _optimisation_function(self,p,rescale=True):
         """Internal function used by optimise routine. p is a list of varied
         parameters."""
         self._number_of_optimisation_function_calls += 1
         ## update parameters in internal model
-        self._set_parameters(p,rescale=True)
+        self._set_parameters(p,rescale=rescale)
         ## rebuild model and calculate residuals
         residuals = self.construct()
         ## monitor
@@ -585,9 +586,9 @@ class Optimiser:
             optargs = {
                 'fun':self._optimisation_function,
                 'x0':[0. for t in self._initial_p],
-                # 'x0':[1. for t in self._initial_p],
-                # 'diff_step':np.full(len(self._initial_p),1.0),
                 'diff_step':np.full(len(self._initial_p),1e-8),
+                ## 'x0':copy(self._initial_p),
+                ## 'diff_step':copy(self._initial_step),
                 'xtol':xtol,
                 'ftol':ftol,
                 'gtol':gtol,
@@ -650,8 +651,7 @@ class Optimiser:
         if verbose or self.verbose:
             print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
             for suboptimiser in self._get_all_suboptimisers():
-                if (suboptimiser.residual is not None
-                    and len(suboptimiser.residual)>0):
+                if (suboptimiser.residual is not None and len(suboptimiser.residual)>0):
                     print(f'suboptimiser {suboptimiser.name} RMS:',tools.rms(suboptimiser.residual))
         return residual
 
@@ -672,13 +672,13 @@ class Optimiser:
         self._previous_time = timestamp()
         self._rms_minimum = np.inf
         self._monitor_frequency = 'every iteration'
-        residual = self._optimisation_function(value)
+        residual = self._optimisation_function(value,rescale=False)
         ## compute Jacobian by forward finite differencing
         tvalue = deepcopy(value)
         jacobian = np.full((len(residual),len(value)),0.0)
         for i,(valuei,stepi) in enumerate(zip(value,step)):
             tvalue[i] = valuei+stepi
-            residuali = self._optimisation_function(tvalue)
+            residuali = self._optimisation_function(tvalue,rescale=False)
             jacobian[:,i] = (residuali-residual)/stepi
             tvalue[i] = valuei # change it back
         ## compute 1σ uncertainty from Jacobian
@@ -691,8 +691,7 @@ class Optimiser:
         uncertainty = np.sqrt(covariance.diagonal())*rms_noise
         ## set back to best fit
         self._set_parameters(value,uncertainty) # set param
-        self._optimisation_function(value)      # construct
-        self._set_parameters(value,uncertainty) # reset uncertainties
+        self.construct(recompute_all=True )
         return uncertainty
 
     def _get_rms(self):

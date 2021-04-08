@@ -74,8 +74,7 @@ model.add_absorption_lines(lines=line,lineshape='gaussian')
 model.convolve_with_soleil_instrument_function()
 
 ## optimise everything
-model.optimise(monitor_parameters=False)
-# model.save_to_directory('td')
+model.optimise()
 
 ## plot spectrum
 qfig(1)

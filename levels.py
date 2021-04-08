@@ -44,11 +44,13 @@ def _f1(self,species):
         raise InferException(str(err))
 prototypes['mass'] = dict(description="Mass (amu)",kind='f', fmt='<11.4f', infer=[(('species',), _f0),])
 prototypes['reduced_mass'] = dict(description="Reduced mass (amu)", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
-prototypes['E'] = dict(description="Level energy (cm-1)" ,kind='f' ,fmt='<14.7f' ,infer=[],)
+prototypes['E'] = dict(description="Level energy (cm-1)" ,kind='f' ,fmt='<14.7f' ,infer=[],default_step=1e-3)
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
 prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν)])
 
 def _f0(self,label,v,Σ,ef,J,E):
+    """Compute separate best-fit reduced energy levels for each
+    sublevel rotational series."""
     Ereduced = np.full(E.shape,0.0)
     for di,i in tools.unique_combinations_mask(label,v,Σ,ef):
         labeli,vi,Σi,efi = di
@@ -58,9 +60,17 @@ def _f0(self,label,v,Σ,ef,J,E):
             Ei.append(E[i][j][0])
         Ji,Ei = array(Ji),array(Ei)
         pi = np.polyfit(Ji*(Ji+1),Ei,min(3,len(Ei)-1))
+        if self.verbose:
+            print(f'{label=} {v=} {Σ=} {ef=} {pi=}')
         Ereduced[i] = E[i] - np.polyval(pi,J[i]*(J[i]+1))
     return Ereduced
-prototypes['E_reduced'] = dict(description="Reduced level energy (cm-1)" ,kind='f' ,fmt='<14.7f' ,infer=[(('label','v','Σ','ef','J','E'),_f0),],)
+
+def _df0(self,Ereduced,label,dlabel,v,dv,Σ,dΣ,ef,ddef,J,dJ,E,dE):
+    """Uncertainty calculation to go with _f0."""
+    dEreduced = dE
+    return dEreduced
+
+prototypes['E_reduced'] = dict(description="Reduced level energy (cm-1)" ,kind='f' ,fmt='<14.7f' ,infer=[(('label','v','Σ','ef','J','E'),(_f0,_df0)),],)
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,point_group):
