@@ -272,7 +272,7 @@ def emission_rate_to_fvalue(Ae,ν,Jpp,Jp):
     # """Convert line f-value to band f-value. NOTE THAT honl_london_factor IS AN IMPROVEMENT OVER honllondon_factor, COULD IMPLEMENT THAT HERE."""
     # return(line_fvalue/honllondon_factor(Jpp=Jpp,branch=branch,symmetryp=symmetryp,symmetrypp=symmetrypp)*degen(Jpp,symmetryp))
 
-# def band_fvalue_to_fvalue(band_fvalue,symmetryp,branch,Jpp,symmetrypp='1σ'):
+# def band_fvalue_to_fvalue(fv,,branch,Jpp,symmetrypp='1σ'):
     # """ Convert line band f-value to f-value. NOTE THAT honl_london_factor IS AN IMPROVEMENT OVER honllondon_factor, COULD IMPLEMENT THAT HERE."""
     # return(band_fvalue*honllondonfactor(Jpp=Jpp,branch=branch,symmetryp=symmetryp,symmetrypp=symmetrypp)/degen(Jpp,symmetryp))
 
@@ -315,3 +315,24 @@ def pressure_temperature_to_density(p,T,punits='Pa',nunits='m-3'):
 def pressure_to_column_density_density(p,T,L,punits='Pa',Lunits='cm',Nunits='cm-2'):
     """p = NLkT"""
     return units(units(p,punits,'Pa') /(constants.Boltzmann*T*unit(L,Lunits,'m')), 'm-3',Nunits)
+
+def doppler_width(
+        temperature,            # K
+        mass,                   # amu
+        ν,                      # wavenumber in cm-1
+        units='cm-1.FWHM',      # Units of output widths.
+):
+    """Calculate Doppler width given temperature and species mass."""
+    dk = 2.*6.331e-8*np.sqrt(temperature*32./mass)*ν
+    if units=='cm-1.FWHM':
+        return dk
+    elif units in ('Å.FHWM','A.FWHM','Angstrom.FWHM','Angstroms.FWHM',):
+        return tools.dk2dA(dk,ν)
+    elif units=='nm.FWHM':
+        return tools.dk2dnm(dk,ν)
+    elif units=='km.s-1 1σ':
+        return tools.dk2b(dk,ν)
+    elif units=='km.s-1.FWHM':
+        return tools.dk2bFWHM(dk,ν)
+    else:
+        raise ValueError('units not recognised: '+repr(units))
