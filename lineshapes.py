@@ -117,11 +117,13 @@ def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None):
 def gaussian(x,x0=0.,S=1,Γ=1.,nfwhm=None,yin=None):
     """A gaussian with area normalised to one. Γ is FWHM. If y is
     provided add to this in place."""
+    a = 0.939437278699651 # np.sqrt(4*np.log(2)/constants.pi)
+    b= 2.77258872223978 # 4*np.log(2)
     if nfwhm is None:
         if yin is None:
-            return S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+            return S/Γ*a*np.exp(-(x-x0)**2*b/Γ**2)
         else:
-            yin +=  S/Γ*np.sqrt(4*np.log(2)/constants.pi)*np.exp(-(x-x0)**2*4*np.log(2)/Γ**2)
+            yin +=  S/Γ*a*np.exp(-(x-x0)**2*b/Γ**2)
             return yin
     else:
         ## partial domain inside nfwhm cutoff
@@ -228,10 +230,22 @@ def hartmann_tran(
         nfwhmG=None,            # how many widths of approximate Gaussian component to include before switching to a pure Lorentzian
         method='python',        # uses scipy functiosn
         # method='tran2014',        # uses tran2014/trans2015 fortran subroutine
+        defer_to_voigt_if_possible = True,
+        defer_to_gaussian_if_possible = True,
 ):
     """The Hartmann-Tran line profile, based on ngo2013 doi:
     10.1016/j.jqsrt.2013.05.034."""
     if method == 'python':
+        ## shortcut to pure voigt
+        if defer_to_gaussian_if_possible and νVC == η == Γ0 == Γ2 == Δ2 == 0:
+            ΓG = convert.doppler_width(T,m,x0,'cm-1.FWHM')
+            x0shifted  = x0+Δ0
+            return gaussian(x,x0shifted,S,ΓG,nfwhmG,yin)
+        if defer_to_voigt_if_possible and νVC == η == Γ2 == Δ2 == 0:
+            ΓL = 2*Γ0           # FWHM
+            ΓG = convert.doppler_width(T,m,x0,'cm-1.FWHM')
+            x0shifted  = x0+Δ0
+            return voigt(x,x0shifted,S,ΓL,ΓG,nfwhmL,nfwhmG,yin)
         π = constants.pi
         w = special.wofz
         kB = constants.Boltzmann
