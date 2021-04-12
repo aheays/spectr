@@ -10,6 +10,7 @@ import sympy
 from immutabledict import immutabledict
 
 from .dataset import Dataset
+from . import tools
 
 # ## non-standard library
 # from immutabledict import immutabledict
@@ -931,56 +932,50 @@ def get_case_a_basis(S,Λ,s,verbose=False,**kwargs):
     # else:                   # Λ>0 states
         # return(dict(e={+1:+invsqrt2,-1:+invsqrt2,},f={+1:+invsqrt2,-1:-invsqrt2,}))
 
+@tools.vectorise(dtype=float,cache=True)
+def honl_london_factor(Ωp,Ωpp,Jp,Jpp):
+    """Calculate Honl London factor for an arbitrary one-photon
+    transition. Returns an float, or a array of floats as
+    required. Selection rule violating transitions return nan. """
+    return 3*M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,)**2
 
-# def honl_london_factor(Ωp,Ωpp,Jp,Jpp):
-    # """Calculate Honl London factor for an arbitrary one-photon
-    # transition. Returns an float, or a array of floats as
-    # required. Selection rule violating transitions return nan. """
-    # if not np.isscalar(Ωp):
-        # assert len(Ωp)==len(Ωpp) and len(Ωp)==len(Jpp) and len(Ωp)==len(Jpp), "Arguments must be all scalar or all vector of the same length."
-        # return(np.array([honl_london_factor(*t) for t in zip(Ωp,Ωpp,Jp,Jpp,)]))
-    # return(_scalar_honl_london_factor(Ωp,Ωpp,Jp,Jpp))
-
-# # @cachetools.cached(cache=cachetools.LRUCache(1e4),)
-# @functools.lru_cache(maxsize=1024)
-# def _scalar_honl_london_factor(Ωp,Ωpp,Jp,Jpp):
-    # """Calculate Honl London factor for an arbitrary one-photon
-    # transition. Returns an float, or a array of floats as
-    # required. Selection rule violating transitions return nan. """
-    # return(3*M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,)**2)
-
-# def M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,return_zero_on_fail=False):
-    # """Calculate using formulae of lefebvre-brion_field2004 Tab 6.1"""
-    # ## handle vector data case -- requires all quantum numbers be arrays of the same length
-    # if not np.isscalar(Ωp):
-        # return(np.array([M_indep_direction_cosine_matrix_elements(Ωpi,Ωppi,Jpi,Jppi,return_zero_on_fail) for (Ωpi,Ωppi,Jpi,Jppi) in zip(Ωp,Ωpp,Jp,Jpp)]))
-    # ## if original not iterable, return as not iterable, but must be
-    # ## arrays for convenience during calculation
-    # J,Ω = Jpp,Ωpp
-    # if   (Jp==Jpp+1) and (Ωp==Ωpp+1):
-        # retval = -np.sqrt( ((J+Ω+1)*(J+Ω+2)) / (3*(J+1)) )
-    # elif (Jp==Jpp+1) and (Ωp==Ωpp):
-        # retval = np.sqrt( ((J+Ω+1)*(J-Ω+1)) / (3*(J+1)) )
-    # elif (Jp==Jpp+1) and (Ωp==Ωpp-1):
-        # retval = np.sqrt( ((J-Ω+1)*(J-Ω+2)) / (3*(J+1)) )
-    # elif (Jp==Jpp)   and (Ωp==Ωpp+1):
-        # retval = np.sqrt( ((2*J+1)*(J-Ω)*(J+Ω+1)) / (3*J*(J+1)) )
-    # elif (Jp==Jpp)   and (Ωp==Ωpp):
-        # retval = np.sqrt( ((2*J+1)) / (3*J*(J+1)) ) 
-    # elif (Jp==Jpp)   and (Ωp==Ωpp-1):
-        # retval = np.sqrt( ((2*J+1)*(J+Ω)*(J-Ω+1)) / (3*J*(J+1)) )
-    # elif (Jp==Jpp-1) and (Ωp==Ωpp+1):
-        # retval = +np.sqrt( ((J-Ω)*(J-Ω-1)) / (3*J) )
-    # elif (Jp==Jpp-1) and (Ωp==Ωpp):
-        # retval = np.sqrt( ((J+Ω)*(J-Ω)) / (3*J) )
-    # elif (Jp==Jpp-1) and (Ωp==Ωpp-1):
-        # retval = -np.sqrt( ((J+Ω)*(J+Ω-1)) / (3*J) )
-    # else:
-        # if return_zero_on_fail: return(0.) # forbidden transitions get a strength of zero
-        # raise ValueError('Could not find correct Honl-London case.') # or raise an error
-    # ## convert bad values (nans) to zero and make integer
-    # if np.isnan(retval): retval=0.
-    # return(retval)
+def M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,return_zero_on_fail=False):
+    """Calculate using formulae of lefebvre-brion_field2004 Tab 6.1"""
+    ## handle vector data case -- requires all quantum numbers be arrays of the same length
+    if not np.isscalar(Ωp):
+        return(np.array([M_indep_direction_cosine_matrix_elements(Ωpi,Ωppi,Jpi,Jppi,return_zero_on_fail) for (Ωpi,Ωppi,Jpi,Jppi) in zip(Ωp,Ωpp,Jp,Jpp)]))
+    ## if original not iterable, return as not iterable, but must be
+    ## arrays for convenience during calculation
+    J,Ω = Jpp,Ωpp
+    if   (Jp==Jpp+1) and (Ωp==Ωpp+1):
+        retval = -np.sqrt( ((J+Ω+1)*(J+Ω+2)) / (3*(J+1)) )
+    elif (Jp==Jpp+1) and (Ωp==Ωpp):
+        retval = np.sqrt( ((J+Ω+1)*(J-Ω+1)) / (3*(J+1)) )
+    elif (Jp==Jpp+1) and (Ωp==Ωpp-1):
+        retval = np.sqrt( ((J-Ω+1)*(J-Ω+2)) / (3*(J+1)) )
+    elif (Jp==Jpp)   and (Ωp==Ωpp+1):
+        retval = np.sqrt( ((2*J+1)*(J-Ω)*(J+Ω+1)) / (3*J*(J+1)) )
+    elif (Jp==Jpp)   and (Ωp==Ωpp):
+        retval = np.sqrt( ((2*J+1)) / (3*J*(J+1)) ) 
+    elif (Jp==Jpp)   and (Ωp==Ωpp-1):
+        retval = np.sqrt( ((2*J+1)*(J+Ω)*(J-Ω+1)) / (3*J*(J+1)) )
+    elif (Jp==Jpp-1) and (Ωp==Ωpp+1):
+        retval = +np.sqrt( ((J-Ω)*(J-Ω-1)) / (3*J) )
+    elif (Jp==Jpp-1) and (Ωp==Ωpp):
+        retval = np.sqrt( ((J+Ω)*(J-Ω)) / (3*J) )
+    elif (Jp==Jpp-1) and (Ωp==Ωpp-1):
+        retval = -np.sqrt( ((J+Ω)*(J+Ω-1)) / (3*J) )
+    else:
+        ## forbidden transitions get a strength of zero, or raise an
+        ## error
+        if return_zero_on_fail:
+            return 0.
+        else:
+            raise ValueError('Could not find correct Honl-London case.') 
+    ## convert bad values (nans) to zero and make integer
+    if np.isnan(retval):
+        retval=0.
+    return retval
 
 # @functools.lru_cache(maxsize=2**20)
 def wigner3j(j1,j2,j3,m1,m2,m3,
