@@ -581,7 +581,7 @@ class Dataset(optimise.Optimiser):
             keys=None,          # keys to copy
             index=None,         # indices to copy
             match=None,         # copy matching {key:val,...} 
-            copy_uncertainty= True, #
+            copy_uncertainty=True,
             copy_step=False,
             copy_vary=False,
     ):
@@ -889,17 +889,17 @@ class Dataset(optimise.Optimiser):
                 columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
                 ## add uncertinaties / vary /step
                 if self.get_kind(key) == 'f':
-                    if format_uncertainty and self._uncertainty_is_set(key) is not None:
+                    if format_uncertainty and self._uncertainty_is_set(key):
                         formatted_key = ( "'"+key+"_unc'" if quote_keys else key+"_unc" )
                         vals = [format(t,"0.1e") for t in self.get_uncertainty(key)]
                         width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
                         columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
-                    if format_vary and self._vary_is_set(key) is not None:
+                    if format_vary and self._vary_is_set(key) :
                         formatted_key = ( "'"+key+"_vary'" if quote_keys else key+"_vary" )
                         vals = [repr(t) for t in self.get_vary(key)]
                         width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
                         columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
-                    if format_step and self._step_is_set(key) is not None:
+                    if format_step and self._step_is_set(key) :
                         formatted_key = ( "'"+key+"_step'" if quote_keys else key+"_step" )
                         vals = [format(t,"0.1e") for t in self.get_step(key)]
                         width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
@@ -1061,6 +1061,13 @@ class Dataset(optimise.Optimiser):
                 labels_commented=False,
                 skiprows=iline,))
         ## translate keys
+
+        ## temp hack delete
+        for key in list(data.keys()): #  HACK
+            if 'HT_HITRAN' in key:    #  HACK
+                data[key.replace('HT_HITRAN','HITRAN_HT')] = data.pop(key) #  HACK
+        ## end of temp hack delete
+        
         if translate_keys is not None:
             for from_key,to_key in translate_keys.items():
                 if from_key in data:
@@ -1399,7 +1406,7 @@ def make(classname='dataset.Dataset',*args,**kwargs):
     """Make an instance of the this classname."""
     return _get_class(classname)(*args,**kwargs)
 
-def load(filename,classname=None,**kwargs):
+def load(filename,classname=None,translate_keys=None,**kwargs):
     """Load a Dataset.  Attempts to automatically find the correct
     subclass if it is not provided as an argument, but this requires
     loading the file twice."""
@@ -1408,7 +1415,8 @@ def load(filename,classname=None,**kwargs):
         classname = d.load(filename,return_classname_only=True)
         if classname is None:
             classname = 'dataset.Dataset'
-    retval = make(classname,load_from_file=filename,**kwargs)
+    retval = make(classname,**kwargs)
+    retval.load(filename,translate_keys=translate_keys)
     return retval
 
 def copy_from(dataset,*args,**kwargs):
