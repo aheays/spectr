@@ -420,8 +420,8 @@ class Optimiser:
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get_vary(key)
                     value.extend(optimiser[key][vary])
-                    if optimiser.get_uncertainty(key,vary) is None:
-                        optimiser.set_uncertainty(key,nan)
+                    # if optimiser.get_uncertainty(key,vary) is None:
+                        # optimiser.set_uncertainty(key,nan)
                     uncertainty.extend(optimiser.get_uncertainty(key,vary))
                     step.extend(optimiser.get_step(key,vary))
         return value,step,uncertainty
@@ -659,26 +659,36 @@ class Optimiser:
         self._rms_minimum = np.inf
         self._monitor_frequency = 'every iteration'
         residual = self._optimisation_function(value,rescale=False)
-        ## compute Jacobian by forward finite differencing
+        ## compute Jacobian by forward finite differencing, if a
+        ## difference is too small then it cannot be used to compute
+        ## an unceritanty -- so only biuld a jacobian with differences
+        ## above machine precisison.  Althernatively, could try and
+        ## increase step size and recalculate.
         tvalue = deepcopy(value)
-        jacobian = np.full((len(residual),len(value)),0.0)
+        jacobian,ijacobian = [],[] # jacobian columns and which parameter they correspond to
         for i,(valuei,stepi) in enumerate(zip(value,step)):
             tvalue[i] = valuei+stepi
             residuali = self._optimisation_function(tvalue,rescale=False)
-            jacobian[:,i] = (residuali-residual)/stepi
+            dresidual = (residuali-residual)
+            if np.abs(dresidual/residual).max() < 1e-8:
+                print(f'Parameter {i} has no measureable effect.')
+            else:
+                jacobian.append(dresidual/stepi)
+                ijacobian.append(i)
             tvalue[i] = valuei # change it back
+        jacobian = array(jacobian).T
         ## compute 1σ uncertainty from Jacobian
-        covariance = linalg.inv(
-            np.dot(np.transpose(jacobian),jacobian))
+        covariance = linalg.inv(np.dot(jacobian.T,jacobian))
         if rms_noise is None:
             chisq = np.sum(residual**2)
             dof = len(residual)-len(value)+1
             rms_noise = np.sqrt(chisq/dof)
-        uncertainty = np.sqrt(covariance.diagonal())*rms_noise
+        uncertainty = np.full(len(value),np.nan)
+        uncertainty[ijacobian] = np.sqrt(covariance.diagonal())*rms_noise
         ## set back to best fit
         self._set_parameters(value,uncertainty) # set param
         self.construct(recompute_all=True )
-        return uncertainty
+        return np.asarray(uncertainty)
 
     def _get_rms(self):
         """Compute root-mean-square error."""
