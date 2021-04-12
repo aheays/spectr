@@ -10,6 +10,7 @@ from scipy import constants
 # from . import *
 # from .dataset import Dataset
 from . import tools
+from .tools import cast_abs_float_array
 from . import levels
 from . import lineshapes
 from . import tools
@@ -48,10 +49,19 @@ for key,val in levels.prototypes.items():
 
 ## add lines things
 prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='U', cast=str, fmt='<10s')
-prototypes['f'] = dict(description="Line f-value (dimensionless)",kind='f',fmt='<10.5e', infer=[
+
+def _f1(self,fv,SJ,J_l,Λ_u,Λ_l):
+    """Get band fvalues from line strength"""
+    f = fv*SJ/(2.*J_l+1.)       # correct? What about 2S+1?
+    f[(Λ_l==0)&(Λ_u!=0)] /= 2
+    return f
+prototypes['f'] = dict(description="Line f-value (dimensionless)",kind='f',fmt='<10.5e', cast=cast_abs_float_array,infer=[
     (('Ae','ν','g_u','g_l'),lambda self,Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2),
     (('Sij','ν','J_l'), lambda self,Sij,ν,J_l: 3.038e-6*ν*Sij/(2*J_l+1)), 
-    (('σ','α_l'),lambda self,σ,α_l: σ*1.1296e12/α_l,)])
+    (('σ','α_l'),lambda self,σ,α_l: σ*1.1296e12/α_l,),
+    (('fv','SJ','J_l','Λ_u','Λ_l'),_f1),
+])
+
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section (cm2.cm-1).", kind='f', fmt='<10.5e',infer=[
     (('τa','Nself_l'),lambda self,τ,column_densitypp: τ/column_densitypp), 
     (('f','α_l'),lambda self,f,α_l: f/1.1296e12*α_l),
@@ -106,7 +116,7 @@ prototypes['δ0air'] = dict(description="Pressure shift coefficient in air (cm-1
 prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence in air (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['Γair'] = dict(description="Pressure broadening due to air (cm-1 FWHM)" , kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert.units(P,'Pa','atm')),])
 prototypes['Δνair'] = dict(description="Pressure shift due to air (cm-1)" , kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert.units(P,'Pa','atm')),])
-prototypes['νvc'] = dict(description="Frequency of velocity changing collisions (which profile?) (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
+prototypes['νvc'] = dict(description="Frequency of velocity changing collsions (which profile?) (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['pself'] = dict(description="Pressure of self (Pa)", kind='f', fmt='0.5f',units='Pa',infer=[])
 prototypes['γ0self'] = dict(description="Pressure broadening coefficient in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0self'] = dict(description="Pressure broadening temperature dependence in self (cm-1.atm-1 HWHM)", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
@@ -123,42 +133,31 @@ prototypes['ΓX'] = dict(description="Pressure broadening due to X (cm-1 FWHM)" 
 prototypes['ΔνX'] = dict(description="Pressure shift due to species X (cm-1 HWHM)" , kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
 ## HITRAN encoded pressure and temperature dependent Hartmann-Tran
 ## line broadening and shifting coefficients
-prototypes['HT_HITRAN_X'] = dict(description='Broadening species for a HITRAN-encoded Hartmann-Tran profile',kind='U')
-def _f0(x):
-    """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
-    x = np.asarray(x,dtype=float)
-    x[x<1e-50] = 1e-50
-    return x
-prototypes['HT_HITRAN_p'] = dict(description='Pressure HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=_f0,infer=[('pX',lambda self,pX:convert.units(pX,'Pa','atm'))])
-prototypes['HT_HITRAN_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f')
-prototypes['HT_HITRAN_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
-prototypes['HT_HITRAN_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
-def _f0(x):
-    """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
-    x = np.asarray(x,dtype=float)
-    x[x<1e-10] = 1e-10
-    ## x[x>0.03] = 0.03
-    return x
-prototypes['HT_HITRAN_γ2'] = dict(description='Speed-dependence of the halfwidth in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=_f0)
-prototypes['HT_HITRAN_δ0'] = dict(description='Speed-averaged line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
-prototypes['HT_HITRAN_δp'] = dict(description='Linear temperature dependence coefficient for δ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm.K-1',kind='f')
-prototypes['HT_HITRAN_δ2'] = dict(description='Speed-dependence of the line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
-prototypes['HT_HITRAN_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
-prototypes['HT_HITRAN_κ'] = dict(description='Temperature dependence of νVC in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
+prototypes['HITRAN_HT_X'] = dict(description='Broadening species for a HITRAN-encoded Hartmann-Tran profile',kind='U')
+prototypes['HITRAN_HT_pX'] = dict(description='Pressure HITRAN-encoded Hartmann-Tran profile (atm)',kind='f',units='atm',cast=tools.cast_abs_float_array,infer=[('pX',lambda self,pX:convert.units(pX,'Pa','atm'))])
+prototypes['HITRAN_HT_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f')
+prototypes['HITRAN_HT_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
+prototypes['HITRAN_HT_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
+prototypes['HITRAN_HT_γ2'] = dict(description='Speed-dependence of the halfwidth in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
+prototypes['HITRAN_HT_δ0'] = dict(description='Speed-averaged line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
+prototypes['HITRAN_HT_δp'] = dict(description='Linear temperature dependence coefficient for δ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm.K-1',kind='f')
+prototypes['HITRAN_HT_δ2'] = dict(description='Speed-dependence of the line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
+prototypes['HITRAN_HT_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
+prototypes['HITRAN_HT_κ'] = dict(description='Temperature dependence of νVC in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
 ### def _f0(x):
 ##    # """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
 ##    # x = np.abs(np.asarray(x),dtype=float)
 ##    # x[x>1] = 0.99999
 ##    # return x
-prototypes['HT_HITRAN_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',cast=tools.cast_abs_float_array,default_step=1e-5)
-prototypes['HT_HITRAN_Y'] = dict(description='First-order (Rosenkranz) line coupling coefficient in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
+prototypes['HITRAN_HT_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',cast=tools.cast_abs_float_array,default_step=1e-5)
+prototypes['HITRAN_HT_Y'] = dict(description='First-order (Rosenkranz) line coupling coefficient in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
 ## coefficients of the Hartmann-Tran lineshape
-prototypes['HT_Γ0'] = dict(description='Speed-averaged halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_γ0','HT_HITRAN_Tref','Ttr','HT_HITRAN_n'),lambda self,p,γ0,Tref,T,n: γ0*p*(Tref/T)**n)])
-prototypes['HT_Γ2'] = dict(description='Speed-dependence for the halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_γ2',),lambda self,p,γ2: p*γ2),])
-prototypes['HT_Δ0'] = dict(description='Speed-averaged line shift for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_δ0','HT_HITRAN_δp','HT_HITRAN_Tref','Ttr'),lambda self,p,δ0,δp,Tref,T: p*(δ0+δp*(T-Tref))),])
-prototypes['HT_Δ2'] = dict(description='Speed-dependence for the line shift for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_δ2'),lambda self,p,δ2: p*δ2),])
-prototypes['HT_νVC'] = dict(description='Frequency of velocity changing collisions for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HT_HITRAN_p','HT_HITRAN_νVC','HT_HITRAN_Tref','Ttr','HT_HITRAN_κ'),lambda self,p,νVC,Tref,T,κ: p*νVC*(Tref/T)**κ),])
-prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-Tran profile',units='dimensionless',kind='f',infer=[(('HT_HITRAN_η',),lambda self,η:η),])
+prototypes['HT_Γ0'] = dict(description='Speed-averaged halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HITRAN_HT_pX','HITRAN_HT_γ0','HITRAN_HT_Tref','Ttr','HITRAN_HT_n'),lambda self,p,γ0,Tref,T,n: γ0*p*(Tref/T)**n)])
+prototypes['HT_Γ2'] = dict(description='Speed-dependence for the halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HITRAN_HT_pX','HITRAN_HT_γ2',),lambda self,p,γ2: p*γ2),])
+prototypes['HT_Δ0'] = dict(description='Speed-averaged line shift for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HITRAN_HT_pX','HITRAN_HT_δ0','HITRAN_HT_δp','HITRAN_HT_Tref','Ttr'),lambda self,p,δ0,δp,Tref,T: p*(δ0+δp*(T-Tref))),])
+prototypes['HT_Δ2'] = dict(description='Speed-dependence for the line shift for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HITRAN_HT_pX','HITRAN_HT_δ2'),lambda self,p,δ2: p*δ2),])
+prototypes['HT_νVC'] = dict(description='Frequency of velocity changing collisions for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HITRAN_HT_pX','HITRAN_HT_νVC','HITRAN_HT_Tref','Ttr','HITRAN_HT_κ'),lambda self,p,νVC,Tref,T,κ: p*νVC*(Tref/T)**κ),])
+prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-Tran profile',units='dimensionless',kind='f',infer=[(('HITRAN_HT_η',),lambda self,η:η),])
 
 
 
@@ -247,22 +246,22 @@ def _f1(self,Aev,ν,Λp,Λpp):
     Sv = Aev/2.026e-6/v**3
     Sv[(Λp==0)&(Λpp!=0)] /= 2.
     return(Sv)
-prototypes['Sv'] =dict(description="Band strength (⟨vp|Re|vpp⟩**2, au)", kind='f',  fmt='<10.5e', infer=[
+prototypes['Sv'] =dict(description="Band strength (⟨vp|Re|vpp⟩**2, au)", kind='f',  fmt='<10.5e',cast=cast_abs_float_array, infer=[
     (('Sij','SJ'), lambda self,Sij,SJ: Sij/SJ),
     ( ('μ',),lambda self,μ:μ**2),
     (('fv','ν','Λp','Λpp'),lambda self,fv,ν,Λp,Λpp: band_fvalue_to_band_strength(fv,ν,Λp,Λpp)),
     (('fv','νv','Λp','Λpp'),lambda self,fv,νv,Λp,Λpp : band_fvalue_to_band_strength(fv,νv,Λp,Λpp)),
     (('Aev','ν','Λp','Λpp'),lambda self,Aev,ν,Λp,Λpp : band_emission_rate_to_band_strength(Aev,ν,Λp,Λpp )),
     ( ('Aev','νv','Λp','Λpp'), lambda self,Aev,νv,Λp,Λpp: band_emission_rate_to_band_strength(Aev,νv,Λp,Λpp),)],)
-def _f1(self,f,SJ,Jpp,Λp,Λpp):
+def _f1(self,f,SJ,J_l,Λ_u,Λ_l):
     """Get band fvalues from line strength"""
-    fv = f/SJ*(2.*Jpp+1.)       # correct? What about 2S+1?
-    fv[(Λpp==0)&(Λp!=0)] *= 2
-    return(fv)
-prototypes['fv'] = dict(description="Band f-value (dimensionless)", kind='f',  fmt='<10.5e', infer=[
-    (('Sv','ν','Λp','Λpp'),  lambda self,Sv,ν,Λp,Λpp :  band_strength_to_band_fvalue(Sv,ν, Λp,Λpp)),
-    ( ('Sv','νv','Λp','Λpp'), lambda self,Sv,νv,Λp,Λpp:  band_strength_to_band_fvalue(Sv,νv,Λp,Λpp)),
-    ( ('f','SJ','Jpp','Λp','Λpp'), _f1,)])
+    fv = f/SJ*(2.*J_l+1.)       # correct? What about 2S+1?
+    fv[(Λ_l==0)&(Λ_u!=0)] *= 2
+    return fv
+prototypes['fv'] = dict(description="Band f-value (dimensionless)", kind='f',  fmt='<10.5e',cast=cast_abs_float_array, infer=[
+    (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  band_strength_to_band_fvalue(Sv,ν, Λ_u,Λ_l)),
+    ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
+    ( ('f','SJ','J_l','Λ_u','Λ_l'), _f1,)])
 prototypes['Aev'] =dict(description="Einstein A coefficient / emission rate averaged over a band (s-1).", kind='f',  fmt='<10.5e', infer=[(('Sv','ν' ,'Λp','Λpp'), lambda self,Sv,ν ,Λp,Λpp: band_strength_to_band_emission_rate(Sv,ν ,Λp,Λpp)),( ('Sv','νv','Λp','Λpp'), lambda self,Sv,νv,Λp,Λpp: band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp),)],) 
 prototypes['σv'] =dict(description="Integrated cross section of an entire band (cm2.cm-1).", kind='f',  fmt='<10.5e', infer=[(('fv',),lambda self,fv: band_fvalue_to_band_cross_section(fv),)],)
 prototypes['Sij'] =dict(description=" strength (au)", kind='f',  fmt='<10.5e', infer=[
@@ -273,16 +272,14 @@ prototypes['Sij'] =dict(description=" strength (au)", kind='f',  fmt='<10.5e', i
 prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate (s-1).", kind='f',  fmt='<10.5e', infer=[(('f','ν','Jp','Jpp'), lambda self,f,ν,Jp,Jpp: f*0.666886/(2*Jp+1)*(2*Jpp+1)*ν**2),( ('Sij','ν','Jp'), lambda self,Sij,ν,Jp: Sij*2.026e-6*ν**3/(2*Jp+1))],)
 prototypes['FCfactor'] =dict(description="Franck-Condon factor (dimensionless)", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R'), lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)])),],)
 prototypes['Rcentroid'] =dict(description="R-centroid (Å)", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R','FCfactor'), lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)])),])
-def _f0(self,Sp,Spp,Ωp,Ωpp,Jp,Jpp):
-    if not (np.all(Sp==0) and np.all(Spp==0)): raise InferException('Honl-London factors only defined here for singlet states.')
-    try:
-        return(quantum_numbers.honl_london_factor(Ωp,Ωpp,Jp,Jpp))
-    except ValueError as err:
-        if str(err)=='Could not find correct Honl-London case.':
-            raise InferException('Could not compute rotational line strength')
-        else:
-            raise(err)
-# prototypes['SJ'] = dict(description="Rotational line strength (dimensionless)", kind='f',  fmt='<10.5e', infer= {('Sp','Spp','Ωp','Ωpp','Jp','Jpp'): _f0,})
+
+def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
+    if not (np.all(S_u==0) and np.all(S_l==0)):
+        raise InferException('Honl-London factors only defined here for singlet states.')
+    SJ = quantum_numbers.honl_london_factor(Ω_u,Ω_l,J_u,J_l)
+    return SJ
+prototypes['SJ'] = dict(description="Rotational line strength (dimensionless)", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
+
 # prototypes['τ'] = dict(description="Integrated optical depth (cm-1)", kind='f',  fmt='<10.5e', infer={('σ','column_densitypp'):lambda self,σ,column_densitypp: σ*column_densitypp,},)
 # prototypes['I'] = dict(description="Integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp','ν'):lambda self,Ae,populationp,column_densityp,ν: Ae*populationp*column_densityp*ν,},)
 # prototypes['Ip'] = dict(description="Integrated emission photon intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp'):lambda self,Ae,populationp,column_densityp: Ae*populationp*column_densityp,},)
@@ -321,44 +318,41 @@ prototypes['ΔJ']['infer'].append((('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l))
 prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
 prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
 
-def _collect_prototypes(*keys,levels_class=None):
-    """Take a list and return unique element.s"""
-    keys = list(keys)
-    for key in levels_class.default_prototypes:
+def _collect_level(level_class):
+    """Get prototype keys and defining qn from a level class."""
+    keys = []
+    for key in level_class.default_prototypes:
         keys.append(key+'_l')
         keys.append(key+'_u')
-    retval_protoypes = {key:prototypes[key] for key in keys}
-    defining_qn = tuple(
-        [key+'_u' for key in levels_class.defining_qn]
-        +[key+'_l' for key in levels_class.defining_qn]
-        )
-    return retval_protoypes,defining_qn
+    defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
+                        +[key+'_l' for key in level_class.defining_qn])
+    return level_class,keys,defining_qn
 
 class Generic(levels.Base):
-    _levels_class = levels.Generic
-    default_prototypes,defining_qn = _collect_prototypes(
-        'species', 'point_group','mass',
-        'ν','ν0',
-        # 'λ',
-        'ΔJ',
-        'f','σ','S','S296K','τ','Ae',
 
+    _level_class,_level_keys,defining_qn = _collect_level(levels.Generic)
+    _line_keys = (
+        'species', 'point_group','mass',
+        'ν','ν0', # 'λ',
+        'ΔJ', 'branch',
+        'ΔJ',
+        'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ',
         'Nself',
         'Teq','Tex','Ttr','Z',
         'Γ','ΓD',
-
         ## pressure broadening stuff
         'mJ_l',
         'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
         'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
         'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
         ## test HITRAN Hartmann-Tran
-        'HT_HITRAN_X','HT_HITRAN_p', 'HT_HITRAN_Tref', 'HT_HITRAN_γ0', 'HT_HITRAN_n', 'HT_HITRAN_γ2', 'HT_HITRAN_δ0', 'HT_HITRAN_δp', 'HT_HITRAN_δ2', 'HT_HITRAN_νVC', 'HT_HITRAN_κ', 'HT_HITRAN_η', 'HT_HITRAN_Y',
+        'HITRAN_HT_X','HITRAN_HT_pX', 'HITRAN_HT_Tref', 'HITRAN_HT_γ0', 'HITRAN_HT_n', 'HITRAN_HT_γ2', 'HITRAN_HT_δ0', 'HITRAN_HT_δp', 'HITRAN_HT_δ2', 'HITRAN_HT_νVC', 'HITRAN_HT_κ', 'HITRAN_HT_η', 'HITRAN_HT_Y',
         'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
-
-        levels_class = _levels_class
     )
-
+    default_prototypes = {key:prototypes[key] for key in {*_level_keys,*_line_keys}}
+    default_xkey = 'J_l'
+    default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
+    
     def plot_spectrum(
             self,
             *calculate_spectrum_args,
@@ -494,10 +488,11 @@ class Generic(levels.Base):
         if index is not None:
             i = np.full(len(self),False)
             i[index] = True
+
         else:
             i = np.full(len(self),True)
         ## neglect lines out of x-range -- NO ACCOUNTING FOR EDGES!!!!
-        i = (self[xkey]>x[0]) & (self[xkey]<x[-1])
+        i &= (self[xkey]>x[0]) & (self[xkey]<x[-1])
         ## neglect lines out of y-range
         if ymin is not None:
             i &= self[ykey] > ymin
@@ -525,7 +520,7 @@ class Generic(levels.Base):
             line_kwargs = dict(nfwhm=nfwhmL)
         elif lineshape == 'hartmann-tran':
             if xkey != 'ν':
-                raise Exception('Only valid option is ν')
+                raise Exception('Only valid xkey is "ν"')
             line_function = lineshapes.hartmann_tran
             line_args = (
                 self['ν'][i],
@@ -756,101 +751,25 @@ class Generic(levels.Base):
             i = tools.find(m)
             self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)
 
+class Linear(Generic):
 
-class LinearTriatomic(Generic):
-    """E.g., CO2, CS2."""
+    _level_class,_level_keys,defining_qn = _collect_level(levels.Linear)
+    default_prototypes = {key:prototypes[key] for key in {
+        *_level_keys,
+        *Generic.default_prototypes,
+        'fv', 'νv', 'μv',
+        'SJ',
+    }}
+    default_xkey = 'J_l'
+    default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
 
-    _levels_class = levels.LinearTriatomic
-    default_prototypes,defining_qn = _collect_prototypes(
+class LinearDiatomic(Linear):
 
-        'species', 'point_group','mass',
-        'ν','ν0',
-        # 'λ',
-        'ΔJ',
-        'f','σ','S','S296K','τ','Ae',
-        'Nself',
-        'Teq','Tex','Ttr','Z',
-        'Γ','ΓD',
-
-        ## pressure broadening and shifts
-        'mJ_l',
-        'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
-        'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
-        'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
-        'HT_HITRAN_X','HT_HITRAN_p', 'HT_HITRAN_Tref', 'HT_HITRAN_γ0', 'HT_HITRAN_n', 'HT_HITRAN_γ2', 'HT_HITRAN_δ0', 'HT_HITRAN_δp', 'HT_HITRAN_δ2', 'HT_HITRAN_νVC', 'HT_HITRAN_κ', 'HT_HITRAN_η', 'HT_HITRAN_Y',
-        'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
-
-        levels_class = _levels_class
-    )
-
-    label_key = 'J_l'
-    default_zkeys = ['species_u', 'ν1_u', 'ν2_u', 'ν3_u', 'l2_u', 'species_l', 'ν1_l', 'ν2_l', 'ν3_l', 'l2_l', 'ΔJ']
-
-    def load_from_hitran(self,filename):
-        """Load HITRAN .data."""
-        ## load generic things using the method in Generic
-        data = Generic.load_from_hitran(self,filename)
-        ## interpret specific quantum numbers
-        quantum_numbers = dict(
-            ΔJ=np.empty(len(self),dtype=int),
-            J_l=np.empty(len(self),dtype=float),
-            ν1_u=np.empty(len(self),dtype=int),
-            ν2_u=np.empty(len(self),dtype=int),
-            l2_u=np.empty(len(self),dtype=int),
-            ν3_u=np.empty(len(self),dtype=int),
-            ν1_l=np.empty(len(self),dtype=int),
-            ν2_l=np.empty(len(self),dtype=int),
-            l2_l=np.empty(len(self),dtype=int),
-            ν3_l=np.empty(len(self),dtype=int),
-        )
-        ## loop over upper quantum setting in arrays
-        for i,V in enumerate(data['V_u']):
-            quantum_numbers['ν1_u'][i] = int(V[7:9])
-            quantum_numbers['ν2_u'][i] = int(V[9:11])
-            quantum_numbers['l2_u'][i] = int(V[11:13])
-            quantum_numbers['ν3_u'][i] = int(V[13:15])
-        ## loop over lower quantum setting in arrays
-        for i,V in enumerate(data['V_l']):
-            quantum_numbers['ν1_l'][i] = int(V[7:9])
-            quantum_numbers['ν2_l'][i] = int(V[9:11])
-            quantum_numbers['l2_l'][i] = int(V[11:13])
-            quantum_numbers['ν3_l'][i] = int(V[13:15])
-        ## Q_u is blank, Q_l is  [PQR][J_l]
-        translatePQR = {'P':-1,'Q':0,'R':+1}
-        for i,Q in enumerate(data['Q_l']):
-            quantum_numbers['ΔJ'][i] = translatePQR[Q[5]]
-            quantum_numbers['J_l'][i] = float(Q[6:])
-        ## add all this data to self
-        for key,val in quantum_numbers.items():
-            self[key] = val
-
-class Diatomic(Generic):
-
-    _levels_class = levels.Diatomic
-    default_prototypes,defining_qn = _collect_prototypes(
-        'species', 'point_group','mass',
-        'ν','νv',
-        'μv',
-        # 'λ','λv',
-        'ΔJ',
-        'f','σ','S','S296K','τ','Ae',
-        # 'γ0air','δ0air','nair','γself',
-        # 'pself', 'pair', 'Nself',
-        'Teq','Ttr','Z',
-        'Γ','ΓD',
-        'Teq', 'Tex', 'Ttr', 'L',
-        # 'γ0air', 'δ0air', 'γself', 'nair', 'pself', 'pair',
-        'Nself',
-        'branch', 'ΔJ', 'Γ', 'ΓD', 'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ',
-        levels_class = _levels_class
-    )
-
-    default_zkeys = list(defining_qn)
-    default_zkeys.remove('J_l')
-    default_zkeys.remove('J_u')
-    default_zkeys.append('ΔJ')
-    label_key = 'J_u'
-    label_zkeys = default_zkeys
+    _level_class,_level_keys,defining_qn = _collect_level(levels.LinearDiatomic)
+    default_prototypes = {key:prototypes[key] for key in
+                          {*_level_keys, *Linear.default_prototypes,}}
+    default_xkey = 'J_u'
+    default_zkeys = ['species_u','label_u','v_u','species_l','label_l','ν_l', 'ΔJ']
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -913,62 +832,50 @@ class Diatomic(Generic):
             raise Exception(f'intensity_type must be "absorption" or "emission" or "partition"')
         self.extend(**data)
 
-# class LinearTriatomic(Generic):
-    # _levels_class = levels.LinearTriatomic
-    # _prototypes = _collect_prototypes(
-        # *_expand_level_keys_to_upper_lower(_levels_class),
-        # *GenericLine._prototypes)
-    # default_zkeys=(
-        # 'species',
-        # 'label_u','v1_u','v2_u','v3_u','l2_u',
-        # 'label_l','v1_l','v2_l','v3_l','l2_l',
-        # )
 
-    # def load_from_hitran(self,filename):
-        # """Load HITRAN .data."""
-        # data = hitran.load(filename)
-        # ## interpret into transition quantities common to all transitions
-        # new = self.__class__(**{
-            # 'ν':data['ν'],
-            # ## 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
-            # 'S296K':data['S'],
-            # 'E_l':data['E_l'],
-            # 'g_u':data['g_u'],
-            # 'g_l':data['g_l'],
-            # 'γair':data['γair']*2, # HITRAN uses HWHM, I'm going to go with FWHM
-            # 'nair':data['nair'],
-            # 'δair':data['δair'],
-            # 'γself':data['γself']*2, # HITRAN uses HWHM, I'm going to go with FWHM
-        # })
-        # ## get species
-        # i = hitran.molparam.find(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
-        # new['species'] =  hitran.molparam['isotopologue'][i]
-        # ## remove natural abundance weighting
-        # new['S296K'] /=  hitran.molparam['natural_abundance'][i]
-        # ## interpret quantum numbers -- see rothman2005
-        # new['v1_u'] = [t[7:9] for t in data['V_u']]
-        # new['v2_u'] = [t[9:11] for t in data['V_u']]
-        # new['l2_u'] = [t[11:13] for t in data['V_u']]
-        # new['v3_u'] = [t[13:15] for t in data['V_u']]
-        # new['v1_l'] = [t[7:9] for t in data['V_l']]
-        # new['v2_l'] = [t[9:11] for t in data['V_l']]
-        # new['l2_l'] = [t[11:13] for t in data['V_l']]
-        # new['v3_l'] = [t[13:15] for t in data['V_l']]
-        # branches = {'P':-1,'Q':0,'R':+1}
-        # ΔJ,J_l = [],[]
-        # for Q_l in data['Q_l']:
-            # branchi,Jli = Q_l[5],Q_l[6:] 
-            # ΔJ.append(branches[branchi])
-            # J_l.append(Jli)
-        # new['ΔJ'] = np.array(ΔJ,dtype=int)
-        # new['J'+'_l'] = np.array(J_l,dtype=float)
-        # # ## add data to self
-        # self.extend(**new)
+class LinearTriatomic(Linear):
+    """E.g., CO2, CS2."""
 
-# # class TriatomicDinfh(Base):
+    _level_class,_level_keys,defining_qn = _collect_level(levels.LinearTriatomic)
+    default_prototypes = {key:prototypes[key] for key in {*_level_keys, *Linear.default_prototypes,}}
+    default_xkey = 'J_l'
+    default_zkeys = ['species_u', 'ν1_u', 'ν2_u', 'ν3_u', 'l2_u', 'species_l', 'ν1_l', 'ν2_l', 'ν3_l', 'l2_l', 'ΔJ']
 
-    # # prototypes = {key:copy(prototypes[key]) for key in (
-        # # list(Base.prototypes)
-        # # + _expand_level_keys_to_upper_lower(levels.TriatomicDinfh))}
+    def load_from_hitran(self,filename):
+        """Load HITRAN .data."""
+        ## load generic things using the method in Generic
+        data = Generic.load_from_hitran(self,filename)
+        ## interpret specific quantum numbers
+        quantum_numbers = dict(
+            ΔJ=np.empty(len(self),dtype=int),
+            J_l=np.empty(len(self),dtype=float),
+            ν1_u=np.empty(len(self),dtype=int),
+            ν2_u=np.empty(len(self),dtype=int),
+            l2_u=np.empty(len(self),dtype=int),
+            ν3_u=np.empty(len(self),dtype=int),
+            ν1_l=np.empty(len(self),dtype=int),
+            ν2_l=np.empty(len(self),dtype=int),
+            l2_l=np.empty(len(self),dtype=int),
+            ν3_l=np.empty(len(self),dtype=int),
+        )
+        ## loop over upper quantum setting in arrays
+        for i,V in enumerate(data['V_u']):
+            quantum_numbers['ν1_u'][i] = int(V[7:9])
+            quantum_numbers['ν2_u'][i] = int(V[9:11])
+            quantum_numbers['l2_u'][i] = int(V[11:13])
+            quantum_numbers['ν3_u'][i] = int(V[13:15])
+        ## loop over lower quantum setting in arrays
+        for i,V in enumerate(data['V_l']):
+            quantum_numbers['ν1_l'][i] = int(V[7:9])
+            quantum_numbers['ν2_l'][i] = int(V[9:11])
+            quantum_numbers['l2_l'][i] = int(V[11:13])
+            quantum_numbers['ν3_l'][i] = int(V[13:15])
+        ## Q_u is blank, Q_l is  [PQR][J_l]
+        translatePQR = {'P':-1,'Q':0,'R':+1}
+        for i,Q in enumerate(data['Q_l']):
+            quantum_numbers['ΔJ'][i] = translatePQR[Q[5]]
+            quantum_numbers['J_l'][i] = float(Q[6:])
+        ## add all this data to self
+        for key,val in quantum_numbers.items():
+            self[key] = val
 
- 

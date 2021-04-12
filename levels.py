@@ -18,7 +18,7 @@ from . import tools
 from . import database
 from . import kinetics
 from .exceptions import InferException,MissingDataException
-
+from .optimise import optimise_method
 
 prototypes = {}
 
@@ -105,7 +105,7 @@ def _f1(self,point_group,Inuclear,sa):
 
 prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)." , kind='i' , infer=[(('point_group',),_f0),( ('point_group','Inuclear','sa'),_f1),])
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
-prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
+# prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition (cm-1 FWHM)" , kind='f', fmt='<10.5g', infer=[(('A',),lambda self,τ: 5.309e-12*A,)])
 prototypes['τ'] = dict(description="Total decay lifetime (s)", kind='f', infer=[(('A',), lambda self,A: 1/A,)])       
 prototypes['A'] = dict(description="Total decay rate (s-1)", kind='f', infer=[(('Γ',),lambda self,Γ: Γ/5.309e-12,)])
@@ -279,51 +279,65 @@ class Base(Dataset):
     default_prototypes = _collect_prototypes()
     default_attributes = Dataset.default_attributes | {'Zsource':None,}
 
+    @optimise_method(
+        add_construct_function=False,
+        add_format_input_function=True,
+        format_single_line=True,
+        execute_now= True)
+    def set_by_qn(self,**kwargs):
+        """Set some data to fixed values or optimised parameters, limiting
+        setting to matching defining quantum numbers, all given as key word
+        arguments."""
+        ## collect quantum numbers and set data
+        qn,p = {},{}
+        for key,val in kwargs.items():
+            if key in self.defining_qn:
+                qn[key] = val
+            else:
+                p[key] = val
+        ## set data
+        for key,val in p.items():
+            self.set_parameter(key,val,match=qn)
+            self.pop_format_input_function()
+
 class Generic(Base):
     """A generic level."""
     default_prototypes = _collect_prototypes(
         'species',
         'label',
         'point_group',
-        'E','Eref',
-        'Γ','ΓD',
-        'J',
-        'g','gnuclear',
-        'Teq','Tex','Z','α',
-        'Nself',
-    )
-    defining_qn = ('species',)
-
-class LinearTriatomic(Generic):
-    """A generic level."""
-    default_prototypes = _collect_prototypes(
-        'species',
-        'label',
-        'ν1','ν2','ν3','l2',
-        'point_group',
-        'E','Eref',
-        'Γ','ΓD',
-        'J',
-        'g','gnuclear',
-        'Teq','Tex','Z','α',
-        'Nself',
-    )
-    defining_qn = ('species','label','ν1','ν2','ν3','l2','J')
-        
-
-class Diatomic(Base):
-    default_prototypes = _collect_prototypes(
-        'species',
-        'point_group',
         'E','Eref','E_reduced',
         'Γ','ΓD',
-        'Inuclear',
+        'J','N','S',
         'g','gnuclear',
         'Teq','Tex','Z','α',
         'Nself',
-        'label', 'Λ','s','S','LSsign',
-        'i','gu', 'σv','sa','ef', 
-        'Fi','Ω','Σ','SR',
+    )
+    defining_qn = ('species','label','ef','J')
+    default_xkey = 'J'
+    default_zkeys = ('species','label','ef')
+
+class Linear(Generic):
+    default_prototypes = _collect_prototypes(
+        *Generic.default_prototypes,
+        'Λ','s','Σ','SR','Ω','Fi',
+        'i','gu','σv','sa','ef',
+    )
+    defining_qn = ('species','label','ef','J')
+    default_zkeys = ('species','label','ef','Σ')
+
+class LinearTriatomic(Linear):
+    """A generic level."""
+    default_prototypes = _collect_prototypes(
+        *Linear.default_prototypes,
+        'ν1','ν2','ν3','l2',
+    )
+    defining_qn = ('species','label','ef','ν1','ν2','ν3','l2','J')
+    defining_zkeys = ('species','label','ef','ν1','ν2','ν3','l2')
+
+class LinearDiatomic(Base):
+    default_prototypes = _collect_prototypes(
+        *Linear.default_prototypes,
         'v',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
@@ -336,9 +350,6 @@ class Diatomic(Base):
         'pDv','qDv',
         'Tvreduced','Tvreduced_common',
         'Bv_μscaled',
-        'J','pm','N','S',
-        'Teq',
-        'α',
     )
     defining_qn = ('species','label','v','Σ','ef','J')
     default_zkeys = ('species','label','v','Σ','ef')
@@ -397,3 +408,4 @@ class Diatomic(Base):
             data.pop(key)
         self.extend(**data)
 
+Diatomic = LinearDiatomic
