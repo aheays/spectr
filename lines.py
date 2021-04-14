@@ -205,14 +205,14 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l,Σ_l,Σ_u,ef_l,ef_u):
         ## sum for all unique upper levels
         k = []
         for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_u'][i] for key in self._levels_class.defining_qn]
+                *[self[key+'_u'][i] for key in self._level_class.defining_qn]
         ):
             k.append((i[j])[0])
         Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
         ## sum for all unique lower levels
         k = []
         for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_l'][i] for key in self._levels_class.defining_qn]):
+                *[self[key+'_l'][i] for key in self._level_class.defining_qn]):
             k.append((i[j])[0])
         Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
     return Z
@@ -437,7 +437,7 @@ class Generic(levels.Base):
             self,
             x=None,        # frequency grid (must be regular, I think), if None then construct a reasonable grid
             xkey='ν',      # strength to use, i.e., "ν", or "λ"
-            ykey='σ',      # strength to use, i.e., "σ", "τ", or "I"
+            ykey=None,      # strength to use, i.e., "σ", "τ", or "I"
             zkeys=None,    # if not None then calculate separate spectra for unique combinations of these keys
             lineshape=None, # None for auto selection, or else one of ['voigt','gaussian','lorentzian','hartmann-tran']
             nfwhmG=20, # how many Gaussian FWHMs to include in convolution
@@ -450,6 +450,12 @@ class Generic(levels.Base):
             # **set_keys_vals, # set some data first, e..g, the tempertaure
     ):
         """Calculate a spectrum from the data in self. Returns (x,y)."""
+        if ykey is None:
+            for ykey in ('τ','σ','f','Ae','Sij','μ'):
+                if self.is_known(ykey):
+                    break
+            else:
+                raise Exception("Could not find a default ykey")
         ## set some data
         # for key,val in set_keys_vals.items():
             # self[key] = val
@@ -566,11 +572,19 @@ class Generic(levels.Base):
             retval = [(d,x,np.exp(-y)) for d,x,y in retval]
         return retval 
 
-    def _get_level(self, u_or_l, reduce_to=None,):
+    def _get_level(self,u_or_l,reduce_to=None,):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
-        assert u_or_l in ('u','l')
-        levels = self._levels_class()
+        ## try get all deining qn
+        for key in self.defining_qn:
+            try: 
+                self[key]
+            except InferException:
+                pass
+        ## 
+        if u_or_l not in ('u','l'):
+            raise Exception("u_or_l must be 'u' or 'l'")
+        levels = self._level_class()
         for key in self.keys():
             if len(key)>2 and key[-2:]==('_'+u_or_l):
                 levels[key[:-2]] = self[key]
@@ -578,14 +592,13 @@ class Generic(levels.Base):
             pass
         else:
             keys = [key for key in levels.defining_qn if levels.is_known(key)]
-            new_levels = self._levels_class()
-            for values,i in tools.unique_combinations_mask(*[levels[key] for key in keys]):
-                i = tools.find(i)
-                if reduce_to == 'first':
-                    new_levels.extend(**levels[i[0:1]])
-                else:
-                    raise ImplementationError()
-            levels = new_levels
+            if reduce_to == 'first':
+                ## find first indices of unique key combinations and reduce
+                ## to those
+                t,i = tools.unique_combinations_first_index(*[levels[key] for key in keys])
+                levels.index(i)
+            else:
+                raise ImplementationError()
         return levels
 
     def get_upper_level(self,reduce_to=None):
@@ -721,7 +734,7 @@ class Generic(levels.Base):
         for key,val in keys_vals.items():
             suffix = key[-2:]
             assert suffix in ('_u','_l')
-            qn_keys = [t+suffix for t in self._levels_class.defining_qn]
+            qn_keys = [t+suffix for t in self._level_class.defining_qn]
             ## find match if requested
             if match is not None:
                 imatch = self.match(**match)
@@ -746,7 +759,7 @@ class Generic(levels.Base):
     def vary_upper_level_energy(self,match=None,vary=False,step=None):
         if match is not None:
             raise ImplementationError()
-        keys = [key+'_u' for key in self._levels_class.defining_qn]
+        keys = [key+'_u' for key in self._level_class.defining_qn]
         for d,m in self.unique_dicts_match(*keys):
             i = tools.find(m)
             self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)

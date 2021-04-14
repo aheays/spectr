@@ -19,7 +19,7 @@ def test_dataset_construct_get_set_data():
     t.set('x',[1,2,3])
     assert len(t) == 3
     assert all(t.get('x')==[1,2,3])
-    t.set('x',25,1)
+    t.set('x',25,index=1)
     assert len(t) == 3
     assert all(t.get('x')==[1,25,3])
     t = Dataset()
@@ -40,27 +40,27 @@ def test_dataset_construct_get_set_data():
 def test_uncertainties():
     t = Dataset()
     t.set('x',[1.,2.,3])
-    t.set_uncertainty('x',0.1)
-    assert all(t.get_uncertainty('x') == [0.1,0.1,0.1])
+    t.set('x',0.1,'unc')
+    assert all(t.get('x','unc') == [0.1,0.1,0.1])
     t = Dataset(x=[1.,2,3],f=5)
-    t.set_uncertainty('x',0.1)
-    assert all(t.get_uncertainty('x') == [0.1,0.1,0.1])
-    t = Dataset(x=[1,2,3],f=5)
-    t['unc_x'] = 0.1
-    assert all(t['unc_x'] == [0.1,0.1,0.1])
+    t.set('x',0.1,'unc')
+    assert all(t.get('x','unc') == [0.1,0.1,0.1])
+    t = Dataset(x=[1.1,2,3],f=5)
+    t['x_unc'] = 0.1
+    assert all(t['x_unc'] == [0.1,0.1,0.1])
     t = Dataset(x=[1.,2,3],f=5)
-    t.set_uncertainty('x',0.1)
-    t.set_uncertainty('x',0.2,[0,2])
-    assert all(t.get_uncertainty('x') == [0.2,0.1,0.2 ])
+    t.set('x',0.1,'unc')
+    t.set('x',0.2,'unc',[0,2])
+    assert all(t.get('x','unc') == [0.2,0.1,0.2 ])
 
 def test_get_set_uncertainties_as_key():
     t = Dataset()
     t['x'] = [1.,2.,3]
     t['x_unc'] = [0.1,0.2,0.3]
-    assert all(t.get_uncertainty('x') == [0.1,0.2,0.3])
+    assert all(t.get('x','unc') == [0.1,0.2,0.3])
     assert all(t['x_unc'] == [0.1,0.2,0.3])
     t = Dataset(x=[1.,2.,3],x_unc=[0.1,0.2,0.3])
-    assert all(t.get_uncertainty('x') == [0.1,0.2,0.3])
+    assert all(t.get('x','unc') == [0.1,0.2,0.3])
 
 def test_dataset_prototypes():
     t = Dataset()
@@ -101,7 +101,7 @@ def test_defaults():
     assert t.get_default('x') is None
     with raises(Exception):
         t.append(y='unc')
-    t.set_default(x=5)
+    t.set_default('x',5)
     assert t.get_default('x') is not None
     assert t.get_default('x') == 5
     t.append(y='unc')
@@ -125,14 +125,14 @@ def test_auto_defaults():
     t.set_prototype('x','f')
     t.set_prototype('y','f')
     assert np.isnan(t.get_prototype('x')['default'])
-    t.permit_auto_defaults = False
+    t.auto_defaults = False
     t.extend(x=[1,3,4])
     with raises(Exception):
         t.append(x=5,y=2)
     t = Dataset(x=[1,2,3])
     t.set_prototype('x','f')
     t.set_prototype('y','f')
-    t.permit_auto_defaults = True
+    t.auto_defaults = True
     t.extend(x=[1,3,4])
     t.append(x=5,y=2)
     assert all(t['x'] == [1,2,3,1,3,4,5])
@@ -285,41 +285,41 @@ def test_dataset_infer_with_uncertainties():
     t = Dataset()
     t['x'] = [1.]
     t['y'] = [2.]
-    t.set_uncertainty('x',[0.1])
-    t.set_uncertainty('y',[0.2])
+    t.set('x',[0.1],'unc')
+    t.set('y',[0.2],'unc')
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y'),lambda self,x,y:x+y)
     assert t['z'] == [3]
-    assert t.get_uncertainty('z') == approx(np.sqrt(0.1**2+0.2**2))
+    assert t.get('z','unc') == approx(np.sqrt(0.1**2+0.2**2))
     t = Dataset()
     t['x'] = [1.]
-    t.set_uncertainty('x',[0.1])
+    t.set('x',[0.1],'unc')
     t['y'] = [2.]
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y'),lambda self,x,y:x+y)
     assert t['z'] == [3]
-    dz = t.get_uncertainty('z')
+    dz = t.get('z','unc')
     assert abs(dz - np.sqrt(0.1**2))/dz < 1e-5
     t = Dataset()
     t['y'] = [2.]
     t['p'] = [3.]
-    t.set_uncertainty('y',[0.2])
-    t.set_uncertainty('p',[0.3])
+    t.set('y',[0.2],'unc')
+    t.set('p',[0.3],'unc')
     t.set_prototype('z','f')
     t.add_infer_function('z',('y','p'),lambda self,y,p:y*p)
     assert t['z'] == [2*3]
-    assert t.get_uncertainty('z') == approx(np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)
+    assert t.get('z','unc') == approx(np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)
     t = Dataset()
     t['x'] = [1.]
     t['y'] = [2.]
     t['p'] = [3.]
-    t.set_uncertainty('x',[0.1])
-    t.set_uncertainty('y',[0.2])
-    t.set_uncertainty('p',[0.3])
+    t.set('x',[0.1],'unc')
+    t.set('y',[0.2],'unc')
+    t.set('p',[0.3],'unc')
     t.set_prototype('z','f')
     t.add_infer_function('z',('x','y','p'),lambda self,x,y,p:x+y*p)
     assert t['z'] == 1+2*3
-    dz = t.get_uncertainty('z')
+    dz = t.get('z','unc')
     assert abs(dz - np.sqrt(0.1**2 + (np.sqrt((0.2/2)**2+(0.3/3)**2)*2*3)**2) )/dz < 1e-5
 
 def test_dataset_match_matches():
@@ -443,19 +443,19 @@ def test_load_from_string():
 
 def test_step():
     t = Dataset(x=[1,2,3.0],f=5)
-    t.set_step('x',0.1)
-    assert all(t.get_step('x') == [0.1,0.1,0.1])
-    t = Dataset(x=[1,2,3],f=5)
-    t['step_x'] = 0.1
-    assert all(t['step_x'] == [0.1,0.1,0.1])
+    t.set('x',0.1,'step')
+    assert all(t.get('x','step') == [0.1,0.1,0.1])
+    t = Dataset(x=[1.0,2,3],f=5)
+    t['x_step'] = 0.1
+    assert all(t.get('x','step') == [0.1,0.1,0.1])
 
 def test_vary():
     t = Dataset(x=[1,2,3.0],f=5)
-    t.set_vary('x',[True,True,False])
-    assert all(t.get_vary('x') == [True,True,False])
+    t.set('x',[True,True,False],'vary')
+    assert all(t.get('x','vary') == [True,True,False])
     t = Dataset(x=[1,2,3.0],f=5)
     t['x_vary'] = False
-    assert all(t.get_vary('x') == [False,False,False,])
+    assert all(t.get('x','vary') == [False,False,False,])
     assert all(t['x_vary'] == [False,False,False,])
 
 def test_rows():
@@ -519,11 +519,11 @@ def test_units():
     assert x.get_units('x') == 'm'
     assert all(x.get('x') == [1,2,3])
     assert x.get('x',units='nm') == approx([1e9,2e9,3e9])
-    x.set_uncertainty('x',[0.1,0.2,0.3])
-    assert x.get_uncertainty('x',units='nm') == approx([0.1e9,0.2e9,0.3e9])
+    x.set('x',[0.1,0.2,0.3],'unc')
+    assert x.get('x','unc',units='nm') == approx([0.1e9,0.2e9,0.3e9])
 
 def test_format_description():
     x = Dataset()
     x.set('x',[1,2,3],kind='f',units='m',description='This is x',fmt='0.3f')
-    x.set('unc_x',[0.1,0.1,0.3])
+    x.set('x_unc',[0.1,0.1,0.3])
 

@@ -10,7 +10,7 @@ from spectr import levels
 from spectr import plotting
 from spectr.optimise import P
 
-make_plot = False 
+make_plot =  True 
 
 def test_init():
     spectrum.Experiment()
@@ -69,7 +69,7 @@ def test_fit_intensity():
     if make_plot:
         fig = plotting.qfig()
         t.plot()
-    assert t.rms == approx(0.04259560696454527)
+    assert t.rms == approx(0.04259560696454527,1e-3)
 
 def test_model_some_lines():
     linelist = lines.Generic('linelist')

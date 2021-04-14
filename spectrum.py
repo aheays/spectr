@@ -482,7 +482,8 @@ class Model(Optimiser):
             τmin=None,
             lineshape='voigt',
             ncpus=1,
-            _cache=None
+            _cache=None,
+            **set_keys_vals
     ):
         if len(self.x) == 0 or len(lines) == 0:
             ## x not set yet
@@ -498,6 +499,11 @@ class Model(Optimiser):
             if 'i' not in _cache:
                 _cache['i'] = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
             tlines = lines[_cache['i']]
+            for key,val in set_keys_vals.items():
+                tlines[key] = float(val)
+
+
+
             ## if previous calculations are cached then find which lines have actually changed -- store in j
             if 'tlines' in _cache:
                 j = np.any([ tlines[key] != _cache['tlines'][key] for key in tlines.keys()], axis=0)
@@ -1505,7 +1511,7 @@ class Model(Optimiser):
                     length=-0.02, # fraction of axes coords
                     color_by=('branch' if 'branch' in zkeys else zkeys),
                     labelsize='xx-small',namesize='x-small', namepos='float',    
-                    label_key=(label_key if label_key is not None else line.label_key),
+                    label_key=(label_key if label_key is not None else line.default_xkey),
                 )
                 ymax += ystep*(len(branch_annotations)+1)
         ## plot branch heads

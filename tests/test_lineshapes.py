@@ -13,18 +13,19 @@ def linelist():
     linelist['Γ']    =  [0.01,0.02]
     linelist['species']     =  'H2O'
     linelist['Teq']     =  296
-    linelist['HT_HITRAN_γ0'] = linelist['Γ']/2*10
-    linelist['HT_HITRAN_Tref']  =  296
-    linelist['HT_HITRAN_p']     =  0.1
-    linelist['HT_HITRAN_X']     =  'H2'
-    linelist['HT_HITRAN_n']     =  0
-    linelist['HT_HITRAN_γ2']    =  0
-    linelist['HT_HITRAN_δ0']    =  0
-    linelist['HT_HITRAN_δp']    =  0
-    linelist['HT_HITRAN_δ2']    =  0
-    linelist['HT_HITRAN_νVC']   =  0.05
-    linelist['HT_HITRAN_κ']     =  0
-    linelist['HT_HITRAN_η']     =  0
+    linelist['HITRAN_HT_pX']     =  700
+    linelist['HITRAN_HT_γ0'] = linelist['Γ']/2*10
+    linelist['HITRAN_HT_Tref']  =  296
+    linelist['HITRAN_HT_p']     =  0.1
+    linelist['HITRAN_HT_X']     =  'H2'
+    linelist['HITRAN_HT_n']     =  0
+    linelist['HITRAN_HT_γ2']    =  0
+    linelist['HITRAN_HT_δ0']    =  0
+    linelist['HITRAN_HT_δp']    =  0
+    linelist['HITRAN_HT_δ2']    =  0
+    linelist['HITRAN_HT_νVC']   =  0.05
+    linelist['HITRAN_HT_κ']     =  0
+    linelist['HITRAN_HT_η']     =  0
     return linelist
 
 def test_plot_lineshapes(linelist):
@@ -45,12 +46,14 @@ def test_plot_lineshapes(linelist):
 
 def test_plot_HT_limit_equivalences(linelist):
     x = np.arange(linelist['ν'].min()-0.2,linelist['ν'].max()+0.2,1e-4)
-    linelist['HT_HITRAN_νVC']   =  0.
+    linelist['HITRAN_HT_νVC']   =  0.
+    linelist['HT_Γ0'] = linelist['Γ']/2
     x0,y0 = linelist.calculate_spectrum(x,lineshape='hartmann-tran')
     x1,y1 = linelist.calculate_spectrum(x,lineshape='voigt')
     assert np.max(np.abs((y0-y1)/y0)) < 2e-3
-    linelist['HT_HITRAN_νVC']   =  0.
-    linelist['HT_HITRAN_γ0']   =  0
+    linelist['HT_Γ0'] = 0.
+    linelist['HITRAN_HT_νVC']   =  0.
+    linelist['HITRAN_HT_γ0']   =  0
     x0,y0 = linelist.calculate_spectrum(x,lineshape='hartmann-tran')
     x1,y1 = linelist.calculate_spectrum(x,lineshape='gaussian')
     i = y0>1e-4

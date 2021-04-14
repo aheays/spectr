@@ -68,7 +68,9 @@ def vectorise(vargs=None,dtype=None,cache=False):
     """Vectorise a scalar-argument scalar-return value function.  If all
     arguments are scalar return a scalar result. If args is None
     vectorise all arguments. If a list of indices vectorise only those
-    arguments."""
+    arguments. If dtype is given return value is an array of this
+    type, else a list is returned. If cache is True then cache
+    indivdual scalar function calls."""
     def actual_decorator(function):
         if cache:
             function = functools.lru_cache(function)
@@ -2374,9 +2376,17 @@ def unique_combinations(*args):
 def unique_combinations_mask(*arrs):
     """All are iterables of the same length. Finds row-wise combinations of
     args that are unique. Elements of args must be hashable."""
+    # ra = np.rec.fromarrays(arrs)
     ra = np.rec.fromarrays(arrs)
     unique_values = np.unique(ra)
     return [(t,ra==t) for t in unique_values]
+
+def unique_combinations_first_index(*arrs):
+    """All are iterables of the same length. Finds row-wise combinations of
+    args that are unique. Elements of args must be hashable."""
+    ra = np.rec.fromarrays(arrs)
+    unique_values,first_index = np.unique(ra,return_index=True)
+    return unique_values,first_index
 
 def sortall(x,*others,reverse=False):
     """Sort x and return sorted. Also return others sorted according
@@ -2554,11 +2564,14 @@ def findin(x,y):
     x = ensure_iterable(x)
     y = ensure_iterable(y)
     i = np.zeros(len(x),dtype='int')
-    for j in range(len(x)):
-        ii = find(y==x[j])
-        if len(ii)!=1:
-            raise Exception('Element `'+str(x[j])+'\' should have 1 version, '+str(len(ii))+' found.')
-        i[j] = ii
+    for j,xj in enumerate(x):
+        ii = find(y==xj)
+        if len(ii) != 1:
+            if len(ii) == 0:
+                raise Exception(f'Element not found in y: {repr(xj)}')
+            if len(ii) > 1:
+                raise Exception(f'Element non-unique in y: {repr(xj)}')
+        i[j] = ii[0]
     return i
 
 def find_nearest(x,y):

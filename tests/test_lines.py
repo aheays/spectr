@@ -30,10 +30,10 @@ def test_infer_with_level_keys():
     t = lines.Generic(ν=[100],E_u=[150])
     assert t['E_l'] == [50.]
     t = lines.Generic(E_l=[100],unc_E_l=[0.5],E_u=[150],unc_E_u=[0.2])
-    t.set_uncertainty('E_l',[0.5])
-    t.set_uncertainty('E_u',[0.2])
+    t.set('E_l',[0.5],'unc')
+    t.set('E_u',[0.2],'unc')
     assert t['ν'] == [50.]
-    assert t.get_uncertainty('ν') == [approx(np.sqrt(0.5**2+0.2**2))]
+    assert t.get('ν','unc') == [approx(np.sqrt(0.5**2+0.2**2))]
 
 def test_load_lines():
     t = lines.Generic()

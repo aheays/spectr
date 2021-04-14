@@ -3,7 +3,7 @@ import inspect
 import re
 import os
 # import sys
-from pprint import pprint
+from pprint import pprint,pformat
 from copy import copy,deepcopy
 import warnings
 
@@ -407,24 +407,22 @@ class Optimiser:
         self.parameters, in self._data if this is also a Dataset or found in
         suboptimiser."""
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
-        value,uncertainty,step = [],[],[]
+        value,unc,step = [],[],[]
         unique_parameters = []  # to prevent the same parmeter being loaded twice from suboptimisers
         for optimiser in self._get_all_suboptimisers():
             for parameter in optimiser.parameters:
                 if id(parameter) not in unique_parameters and parameter.vary:
                     value.append(parameter.value)
-                    uncertainty.append(parameter.step)
+                    unc.append(parameter.step)
                     step.append(parameter.step)
                     unique_parameters.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
-                    vary = optimiser.get_vary(key)
+                    vary = optimiser.get(key,'vary')
                     value.extend(optimiser[key][vary])
-                    # if optimiser.get_uncertainty(key,vary) is None:
-                        # optimiser.set_uncertainty(key,nan)
-                    uncertainty.extend(optimiser.get_uncertainty(key,vary))
-                    step.extend(optimiser.get_step(key,vary))
-        return value,step,uncertainty
+                    unc.extend(optimiser.get(key,'unc',index=vary))
+                    step.extend(optimiser.get(key,'step',index=vary))
+        return value,step,unc
 
     def _set_parameters(self,p,dp=None,rescale=False):
         """Set assign elements of p and dp from optimiser to the
@@ -434,10 +432,11 @@ class Optimiser:
         ## shift and scale optimised parameter back to its original scale
         if rescale:
             p = [tp*tsi/1e-8+tpi for tp,tpi,tsi in zip(p,self._initial_p,self._initial_step)]
-            dp = [tdp*tsi/1e-8 for tdp,tsi in zip(p,self._initial_step)]
+            if dp is not None:
+                dp = [tdp*tsi/1e-8 for tdp,tsi in zip(dp,self._initial_step)]
         ## print parameters
         if self._monitor_parameters:
-            print('  p =  ['+' ,'.join([format(t,'+#15.13e') for t in p])+' ]')
+            print('    monitor parameters:  ['+' ,'.join([format(t,'+#15.13e') for t in p])+' ]')
         ## deal with missing dp
         if dp is None:
             dp = [np.nan for pi in p]
@@ -448,14 +447,15 @@ class Optimiser:
             for parameter in optimiser.parameters:
                 if id(parameter) not in already_set and parameter.vary:
                     parameter.value = p.pop(0)
-                    parameter.uncertainty = dp.pop(0)
+                    parameter.unc = dp.pop(0)
                     already_set.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
-                    vary = optimiser.get_vary(key)
+                    vary = optimiser.get(key,'vary')
                     ## could speed up using slice rather than pop?
                     for i in tools.find(vary):
-                        optimiser.set(key,value=p.pop(0),uncertainty=dp.pop(0),index=i)
+                        optimiser.set(key,p.pop(0),index=i)
+                        optimiser.set(key,dp.pop(0),'unc',index=i)
 
     def has_changed(self):
         """Whether the construction of this optimiser has been changed or any
@@ -546,7 +546,7 @@ class Optimiser:
     @optimise_method(add_construct_function=False,)
     def optimise(
             self,
-            # compute_uncertainty_only=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
+            # compute_unc_only=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
             rms_noise=None,
             monitor_frequency='every iteration', # 'rms decrease', 'never'
             verbose=True,
@@ -589,6 +589,7 @@ class Optimiser:
                 'diff_step':np.full(len(self._initial_p),1e-8),
                 ## 'x0':copy(self._initial_p),
                 ## 'diff_step':copy(self._initial_step),
+                ## 'diff_step':1e-8,
                 'xtol':xtol,
                 'ftol':ftol,
                 'gtol':gtol,
@@ -599,7 +600,8 @@ class Optimiser:
             if optargs['method'] is None:
                 ## get a default method
                 if len(self._initial_p) == 1:
-                    optargs['method'] = 'lm'
+                    # optargs['method'] = 'lm'
+                    optargs['method'] = 'trf'
                 else:
                     optargs['method'] = 'trf'
             if optargs['method'] == 'lm':
@@ -609,13 +611,18 @@ class Optimiser:
                 ## use 'trf' -- trust region
                 optargs['x_scale'] = 'jac'
                 optargs['loss'] = 'linear'
-                optargs['tr_solver'] = 'lsmr'
+                if len(self._initial_p) < 5:
+                    optargs['tr_solver'] = 'exact'
+                else:
+                    optargs['tr_solver'] = 'lsmr'
             else:
                 raise Exception(f'Unknown optimsiation method: {repr(optargs["method"])}')
             ## call optimisation routine -- KeyboardInterrupt possible
             try:
                 if verbose or self.verbose:
-                    print('Method:',optargs['method'])
+                    # print('Method:',optargs['method'])
+                    print("Optimisation parameters:")
+                    print('    '+pformat(optargs).replace('\n','\n    '))
                 result = optimize.least_squares(**optargs)
                 if verbose or self.verbose:
                     print('Optimisation complete')
@@ -647,7 +654,7 @@ class Optimiser:
         ## get parameter and uncertainties
         if p is not None:
             self._set_parameters(p)
-        value,step,uncertainty = self._get_parameters()
+        value,step,unc = self._get_parameters()
         if verbose or self.verbose:
             print(f'{self.name}: computing uncertainty')
             print('Number of varied parameters:',len(value))
@@ -683,12 +690,12 @@ class Optimiser:
             chisq = np.sum(residual**2)
             dof = len(residual)-len(value)+1
             rms_noise = np.sqrt(chisq/dof)
-        uncertainty = np.full(len(value),np.nan)
-        uncertainty[ijacobian] = np.sqrt(covariance.diagonal())*rms_noise
+        unc = np.full(len(value),np.nan)
+        unc[ijacobian] = np.sqrt(covariance.diagonal())*rms_noise
         ## set back to best fit
-        self._set_parameters(value,uncertainty) # set param
+        self._set_parameters(value,unc) # set param
         self.construct(recompute_all=True )
-        return np.asarray(uncertainty)
+        return np.asarray(unc)
 
     def _get_rms(self):
         """Compute root-mean-square error."""
@@ -708,14 +715,14 @@ class Parameter():
             value=1.,
             vary=False,
             step=None,
-            uncertainty=0.0,
+            unc=0.0,
             fmt='0.12g',
             description='parameter',
     ):
         self._value = float(value)
         self.vary = vary
         self.fmt = fmt
-        self.uncertainty = float(uncertainty)
+        self.unc = float(unc)
         self.description = description
         if step is not None:
             self.step = abs(float(step))
@@ -743,7 +750,7 @@ class Parameter():
         return ('P(' +format(self.value,self.fmt)
                 +','+repr(self.vary)
                 +','+format(self.step,'0.2g')
-                +','+format(self.uncertainty,'0.2g')
+                +','+format(self.unc,'0.2g')
                 +')')
 
     def __str__(self):

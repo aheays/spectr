@@ -30,7 +30,10 @@ prototypes['species'] = dict(description="Chemical species" ,kind='U' ,infer=[])
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
-    return kinetics.get_species(species).point_group
+    try:
+        return kinetics.get_species(species).point_group
+    except:
+        raise InferException
 prototypes['point_group']  = dict(description="Symmetry point group of species.", kind='U',fmt='s', infer=[(('species',),_f0)])
 
 @vectorise(vargs=(1,),cache=True)
@@ -299,6 +302,11 @@ class Base(Dataset):
         for key,val in p.items():
             self.set_parameter(key,val,match=qn)
             self.pop_format_input_function()
+
+    def sort(self,*sort_keys,reverse_order=False):
+        if len(sort_keys) == 0:
+            sort_keys = [key for key in self.defining_qn if self.is_known(key)]
+        Dataset.sort(self,*sort_keys,reverse_order=reverse_order)
 
 class Generic(Base):
     """A generic level."""

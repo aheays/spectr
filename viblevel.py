@@ -34,7 +34,7 @@ class VibLevel(Optimiser):
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
-        tkwargs = {'Eref':Eref, 'permit_auto_defaults':True,
+        tkwargs = {'Eref':Eref, 'auto_defaults':True,
                    'permit_nonprototyped_data':False,}
         self.manifolds = {}                                   
         self.level = levels.Diatomic(name=f'{self.name}.level',**tkwargs)
@@ -234,11 +234,8 @@ class VibLine(Optimiser):
         self.level_u = level_u
         self.level_l = level_l
         self.species = self.level_l.species
-        tkwargs = {
-            'permit_auto_defaults':True, 
-            'permit_nonprototyped_data':False,
-        }
-        self.line = lines.Diatomic(name=f'{self.name}.line',**tkwargs)
+        tkwargs = {'auto_defaults':True, 'permit_nonprototyped_data':False,}
+        self.line = lines.LinearDiatomic(name=f'{self.name}.line',**tkwargs)
         self.line.pop_format_input_function()
         self.line.add_suboptimiser(self)
         self.line.pop_format_input_function()
