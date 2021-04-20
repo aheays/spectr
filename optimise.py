@@ -686,7 +686,7 @@ class Optimiser:
             residuali = self._optimisation_function(tvalue,rescale=False)
             dresidual = (residuali-residual)
             if np.abs(dresidual/residual).max() < 1e-8:
-                print(f'Parameter {i} has no measureable effect.')
+                print(f'Parameter {i} ({valuei:+12.7e}) has no measureable effect.')
             else:
                 jacobian.append(dresidual/stepi)
                 ijacobian.append(i)
