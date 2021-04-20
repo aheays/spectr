@@ -9,6 +9,7 @@ from scipy.constants import pi as π
 import numpy as np
 from numpy import arange
 import h5py
+from immutabledict import immutabledict as idict
 
 
 from . import optimise
@@ -21,6 +22,7 @@ from . import lineshapes
 from . import lines
 from . import levels
 from . import exceptions
+from . import dataset
 from .dataset import Dataset
 
 class Experiment(Optimiser):
@@ -132,7 +134,7 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
         self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
     
-    @optimise_method()
+    @optimise_method(add_construct_function=False)
     def set_spectrum_from_soleil_file(self,filename,xbeg=None,xend=None,_cache=None):
         """ Load soleil spectrum from file with given path."""
         x,y,header = load_soleil_spectrum_from_file(filename)
@@ -141,22 +143,10 @@ class Experiment(Optimiser):
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
 
+    @optimise_method()
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
-        t0 = self.x[0]
         self.x *= float(scale)
-
-    # def interpolate(self,dx):
-        # """Interpolate experimental spectrum to a grid of width dx, may change
-        # position of xend."""
-        # self.add_format_input_function(lambda:self.name+f'.interpolate({repr(dx)})')
-        # def f():
-            # xnew = np.arange(self.x[0],self.x[-1],dx)
-            # ynew = tools.spline(self.x,self.y,xnew)
-            # if self.verbose:
-                # print(f"Interpolating to grid ({repr(xnew[0])},{repr(xnew[-1])},{dx}) from grid ({repr(self.x[0])},{repr(self.x[-1])},{self.x[1]-self.x[0]})")
-            # self.x,self.y = xnew,ynew
-        # self.add_construct_function(f)
 
     def __len__(self):
         return len(self.x)
@@ -244,6 +234,7 @@ class Experiment(Optimiser):
             ax.format_coord = format_coord
             ax.grid(True,color='gray')
             plotting.simple_tick_labels(ax=ax)
+
         ax.plot(self.x,self.y,label=self.name)
         plotting.legend(ax=ax,loc='upper left')
         return ax
@@ -277,9 +268,11 @@ class Model(Optimiser):
         self.automatic_format_input_function()
         if self.experiment is not None:
             self.add_suboptimiser(self.experiment)
+            self.pop_format_input_function()
         self._initialise()
         self.add_post_construct_function(self._get_residual,self._remove_interpolation)
         self.add_save_to_directory_function(self.output_data_to_directory)
+        self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
 
 
@@ -332,6 +325,7 @@ class Model(Optimiser):
     def interpolate(self,dx):
         """When calculating model set to dx grid (or less to achieve
         overlap with experimental points. DELETES CURRENT Y!"""
+        
         xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
         self._interpolate_factor = int(np.ceil(xstep/dx))
         self.x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*self._interpolate_factor)
@@ -482,62 +476,133 @@ class Model(Optimiser):
             τmin=None,
             lineshape='voigt',
             ncpus=1,
+            match=idict(),
             _cache=None,
+            _parameters=None,
+            _suboptimiser=None,
             **set_keys_vals
     ):
         if len(self.x) == 0 or len(lines) == 0:
-            ## x not set yet
             return
+
         ## recompute spectrum if is necessary for some reason --
         ## do various tests to see if a cached version is ok
-        if (
-                'absorbance'  not in _cache # first run
-                or self._last_construct_time < lines._last_construct_time # line spectrum has changed
-                or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
-        ):
-            ## only include lines in the x-range
-            if 'i' not in _cache:
-                _cache['i'] = (lines['ν'] > (self.x[0]-1)) & (lines['ν'] < (self.x[-1]+1))
-            tlines = lines[_cache['i']]
+
+        
+        # if (
+                # len(_cache) == 0 # first run
+                # or any([self._last_construct_time < p._last_modify_value_time for p in _parameters])
+                # or self._last_construct_time < lines._last_construct_time # line spectrum has changed
+                # or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
+        # ):
+
+
+        if len(_cache) == 0:
+            ## first run -- initalise local copy of lines data
+            imatch = tools.find(lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match))
+            lines_copy = lines.copy(index=imatch)
+            _cache['keys'] = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
+            lines_copy.verbose = self.verbose
             for key,val in set_keys_vals.items():
-                tlines[key] = float(val)
-
-
-
-            ## if previous calculations are cached then find which lines have actually changed -- store in j
-            if 'tlines' in _cache:
-                j = np.any([ tlines[key] != _cache['tlines'][key] for key in tlines.keys()], axis=0)
-            else:
-                j = None
-            ## compute entire spectrum
-            if  (
-                 'τ' not in _cache # first run
-                 or j is None      # first run?
-                 or np.sum(j) > (len(tlines)/2) # most lines change--- just recompute everything
-                 or len(self.x) != len(_cache['x']) # x-grid has changed
-                 or np.any(self.x!=_cache['x']) # x-grid has changed
-                 ):
-                x,y = tlines.calculate_spectrum(
-                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-            ## compute difference of changed lines
-            else:
-                xnew,ynew = tlines.calculate_spectrum(
-                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
-                xold,yold = _cache['tlines'].calculate_spectrum(
-                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
-                # plotting.show()
-                y = _cache['τ'] - yold + ynew             
-            ## store _cache
-            _cache['tlines'] = tlines
-            _cache['τ'] = y
-            _cache['absorbance'] = np.exp(-y)
-            _cache['x'] = self.x
-            
+                lines_copy[key] = float(val)
+            _cache['imatch'] = imatch
+            _cache['lines_copy'] = lines_copy
+        imatch = _cache['imatch']
+        lines_copy = _cache['lines_copy']
+        ## see if data has changed
+        keys =  _cache['keys']
+        ichanged = np.full(len(lines_copy),False)
+        for key in keys:
+            ichanged |= lines[key][imatch] != lines_copy[key]
+        for key,val in set_keys_vals.items():
+            ichanged |= lines_copy[key] != float(val)
+        ## compute spectrum
+        if 'τ' in _cache and np.sum(ichanged) == 0:
+            ## no change,just use previous optical depth
+            τ = _cache['τ']
+        elif  (
+             'τ' not in _cache # first run
+             or np.sum(ichanged) > (len(lines_copy)/2) # most lines change--- just recompute everything
+             or len(self.x) != len(_cache['x']) # x-grid has changed
+             or np.any(self.x!=_cache['x']) # x-grid has changed
+             ):
+            ## If not previously calculated, many lines have changed,
+            ## or x-domain has changd, then compute the entire
+            ## spectrum
+            for key in keys:
+                lines_copy[key][ichanged] = lines[key][imatch][ichanged]
+            for key,val in set_keys_vals.items():
+                lines_copy[key][ichanged] = float(val)
+            x,τ = lines_copy.calculate_spectrum(
+                x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+        else:
+            ## if only a few have changed then compute difference only
+            lines_new = lines.copy(index=imatch[ichanged])
+            for key,val in set_keys_vals.items():
+                lines_new[key] = float(val)
+            xnew,τnew = lines_new.calculate_spectrum(
+                x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                ymin=τmin, ncpus=ncpus, lineshape=lineshape)
+            xold,τold = lines_copy.calculate_spectrum(
+                x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
+            τ = _cache['τ'] - τold + τnew
+            ## update cache to new lines
+            for key in keys:
+                lines_copy[key][ichanged] = lines[key][imatch][ichanged]
+            for key,val in set_keys_vals.items():
+                lines_copy[key][ichanged] = float(val)
+        ## store _cache
+        _cache['τ'] = τ
+        _cache['absorbance'] = np.exp(-τ)
+        _cache['x'] = self.x
         ## set absorbance in self
         self.y *= _cache['absorbance']
+
+
+            # ## set keys with vals if they are not already the correct values
+            # for key,val in set_keys_vals.items():
+                # if (
+                        # len(_cache) == 0 # first run
+                        # or key not in tlines # key not set
+                        # or np.any(tlines[key]) != float(val) # value has changed
+                    # ):
+                    # tlines[key] = float(val)
+            # ## if previous calculations are cached then find which lines have actually changed -- store in j
+            # if 'tlines' in _cache:
+                # keys_to_test = [key for key in ['ν','τ','Γ','ΓD'] if tlines.is_known(key)]
+                # j = np.any([tlines[key] != _cache['tlines'][key] for key in keys_to_test], axis=0)
+            # if 'τ' in _cache and np.sum(j) == 0:
+                # ## no change
+                # y = _cache['τ']
+            # elif  (
+                 # 'τ' not in _cache # first run
+                 # # or j is None      # first run?
+                 # or np.sum(j) > (len(tlines)/2) # most lines change--- just recompute everything
+                 # or len(self.x) != len(_cache['x']) # x-grid has changed
+                 # or np.any(self.x!=_cache['x']) # x-grid has changed
+                 # ):
+                # ## compute entire spectrum
+                # x,y = tlines.calculate_spectrum(
+                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    # ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+            # else:
+                # ## compute difference of changed lines
+                # xnew,ynew = tlines.calculate_spectrum(
+                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    # ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
+                # xold,yold = _cache['tlines'].calculate_spectrum(
+                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    # ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
+                # y = _cache['τ'] - yold + ynew
+            # ## store _cache
+            # _cache['tlines'] = tlines
+            # _cache['τ'] = y
+            # _cache['absorbance'] = np.exp(-y)
+            # _cache['x'] = self.x
+        # ## set absorbance in self
+        # self.y *= _cache['absorbance']
 
     @optimise_method()
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
@@ -1501,7 +1566,7 @@ class Model(Optimiser):
                 if len(line)==0:
                     continue
                 ## get labelling keys
-                zkeys = (label_zkeys if label_zkeys is not None else line.label_zkeys)
+                zkeys = (label_zkeys if label_zkeys is not None else line.default_zkeys)
                 ## plot annotations
                 branch_annotations = plotting.annotate_spectrum_by_branch(
                     line,
@@ -1687,7 +1752,8 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
         filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'
     else:
         ## else look for unique prefix in scan database
-        t = tools.sheet_to_dict('~/exp/SOLEIL/summary_of_scans.rs',comment='#')
+        # t = tools.sheet_to_dict('/home/heays/exp/SOLEIL/summary_of_scans.rs',comment='#')
+        t = dataset.load('/home/heays/exp/SOLEIL/summary_of_scans.rs')
         i = tools.find_regexp(r'^'+re.escape(filename)+'.*',t['filename'])
         if len(i)==1:
             filename = t['filename'][int(i)]
