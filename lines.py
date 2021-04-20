@@ -6,6 +6,7 @@ import re
 import numpy as np
 from numpy import nan,array,linspace
 from scipy import constants
+from immutabledict import immutabledict as idict
 
 # from . import *
 # from .dataset import Dataset
@@ -24,7 +25,9 @@ from .exceptions import InferException
 # from .lines import prototypes
 from . import levels
 from .dataset import Dataset
-from .optimise import Parameter,P
+from .optimise import Parameter,P,optimise_method
+
+
 
 prototypes = {}
 
@@ -94,7 +97,7 @@ prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer=[(('J
 
 ## column 
 prototypes['L'] = dict(description="Optical path length (m)", kind='f', fmt='0.5f', infer=[])
-prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
+prototypes['Nself'] = dict(description="Column density (cm-2)",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
 
 ####################################
 ## pressure broadening and shifts ##
@@ -177,7 +180,7 @@ prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or tran
 prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,)])
 
 ## line frequencies
-prototypes['ν0'] = dict(description="Transition wavenumber in a vacuum (cm-1)", kind='f', fmt='>0.6f', default_step=1e-3, infer=[('ν',_f0)])
+prototypes['ν0'] = dict(description="Transition wavenumber in a vacuum (cm-1)", kind='f', fmt='>0.6f', default_step=1e-3, infer=[])
 prototypes['ν'] = dict(description="Transition wavenumber (cm-1)", kind='f', fmt='>0.6f', infer=[
     ## manually input all permutations of broadening affects -- could
     ## use 'self' in a function but then infer connections will not be
@@ -723,13 +726,99 @@ class Generic(levels.Base):
             
         self.extend(**data)
 
-    def generate_from_levels(self,level_upper,level_lower):
-        """Combeiong all combination of upper and lower levels into a line list."""
-        for key in level_upper:
-            self[key+'_u'] = np.ravel(np.tile(level_upper[key],len(level_lower)))
-        for key in level_lower:
-            self[key+'_l'] = np.ravel(np.repeat(level_lower[key],len(level_upper)))
-    
+    # @optimise_method()
+    # def generate_from_levels(
+    #         self,
+    #         levelu,levell,    # upper and lower level objects
+    #         matchu=idict(),    # only use matching upper levels
+    #         matchl=idict(),    # only use matching lower levels
+    #         match=idict(),      # only use matching lines
+    #         _cache=()
+    # ):
+    #     """Combine all combination of upper and lower levels into a line list."""
+    #     self.add_suboptimiser(levelu)
+    #     self.add_suboptimiser(levell)
+    #     if len(_cache) == 0:
+    #         ## first run
+    #         ibeg = len(self)    # initial length
+    #         ## match upper and lowe levels
+    #         iu,il = levelu.match(matchu),levell.match(matchl)
+    #         nu,nl = np.sum(iu),np.sum(il)
+    #         ## first run add all data to self
+    #         for key in levelu.root_keys():
+    #             self[key+'_u'] = np.ravel(np.tile(levelu[key][iu],nl))
+    #         for key in levell.root_keys():
+    #             self[key+'_l'] = np.ravel(np.repeat(levell[key][il],nu))
+    #         ## limit to allowed transition -- record indices for later
+    #         i = self.match(match)[ibeg:]
+    #         self.index(i)
+    #         _cache['i'],_cache['iu'],_cache['il'],_cache['nu'],_cache['nl'] = i,iu,il,nu,nl
+    #     else:
+    #         ## later runs - only update changed data
+    #         ##
+    #         i,iu,il,nu,nl = _cache['i'],_cache['iu'],_cache['il'],_cache['nu'],_cache['nl']
+    #         ## collect data
+    #         data = {}
+    #         for key in levelu.root_keys():
+    #             data[key+'_u'] = np.ravel(np.tile(levelu[key][iu],nl))
+    #         for key in levell.root_keys():
+    #             data[key+'_l'] = np.ravel(np.repeat(levell[key][il],nu))
+    #         ## add to self if data has changed, assumes
+    #         ## match_keys_vals has not changed
+    #         for key,val in data.items():
+    #             if np.any(val[i] != self[key]):
+    #                 self[key] = val[i]
+
+    @optimise_method()
+    def generate_from_levels(
+            self,
+            levelu,levell,      # upper and lower level objects
+            matchu=idict(),     # only use matching upper levels
+            matchl=idict(),     # only use matching lower levels
+            match=idict(),      # only keep matching lines
+            _cache=()
+    ):
+        """Combine upper and lower levels into a line list. Extend these after any existing lines."""
+        ## get indices and lengths of levels to combine
+        if 'iu' not in _cache:
+            _cache['iu'] = levelu.match(matchu)
+            _cache['il'] = levell.match(matchl)
+            _cache['nu'] = np.sum(_cache['iu'])
+            _cache['nl'] = np.sum(_cache['il'])
+        iu,il,nu,nl = _cache['iu'],_cache['il'],_cache['nu'],_cache['nl']
+        ## collect level data
+        data = {}
+        for key in levelu.root_keys():
+            data[key+'_u'] = np.ravel(np.tile(levelu[key][iu],nl))
+        for key in levell.root_keys():
+            data[key+'_l'] = np.ravel(np.repeat(levell[key][il],nu))
+        ## get where to add data in self
+        if 'ibeg' not in _cache:
+            _cache['ibeg'] = len(self)    # initial length
+        ibeg = _cache['ibeg']             # beginning index of new data
+        ## get combined levels to add
+        if 'imatch' not in _cache:
+            ## first run -- add and then reduced to matches
+            self.extend(data)
+            ## limit to previous data and new data matching match
+            imatch = self.match(match)
+            imatch[:ibeg] = True     # keep all existing data
+            self.index(imatch)
+            ##
+            imatch = imatch[ibeg:]              # index of new data only
+            iend = len(self)    # end index of new data
+            ilines = np.arange(ibeg,iend) # index array fo new data
+            _cache['imatch'] = imatch
+            _cache['ilines'] = ilines
+        else:
+            ## later run, add to self if data has changed
+            ilines = _cache['ilines']
+            imatch = _cache['imatch']
+            for key,val in data.items():
+                val = val[imatch]
+                ichanged = np.any(val != self[key][ilines])
+                self.set(key,val[ichanged],index=ilines[ichanged])
+
     def set_levels(self,match=None,**keys_vals):
         for key,val in keys_vals.items():
             suffix = key[-2:]
@@ -782,7 +871,7 @@ class LinearDiatomic(Linear):
     default_prototypes = {key:prototypes[key] for key in
                           {*_level_keys, *Linear.default_prototypes,}}
     default_xkey = 'J_u'
-    default_zkeys = ['species_u','label_u','v_u','species_l','label_l','ν_l', 'ΔJ']
+    default_zkeys = ['species_u','label_u','v_u','species_l','label_l','v_l', 'ΔJ']
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
