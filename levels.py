@@ -13,7 +13,7 @@ from numpy import nan,array
 ## this module
 from .dataset import Dataset
 from . import convert
-from .tools import vectorise,cache,file_to_dict
+from .tools import vectorise,cache,file_to_dict,cast_abs_float_array
 from . import tools
 from . import database
 from . import kinetics
@@ -114,6 +114,7 @@ def _f1(self,point_group,Inuclear,sa):
     else:
         raise InferException()
 
+prototypes['configuration'] = dict(description="Electronic configuration.", kind=str, fmt='10s', infer=[])
 prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)." , kind='i' , infer=[(('point_group',),_f0),( ('point_group','Inuclear','sa'),_f1),])
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
@@ -124,8 +125,8 @@ prototypes['J'] = dict(description="Total angular momentum quantum number exclud
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind='f', infer=[(('J','SR'),lambda self,J,SR: J-SR,)])
 prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'S'),)])
 # prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum.",units='cm-1', kind='f',infer=[((),lambda self,: 0.,)])
-prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer=[])
-prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq)])
+prototypes['Teq'] = dict(description="Equilibriated temperature (K)", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array)
+prototypes['Tex'] = dict(description="Excitation temperature (K)", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq)],cast=cast_abs_float_array)
 # prototypes['partition_source'] = dict(description="Data source for computing partition function, 'self' or 'database' (default).", kind='U', infer=[(('database',), lambda self,: 'database',)])
 
 # @vectorise(cache=True,vargs=(1,2))
@@ -423,6 +424,14 @@ class Generic(Base):
     defining_qn = ('species','label','ef','J')
     default_xkey = 'J'
     default_zkeys = ('species','label','ef')
+
+class Atomic(Generic):
+    default_prototypes = _collect_prototypes(
+        *Generic.default_prototypes,
+        'configuration',
+    )
+    defining_qn = ('species','configuration','J',)
+    default_zkeys = ('species',)
 
 class Linear(Generic):
     default_prototypes = _collect_prototypes(

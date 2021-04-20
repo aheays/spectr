@@ -853,8 +853,16 @@ class Generic(levels.Base):
             i = tools.find(m)
             self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)
 
-class Linear(Generic):
+class Atomic(Generic):
+    _level_class,_level_keys,defining_qn = _collect_level(levels.Atomic)
+    default_prototypes = {key:prototypes[key] for key in {
+        *_level_keys,
+        *Generic.default_prototypes,
+    }}
+    default_xkey = 'J_l'
+    default_zkeys = ['species_u','configuration_u','species_l','configuration_l','ΔJ']
 
+class Linear(Generic):
     _level_class,_level_keys,defining_qn = _collect_level(levels.Linear)
     default_prototypes = {key:prototypes[key] for key in {
         *_level_keys,
