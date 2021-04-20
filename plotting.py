@@ -1116,19 +1116,18 @@ def subplot(
             rows = int(np.ceil(float(nsubplots)/float(columns)))
         else:
             raise Exception("Impossible")
-        ## adjust old axes to new grid of subplots
-        for i in range(0,old_nsubplots):
-            i_old,j_old,n_old = fig.axes[i].get_geometry()
-            old_axes[i].change_geometry(rows,columns,n_old)
-        ## create and return new subplot
+        ## create new subplot
         ax = fig.add_subplot(rows,columns,nsubplots,**add_subplot_kwargs)
-        # return(axes)
+        ## adjust old axes to new grid of subplots
+        gridspec = matplotlib.gridspec.GridSpec(rows,columns)
+        for axi,gridspeci in zip(fig.axes,gridspec):
+            axi.set_subplotspec(gridspeci)
     fig.sca(ax)      # set to current axes
     ## set some other things if a quick figure
     if hasattr(fig,'_my_fig') and fig._my_fig is True:
         ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%0.10g'))
         ax.grid(True)
-    return(ax)
+    return ax 
 
 def get_axes_position(ax=None):
     """Get coordinates of top left and bottom right corner of
