@@ -83,11 +83,19 @@ def optimise_method(
                 self.add_parameter(t)
             for t in suboptimisers:
                 self.add_suboptimiser(t)
-            ## make a construct function which returns the output of
-            ## the original method, add an empty _cache if '_cache' in
-            ## signature kwargs but not provided in arguments
+                self.pop_format_input_function()
+            ## if '_cache' is a kwarg of the function then initialise
+            ## as an empty dictionary
             if '_cache' in signature_keys:
-                kwargs.setdefault('_cache',{})
+                kwargs['_cache'] = {}
+            ## if '_parameters' or _suboptimisers are kwarg of the
+            ## function then provide as lists
+            if '_parameters' in signature_keys:
+                kwargs['_parameters'] = parameters
+            if '_suboptimisers' in signature_keys:
+                kwargs['_suboptimisers'] = suboptimisers
+            ## make a construct function which returns the output of
+            ## the original method            if add_construct_function:
             if add_construct_function:
                 self.add_construct_function(lambda: function(self,**kwargs))
             ## execute the function now
@@ -96,7 +104,7 @@ def optimise_method(
             ## make a format_input_function
             if add_format_input_function:
                 def f():
-                    kwargs_to_format = {key:val for key,val in kwargs.items() if key != '_cache' and val is not None}
+                    kwargs_to_format = {key:val for key,val in kwargs.items() if key[0] != '_' and val is not None}
                     if (len(kwargs_to_format)<2 or format_single_line) and not format_multi_line:
                         formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
                         return f'{self.name}.{function.__name__}({formatted_kwargs},)'
@@ -620,9 +628,9 @@ class Optimiser:
             ## call optimisation routine -- KeyboardInterrupt possible
             try:
                 if verbose or self.verbose:
-                    # print('Method:',optargs['method'])
-                    print("Optimisation parameters:")
-                    print('    '+pformat(optargs).replace('\n','\n    '))
+                    print('Method:',optargs['method'])
+                    # print("Optimisation parameters:")
+                    # print('    '+pformat(optargs).replace('\n','\n    '))
                 result = optimize.least_squares(**optargs)
                 if verbose or self.verbose:
                     print('Optimisation complete')
@@ -685,13 +693,16 @@ class Optimiser:
             tvalue[i] = valuei # change it back
         jacobian = array(jacobian).T
         ## compute 1σ uncertainty from Jacobian
-        covariance = linalg.inv(np.dot(jacobian.T,jacobian))
-        if rms_noise is None:
-            chisq = np.sum(residual**2)
-            dof = len(residual)-len(value)+1
-            rms_noise = np.sqrt(chisq/dof)
         unc = np.full(len(value),np.nan)
-        unc[ijacobian] = np.sqrt(covariance.diagonal())*rms_noise
+        if len(jacobian) > 0:
+            covariance = linalg.inv(np.dot(jacobian.T,jacobian))
+            if rms_noise is None:
+                chisq = np.sum(residual**2)
+                dof = len(residual)-len(value)+1
+                rms_noise = np.sqrt(chisq/dof)
+            unc[ijacobian] = np.sqrt(covariance.diagonal())*rms_noise
+        else:
+            print('All parameters have no effect, uncertainties not calculated')
         ## set back to best fit
         self._set_parameters(value,unc) # set param
         self.construct(recompute_all=True )
