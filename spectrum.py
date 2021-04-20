@@ -23,6 +23,7 @@ from . import lines
 from . import levels
 from . import exceptions
 from . import dataset
+from . import database
 from .dataset import Dataset
 
 class Experiment(Optimiser):
@@ -487,7 +488,6 @@ class Model(Optimiser):
 
         ## recompute spectrum if is necessary for some reason --
         ## do various tests to see if a cached version is ok
-
         
         # if (
                 # len(_cache) == 0 # first run
@@ -516,23 +516,28 @@ class Model(Optimiser):
             ichanged |= lines[key][imatch] != lines_copy[key]
         for key,val in set_keys_vals.items():
             ichanged |= lines_copy[key] != float(val)
+        sum_ichanged = np.sum(ichanged)
+        ## check if the x-grid has changed
+        if 'x' not in _cache or len(self.x) != len(_cache['x']) or np.any(self.x!=_cache['x']):
+            xchanged = True
+        else:
+            xchanged =False
         ## compute spectrum
-        if 'τ' in _cache and np.sum(ichanged) == 0:
+        if 'τ' in _cache and sum_ichanged == 0 and not xchanged:
             ## no change,just use previous optical depth
             τ = _cache['τ']
         elif  (
-             'τ' not in _cache # first run
-             or np.sum(ichanged) > (len(lines_copy)/2) # most lines change--- just recompute everything
-             or len(self.x) != len(_cache['x']) # x-grid has changed
-             or np.any(self.x!=_cache['x']) # x-grid has changed
+                'τ' not in _cache # first run
+                or sum_ichanged > (len(lines_copy)/2) # most lines change--- just recompute everything
+                or xchanged                           # new x-coordinate
              ):
             ## If not previously calculated, many lines have changed,
             ## or x-domain has changd, then compute the entire
             ## spectrum
             for key in keys:
-                lines_copy[key][ichanged] = lines[key][imatch][ichanged]
+                lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
             for key,val in set_keys_vals.items():
-                lines_copy[key][ichanged] = float(val)
+                lines_copy.set(key,float(val),index=ichanged)
             x,τ = lines_copy.calculate_spectrum(
                 x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                 ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
@@ -550,9 +555,9 @@ class Model(Optimiser):
             τ = _cache['τ'] - τold + τnew
             ## update cache to new lines
             for key in keys:
-                lines_copy[key][ichanged] = lines[key][imatch][ichanged]
+                lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
             for key,val in set_keys_vals.items():
-                lines_copy[key][ichanged] = float(val)
+                lines_copy.set(key,float(val),index=ichanged)
         ## store _cache
         _cache['τ'] = τ
         _cache['absorbance'] = np.exp(-τ)
@@ -1485,7 +1490,6 @@ class Model(Optimiser):
             plot_title= True,
             title='auto',
             plot_legend= True,
-            plot_contaminants=True, # whether or not to label locations of reference contaminants
             # contaminants_to_plot=('default',), # what contaminant to label
             contaminants_to_plot=None, # what contaminant to label
             shift_residual=0.,
@@ -1584,7 +1588,7 @@ class Model(Optimiser):
             for transition in self.transitions:
                 annotate_branch_heads(transition,qn_defining_branch,match_branch_re=label_match_name_re)
         ## plot contaminant indicators
-        if plot_contaminants and contaminants_to_plot is not None:
+        if contaminants_to_plot is not None:
             contaminant_linelist = database.get_spectral_contaminant_linelist(
                 *contaminants_to_plot,
                 νbeg=ax.get_xlim()[0],
