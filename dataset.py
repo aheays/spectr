@@ -404,14 +404,6 @@ class Dataset(optimise.Optimiser):
             else:
                 self.set(ykey,'unc',index=i)
 
-
-    # @optimise_method()
-    # def set_parameters(self,index=None,**keys_vals):
-        # """Call set_parameters for each key_val pair."""
-        # for key,val in keys_vals.items():
-            # self.set_parameter(key,val,index=index)
-            # self.pop_format_input_function()
-
     def keys(self):
         return list(self._data.keys())
 
@@ -527,7 +519,7 @@ class Dataset(optimise.Optimiser):
                 self.unlink_inferences(key)
                 self.unset(key)
    
-    def unlink_inferences(self,*keys):
+    def unlink_inferences(self,*keys,unset_inferred=True):
         """Delete any record of inferences to or from the given keys and
         delete anything inferred from these keys (but not if it is  among
         keys itself)."""
@@ -539,12 +531,16 @@ class Dataset(optimise.Optimiser):
                     ## something else
                     self._data[inferred_from]['inferred_to'].remove(key)
                     self._data[key]['inferred_from'].remove(inferred_from)
-                for inferred_to in list(self._data[key]['inferred_to']):
+                for inferred_to in list(self._data[key]['inferred_to']): #
+                    if inferred_to not in self._data:
+                        ## this inferred_to has already been taking
+                        ## care of in a previous loop somewhere
+                        continue
                     ## delete record of having led to seomthing else
                     ## begin inferred
                     self._data[inferred_to]['inferred_from'].remove(key)
                     self._data[key]['inferred_to'].remove(inferred_to)
-                    ## delete inferred data if not in one of the argument keys
+                    ## delete inferred data if not an argument key
                     if inferred_to not in keys:
                         self.unset(inferred_to)
 
@@ -731,8 +727,6 @@ class Dataset(optimise.Optimiser):
                           
     def _infer(self,key,already_attempted=None,depth=0):
         """Get data, or try and compute it."""
-        # if already_attempted is None or len(already_attempted)==0:
-            # print('DEBUG:', key)
         if key in self:
             return
         ## avoid getting stuck in a cycle
