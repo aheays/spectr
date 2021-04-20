@@ -493,7 +493,7 @@ def mkdir(*directories,trash_existing=False):
 def make_valid_python_symbol_name(string):
     """Substitute characters in string so that it can be used as a symbol
     name."""
-    string = re.sub(r'[<!^.]','_',string)
+    string = re.sub(r'[-<!^.+|&/%]','_',string)
     return string
 
 
@@ -2661,13 +2661,13 @@ def limit_to_range(beg,end,x,*other_arrays):
 # #     return np.array([bool(re.match(regexp,t)) for t in x])
 
 
-# def match_regexp(regexp,x):
-    # """Returns boolean array of elements of x whether or not they match
-    # regexp."""
-    # return np.array([bool(re.match(regexp,t)) for t in x])
+def match_regexp(regexp,x):
+    """Returns boolean array of elements of x whether or not they match
+    regexp."""
+    return np.array([bool(re.match(regexp,t)) for t in x])
 
-# def find_regexp(regexp,x):
-    # return(find(match_regexp(regexp,x)))
+def find_regexp(regexp,x):
+    return find(match_regexp(regexp,x))
 
 # def meshgrid(*args):
     # """ meshgrid(arr1,arr2,arr3,...)
