@@ -314,7 +314,7 @@ class Species:
             else:
                 return 'C∞v'
         else:
-                raise Exception(f"Unknown speices property: {key}")
+                raise Exception(f"Unknown species property: {key}")
     
     name = property(lambda self: self['name'])
     elements = property(lambda self: self['elements'])
