@@ -55,7 +55,7 @@ def translate_species_to_codes(species_or_isotopologue):
     elif len(i:=find(molparam.match(chemical_species=species_or_isotopologue))) > 0:
         i = i[np.argmax(molparam['natural_abundance'][i])]
     else:
-        raise Exception("Cannot find {species_or_isotopologue=}")
+        raise Exception(f"Cannot find {species_or_isotopologue=}")
     return (int(molparam['species_ID'][i]),
             int(molparam['local_isotopologue_ID'][i]))
 
