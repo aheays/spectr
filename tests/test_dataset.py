@@ -96,15 +96,17 @@ def test_dataset_permit_nonprototyped_data():
         qt['y'] = [5]
 
 def test_defaults():
-    ## set and use a default
+    ## error no default
     t = Dataset(x=[1,2,3],y=['a','b','c'])
     assert t.get_default('x') is None
     with raises(Exception):
-        t.append(y='unc')
+        t.append(y='ddd')
+    ## use default
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
     t.set_default('x',5)
     assert t.get_default('x') is not None
     assert t.get_default('x') == 5
-    t.append(y='unc')
+    t.append(y='ddd')
     assert all(t['x'] == [1,2,3,5])
     t.extend(y=['e','f'])
     assert all(t['x'] == [1,2,3,5,5,5])
@@ -119,54 +121,6 @@ def test_defaults():
     assert len(t) == 2
     assert all(t['x'] == [1,2])
     assert all(t['y'] == ['a','a'])
-
-def test_auto_defaults():
-    t = Dataset(x=[1,2,3])
-    t.set_prototype('x','f')
-    t.set_prototype('y','f')
-    assert np.isnan(t.get_prototype('x')['default'])
-    t.auto_defaults = False
-    t.extend(x=[1,3,4])
-    with raises(Exception):
-        t.append(x=5,y=2)
-    t = Dataset(x=[1,2,3])
-    t.set_prototype('x','f')
-    t.set_prototype('y','f')
-    t.auto_defaults = True
-    t.extend(x=[1,3,4])
-    t.append(x=5,y=2)
-    assert all(t['x'] == [1,2,3,1,3,4,5])
-    assert t['y'][-1] == 2
-    assert all([np.isnan(tt) for tt in t['y'][:-1]])
-
-def test_dataset_index():
-    t = Dataset(x=[1,2,3,4,5])
-    t.index([0,1])
-    assert list(t['x']) == [1,2]
-    t = Dataset(x=[1,2,3,4,5])
-    t.index([True,True,True,False,False,])
-    assert list(t['x']) == [1,2,3]
-    t = Dataset()
-    t['x']=[1,2,3,4,5.]
-    t['x_unc']=[1,2,3,4,5]
-    t['x_step']=[1,2,3,4,5]
-    t['x_vary']=[False,True,True,True,True,]
-    t.index([True,True,True,False,False,])
-    assert list(t['x']) == [1,2,3]
-    assert list(t['x_unc']) == [1,2,3]
-    assert list(t['x_step']) == [1,2,3]
-    assert list(t['x_vary']) == [False,True,True,]
-
-def test_dataset_get_copy():
-    t = Dataset(x=[1,2,3],y=['a','b','c'])
-    u = t.copy()
-    assert list(u['x']) == [1,2,3]
-    t = Dataset(x=[1,2,3],y=['a','b','c'])
-    u = t.copy(('x',))
-    assert 'y' not in u 
-    t = Dataset(x=[1,2,3],y=['a','b','c'])
-    u = t.copy(('x',),[False,False,True])
-    assert list(u['x']) == [3]
 
 def test_dataset_extend():
     t = Dataset()
@@ -208,6 +162,71 @@ def test_dataset_extend():
     t.extend(x=[4])
     assert all(t['x'] == [1,2,3,3,4])
     assert all(t['y'] == ['a','a','a','b','a'])
+    ## add old
+    x = Dataset(x=[1])
+    y = Dataset(y=[1])
+    with raises(Exception):
+        x.extend(y,keys='new')
+    x = Dataset(x=[1],y=[1])
+    y = Dataset(y=[1])
+    x.extend(y,keys='new')
+    assert list(x) == ['y']
+    ## add new
+    x = Dataset(x=[1])
+    y = Dataset(y=[1])
+    with raises(Exception):
+        x.extend(y,keys='old')
+    x = Dataset(x=[1])
+    y = Dataset(x=[1],y=[1])
+    x.extend(y,keys='old')
+    assert list(x) == ['x']
+
+def test_auto_defaults():
+    t = Dataset(x=[1,2,3])
+    t.set_prototype('x','f')
+    t.set_prototype('y','f')
+    t.extend(x=[1,3,4])
+    t.append(x=5,y=2,keys='old')
+    with raises(Exception):
+        t.append(x=5,y=2)
+    t = Dataset(x=[1,2,3])
+    t.set_prototype('x','f')
+    t.set_prototype('y','f')
+    t.auto_defaults = True
+    t.extend(x=[1,3,4])
+    t.append(x=5,y=2,keys='all')
+    assert all(t['x'] == [1,2,3,1,3,4,5])
+    assert t['y'][-1] == 2
+    assert all([np.isnan(tt) for tt in t['y'][:-1]])
+
+def test_dataset_index():
+    t = Dataset(x=[1,2,3,4,5])
+    t.index([0,1])
+    assert list(t['x']) == [1,2]
+    t = Dataset(x=[1,2,3,4,5])
+    t.index([True,True,True,False,False,])
+    assert list(t['x']) == [1,2,3]
+    t = Dataset()
+    t['x']=[1,2,3,4,5.]
+    t['x_unc']=[1,2,3,4,5]
+    t['x_step']=[1,2,3,4,5]
+    t['x_vary']=[False,True,True,True,True,]
+    t.index([True,True,True,False,False,])
+    assert list(t['x']) == [1,2,3]
+    assert list(t['x_unc']) == [1,2,3]
+    assert list(t['x_step']) == [1,2,3]
+    assert list(t['x_vary']) == [False,True,True,]
+
+def test_dataset_get_copy():
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
+    u = t.copy()
+    assert list(u['x']) == [1,2,3]
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
+    u = t.copy(('x',))
+    assert 'y' not in u 
+    t = Dataset(x=[1,2,3],y=['a','b','c'])
+    u = t.copy(('x',),[False,False,True])
+    assert list(u['x']) == [3]
 
 def test_dataset_append():
     t = Dataset(x=[])
@@ -415,7 +434,7 @@ def test_dataset_load_save_to_file():
     assert list(u['x']) == list(t['x'])
     assert list(u['z']) == list(t['z'])
     assert all(u['f'] == t['f'])
-test_dataset_load_save_to_file()
+
 def test_load_from_string():
     t = Dataset()
     t.load_from_string('''
