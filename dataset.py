@@ -315,6 +315,13 @@ class Dataset(optimise.Optimiser):
             return None
         return self._data[key]['units']
 
+    def cast(self,key,value):
+        """Returns value cast appropriately for key."""
+        if 'cast' not in self._data[key]:
+            return np.asarray(value)
+        else:
+            return self._data[key]['cast'](value)
+
     def set_prototype(self,key,kind,infer=None,**kwargs):
         """Set prototype data."""
         if kind is str:
