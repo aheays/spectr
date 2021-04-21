@@ -486,85 +486,90 @@ class Model(Optimiser):
         if len(self.x) == 0 or len(lines) == 0:
             return
 
-        ## recompute spectrum if is necessary for some reason --
-        ## do various tests to see if a cached version is ok
-        
-        # if (
-                # len(_cache) == 0 # first run
-                # or any([self._last_construct_time < p._last_modify_value_time for p in _parameters])
-                # or self._last_construct_time < lines._last_construct_time # line spectrum has changed
-                # or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
-        # ):
-
-
-        if len(_cache) == 0:
-            ## first run -- initalise local copy of lines data
-            imatch = tools.find(lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match))
-            lines_copy = lines.copy(index=imatch)
-            _cache['keys'] = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
-            lines_copy.verbose = self.verbose
-            for key,val in set_keys_vals.items():
-                lines_copy[key] = float(val)
-            _cache['imatch'] = imatch
-            _cache['lines_copy'] = lines_copy
-        imatch = _cache['imatch']
-        lines_copy = _cache['lines_copy']
-        ## see if data has changed
-        keys =  _cache['keys']
-        ichanged = np.full(len(lines_copy),False)
-        for key in keys:
-            ichanged |= lines[key][imatch] != lines_copy[key]
-        for key,val in set_keys_vals.items():
-            ichanged |= lines_copy[key] != float(val)
-        sum_ichanged = np.sum(ichanged)
-        ## check if the x-grid has changed
-        if 'x' not in _cache or len(self.x) != len(_cache['x']) or np.any(self.x!=_cache['x']):
-            xchanged = True
-        else:
-            xchanged =False
-        ## compute spectrum
-        if 'τ' in _cache and sum_ichanged == 0 and not xchanged:
-            ## no change,just use previous optical depth
-            τ = _cache['τ']
-        elif  (
-                'τ' not in _cache # first run
-                or sum_ichanged > (len(lines_copy)/2) # most lines change--- just recompute everything
-                or xchanged                           # new x-coordinate
-             ):
-            ## If not previously calculated, many lines have changed,
-            ## or x-domain has changd, then compute the entire
-            ## spectrum
+        ## cheap tests to see if the spectrum needs to be recomputed
+        if (
+                len(_cache) == 0 # first run
+                or any([self._last_construct_time < p._last_modify_value_time for p in _parameters]) # set_keys_vals has modified parameters
+                or self._last_construct_time < lines._last_construct_time # line spectrum has changed
+                or self._last_construct_time < self.experiment._last_construct_time # experimental x-domain might have changed
+        ):
+            if len(_cache) == 0:
+                ## first run -- initalise local copy of lines data
+                imatch = tools.find(lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match))
+                lines_copy = lines.copy(index=imatch)
+                _cache['keys'] = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
+                lines_copy.verbose = self.verbose
+                for key,val in set_keys_vals.items():
+                    lines_copy[key] = float(val)
+                _cache['imatch'] = imatch
+                _cache['lines_copy'] = lines_copy
+            imatch = _cache['imatch']
+            lines_copy = _cache['lines_copy']
+            ## see if data has changed
+            keys =  _cache['keys']
+            ichanged = np.full(len(lines_copy),False)
             for key in keys:
-                lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
+                ichanged |= lines[key][imatch] != lines_copy[key]
             for key,val in set_keys_vals.items():
-                lines_copy.set(key,float(val),index=ichanged)
-            x,τ = lines_copy.calculate_spectrum(
-                x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-        else:
-            ## if only a few have changed then compute difference only
-            lines_new = lines.copy(index=imatch[ichanged])
-            for key,val in set_keys_vals.items():
-                lines_new[key] = float(val)
-            xnew,τnew = lines_new.calculate_spectrum(
-                x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                ymin=τmin, ncpus=ncpus, lineshape=lineshape)
-            xold,τold = lines_copy.calculate_spectrum(
-                x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
-            τ = _cache['τ'] - τold + τnew
-            ## update cache to new lines
-            for key in keys:
-                lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
-            for key,val in set_keys_vals.items():
-                lines_copy.set(key,float(val),index=ichanged)
-        ## store _cache
-        _cache['τ'] = τ
-        _cache['absorbance'] = np.exp(-τ)
-        _cache['x'] = self.x
+                ichanged |= lines_copy[key] != lines_copy.cast(key,float(val))
+                # ichanged |= lines_copy[key] != np.abs(float(val))
+                # ichanged |= lines_copy[key] != tools.cast_abs_float_array(float(val))
+            nchanged = np.sum(ichanged)
+            ## check if the x-grid has changed
+            if 'x' not in _cache or len(self.x) != len(_cache['x']) or np.any(self.x!=_cache['x']):
+                xchanged = True
+            else:
+                xchanged =False
+            ## compute as little of the spectrum as possible
+            if 'τ' in _cache and nchanged == 0 and not xchanged:
+                ## no change, use cache
+                # print('DEBUG:', 'do not use cache -- no change')
+                τ = _cache['τ']
+            elif  (
+                    'τ' not in _cache # first run
+                    or nchanged > (len(lines_copy)/2) # most lines change--- just recompute everything
+                    or xchanged                           # new x-coordinate
+                 ):
+                ## calculate entire spectrum
+                print('DEBUG:', 'do not use cache -- full spectrum',nchanged,len(lines_copy),lines.name)
+                for key in keys:
+                    lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
+                for key,val in set_keys_vals.items():
+                    lines_copy.set(key,float(val),index=ichanged)
+                x,τ = lines_copy.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
+                _cache['τ'] = τ
+                _cache['absorbance'] = np.exp(-τ)
+                _cache['x'] = self.x
+    
+            else:
+                # print('DEBUG:', 'do not use cache -- partial spectrum',nchanged,len(lines_copy),lines.name)
+                ## recompute only lines that have changed
+                lines_new = lines.copy(index=imatch[ichanged])
+                for key,val in set_keys_vals.items():
+                    lines_new[key] = float(val)
+                xnew,τnew = lines_new.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape)
+                xold,τold = lines_copy.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
+                τ = _cache['τ'] - τold + τnew
+                ## update cache to new lines
+                for key in keys:
+                    lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
+                for key,val in set_keys_vals.items():
+                    lines_copy.set(key,float(val),index=ichanged)
+                _cache['τ'] = τ
+                _cache['absorbance'] = np.exp(-τ)
+        # else:
+            # print('DEBUG:', 'use cache')
+
+            
+    
         ## set absorbance in self
         self.y *= _cache['absorbance']
-
 
             # ## set keys with vals if they are not already the correct values
             # for key,val in set_keys_vals.items():
