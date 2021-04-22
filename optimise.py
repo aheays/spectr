@@ -354,13 +354,20 @@ class Optimiser:
         tools.mkdir(directory,trash_existing=True)
         ## output self and all suboptimisers into a flat subdirectory
         ## structure
-        used_subdirectories = []
+        names = []              # all names thus far
         for optimiser in self._get_all_suboptimisers():
-            subdirectory = directory+'/'+optimiser.name+'/'
+            ## uniquify name -- COLLISION STILL POSSIBLE if name for
+            ## three optimisers is xxx, xxx, and xxx_2. There will end
+            ## up being two xxx_2 subdirectories.
+            if optimiser.name in names:
+                optimiser._unique_name = optimiser.name+'_'+str(names.count(optimiser.name)+1)
+                print(f'Repeated optimiser name {repr(optimiser.name)} replaced with {repr(optimiser._unique_name)}')
+            else:
+                optimiser._unique_name = optimiser.name
+            names.append(optimiser.name)
+            ## output this suboptimiser
+            subdirectory = directory+'/'+optimiser._unique_name
             tools.mkdir(subdirectory,trash_existing=False)
-            if subdirectory in used_subdirectories:
-                raise Exception(f'Non-unique optimiser names producting subdirectory: {repr(subdirectory)}')
-            used_subdirectories.append(subdirectory)
             tools.string_to_file(subdirectory+'/input.py',optimiser.format_input())
             if optimiser.residual is not None:
                 tools.array_to_file(subdirectory+'/residual' ,optimiser.residual,fmt='%+0.4e')
@@ -371,10 +378,10 @@ class Optimiser:
         ## symlink suboptimsers into subdirectories
         for optimiser in self._get_all_suboptimisers():
             for suboptimiser in optimiser._suboptimisers:
-                tools.mkdir(f'{directory}/{optimiser.name}/suboptimisers/')
+                tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/')
                 os.symlink(
-                    f'../../{suboptimiser.name}',
-                    f'{directory}/{optimiser.name}/suboptimisers/{suboptimiser.name}',
+                    f'../../{suboptimiser._unique_name}',
+                    f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
                     target_is_directory=True)
 
     def plot_residual(self,ax=None,**plot_kwargs):
@@ -537,18 +544,21 @@ class Optimiser:
         self._set_parameters(p,rescale=rescale)
         ## rebuild model and calculate residuals
         residuals = self.construct()
+        if len(residuals) == 0:
+            raise Exception("No residuals to optimise.")
         ## monitor
-        if residuals is not None and len(residuals)>0 and self._monitor_frequency!='never':
-            rms = tools.nanrms(residuals)
-            assert not np.isinf(rms),'rms is inf'
-            assert not np.isnan(rms),'rms is nan'
-            if (self._monitor_frequency=='every iteration'
-                or (self._monitor_frequency=='rms decrease' and rms<self._rms_minimum)):
-                current_time = timestamp()
-                print(f'call: {self._number_of_optimisation_function_calls:<6d} time: {current_time-self._previous_time:<10.3g} RMS: {rms:<12.8e}')
-                self.monitor()
-                self._previous_time = current_time
-                if rms<self._rms_minimum: self._rms_minimum = rms
+        # if residuals is not None and len(residuals)>0 and self._monitor_frequency!='never':
+        rms = tools.nanrms(residuals)
+        if np.isinf(rms) or np.isnan(rms):
+            raise Exception(f'rms is {rms}')
+        if (self._monitor_frequency=='every iteration'
+            or (self._monitor_frequency=='rms decrease' and rms < self._rms_minimum)):
+            current_time = timestamp()
+            print(f'call: {self._number_of_optimisation_function_calls:<6d} time: {current_time-self._previous_time:<10.3g} RMS: {rms:<12.8e}')
+            self.monitor()
+            self._previous_time = current_time
+            if rms < self._rms_minimum:
+                self._rms_minimum = rms
         return residuals
 
     @optimise_method(add_construct_function=False,)
