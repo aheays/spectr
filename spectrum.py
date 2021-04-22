@@ -58,16 +58,12 @@ class Experiment(Optimiser):
             ## set range
             if xbeg is None:
                 xbeg = x[0]
-            else:
-                assert x[0]<=xbeg,'xbeg is outside range of spectrum: '+repr(xbeg)+' , '+repr(x[0])
-                i = np.array(x>=xbeg)
-                x,y = x[i],y[i]
             if xend is None:
                 xend = x[-1]
-            else:
-                assert x[-1]>=xend,'xend is outside range of spectrum: '+repr(xend)
-                i = np.array(x<=xend)
-                x,y = x[i],y[i]
+            if x[0] > xend or x[-1] < xbeg:
+                raise Exception(f'No data in range {xbeg} to {xend}')
+            i = (x>=xbeg)&(x<=xend)
+            x,y = x[i],y[i]
             self.experimental_parameters['xbeg'] = xbeg 
             self.experimental_parameters['xend'] = xend
             ## check for regular x grid
@@ -145,6 +141,25 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
 
     @optimise_method()
+    def set_soleil_sidebands(self,yscale=0.1,shift=1000,_cache=idict()):
+        """Adds two copies of spectrum onto itself shifted rightwards and
+        leftwards by shift (cm-1) and scaled by ±yscale."""
+        ## load spectrum
+        if len(_cache) == 0:
+            _cache['x'],_cache['y'],header = load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
+        x,y = _cache['x'],_cache['y']
+        ## shift from left
+        i = ((x+shift) >= self.x[0]) & ((x+shift) <= self.x[-1])
+        xi,yi = x[i]+shift,y[i]
+        j = ( self.x >= xi[0] ) & ( self.x <= xi[-1] )
+        self.y[j] += yscale*tools.spline(xi,yi,self.x[j])
+        ## shift from right
+        i = ((x-shift) >= self.x[0]) & ((x-shift) <= self.x[-1])
+        xi,yi = x[i]-shift,y[i]
+        j = ( self.x >= xi[0] ) & ( self.x <= xi[-1] )
+        self.y[j] -= yscale*tools.spline(xi,yi,self.x[j])
+
+    @optimise_method()
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
         self.x *= float(scale)
@@ -152,7 +167,6 @@ class Experiment(Optimiser):
     def __len__(self):
         return len(self.x)
 
-    @optimise_method(add_construct_function=False)
     def fit_noise(
             self,
             xbeg=None,
@@ -160,27 +174,10 @@ class Experiment(Optimiser):
             n=1,
             make_plot=False,
             figure_number=None,
-            # interpolation_factor=None,
     ):
         """Estimate the noise level by fitting a polynomial of order n
         between xbeg and xend to the experimental data. Also rescale
         if the experimental data has been interpolated."""
-        # ## deal with interpolation factor (4 means 3 intervening extra points added)
-        # if interpolation_factor is None:
-             # if 'interpolation_factor'  in self.experimental_parameters:
-                 # interpolation_factor = self.experimental_parameters['interpolation_factor']
-             # else:
-                 # interpolation_factor = 1
-        # else:
-            # if ('interpolation_factor' in self.experimental_parameters
-                # and interpolation_factor != self.experimental_parameters['interpolation_factor']):
-                # raise Exception(f'interpolation_factor={repr(interpolation_factor)} does not match the value in self.experimental_parameters={self.experimental_parameters["interpolation_factor"]}')
-        # if interpolation_factor < 1:
-            # raise Exception('Down sampling will cause problems in this method.')
-        # if interpolation_factor != 1:
-            # print(f'warning: {self.name}: RMS rescaled to account for data interpolation_factor = {interpolation_factor}')
-        # # print(f'fit_noise: {interpolation_factor=}')
-        # ## compute noise residual of polynomial fit
         x,y = self.x,self.y
         if xbeg is not None:
             i = x >= xbeg
@@ -191,8 +188,6 @@ class Experiment(Optimiser):
         if len(x) == 0:
             warnings.warn(f'{self.name}: No data in range for fit_noise, not done.')
             return
-        # assert interpolation_factor%1 == 0
-        # # x,y = x[::int(interpolation_factor)],y[::int(interpolation_factor)]
         xt = x - x.mean()
         p = np.polyfit(xt,y,n)
         yf = np.polyval(p,xt)
@@ -214,6 +209,7 @@ class Experiment(Optimiser):
             ax = plotting.subplot()
             plotting.plot_hist_with_fitted_gaussian(r,ax=ax)
             ax.set_title(f'noise distribution\n{self.name}')
+        return rms
 
     def plot(self,ax=None):
         """Plot spectrum."""
@@ -475,7 +471,7 @@ class Model(Optimiser):
             nfwhmL=20,
             nfwhmG=100,
             τmin=None,
-            lineshape='voigt',
+            lineshape=None,
             ncpus=1,
             match=idict(),
             _cache=None,
@@ -483,9 +479,11 @@ class Model(Optimiser):
             _suboptimiser=None,
             **set_keys_vals
     ):
-        if len(self.x) == 0 or len(lines) == 0:
+        if (len(self.x) == 0
+            or len(lines) == 0
+            or ('nmatch' in _cache and _cache['nmatch'] == 0)):
+            ## nothing to be done
             return
-
         ## cheap tests to see if the spectrum needs to be recomputed
         if (
                 len(_cache) == 0 # first run
@@ -502,7 +500,11 @@ class Model(Optimiser):
                 for key,val in set_keys_vals.items():
                     lines_copy[key] = float(val)
                 _cache['imatch'] = imatch
+                _cache['nmatch'] = np.sum(imatch)
                 _cache['lines_copy'] = lines_copy
+            if _cache['nmatch'] == 0:
+                ## nothing to be done
+                return
             imatch = _cache['imatch']
             lines_copy = _cache['lines_copy']
             ## see if data has changed
@@ -512,8 +514,6 @@ class Model(Optimiser):
                 ichanged |= lines[key][imatch] != lines_copy[key]
             for key,val in set_keys_vals.items():
                 ichanged |= lines_copy[key] != lines_copy.cast(key,float(val))
-                # ichanged |= lines_copy[key] != np.abs(float(val))
-                # ichanged |= lines_copy[key] != tools.cast_abs_float_array(float(val))
             nchanged = np.sum(ichanged)
             ## check if the x-grid has changed
             if 'x' not in _cache or len(self.x) != len(_cache['x']) or np.any(self.x!=_cache['x']):
@@ -531,11 +531,12 @@ class Model(Optimiser):
                     or xchanged                           # new x-coordinate
                  ):
                 ## calculate entire spectrum
-                print('DEBUG:', 'do not use cache -- full spectrum',nchanged,len(lines_copy),lines.name)
+                # print('DEBUG:', 'do not use cache -- full spectrum',nchanged,len(lines_copy),lines.name)
                 for key in keys:
                     lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
                 for key,val in set_keys_vals.items():
                     lines_copy.set(key,float(val),index=ichanged)
+                ## select correct lineshape if not given explicitly
                 x,τ = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
@@ -928,6 +929,7 @@ class Model(Optimiser):
         knots = [(x,P(y,True)) for x in
                  np.arange(self.experiment.x[0]-xstep,self.experiment.x[-1]+xstep*1.01,xstep)]
         self.add_intensity_spline(knots=knots)
+        return knots
 
     @optimise_method()
     def add_intensity_spline(self,knots=None,order=3,_cache=None):
@@ -1376,11 +1378,9 @@ class Model(Optimiser):
             warnings.warn('sinc FWHM does not match soleil data file header')
         if gaussian_fwhm is None:
             gaussian_fwhm = 0.1
-
         ## compute instrument function
         dx = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1) # ASSUMES EVEN SPACED GRID
         _cache['dx'] = dx
-
         ## get total extent of instrument function
         width = 0.0
         if sinc_fwhm is not None:
@@ -1430,7 +1430,6 @@ class Model(Optimiser):
         ## normalise 
         y = y/y.sum()
         _cache['y'] = y
-
         ## convolve model with instrument function
         padding = np.arange(dx,_cache['width']+dx, dx)
         xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
