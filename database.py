@@ -10,6 +10,7 @@ import periodictable
 from tinydb import TinyDB, Query
 
 from . import tools
+from . import dataset
 from .exceptions import MissingDataException
 
 ## module data and caches
@@ -20,6 +21,7 @@ from .kinetics import get_species
 
 
 data_directory = tools.expand_path('~/src/python/spectr/data/')
+
 # global _level_data
 # global _boltzmann_population_cache
 # global _boltzmann_partition_function_cache
@@ -322,7 +324,6 @@ def get_atomic_mass(element_name,mass_number):
     """Return the atomic mass of a particular elemental isotope."""
     return getattr(periodictable,element_name)[mass_number].mass
 
-
 electronic_states={
     ("C2","X")  :{"Λ":0,"S":0,"s"  :1,"gu"    :1},
     ("C2","a")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1},
@@ -453,3 +454,9 @@ electronic_states={
     ("S2","B''"):{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
     ("S2","f")  :{"Λ":2,"S":0,"s"  :0,"gu"    :-1,"LSsign":1}
 }
+
+def load_reference_lines(species):
+    """Load spectral lines from reference data."""
+    data = dataset.load(f'{data_directory}/reference_lines/{species}.h5')
+    data.name = tools.make_valid_python_symbol_name(f'reference_lines_{species}')
+    return data
