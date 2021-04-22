@@ -24,7 +24,7 @@ prototypes = {}
 
 prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer=[])
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
-prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer=[])
+prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
 prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' ,infer=[])
 @vectorise(cache=True,vargs=(1,))
@@ -62,6 +62,7 @@ prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='
 def _f0(self,label,v,Σ,ef,J,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
+    order = 3
     Ereduced = np.full(E.shape,0.0)
     for di,i in tools.unique_combinations_mask(label,v,Σ,ef):
         labeli,vi,Σi,efi = di
@@ -70,7 +71,7 @@ def _f0(self,label,v,Σ,ef,J,E):
             Ji.append(Jj[0])
             Ei.append(E[i][j][0])
         Ji,Ei = array(Ji),array(Ei)
-        pi = np.polyfit(Ji*(Ji+1),Ei,min(3,len(Ei)-1))
+        pi = np.polyfit(Ji*(Ji+1),Ei,min(order,len(Ei)-1))
         if self.verbose:
             print(f'{label=} {v=} {Σ=} {ef=} {pi=}')
         Ereduced[i] = E[i] - np.polyval(pi,J[i]*(J[i]+1))
@@ -114,7 +115,7 @@ def _f1(self,point_group,Inuclear,sa):
     else:
         raise InferException()
 
-prototypes['configuration'] = dict(description="Electronic configuration.", kind=str, fmt='10s', infer=[])
+prototypes['conf'] = dict(description="Electronic configuration.", kind='U', fmt='10s', infer=[])
 prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)." , kind='i' , infer=[(('point_group',),_f0),( ('point_group','Inuclear','sa'),_f1),])
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
@@ -158,6 +159,7 @@ prototypes['ν3'] = dict(description="Vibrational quantum number for mode 3", ki
 prototypes['ν4'] = dict(description="Vibrational quantum number for mode 4", kind='i',infer=[])
 prototypes['l2'] = dict(description="Vibrational angular momentum 2", kind='i',infer=[])
 prototypes['Λ'] = dict(description="Total orbital angular momentum aligned with internuclear axis", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'Λ'))])
+prototypes['L'] = dict(description="Total orbital angular momentum", kind='i',infer=[])
 prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',infer=[])
 prototypes['s'] = dict(description="s=1 for Σ- states and 0 for all other states", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'s'))])
 @vectorise(cache=True,vargs=(1,2))
@@ -411,6 +413,7 @@ class Base(Dataset):
 class Generic(Base):
     """A generic level."""
     default_prototypes = _collect_prototypes(
+        'reference',
         'species','chemical_species',
         'label',
         'point_group',
@@ -428,9 +431,9 @@ class Generic(Base):
 class Atomic(Generic):
     default_prototypes = _collect_prototypes(
         *Generic.default_prototypes,
-        'configuration',
+        'conf','L','gu',
     )
-    defining_qn = ('species','configuration','J',)
+    defining_qn = ('species','conf','J','S',)
     default_zkeys = ('species',)
 
 class Linear(Generic):
