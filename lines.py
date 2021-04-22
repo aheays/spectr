@@ -52,6 +52,7 @@ for key,val in levels.prototypes.items():
                      for dependencies,function in val['infer']]
     prototypes[key+'_l'] = copy(tval)
 
+
 ## add lines things
 prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='U', cast=str, fmt='<10s')
 
@@ -320,6 +321,8 @@ prototypes['species_u']['infer'].append((('species'),lambda self,species: specie
 prototypes['species']['infer'].append((('species_l'),lambda self,species_l: species_l))
 prototypes['species']['infer'].append((('species_u'),lambda self,species_u: species_u))
 prototypes['ΔJ']['infer'].append((('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l))
+prototypes['J_u']['infer'].append((('J_l','ΔJ'),lambda self,J_l,ΔJ: J_l+ΔJ))
+prototypes['J_l']['infer'].append((('J_u','ΔJ'),lambda self,J_u,ΔJ: J_u-ΔJ))
 prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
 prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
 
@@ -938,7 +941,7 @@ class Atomic(Generic):
         *Generic.default_prototypes,
     }}
     default_xkey = 'J_l'
-    default_zkeys = ['species_u','configuration_u','species_l','configuration_l','ΔJ']
+    default_zkeys = ['species_u','conf_u','species_l','conf_l','ΔJ']
 
 class Linear(Generic):
     _level_class,_level_keys,defining_qn = _collect_level(levels.Linear)

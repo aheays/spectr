@@ -79,6 +79,8 @@ def _f0(self,label,v,Σ,ef,J,E):
 
 def _df0(self,Ereduced,label,dlabel,v,dv,Σ,dΣ,ef,ddef,J,dJ,E,dE):
     """Uncertainty calculation to go with _f0."""
+    if dE is None:
+        raise InferException()
     dEreduced = dE
     return dEreduced
 

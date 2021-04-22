@@ -781,7 +781,6 @@ class Dataset(optimise.Optimiser):
                             parameters[i] = self[dependency] + step # shift one
                             dvalue = value - function(self,*parameters)
                             parameters[i] = self[dependency] # put it back
-                            # data = self._data[dependency]
                             squared_contribution.append((self.get(dependency,'unc')*dvalue/step)**2)
                     if len(squared_contribution)>0:
                         self.set(key,np.sqrt(np.sum(squared_contribution,axis=0)),associated_data='unc')
@@ -796,7 +795,10 @@ class Dataset(optimise.Optimiser):
                             args.extend((self[dependency],self.get(dependency,'unc')))
                         else:
                             args.extend((self[dependency],None))
-                    self.set(key,unc_function(*args),'unc')
+                    try:
+                        self.set(key,unc_function(*args),'unc')
+                    except InferException:
+                        pass
                 ## if we get this far without an InferException then
                 ## success!.  Record inference dependencies.
                 ## replace this block with
