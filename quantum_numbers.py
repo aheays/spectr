@@ -248,7 +248,7 @@ def decode_level(name):
                 # qn_dict['configuration'] = qn
             # else:
                 # qn_dict['species'] = qn
-    # return(qn_dict)
+    # return qn_dict
 
 # def encode_atomic_transition(
         # upper_quantum_numbers=None, # dict or None
@@ -447,44 +447,92 @@ def decode_transition(transition,return_separately=False):
                 retval['Δ'+key] = val
         return(retval)
 
-# def decode_rotational_transition(name,return_separately=False):
-    # """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
-    # upper,lower,Δ = {},{},{}
-    # # data = {}
-    # t = name
-    # if len(t)==0: return(data)
-    # ## get Δ['J']
-    # if   t[0]=='O': Δ['J'] = -2
-    # elif t[0]=='P': Δ['J'] = -1
-    # elif t[0]=='Q': Δ['J'] =  0
-    # elif t[0]=='R': Δ['J'] = +1
-    # elif t[0]=='S': Δ['J'] = +2
-    # else:
-        # raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
-    # t = t[1:]
-    # if len(t)>0:
-        # ## look for FpFppefpefpp
-        # if re.match(r'([0-9]{2}[ef]{2}).*',t):
-            # upper['F'] =      int(t[0])
-            # upper['ef'] =     t[2]
-            # lower['F'] =     int(t[1])
-            # lower['ef'] =    t[3]
-            # t = t[4:]
-    # ## look for ΔJ
-    # if len(t)>0:
-        # try:
-            # lower['J'] = float(t)
-            # upper['J'] = lower['J'] + Δ['J']
-        # except ValueError:
-            # raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
-    # ## return dict
-    # if return_separately:
-        # return(upper,lower,Δ)
-    # else:
-        # retval = join_upper_lower_quantum_numbers(upper,lower)
-        # for key,val in Δ.items():
-            # retval['Δ'+key] = val
-        # return(retval)
+def decode_diatomic_transition(transition,return_separately=False):
+    """Transition must be in the form
+    species_levelp-levelpp_rotationaltransition. Matched from beginning,
+    and returns when matching runs out."""
+    original_transition = transition
+    transition = transition.replace(' ','') # all white space removed
+    qn = dict()                 # determined quantum numbers
+    ## look for rotational transition as e.g., ..._P11fe23, if found
+    ## decode and remove from transition
+    rot_qn_upper = rot_qn_lower = rot_qn_Δ = None
+    r = re.match(r'^(.*)_([^_-]+)$',transition)
+    if r:
+        try:
+            rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
+            transition = r.group(1)
+        except InvalidEncodingException: # not a valid rotational transition
+            pass
+    ## split upper and lower level
+    transition = transition.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
+    transition = transition.replace('Σ-','SigmaMinus') # hack to temporarily protect minus sign
+    if transition.count('--')==1:                       # upper-lower
+        upper,lower = transition.split('--')            # upper (lower not given)
+    elif transition.count('-')==1:                       # upper-lower
+        upper,lower = transition.split('-')            # upper (lower not given)
+    elif transition.count('-')==0:
+        # upper,lower = transition,''
+        raise InvalidEncodingException(f'Is this an encoded transition? "-" not found: {repr(original_transition)}')
+    else:
+        raise InvalidEncodingException(f'Require only one "-" in an encoded transition: {repr(original_transition)}')
+    upper,lower = upper.replace('SigmaMinus','Σ-'),lower.replace('SigmaMinus','Σ-') # put this back after split
+    upper,lower = decode_level(upper),decode_level(lower)
+    ## add rotataional qn if found above
+    if rot_qn_lower is not None:
+        lower.update(rot_qn_lower)
+    if rot_qn_upper is not None:
+        upper.update(rot_qn_upper)
+    ## assume common species if only given once
+    if 'species' in upper and 'species' not in lower:
+        lower['species'] = upper['species'] 
+    if return_separately:
+        return(upper,lower)
+    else:
+        retval = join_upper_lower_quantum_numbers(upper,lower)
+        if rot_qn_Δ is not None:
+            for key,val in rot_qn_Δ.items():
+                retval['Δ'+key] = val
+        return(retval)
+
+def decode_rotational_transition(name,return_separately=False):
+    """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
+    upper,lower,Δ = {},{},{}
+    # data = {}
+    t = name
+    if len(t)==0: return(data)
+    ## get Δ['J']
+    if   t[0]=='O': Δ['J'] = -2
+    elif t[0]=='P': Δ['J'] = -1
+    elif t[0]=='Q': Δ['J'] =  0
+    elif t[0]=='R': Δ['J'] = +1
+    elif t[0]=='S': Δ['J'] = +2
+    else:
+        raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
+    t = t[1:]
+    if len(t)>0:
+        ## look for FpFppefpefpp
+        if re.match(r'([0-9]{2}[ef]{2}).*',t):
+            upper['F'] =      int(t[0])
+            upper['ef'] =     t[2]
+            lower['F'] =     int(t[1])
+            lower['ef'] =    t[3]
+            t = t[4:]
+    ## look for ΔJ
+    if len(t)>0:
+        try:
+            lower['J'] = float(t)
+            upper['J'] = lower['J'] + Δ['J']
+        except ValueError:
+            raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
+    ## return dict
+    if return_separately:
+        return(upper,lower,Δ)
+    else:
+        retval = join_upper_lower_quantum_numbers(upper,lower)
+        for key,val in Δ.items():
+            retval['Δ'+key] = val
+        return(retval)
 
 # def decode_branch(branch):
     # """Expect e.g., P13ee, P11, P1, P. Return as dict."""
