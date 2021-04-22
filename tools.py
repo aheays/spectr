@@ -11,6 +11,7 @@ from scipy import interpolate,constants,integrate,linalg,stats
 import csv
 import glob as glob_module
 import numpy as np
+from numpy import array
 import h5py
 from sympy.printing.pycode import pycode
 
@@ -371,6 +372,14 @@ def randn(shape=None):
 ###########################
 ## convenience functions ##
 ###########################
+
+def convert_to_bool_vector_array(x):
+    ## use numpy directlry
+    try:
+        return np.asarray(x,dtype=bool,ndmin=1)
+    except:
+        pass
+    return array([bool(t) for t in tools.ensure_iterable(x)])
 
 def warnings_off():
     warnings.simplefilter("ignore")
