@@ -11,7 +11,7 @@ from numpy import nan
 from immutabledict import immutabledict as idict
 
 from . import tools
-from .tools import AutoDict
+from .tools import AutoDict,convert_to_bool_vector_array
 from .exceptions import InferException
 from . import convert
 from . import optimise
@@ -29,12 +29,13 @@ class Dataset(optimise.Optimiser):
 
         'f':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','default':nan   ,'description':'float' ,},
         'i':    {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt':'d'     ,'default':-999  ,'description':'int'   ,},
-        'b':    {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt':''      ,'default':True  ,'description':'bool'  ,},
+        'b':    {'cast':convert_to_bool_vector_array       ,'fmt':''      ,'default':True  ,'description':'bool'  ,},
         'U':    {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt':'s'     ,'default':''    ,'description':'str'   ,},
         'O':    {'cast':lambda x:np.asarray(x,dtype=object),'fmt':''      ,'default':None  ,'description':'object',},
         'unc' : {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':nan   ,'description':'Uncertainty'                         ,},
         'step': {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,'description':'Numerical differentiation step size' ,},
-        'vary': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt':'5'     ,'default':False ,'description':'Whether to vary during optimisation.',},
+        # 'vary': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt':'5'     ,'default':False ,'description':'Whether to vary during optimisation.',},
+        'vary': {'cast':convert_to_bool_vector_array       ,'fmt':'5'     ,'default':False ,'description':'Whether to vary during optimisation.',},
 
     }
 
@@ -59,7 +60,7 @@ class Dataset(optimise.Optimiser):
             load_from_file = None,
             load_from_string = None,
             copy_from = None,
-            limit_to_match=None, # dict of things to match 
+            limit_to_match=None, # dict of things to match
             **kwargs):
         ## basic internal variables
         self._data = {} # table data and its properties stored here
@@ -93,6 +94,7 @@ class Dataset(optimise.Optimiser):
         ## some extra stuff if output to directory
         optimise.Optimiser.__init__(self,name=name)
         self.pop_format_input_function()
+        ## new format input function
         def format_input_function():
             retval = f'{self.name} = {self.attributes["classname"]}({repr(self.name)},'
             if load_from_file is not None:
@@ -676,9 +678,9 @@ class Dataset(optimise.Optimiser):
             i[ii] = iscalar[ti]
         return i
 
-    def matches(self,**keys_vals):
+    def matches(self,*args,**kwargs):
         """Returns a copy reduced to matching values."""
-        return self.copy(index=self.match(**keys_vals))
+        return self.copy(index=self.match(*args,**kwargs))
 
     def limit_to_match(self,**keys_vals):
         self.index(self.match(**keys_vals))
@@ -1068,6 +1070,8 @@ class Dataset(optimise.Optimiser):
                 delimiter = '␞'
             elif re.match(r'.*\.psv',filename):
                 delimiter = '|'
+            elif re.match(r'.*\.tsv',filename):
+                delimiter = '\t'
             # assert comment not in ['',' '], "Not implemented"
             filename = tools.expand_path(filename)
             data = {}
@@ -1524,6 +1528,3 @@ def copy_from(dataset,*args,**kwargs):
     classname = dataset['classname'] # use the same class as dataset
     retval = make(classname,*args,copy_from=dataset,**kwargs)
     return retval
-
-    
-
