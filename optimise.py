@@ -306,7 +306,7 @@ class Optimiser:
             retval.append(self)     # put self last
         return retval 
 
-    def format_input(self,match_lines_regexp=None):
+    def format_input(self):
         """Join strings which should make an exectuable python script for
         repeating this optimisation with updated parameters. Each element of
         self.format_input_functions should be a string or a function of no
@@ -328,21 +328,23 @@ class Optimiser:
                 lines.append('')
             lines.append(functions[i]())
             previous_suboptimiser = suboptimisers[i]
-        ## limit to matching lines if requested
-        if match_lines_regexp is not None:
-            lines = [t for t in lines if re.match(match_lines_regexp,t)]
-        return('\n'.join(lines))
+        retval = '\n'.join(lines)
+        return retval
 
     def print_input(self,match_lines_regexp=None):
         """Print recreated input function. Filter lines by regexp if
         desired."""
-        # t = repr(match_lines_regexp) if match_lines_regexp is not None else ''
-        self.add_format_input_function(lambda: f'{self.name}.print_input({repr(match_lines_regexp) if match_lines_regexp is not None else ""})')
-        print(self.format_input(match_lines_regexp=match_lines_regexp))
+        lines = self.format_input()
+        if match_lines_regexp is None:
+            print(lines)
+        else:
+            for line in lines.split('\n'):
+                if re.match(match_lines_regexp,line):
+                    print(line)
 
-    def save_input(self,filename=None,match_lines_regexp=None):
+    def save_input(self,filename=None):
         """Save recreated input function to a file."""
-        tools.string_to_file(filename,self.format_input(match_lines_regexp))
+        tools.string_to_file(filename,self.format_input())
 
     def __str__(self):
         return self.format_input()
