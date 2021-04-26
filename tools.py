@@ -1,4 +1,5 @@
 import functools
+from functools import lru_cache,wraps
 import re
 import os
 import warnings
@@ -63,7 +64,7 @@ class AutoDict:
 ## decorators / decorator factories / function tools ##
 #######################################################
 
-cache = functools.lru_cache
+cache = lru_cache
 
 def vectorise(vargs=None,dtype=None,cache=False):
     """Vectorise a scalar-argument scalar-return value function.  If all
@@ -73,9 +74,13 @@ def vectorise(vargs=None,dtype=None,cache=False):
     type, else a list is returned. If cache is True then cache
     indivdual scalar function calls."""
     def actual_decorator(function):
-        if cache:
-            function = functools.lru_cache(function)
+        @wraps(function)
         def vectorised_function(*args):
+            ## make cached if requested
+            if cache: 
+                function_maybe_cached = lru_cache(function)
+            else:
+                function_maybe_cached = function
             args = list(args)
             ## get list of arg indices that should be vectorised
             if vargs is None:
@@ -97,7 +102,7 @@ def vectorise(vargs=None,dtype=None,cache=False):
                     vector_arg_indices.remove(i)
             if length is None:
                 ## all scalar, do scalar calc
-                return function(*args)
+                return function_maybe_cached(*args)
             else:
                 ## compute for each vectorised arg combination
                 if dtype is None:
@@ -107,7 +112,7 @@ def vectorise(vargs=None,dtype=None,cache=False):
                 for i in range(length):
                     for j,k in enumerate(vector_arg_indices):
                         args[k] = vector_args[j][i]
-                    iretval = function(*args)
+                    iretval = function_maybe_cached(*args)
                     if dtype is None:
                         retval.append(iretval)
                     else:
@@ -120,6 +125,7 @@ def vectorise_arguments(function):
     """Convert all arguments to arrays of the same length.  If all
     original input arguments are scalar then convert the result back
     to scalar."""
+    @functools.wraps(function)
     def function_with_vectorised_arguments(*args):
         arglen = 0
         for arg in args:
