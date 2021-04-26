@@ -74,13 +74,16 @@ def vectorise(vargs=None,dtype=None,cache=False):
     type, else a list is returned. If cache is True then cache
     indivdual scalar function calls."""
     def actual_decorator(function):
+        _cached_function = []
         @wraps(function)
         def vectorised_function(*args):
             ## make cached if requested
-            if cache: 
-                function_maybe_cached = lru_cache(function)
-            else:
-                function_maybe_cached = function
+            if len(_cached_function) == 0:
+                if cache:
+                    _cached_function.append(lru_cache(function))
+                else:
+                    _cached_function.append(function)
+            function_maybe_cached = _cached_function[0]
             args = list(args)
             ## get list of arg indices that should be vectorised
             if vargs is None:
