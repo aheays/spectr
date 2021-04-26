@@ -457,15 +457,6 @@ class Optimiser:
                     step.extend(optimiser.get(key,'step',index=vary))
         return value,step,unc
 
-    # def _get_all_parameters(self):
-        # """Collect all parameter objects, not including adjusted Dataset data."""
-        # parameters = []
-        # for optimiser in self._get_all_suboptimisers():
-            # for parameter in optimiser.parameters:
-                # if parameter not in parameters:
-                    # parameters.append(parameter)
-        # return parameters
-
     def _set_parameters(self,p,dp=None,rescale=False):
         """Set assign elements of p and dp from optimiser to the
         correct Parameters."""
@@ -806,27 +797,27 @@ class Optimiser:
         ## get residual at current solugion
         self.construct()
         residual = self.combined_residual
-        ## get current parameter, also for rescaling
+        ## get current parameter
         self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
-        value = self._initial_p
+        ## get rescaled parameters -- all zero
+        p = np.full(len(self._initial_p),0.0) 
         if verbose or self.verbose:
-            print(f'{self.name}: computing uncertainty for {len(value)} parameters')
+            print(f'{self.name}: computing uncertainty for {len(p)} parameters')
         ## get jacobian using rescaled parameters
-        jacobian = self._calculate_jacobian(np.full(len(value),0.0))
+        jacobian = self._calculate_jacobian(p)
         ## compute 1σ uncertainty from Jacobian
-        unc = np.full(len(value),np.nan)
+        unc = np.full(len(p),np.nan)
         if len(jacobian) > 0:
             covariance = linalg.inv(np.dot(jacobian.T,jacobian))
             if rms_noise is None:
                 chisq = np.sum(residual**2)
-                dof = len(residual)-len(value)+1
+                dof = len(residual)-len(p)+1
                 rms_noise = np.sqrt(chisq/dof)
             unc = np.sqrt(covariance.diagonal())*rms_noise
         else:
             print('All parameters have no effect, uncertainties not calculated')
-        self._set_parameters(self._initial_p,unc)
+        self._set_parameters(p,unc,rescale=True)
         self.construct()
-        print('DEBUG:', unc)
 
     def _get_rms(self):
         """Compute root-mean-square error."""
