@@ -75,8 +75,17 @@ def vectorise(vargs=None,dtype=None,cache=False):
     indivdual scalar function calls."""
     def actual_decorator(function):
 
+        ## get a cached version fo the function if requested
         if cache:
-            function = functools.lru_cache(function)
+            _cache = {}
+            def function_maybe_cached(*args):
+                hashed_args = hash(tuple(args))
+                if hashed_args not in _cache:
+                    assert len(_cache)<1000,'Need to implement a limited cache'
+                    _cache[hashed_args] = function(*args)
+                return _cache[hashed_args]
+        else:
+            function_maybe_cached = function
 
         @wraps(function)
         def vectorised_function(*args):
@@ -101,7 +110,7 @@ def vectorise(vargs=None,dtype=None,cache=False):
                     vector_arg_indices.remove(i)
             if length is None:
                 ## all scalar, do scalar calc
-                return function(*args)
+                return function_maybe_cached(*args)
             else:
                 ## compute for each vectorised arg combination
                 if dtype is None:
@@ -111,7 +120,7 @@ def vectorise(vargs=None,dtype=None,cache=False):
                 for i in range(length):
                     for j,k in enumerate(vector_arg_indices):
                         args[k] = vector_args[j][i]
-                    iretval = function(*args)
+                    iretval = function_maybe_cached(*args)
                     if dtype is None:
                         retval.append(iretval)
                     else:
@@ -1528,7 +1537,7 @@ def pa():
     """Get string from clipboard. If possible convert to an array."""
     x = get_clipboard()
     try:
-        return str2array(x)
+        return string_to_array(x)
     except:
         return x
 
