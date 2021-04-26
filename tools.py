@@ -74,16 +74,12 @@ def vectorise(vargs=None,dtype=None,cache=False):
     type, else a list is returned. If cache is True then cache
     indivdual scalar function calls."""
     def actual_decorator(function):
-        _cached_function = []
+
+        if cache:
+            function = functools.lru_cache(function)
+
         @wraps(function)
         def vectorised_function(*args):
-            ## make cached if requested
-            if len(_cached_function) == 0:
-                if cache:
-                    _cached_function.append(lru_cache(function))
-                else:
-                    _cached_function.append(function)
-            function_maybe_cached = _cached_function[0]
             args = list(args)
             ## get list of arg indices that should be vectorised
             if vargs is None:
@@ -105,7 +101,7 @@ def vectorise(vargs=None,dtype=None,cache=False):
                     vector_arg_indices.remove(i)
             if length is None:
                 ## all scalar, do scalar calc
-                return function_maybe_cached(*args)
+                return function(*args)
             else:
                 ## compute for each vectorised arg combination
                 if dtype is None:
@@ -115,7 +111,7 @@ def vectorise(vargs=None,dtype=None,cache=False):
                 for i in range(length):
                     for j,k in enumerate(vector_arg_indices):
                         args[k] = vector_args[j][i]
-                    iretval = function_maybe_cached(*args)
+                    iretval = function(*args)
                     if dtype is None:
                         retval.append(iretval)
                     else:
