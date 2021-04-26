@@ -222,7 +222,6 @@ def _f3(self,species,Tex,E_u,E_l,g_u,g_l,Σ_l,Σ_u,ef_l,ef_u):
             k.append((i[j])[0])
         Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
     return Z
-@vectorise(cache=True,vargs=(1,2))
 def _f5(self,species,Tex):
     if self.attributes['Zsource'] != 'HITRAN':
         raise InferException(f'Zsource not "HITRAN".')

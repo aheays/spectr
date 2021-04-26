@@ -6,9 +6,11 @@ import os
 from pprint import pprint,pformat
 from copy import copy,deepcopy
 import warnings
+import types
+import multiprocessing
 
 import numpy as np
-from numpy import nan,inf,array
+from numpy import nan,inf,array,arange,linspace
 from scipy import optimize,linalg
 
 # from . import dataset
@@ -40,12 +42,14 @@ def _collect_parameters_and_optimisers(x):
         parameters.append(x)
     elif isinstance(x,Optimiser):
         optimisers.append(x)
-    elif tools.isiterable(x) and len(x)<maximum_length_for_searching:
-        if isinstance(x,dict):
-            x = x.values()
-        retval = []
-        for y in x:
-            tp,to = _collect_parameters_and_optimisers(y)
+    elif isinstance(x,list) and len(x) < maximum_length_for_searching:
+        for t in x:
+            tp,to = _collect_parameters_and_optimisers(t)
+            parameters.extend(tp)
+            optimisers.extend(to)
+    elif isinstance(x,dict):
+        for t in x.values():
+            tp,to = _collect_parameters_and_optimisers(t)
             parameters.extend(tp)
             optimisers.extend(to)
     return parameters,optimisers
@@ -97,7 +101,9 @@ def optimise_method(
             ## make a construct function which returns the output of
             ## the original method            if add_construct_function:
             if add_construct_function:
-                self.add_construct_function(lambda: function(self,**kwargs))
+                construct_function = lambda kwargs=kwargs: function(self,**kwargs)
+                construct_function.__name__ = function.__name__+'_optimisation_method'
+                self.add_construct_function(construct_function)
             ## execute the function now
             if execute_now:
                 function(self,**kwargs)
@@ -141,6 +147,7 @@ class Optimiser:
         self.name = name # for generating evaluatable references to self
         self.residual_scale_factor = 1 # scale all resiudal by this amount -- useful when combining with other optimisers
         self.parameters = []           # Data objects
+        self._ncpus = 1
         self._construct_functions = {} # list of function which collectively construct the model and optionally return a list of fit residuals
         self._post_construct_functions = {} # run in reverse order after other construct functions
         self._plot_functions = [] 
@@ -306,7 +313,16 @@ class Optimiser:
             retval.append(self)     # put self last
         return retval 
 
-    def format_input(self):
+    def get_all_parameters(self):
+        """Return a list of all parameter objects."""
+        parameters = []
+        for o in self._get_all_suboptimisers():
+            for p in o.parameters:
+                if p not in parameters:
+                    parameters.append(p)
+        return parameters
+
+    def format_input(self,match_lines_regexp=None):
         """Join strings which should make an exectuable python script for
         repeating this optimisation with updated parameters. Each element of
         self.format_input_functions should be a string or a function of no
@@ -576,9 +592,11 @@ class Optimiser:
             xtol=1e-10,
             ftol=1e-10,
             gtol=1e-10,
+            ncpus=1,
             monitor_parameters=None,
     ):
         """Optimise parameters."""
+        self._ncpus = ncpus
         if normalise_suboptimiser_residuals:
             ## normalise all suboptimiser residuals before handing to
             ## the least-squares routine
@@ -643,6 +661,7 @@ class Optimiser:
                     print('Method:',optargs['method'])
                     # print("Optimisation parameters:")
                     # print('    '+pformat(optargs).replace('\n','\n    '))
+                # optargs['jac'] = self._calculate_jacobian
                 result = optimize.least_squares(**optargs)
                 if verbose or self.verbose:
                     print('Optimisation complete')
@@ -668,57 +687,137 @@ class Optimiser:
                     print(f'suboptimiser {suboptimiser.name} RMS:',tools.rms(suboptimiser.residual))
         return residual
 
-    def calculate_uncertainty(self,p=None,rms_noise=None,verbose=True):
+    def __deepcopy__(self,memo):
+        """Deep copies paramters and construct_functions, preserving
+        internal links of construct_function default arguments which
+        are parameters to the copied parameters.  I HAVE NOT BOTHERED
+        TO PROPERLY DEEPCOPY INPUT_FORMAT_FUNCTION,
+        SAVE_TO_DIRECTORY_FUNCTIONS ETC. THIS COULD BE SIMILARLY TO
+        CONSTRUCT_FUNCTIONS."""
+        ## The top level optimiser is used to get a copy of all
+        ## parameters. Suboptimisers get a copy of this list -- ONLY
+        ## WORKS IF TOP LEVEL DEEPCOPY IS AN OPTIMISER
+        if len(memo) == 0:
+            self._copied_parameters = {}
+            self._copied_suboptimisers = {}
+            for o in self._get_all_suboptimisers():
+                o._copied_parameters = self._copied_parameters
+                o._copied_suboptimisers = self._copied_suboptimisers
+        ## shallow copy everything
+        retval = copy(self)
+        ## deepcopy parameters
+        for i,t in enumerate(self.parameters):
+            if id(t) not in self._copied_parameters:
+                self._copied_parameters[id(t)] = deepcopy(t,memo)
+            self.parameters[i] = self._copied_parameters[id(t)]
+        ## deepcopy suboptimisers
+        for i,t in enumerate(self._suboptimisers):
+            if id(t) not in self._copied_suboptimisers:
+                self._copied_suboptimisers[id(t)] = deepcopy(t,memo)
+            self._suboptimisers[i] = self._copied_suboptimisers[id(t)]
+        ## copy construct functions while updating references to parameters and suboptimisers
+        translate_defaults = self._copied_parameters | self._copied_suboptimisers
+        for key,function in self._construct_functions.items():
+            self._construct_functions[key] = _deepcopy_function(function,translate_defaults)
+        # for key,function in self._post_construct_functions.items():
+            # self._post_construct_functions[key] = _deepcopy_function(function,translate_defaults)
+        return retval
+
+    def _calculate_jacobian(self,p,rescale=True):
         """Compute 1σ uncertainty by first computing forward-difference
         Jacobian.  Only accurate for a well-optimised model."""
-        ## get parameter and uncertainties
-        if p is not None:
-            self._set_parameters(p)
-        value,step,unc = self._get_parameters()
-        if verbose or self.verbose:
-            print(f'{self.name}: computing uncertainty')
-            print('Number of varied parameters:',len(value))
-        if len(value) == 0:
-            return array([],dtype=float)
         ## compute model at p
-        self._number_of_optimisation_function_calls = 0
-        self._previous_time = timestamp()
-        self._rms_minimum = np.inf
-        self._monitor_frequency = 'every iteration'
-        residual = self._optimisation_function(value,rescale=False)
+        self._set_parameters(p,rescale=True)
+        residual = self.construct()
         ## compute Jacobian by forward finite differencing, if a
         ## difference is too small then it cannot be used to compute
-        ## an unceritanty -- so only biuld a jacobian with differences
-        ## above machine precisison.  Althernatively, could try and
-        ## increase step size and recalculate.
-        tvalue = deepcopy(value)
-        jacobian,ijacobian = [],[] # jacobian columns and which parameter they correspond to
-        for i,(valuei,stepi) in enumerate(zip(value,step)):
-            tvalue[i] = valuei+stepi
-            residuali = self._optimisation_function(tvalue,rescale=False)
-            dresidual = (residuali-residual)
-            if np.abs(dresidual/residual).max() < 1e-8:
-                print(f'Parameter {i} ({valuei:+12.7e}) has no measureable effect.')
-            else:
-                jacobian.append(dresidual/stepi)
-                ijacobian.append(i)
-            tvalue[i] = valuei # change it back
-        jacobian = array(jacobian).T
+        ## an uncertainty -- so only build a jacobian with differences
+        ## above machine precisison.  ALTHERNATIVELY, COULD TRY AND
+        ## INCREASE STEP SIZE AND RECALCULATE.
+        if self._ncpus == 1:
+            ## single thread
+            jacobian = [] # jacobian columns and which parameter they correspond to
+            pnew = list(p)
+            step = 1e-8 # must agree with optimise
+            for i in range(len(p)):
+                timer = timestamp()
+                pnew[i] += step
+                self._set_parameters(pnew,rescale=True)
+                residualnew = self.construct()
+                dresidual = (residualnew-residual)
+                jacobian.append(dresidual/step)
+                pnew[i] = p[i] # change it back
+                print(f'Jacobian calc: {i:4} {timestamp()-timer:7.2e}')
+            jacobian = np.transpose(jacobian)
+        else:
+            ## multiprocessing, requires serialisation
+            import dill
+            manager = multiprocessing.Manager()
+            shared_namespace = manager.Namespace()
+            shared_namespace.dill_pickle = dill.dumps(self)
+            shared_namespace.residual = residual
+            with multiprocessing.Pool(self._ncpus) as pool:
+                ibeg = 0
+                results = []
+                ishuffle = arange(len(p))
+                np.random.shuffle(ishuffle)
+                for n in range(self._ncpus):
+                    # i = range(n,len(p),self._ncpus)
+                    i = ishuffle[n::self._ncpus]
+                    results.append(
+                        pool.apply_async(
+                            _calculate_jacobian_multiprocessing_worker,
+                            args=(shared_namespace,p,i)))
+                ## run proceses, tidy keyboard interrupt, sum to give full spectrum
+                try:
+                    pool.close()
+                    pool.join()
+                except KeyboardInterrupt as err:
+                    pool.terminate()
+                    pool.join()
+                    raise err
+                jacobian = np.empty((len(p),len(residual)))
+                for n in range(self._ncpus):
+                    # i = range(n,len(p),self._ncpus) 
+                    i = ishuffle[n::self._ncpus]
+                    jacobian[i,:] = results[n].get()
+                jacobian = np.transpose(jacobian)
+        ## set back to best fit
+        self._set_parameters(p,rescale=True) # set param
+        self.construct(recompute_all=True )
+        ## return
+        return jacobian
+
+    def calculate_uncertainty(self,rms_noise=None,verbose=True,ncpus=None):
+        """Compute 1σ uncertainty by first computing forward-difference
+        Jacobian.  Only accurate for a well-optimised model."""
+        ## whether or not to multiprocess
+        if ncpus is not None:
+            self._ncpus = ncpus
+        ## get residual at current solugion
+        self.construct()
+        residual = self.combined_residual
+        ## get current parameter
+        self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
+        ## get rescaled parameters -- all zero
+        p = np.full(len(self._initial_p),0.0) 
+        if verbose or self.verbose:
+            print(f'{self.name}: computing uncertainty for {len(p)} parameters')
+        ## get jacobian using rescaled parameters
+        jacobian = self._calculate_jacobian(p)
         ## compute 1σ uncertainty from Jacobian
-        unc = np.full(len(value),np.nan)
+        unc = np.full(len(p),np.nan)
         if len(jacobian) > 0:
             covariance = linalg.inv(np.dot(jacobian.T,jacobian))
             if rms_noise is None:
                 chisq = np.sum(residual**2)
-                dof = len(residual)-len(value)+1
+                dof = len(residual)-len(p)+1
                 rms_noise = np.sqrt(chisq/dof)
-            unc[ijacobian] = np.sqrt(covariance.diagonal())*rms_noise
+            unc = np.sqrt(covariance.diagonal())*rms_noise
         else:
             print('All parameters have no effect, uncertainties not calculated')
-        ## set back to best fit
-        self._set_parameters(value,unc) # set param
-        self.construct(recompute_all=True )
-        return np.asarray(unc)
+        self._set_parameters(p,unc,rescale=True)
+        self.construct()
 
     def _get_rms(self):
         """Compute root-mean-square error."""
@@ -816,4 +915,62 @@ class Named_Parameter(P):
         return f"{self.optimiser.name}['{self.name}']"
 
     __str__ = Parameter.__repr__
+
+def _substitute_parameters_and_optimisers(x,translate):
+    """Search for Parameters and Optimisers in x and substitude by id from
+    translate dict.  x must be a list or a dict.  Recursively searchs
+    lists or dicts in x."""
+    maximum_list_length_for_recursive_substitution = 1000
+    if isinstance(x,list):
+        for i,val in enumerate(x):
+            if isinstance(val,(Parameter,Optimiser)) and id(val) in translate:
+                x[i] = translate[id(val)]
+            elif isinstance(val,(list,dict)) and i < maximum_list_length_for_recursive_substitution:
+                x[i] = _substitute_parameters_and_optimisers(val,translate)
+    elif isinstance(x,dict):
+        for key,val in x.items():
+            if isinstance(val,(Parameter,Optimiser)) and id(val) in translate:
+                x[key] = translate[id(val)]
+            elif isinstance(val,(list,dict)):
+                x[key] = _substitute_parameters_and_optimisers(val,translate)
+    return x
+
+def _deepcopy_function(function,translate_defaults=None):
+    """Make a new function copy.  Substitute default parameters by id
+    from those in translate_defaults."""
+    ## get default -- including substitutions
+    defaults = function.__defaults__
+    if translate_defaults is not None:
+        ## copy all Paraemter/Optimiser references
+        defaults = _substitute_parameters_and_optimisers(list(defaults),translate_defaults)
+        defaults = tuple(defaults)
+    ## make new function
+    fnew = types.FunctionType(
+        function.__code__.replace(),
+        function.__globals__,
+        function.__name__,
+        defaults,
+        function.__closure__,)
+    fnew.__qualname__= function.__name__
+    return fnew
+
+def _calculate_jacobian_multiprocessing_worker(shared_namespace,p,i):
+    """Calculate part of a jacobian."""
+    import dill
+    from time import perf_counter as timestamp
+    optimiser = dill.loads(shared_namespace.dill_pickle)
+    residual = shared_namespace.residual
+    pnew = copy(p)
+    jacobian = []
+    step = 1e-8                 # nmust be consistent abovce
+    for ii in i:
+        timer = timestamp()
+        pnew[ii] += step
+        optimiser._set_parameters(pnew,rescale=True)
+        residualnew = optimiser.construct()
+        dresidual = (residualnew-residual)
+        jacobian.append((residualnew-residual)/step)
+        pnew[ii] = p[ii]
+        print(f'Jacobian calc: {ii:4} {i[0]:4} {timestamp()-timer:7.2e}')
+    return jacobian
 
