@@ -59,13 +59,13 @@ prototypes['ZPE'] = dict(description="Zero-point energy of the lowest level rela
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
 prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν)])
 
-def _f0(self,label,v,Σ,ef,J,E):
+def _f0(self,species,label,v,Σ,ef,J,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
     order = 3
     Ereduced = np.full(E.shape,0.0)
-    for di,i in tools.unique_combinations_mask(label,v,Σ,ef):
-        labeli,vi,Σi,efi = di
+    for di,i in tools.unique_combinations_mask(species,label,v,Σ,ef):
+        speciesi,labeli,vi,Σi,efi = di
         Ji,Ei = [],[]
         for Jj,j in tools.unique_combinations_mask(J[i]):
             Ji.append(Jj[0])
@@ -73,18 +73,18 @@ def _f0(self,label,v,Σ,ef,J,E):
         Ji,Ei = array(Ji),array(Ei)
         pi = np.polyfit(Ji*(Ji+1),Ei,min(order,len(Ei)-1))
         if self.verbose:
-            print(f'{label=} {v=} {Σ=} {ef=} {pi=}')
+            print(f'{species=} {label=} {v=} {Σ=} {ef=} {pi=}')
         Ereduced[i] = E[i] - np.polyval(pi,J[i]*(J[i]+1))
     return Ereduced
 
-def _df0(self,Ereduced,label,dlabel,v,dv,Σ,dΣ,ef,ddef,J,dJ,E,dE):
+def _df0(self,Ereduced,species,dspecies,label,dlabel,v,dv,Σ,dΣ,ef,ddef,J,dJ,E,dE):
     """Uncertainty calculation to go with _f0."""
     if dE is None:
         raise InferException()
     dEreduced = dE
     return dEreduced
 
-prototypes['E_reduced'] = dict(description="Reduced level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('label','v','Σ','ef','J','E'),(_f0,_df0)),],)
+prototypes['E_reduced'] = dict(description="Reduced level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('species','label','v','Σ','ef','J','E'),(_f0,_df0)),],)
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,point_group):
