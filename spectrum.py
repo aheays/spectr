@@ -2,6 +2,7 @@ import inspect,re
 from copy import copy,deepcopy
 from pprint import pprint
 import warnings
+from time import perf_counter as timestamp
 
 from matplotlib import pyplot as plt
 from scipy import signal,constants,fft,interpolate
@@ -255,6 +256,7 @@ class Model(Optimiser):
         self.x = None
         self.y = None
         self._xin = None
+        self._xcache = None
         self.xbeg = xbeg
         self.xend = xend
         self.residual = None                      # array of residual fit
@@ -300,6 +302,12 @@ class Model(Optimiser):
         else:
             self.x = np.array([],dtype=float,ndmin=1)
         self.y = np.zeros(self.x.shape,dtype=float)
+        ## record whether x has changed from previous construct
+        if (self._xcache is None
+            or len(self._xcache) != len(self.x)
+            or np.any(self._xcache != self.x)):
+            self._xchanged = timestamp()
+        self._xcache = copy(self.x)
         
     def get_spectrum(self,x):
         """Construct a model spectrum at x."""
@@ -479,6 +487,7 @@ class Model(Optimiser):
             _suboptimiser=None,
             **set_keys_vals
     ):
+        # print('DEBUG:', lines.name)
         if (len(self.x) == 0
             or len(lines) == 0
             or ('nmatch' in _cache and _cache['nmatch'] == 0)):
@@ -515,23 +524,19 @@ class Model(Optimiser):
             for key,val in set_keys_vals.items():
                 ichanged |= lines_copy[key] != lines_copy.cast(key,float(val))
             nchanged = np.sum(ichanged)
-            ## check if the x-grid has changed
-            if 'x' not in _cache or len(self.x) != len(_cache['x']) or np.any(self.x!=_cache['x']):
-                xchanged = True
-            else:
-                xchanged =False
             ## compute as little of the spectrum as possible
-            if 'τ' in _cache and nchanged == 0 and not xchanged:
+            if 'T' in _cache and nchanged == 0 and self._xchanged < self._last_construct_time:
+                # print('DEBUG:', 'a')
                 ## no change, use cache
-                # print('DEBUG:', 'do not use cache -- no change')
-                τ = _cache['τ']
+                pass
             elif  (
-                    'τ' not in _cache # first run
+                    'T' not in _cache # first run
                     or nchanged > (len(lines_copy)/2) # most lines change--- just recompute everything
-                    or xchanged                           # new x-coordinate
+                    or self._xchanged > self._last_construct_time # new x-coordinate
                  ):
+                # print('DEBUG:', 'b',self._xchanged)
                 ## calculate entire spectrum
-                # print('DEBUG:', 'do not use cache -- full spectrum',nchanged,len(lines_copy),lines.name)
+                # # print('DEBUG:', 'do not use cache -- full spectrum',nchanged,len(lines_copy),lines.name)
                 for key in keys:
                     lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
                 for key,val in set_keys_vals.items():
@@ -540,14 +545,12 @@ class Model(Optimiser):
                 x,τ = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-                _cache['τ'] = τ
-                _cache['absorbance'] = np.exp(-τ)
-                _cache['x'] = self.x
-    
+                _cache['T'] = np.exp(-τ)
             else:
                 # print('DEBUG:', 'do not use cache -- partial spectrum',nchanged,len(lines_copy),lines.name)
                 ## recompute only lines that have changed
                 lines_new = lines.copy(index=imatch[ichanged])
+                # print('DEBUG:', 'nchanged')
                 for key,val in set_keys_vals.items():
                     lines_new[key] = float(val)
                 xnew,τnew = lines_new.calculate_spectrum(
@@ -556,64 +559,15 @@ class Model(Optimiser):
                 xold,τold = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
-                τ = _cache['τ'] - τold + τnew
+                T = _cache['T'] / np.exp(-τold) * np.exp(-τnew)
                 ## update cache to new lines
                 for key in keys:
                     lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
                 for key,val in set_keys_vals.items():
                     lines_copy.set(key,float(val),index=ichanged)
-                _cache['τ'] = τ
-                _cache['absorbance'] = np.exp(-τ)
-        # else:
-            # print('DEBUG:', 'use cache')
-
-            
-    
+                _cache['T'] = T
         ## set absorbance in self
-        self.y *= _cache['absorbance']
-
-            # ## set keys with vals if they are not already the correct values
-            # for key,val in set_keys_vals.items():
-                # if (
-                        # len(_cache) == 0 # first run
-                        # or key not in tlines # key not set
-                        # or np.any(tlines[key]) != float(val) # value has changed
-                    # ):
-                    # tlines[key] = float(val)
-            # ## if previous calculations are cached then find which lines have actually changed -- store in j
-            # if 'tlines' in _cache:
-                # keys_to_test = [key for key in ['ν','τ','Γ','ΓD'] if tlines.is_known(key)]
-                # j = np.any([tlines[key] != _cache['tlines'][key] for key in keys_to_test], axis=0)
-            # if 'τ' in _cache and np.sum(j) == 0:
-                # ## no change
-                # y = _cache['τ']
-            # elif  (
-                 # 'τ' not in _cache # first run
-                 # # or j is None      # first run?
-                 # or np.sum(j) > (len(tlines)/2) # most lines change--- just recompute everything
-                 # or len(self.x) != len(_cache['x']) # x-grid has changed
-                 # or np.any(self.x!=_cache['x']) # x-grid has changed
-                 # ):
-                # ## compute entire spectrum
-                # x,y = tlines.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-            # else:
-                # ## compute difference of changed lines
-                # xnew,ynew = tlines.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
-                # xold,yold = _cache['tlines'].calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=j)
-                # y = _cache['τ'] - yold + ynew
-            # ## store _cache
-            # _cache['tlines'] = tlines
-            # _cache['τ'] = y
-            # _cache['absorbance'] = np.exp(-y)
-            # _cache['x'] = self.x
-        # ## set absorbance in self
-        # self.y *= _cache['absorbance']
+        self.y *= _cache['T']
 
     @optimise_method()
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
