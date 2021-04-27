@@ -655,13 +655,14 @@ class Optimiser:
                     optargs['tr_solver'] = 'lsmr'
             else:
                 raise Exception(f'Unknown optimsiation method: {repr(optargs["method"])}')
+            if self._ncpus > 1:
+                optargs['jac'] = self._calculate_jacobian
             ## call optimisation routine -- KeyboardInterrupt possible
             try:
                 if verbose or self.verbose:
                     print('Method:',optargs['method'])
                     # print("Optimisation parameters:")
                     # print('    '+pformat(optargs).replace('\n','\n    '))
-                # optargs['jac'] = self._calculate_jacobian
                 result = optimize.least_squares(**optargs)
                 if verbose or self.verbose:
                     print('Optimisation complete')
@@ -734,6 +735,7 @@ class Optimiser:
         ## an uncertainty -- so only build a jacobian with differences
         ## above machine precisison.  ALTHERNATIVELY, COULD TRY AND
         ## INCREASE STEP SIZE AND RECALCULATE.
+        print(f'    Calculate Jacobian for {len(p)} parameters and {len(residual)} residual points.')
         if self._ncpus == 1:
             ## single thread
             jacobian = [] # jacobian columns and which parameter they correspond to
@@ -747,7 +749,8 @@ class Optimiser:
                 dresidual = (residualnew-residual)
                 jacobian.append(dresidual/step)
                 pnew[i] = p[i] # change it back
-                print(f'Jacobian calc: {i:4} {timestamp()-timer:7.2e}')
+                if self.verbose:
+                    print(f'        parameter {i:4}: time = {timestamp()-timer:7.2e}    rms = {self.rms:0.8e}')
             jacobian = np.transpose(jacobian)
         else:
             ## multiprocessing, requires serialisation
@@ -805,15 +808,17 @@ class Optimiser:
             print(f'{self.name}: computing uncertainty for {len(p)} parameters')
         ## get jacobian using rescaled parameters
         jacobian = self._calculate_jacobian(p)
+        inonzero = np.any(jacobian!=0,axis=0)
         ## compute 1σ uncertainty from Jacobian
         unc = np.full(len(p),np.nan)
         if len(jacobian) > 0:
-            covariance = linalg.inv(np.dot(jacobian.T,jacobian))
+            t = jacobian[:,inonzero]
+            covariance = linalg.inv(np.dot(t.T,t))
             if rms_noise is None:
                 chisq = np.sum(residual**2)
                 dof = len(residual)-len(p)+1
                 rms_noise = np.sqrt(chisq/dof)
-            unc = np.sqrt(covariance.diagonal())*rms_noise
+            unc[inonzero] = np.sqrt(covariance.diagonal())*rms_noise
         else:
             print('All parameters have no effect, uncertainties not calculated')
         self._set_parameters(p,unc,rescale=True)
