@@ -880,7 +880,7 @@ class Model(Optimiser):
     def auto_add_intensity_spline(self,xstep=1000.,y=1.):
         """Quickly add an evenly-spaced intensity spline."""
         self.experiment.construct()
-        knots = [(x,P(y,True)) for x in
+        knots = [[x,P(y,True)] for x in
                  np.arange(self.experiment.x[0]-xstep,self.experiment.x[-1]+xstep*1.01,xstep)]
         self.add_intensity_spline(knots=knots)
         return knots
