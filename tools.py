@@ -77,13 +77,20 @@ def vectorise(vargs=None,dtype=None,cache=False):
 
         ## get a cached version fo the function if requested
         if cache:
-            _cache = {}
-            def function_maybe_cached(*args):
-                hashed_args = hash(tuple(args))
-                if hashed_args not in _cache:
-                    assert len(_cache)<1000,'Need to implement a limited cache'
-                    _cache[hashed_args] = function(*args)
-                return _cache[hashed_args]
+            ## works with multiprocessing -- can be dill pickled
+            # _cache_max_len = 10000
+            # _cache = {}
+            # def function_maybe_cached(*args):
+                # hashed_args = hash(tuple(args))
+                # if hashed_args not in _cache:
+                    # retval = function(*args)
+                    # if len(_cache) < _cache_max_len:
+                        # _cache[hashed_args] = retval
+                    # else:
+                        # raise Exception(f'Need to implement a limited cache: {function.__name__}')
+                # return _cache[hashed_args]
+            ## will not work with dill for some reason
+            function_maybe_cached = lru_cache(function)
         else:
             function_maybe_cached = function
 
@@ -243,6 +250,23 @@ def tanh_transition(x,xa,xb,center,width):
     Uses a hyperbolic tangent centred at center with the given transition
     width."""
     return (np.tanh((x-center)/width)+1)/2*(xb-xa)+xa
+
+def tanh_hat(x,xa,xb,center,ramp_width,top_width):
+    """Creates a smooth match between extreme values xa and xb on grid x.
+    Uses a hyperbolic tangent centred at center with the given transition
+    width."""
+    if np.isscalar(x):
+        if x<=center:
+            return (np.tanh((x-center+top_width)/ramp_width)+1)/2*(xb-xa)+xa 
+        else:
+            return (np.tanh((center+top_width-x)/ramp_width)+1)/2*(xb-xa)+xa
+    else:
+        i = x<center
+        retval = np.empty(x,dtype=float)
+        retval[i] = (np.tanh((x[i]-center-top_width)/ramp_width)+1)/2*(xb-xa)+xa
+        retval[~i] = (np.tanh((center+top_width-x[i])/ramp_width)+1)/2*(xb-xa)+xa
+        return retval
+    
 
 def leastsq(func,
             x0,
@@ -3516,12 +3540,10 @@ def string_to_file(
         string,
         mode='w',
         encoding='utf8',
-        make_directory=False,
 ):
     """Write string to file_name."""
     filename = expand_path(filename)
-    if make_directory:
-        mkdir(dirname(filename))
+    mkdir(dirname(filename))
     with open(filename,mode=mode,encoding=encoding) as f: 
         f.write(string)
 
