@@ -332,9 +332,9 @@ class Mixture(Dataset):
 
     ## any independent physical quantitie except species abundances
     state_prototypes = {}
-    state_prototypes['p'] = dict(description="Pressure",units='Pa' ,kind=float ,infer=[])
-    state_prototypes['T'] = dict(description="Temperature",units='K' ,kind=float ,infer=[])
-    state_prototypes['t'] = dict(description="Time",units='s' ,kind=float ,infer=[])
+    state_prototypes['p'] = dict(description="Pressure",units='Pa' ,kind='f' ,infer=[])
+    state_prototypes['T'] = dict(description="Temperature",units='K' ,kind='f' ,infer=[])
+    state_prototypes['t'] = dict(description="Time",units='s' ,kind='f' ,infer=[])
     default_prototypes = copy(state_prototypes)
     def _f(self):
         """Compute totoal density at every independent state."""
@@ -342,7 +342,7 @@ class Mixture(Dataset):
         for d,i in self.unique_dicts_match(*self.state_keys):
             nt[i] = np.sum([self[key][i] for key in self.species_keys],0)
         return nt
-    default_prototypes['nt'] = dict(description="Total number density",units='cm-3',kind=float,infer=[((),_f)])
+    default_prototypes['nt'] = dict(description="Total number density",units='cm-3',kind='f',infer=[((),_f)])
 
     # species_keys = property(lambda self: [key for key in self if key not in self.default_prototypes])
     # state_keys = property(lambda self: [key for key in self.state_prototypes if key in self])
