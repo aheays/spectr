@@ -79,7 +79,7 @@ def optimise_method(
             signature_keys = list(inspect.signature(function).parameters)[1:]
             for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
                 if signature_key in kwargs:
-                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function_name)}.')
+                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function.__name__)}.')
                 kwargs[signature_key] = arg
             ## add parameters suboptimisers in args to self
             parameters,suboptimisers =  _collect_parameters_and_optimisers(kwargs)
@@ -572,7 +572,7 @@ class Optimiser:
         if (self._monitor_frequency=='every iteration'
             or (self._monitor_frequency=='rms decrease' and rms < self._rms_minimum)):
             current_time = timestamp()
-            print(f'call: {self._number_of_optimisation_function_calls:<6d} time: {current_time-self._previous_time:<10.3g} RMS: {rms:<12.8e}')
+            print(f'call: {self._number_of_optimisation_function_calls:>6d} time: {current_time-self._previous_time:<7.2e} rms: {rms:<12.8e}')
             self.monitor()
             self._previous_time = current_time
             if rms < self._rms_minimum:
@@ -655,8 +655,9 @@ class Optimiser:
                     optargs['tr_solver'] = 'lsmr'
             else:
                 raise Exception(f'Unknown optimsiation method: {repr(optargs["method"])}')
-            if self._ncpus > 1:
-                optargs['jac'] = self._calculate_jacobian
+            optargs['jac'] = self._calculate_jacobian
+            # if self._ncpus > 1:
+                # optargs['jac'] = self._calculate_jacobian
             ## call optimisation routine -- KeyboardInterrupt possible
             try:
                 if verbose or self.verbose:
@@ -730,12 +731,13 @@ class Optimiser:
         ## compute model at p
         self._set_parameters(p,rescale=True)
         residual = self.construct()
+        rms = tools.rms(residual)
         ## compute Jacobian by forward finite differencing, if a
         ## difference is too small then it cannot be used to compute
         ## an uncertainty -- so only build a jacobian with differences
         ## above machine precisison.  ALTHERNATIVELY, COULD TRY AND
         ## INCREASE STEP SIZE AND RECALCULATE.
-        print(f'    Calculate Jacobian for {len(p)} parameters and {len(residual)} residual points.')
+        # print(f'    Calculate Jacobian for {len(p)} parameters and {len(residual)} residual points.')
         if self._ncpus == 1:
             ## single thread
             jacobian = [] # jacobian columns and which parameter they correspond to
@@ -749,8 +751,12 @@ class Optimiser:
                 dresidual = (residualnew-residual)
                 jacobian.append(dresidual/step)
                 pnew[i] = p[i] # change it back
-                if self.verbose:
-                    print(f'        parameter {i:4}: time = {timestamp()-timer:7.2e}    rms = {self.rms:0.8e}')
+                rmsnew = tools.rms(residualnew)
+                if rms == rmsnew:
+                    message = 'parameter has no effect'
+                else:
+                    message = ''    
+                print(f'jcbn: {i:>6d} time: {timestamp()-timer:>7.2e} rms: {rmsnew:>12.8e} {message}')
             jacobian = np.transpose(jacobian)
         else:
             ## multiprocessing, requires serialisation
@@ -788,6 +794,15 @@ class Optimiser:
         ## set back to best fit
         self._set_parameters(p,rescale=True) # set param
         self.construct(recompute_all=True )
+        ## set zeros to very small to prevent matrix inversion problems
+        i = (jacobian == 0)
+        if np.any(i):
+            print('Some parameters have no effect on the model' )
+            jacobian[i] = 1e-50
+        i = np.isnan(jacobian)
+        if np.any(i):
+            print('Some parameters nan' )
+            jacobian[i] = 1e-50
         ## return
         return jacobian
 
