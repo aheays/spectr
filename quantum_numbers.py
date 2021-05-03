@@ -7,7 +7,7 @@ from pprint import pprint
 import numpy as np
 from scipy import linalg
 import sympy
-from immutabledict import immutabledict
+from immutabledict import immutabledict as idict
 
 from .dataset import Dataset
 from . import tools
@@ -619,95 +619,107 @@ def decode_rotational_transition(name,return_separately=False):
     # ## combine parts
     # return('_'.join(retval))
 
-# def encode_transition(
-        # qnp=None, # a dicttionary of upper state quantum numbers, keys without 'p' suffix
-        # qnpp=None, # a dicttionary of lower state quantum numbers, keys without 'pp' suffix
-        # **qn, # Upper and lower quantum numbers, with 'p' or 'pp' suffices
-# ):
-    # """Use quantum numbers to generate a string representing a
-    # transition. e.g., species_levelp-levelpp_rotationaltransition"""
 
-    # if qnp is not None:
-        # for key,val in qnp.items():
-            # qn[key+'p'] = val
-    # if qnpp is not None:
-        # for key,val in qnpp.items():
-            # qn[key+'pp'] = val
-    # name_parts = []
-    # ## get species
-    # if 'speciespp' in qn:
-        # name_parts.append(qn['speciespp'])
-    # elif 'speciesp' in qn:
-        # name_parts.append(qn['speciesp'])
-    # elif 'species' in qn:
-        # name_parts.append(qn['species'])
-    # ## get upper and lower state
-    # encode_Λ = {0:'Σ',1:'Π',2:'Δ',3:'Φ'}
-    # upper_state_name = ''
-    # if 'labelp' in qn:
-        # upper_state_name += qn['labelp']
-    # if 'Sp' in qn and 'Λp' in qn:
-        # upper_state_name += '.'+str(int(2*qn['Sp']+1))+encode_Λ[qn['Λp']]
-        # if qn['Λp']==0 and 'sp' in qn:
-            # if qn['sp']==0:
-                # upper_state_name += '+'
-            # else:
-                # upper_state_name += '-'
-        # if 'vp' in qn:      #  e.g., X(0)
-            # upper_state_name += '(v='+format(qn['vp'],'g')+')'
-    # else:
-        # if 'vp' in qn:      # e.g., X00
-            # upper_state_name += format(int(qn['vp']),'02d')
-    # lower_state_name = ''
-    # if 'labelpp' in qn:
-        # lower_state_name += qn['labelpp']
-    # if 'Spp' in qn and 'Λpp' in qn:
-        # lower_state_name += '.'+str(int(2*qn['Spp']+1))+encode_Λ[qn['Λpp']]
-        # if qn['Λpp']==0 and 'spp' in qn:
-            # if qn['spp']==0:
-                # lower_state_name += '+'
-            # else:
-                # lower_state_name += '-'
-        # if 'vpp' in qn:      #  e.g., X(0)
-            # lower_state_name += '(v='+format(qn['vpp'],'g')+')'
-    # else:
-        # if 'vpp' in qn:      # e.g., X00
-            # lower_state_name += format(int(qn['vpp']),'02d')
-    # if len(upper_state_name)>0 and len(lower_state_name)>0:
-        # name_parts.append(upper_state_name+'-'+lower_state_name)
-    # elif len(upper_state_name)>0:
-        # name_parts.append(upper_state_name)
-    # elif len(lower_state_name)>0:
-        # name_parts.append(lower_state_name)
-    # ## rotational part
-    # encode_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
-    # if 'Jp' in qn and 'Jpp' in qn:
-        # qn['ΔJ'] = qn['Jp']-qn['Jpp']
-    # if 'branch' in qn:
-        # t = qn['branch']
-        # if 'Jpp' in qn:
-            # ## this branch is to add leading zero to Jpp<10 so that names are more aligned
-            # if qn['Jpp']<10:
-                # t += '0'+format(qn['Jpp'],'g')
-            # else:
-                # t += format(qn['Jpp'],'g')
-        # name_parts.append(t)
-    # if 'ΔJ' in qn:
-        # t = encode_ΔJ[qn['ΔJ']]
-        # if 'Fp' in qn and 'efp' in qn and 'Fpp' in qn and 'efpp' in qn:
-            # t += format(qn['Fp'],'g')+format(qn['Fpp'],'g')+str(qn['efp'])+str(qn['efpp'])
-        # if 'Jpp' in qn:
-            # ## this branch is to add leading zero to Jpp<10 so that names are more aligned
-            # if qn['Jpp']<10:
-                # t += '0'+format(qn['Jpp'],'g')
-            # else:
-                # t += format(qn['Jpp'],'g')
-        # name_parts.append(t)
-    # ## notes
-    # if 'notes' in qn:
-        # name_parts.append(qn['notes'])
-    # ## combine parts
-    # return('_'.join(name_parts))
+_translate_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
+def encode_transition(
+        qn=None,
+        qnl=None,
+        qnu=None,
+):
+    ## get all upper and lower qn
+
+    if qnl is None:
+        qnl = {}
+    else:
+        qnl = copy(qnl)
+    if qnu is None:
+        qnu = {}
+    else:
+        qnu = copy(qnu)
+    if qn is not None:
+        for key,val in qn.items():
+            if key=='species':
+                qnu.setdefault(key,val)
+            if len(key)>2:
+                if key[-2:]=='_u':
+                    qnu.setdefault(key[:-2],val)
+                if key[-2:]=='_l':
+                    qnl.setdefault(key[:-2],val)
+    if 'species' in qnl and 'species' in qnu and qnu['species']==qnl['species']:
+        qnl.pop('species')
+    retval = encode_level(qnu)+'-'+encode_level(qnl)
+    if 'ΔJ' in qn:
+        retval += '_'+_translate_ΔJ[qn['ΔJ']] 
+    return retval
+    
+def encode_level(qn):
+    """Turn quantum numbers etc (as in decode_level) into a string name. """
+    ## Test code
+    ## t = encode_level(species='N2',label='cp4',Λ=0,s=0,gu='u',S=0,v=5,F=1,ef='e',Ω=0)
+    ## print(t)
+    ## pprint(decode_level(t))
+    qn = copy(qn)  # all values get popped below, so make a ocpy
+    retval = ''                 # output string
+    ## electronic state label and then get symmetry symbol, first get whether Σ+/Σ-/Π etc, then add 2S+1 then add g/u
+    if 'Λ' in qn:
+        Λ = qn.pop('Λ')
+        if Λ==0:
+            retval = 'Σ'
+            ## get + or - superscript
+            if 's' in qn:
+                retval += ('+' if qn.pop('s')==0 else '-')
+        elif Λ==1:
+            retval = 'Π'
+        elif Λ==2:
+            retval = 'Δ'
+        elif Λ==3:
+            retval = 'Φ'
+        else:
+            raise Exception('Λ>3 not implemented')
+        if Λ>0 and 's' in qn: qn.pop('s') # not needed
+        if 'S' in qn: retval = str(int(2*float(qn.pop('S'))+1))+retval
+        if 'gu' in qn: retval += qn.pop('gu')
+    ## add electronic state label
+    if 'label' in qn and retval=='':
+        retval =  qn.pop('label')
+    elif 'label' in qn:
+        retval = qn.pop('label')+'.'+retval
+    ## prepend species
+    if 'species' in qn and retval=='':
+        retval =  qn.pop('species')
+    elif 'species' in qn:
+        retval =  qn.pop('species')+'_'+retval
+    ## append all other quantum numbers in parenthese
+    if len(qn)>0:
+        t = []
+        for key in qn:
+            if key in ('v','F'): # ints
+                t.append(key+'='+str(int(qn[key])))
+            elif key in ('Ω','Σ','SR'): 
+                t.append(key+'='+format(qn[key],'g'))
+            else:
+                t.append(key+'='+str(qn[key]))
+        retval = retval + '('+','.join(t)+')'
+    return retval
+    
+def encode_latex_term_symbol(**qn):
+    """Beginning only."""
+    t = {0:r'\Sigma', 1:r'\Pi', 2:r'\Delta', 3:r'\Phi'}
+    retval = f'{{}}^{int(2*qn["S"]+1)}{t[qn["Λ"]]}'
+    if 's' in qn and qn['Λ']==0: retval += ('^+' if qn['s']==0 else  '^-')
+    subscript = ''
+    if 'gu' in qn: subscript += qn['gu']
+    if 'F'  in qn: subscript += 'F_'+str(int(qn['F']))
+    if 'Ω'  in qn:
+        if qn['Ω']%1==0: subscript += str(int(qn['Ω']))
+        else:            subscript += r'\frac{{{}}}{{2}}'.format(int(qn['Ω']*2))
+    if 'ef' in qn: subscript += qn['ef']
+    if len(subscript)>0: retval += r'_{'+subscript+r'}'
+    return(retval)
+    
+_encode_Λ_data = {0:'Σ',1:'Π',2:'Δ',3:'Φ',4:'Γ'}
+def encode_Λ(Λ):
+    return(_encode_Λ_data[Λ])
 
 # def encode_branch(ΔJ=None,ΔN=None,Jp=None,Jpp=None, Np=None,Npp=None,efp=None,efpp=None, Fp=None,Fpp=None):
     # """Extract information from the provided quantum numbers to encode a
