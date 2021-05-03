@@ -12,6 +12,7 @@ from .dataset import Dataset
 from . import tools
 from .tools import cache
 from . import database
+from . import plotting
 from .exceptions import MissingDataException
 
 
@@ -78,6 +79,12 @@ def _f(name):
     name = re.sub(r'([+-])',r'$^{\1}$',name) # superscript charge
     return(name)
 _species_name_translation_functions[('standard','matplotlib')] = _f
+
+## cantera
+def _f(name):
+    """From cantera species name to standard. No translation actually"""
+    return name
+_species_name_translation_functions[('cantera','standard')] = _f
 
 ## leiden
 _species_name_translation_dict['leiden'] = bidict({
@@ -192,7 +199,11 @@ _species_name_translation_functions[('standard','latex')] = _f
 def get_species(name):
     return Species(name)
 
-
+@cache
+def get_chemical_name(name):
+    species = get_species(name)
+    return species['chemical_name']
+    
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
 
@@ -327,59 +338,200 @@ class Species:
     point_group = property(lambda self: self['point_group'])
 
 
-class Mixture(Dataset):
-    """A zero-dimesional possibly time-dependent chemical mixture."""
+class Mixture():
+    """A zero-dimesional time-dependent chemical mixture."""
 
-    ## any independent physical quantitie except species abundances
-    state_prototypes = {}
-    state_prototypes['p'] = dict(description="Pressure",units='Pa' ,kind='f' ,infer=[])
-    state_prototypes['T'] = dict(description="Temperature",units='K' ,kind='f' ,infer=[])
-    state_prototypes['t'] = dict(description="Time",units='s' ,kind='f' ,infer=[])
-    default_prototypes = copy(state_prototypes)
-    def _f(self):
-        """Compute totoal density at every independent state."""
-        nt = np.zeros(len(self))
-        for d,i in self.unique_dicts_match(*self.state_keys):
-            nt[i] = np.sum([self[key][i] for key in self.species_keys],0)
-        return nt
-    default_prototypes['nt'] = dict(description="Total number density",units='cm-3',kind='f',infer=[((),_f)])
+    def __init__(self):
+        self.reaction_network = None
+        self.density = Dataset()
+        self.state = Dataset()
 
-    # species_keys = property(lambda self: [key for key in self if key not in self.default_prototypes])
-    # state_keys = property(lambda self: [key for key in self.state_prototypes if key in self])
 
-    def get_most_abundant(self,n=5):
-        """Return names of the n most abundance species."""
-        keys = [key for key in self if len(key)>2 and key[:2] == 'n_']
-        i = np.argsort([self[key].max() for key in keys])
-        retval = [keys[ii][2:] for ii in i[-1:-n:-1]]
+    def __getitem__(self,key):
+        if (self.state.is_known(key)
+            or key in self.state.prototypes):
+            ## return state variable
+            return self.state[key]
+        elif key in self.density:
+            ## return density of species
+            return self.density[key]
+        elif r:=re.match(r'x\((.+)\)',key):
+            ## match mixing ratio of species
+            return self.get_mixing_ratio(r.group(1))
+        elif r:=re.match(r'n\((.+)\)',key):
+            ## density of species
+            return self.density[r.group(1)]
+        else:
+            raise Exception(f'Unknown {key=}')
+
+    def get_species(self):
+        """Get a list of all chemical species."""
+        return list(self.density.keys())
+
+    def get_mixing_ratio(self,species):
+        return self.density[species]/self.state['nt']
+
+    def __len__(self):
+        return len(self.state)
+
+    def get_rates(
+            self,
+            sort_method='max anywhere', # maximum somewhere
+            nsort=3,           # return this many rates everywhere
+            **kwargs_get_reactions 
+    ):
+        """Return larges-to-smallest reaction rates matching
+        kwargs_get_reactions. """
+        reaction_names = []
+        rates = []
+        for reaction in self.reaction_network.get_reactions(**kwargs_get_reactions):
+            if reaction.rate is None:
+                raise Exception(f'Reaction rate not set: {reaction}')
+            rate = copy(reaction.rate)
+            reaction_names.append(reaction.name)
+            rates.append(rate)
+        ## add total
+        total = np.nansum([t for t in rates],axis=0)
+        ## sort
+        if sort_method == 'maximum':
+            ## list all reactions by their reverse maximum rate 
+            i = np.argsort([-np.max(t) for t in rates])
+        elif sort_method == 'max anywhere':
+            ## return all reactions that are in the top 5 ranking anywhere in their domain
+            i = np.argsort(-np.row_stack(rates),0)
+            i = np.unique(i[:(nsort),:].flatten()) 
+        else:
+            raise Exception(f'Unknown {sort_method=}')
+        ## return as dict
+        retval = {'total':total}
+        retval.update({reaction_names[ii]:rates[ii] for ii in i})
         return retval
 
-
-    def plot_density(
-            self,
-            xkey,
-            species_list,
-            zkeys=None,
-            **plot_kwargs
-    ):
+    def plot_density(self,species=5,xkey='t',ax=None):
         """Plot density of species. If xkeys is an integer then plot that many
         most abundant anywhere species. Or else give a list of species
         names."""
-        plot_kwargs.setdefault('marker','')
-        plot_kwargs.setdefault('ynewaxes',False)
-        plot_kwargs.setdefault('znewaxes',False)
-        plot_kwargs.setdefault('annotate_lines', True)
-        plot_kwargs.setdefault('legend',False)
-        plot_kwargs.setdefault('yscale','log')
-        if species_list is None:
-            species_list = self.get_most_abundant()
-        if isinstance(species_list,int):
-            ## plot most abundant species
-            species_list = self.get_most_abundant(species_list)
-        ykeys = [f'n_{species}' for species in tools.ensure_iterable(species_list)]
+        if isinstance(species,int):
+            ## get most abundance species anywhere
+            all_keys = np.array(self.density.keys())
+            species = []
+            for i in range(len(self.density)):
+                j = np.argsort([-self.density[t][i] for t in self.density])
+                species.extend(all_keys[j[:5]])
+            species = tools.unique(species)
+        if ax is None:
+            ax = plotting.gca()
+        # ## plot total density
+        # ax.plot(self['nt'],self[ykey],label='nt',color='black',alpha=0.3,linewidth=6)
+        ## plot individual species
+        for ykey in species:
+            ax.plot(self[xkey],self.density[ykey],label=ykey)
+        ax.set_yscale('log')
+        # ax.set_ylim(self[ykey].min(),self[ykey].max())
+        ax.set_xlabel(ykey)
+        ax.set_ylabel('Density (cm-3)')
+        plotting.legend(ax=ax)
+
+    def plot_rates(
+            self,
+            xkey='t',
+            ax=None,
+            plot_total=True,    # plot sum of all rates
+            plot_kwargs=None,
+            normalise_to_species=None, # normalise rates divided by the density of this species
+            **kwargs_get_rates         # for selecting rates to plot
+    ):
+        """Plot rates matching kwargs_get_rates."""
+        if ax is None:
+            ax = plotting.plt.gca()
+            ax.cla()
+        if plot_kwargs is None:
+            plot_kwargs = {}
+        x = self[xkey]
+        rates = self.get_rates(**kwargs_get_rates)
+        ylabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
+        names = list(rates)
+        if normalise_to_species:
+            for key in rates:
+                rates[key] /= self.density[normalise_to_species]
         ## plot
-        fig = self.plot(xkey, ykeys, zkeys, **plot_kwargs)
-        return fig
+        for i,name in enumerate(names):
+            if name == 'total' and not plot_total:
+                continue
+            t_plot_kwargs = copy(plot_kwargs)
+            t_plot_kwargs['label'] = f'{name}'
+            if name == 'total':
+                t_plot_kwargs.update(color='black',alpha=0.3,linewidth=6)
+            ax.plot(x,rates[name],**t_plot_kwargs)
+        ax.set_xlabel(xkey)
+        ax.set_xlabel(ylabel)
+        ax.set_yscale('log')
+        ax.set_xlim(x.min(),x.max())
+        plotting.legend()
+        return ax,rates
+
+    def plot_production_destruction(
+            self,
+            species,
+            xkey='t',
+            ax=None,
+            normalise=False,    # divide rates by species abundance
+            nsort=3,            # include this many ranked rates at each altitude
+    ):
+        """Plot destruction and production rates of on especies."""
+        if ax is None:
+            ax = plotting.plt.gca()
+            ax.cla()
+        x = self[xkey]
+        ## production rates
+        tax,production_rates = self.plot_rates(
+            xkey=xkey, ax=ax, plot_total= True,
+            with_products=species,
+            plot_kwargs={'linestyle':'-'},
+            normalise_to_species=(species if normalise else None),
+            nsort=nsort,
+        )
+        ## destruction
+        tax,destruction_rates = self.plot_rates(
+            xkey=xkey, ax=ax, plot_total= True,
+            with_reactants=species,
+            plot_kwargs={'linestyle':':',},
+            normalise_to_species=(species if normalise else None),
+            nsort=nsort
+        )
+        ## plot the difference betwee producti
+        y = production_rates['total']-destruction_rates['total']
+        i = y>0
+        kwargs = dict(alpha=0.3,markersize=10,marker='o',linestyle='',zorder=-10)
+        ax.plot(x[i],y[i],label='total production > destruction',color='blue',**kwargs)
+        ax.plot(x[~i],np.abs(y[~i]),label='total production < destruction',color='red',**kwargs)
+        plotting.legend(show_style=True,title=f'Production and destruction rates of {species}')
+        # ax.set_title(f'Production and destruction rates of {species}')
+        return ax
+
+    # def get_most_abundant(self,n=5):
+        # """Return names of the n most abundant species."""
+        # keys = [key for key in self if len(key)>2 and key[:2] == 'n_']
+        # i = np.argsort([self[key].max() for key in keys])
+        # retval = [keys[ii][2:] for ii in i[-1:-n:-1]]
+        # return retval
+
+    def load_cantera(
+            self,
+            gas,
+            states,
+            forward_rates=None,
+            reverse_rates=None,
+    ):
+        ## load state
+        self.state.extend(t=states.t,T=states.T,p=states.P)
+        ## load densities -- empty if states is None
+        for species in gas.kinetics_species_names:
+            self.density[species] = states.X[:, gas.species_index(species)]
+        ## load reaction netwrok
+        self.reaction_network = ReactionNetwork()
+        self.reaction_network.load_cantera(gas,forward_rates,reverse_rates)
+        
 
 ########################
 ## Chemical reactions ##
@@ -391,23 +543,47 @@ def decode_reaction(reaction,encoding='standard'):
     """Decode a reaction into a list of reactants and products, and other
     information. Encoding is for species names. Encoding of reaction
     string formatting not implemented."""
-    ## split parts
-    reactants_string,products_string = reaction.split('→')
-    reactants,products = [],[]
-    for r_or_p_string,r_or_p_list in ((reactants_string,reactants),
-                                      (products_string,products)):
-        ## decode reactants or products string into a list
-        for species in r_or_p_string.split(' + '):
-            species = species.strip()
-            if r:=re.match(r'^([0-9]+)(.*)',species):
-                multiplicity = int(r.group(1))
-                species = species.group(1)
-            else:
-                multiplicity = 1
-            species = decode_species(species,encoding)
-            for i in range(multiplicity):
-                r_or_p_list.append(species)
-        r_or_p_list.sort()
+    if encoding == 'standard':
+        ## split parts
+        reactants_string,products_string = reaction.split('→')
+        reactants,products = [],[]
+        for r_or_p_string,r_or_p_list in ((reactants_string,reactants), (products_string,products)):
+            ## decode reactants or products string into a list
+            for species in r_or_p_string.split(' + '):
+                species = species.strip()
+                if r:=re.match(r'^([0-9]+)(.*)',species):
+                    multiplicity = int(r.group(1))
+                    species = species.group(1)
+                else:
+                    multiplicity = 1
+                species = decode_species(species,encoding)
+                for i in range(multiplicity):
+                    r_or_p_list.append(species)
+            r_or_p_list.sort()
+    elif encoding == 'cantera':
+        ## split parts
+        reactants_string,products_string = re.split(r'[<>=]+',reaction)
+        reactants,products = [],[]
+        for r_or_p_string,r_or_p_list in ((reactants_string,reactants), (products_string,products)):
+            ## decode reactants or products string into a list
+            for species in r_or_p_string.split(' + '):
+                species = species.strip()
+                if species == 'M':
+                    ## neglect 3rd bodies
+                    continue
+                if r:=re.match(r'^([0-9]+) *(.*)',species):
+                    multiplicity = int(r.group(1))
+                    species = r.group(2)
+                else:
+                    multiplicity = 1
+                species = decode_species(species,encoding)
+                for i in range(multiplicity):
+                    r_or_p_list.append(species)
+            r_or_p_list.sort()
+        
+    else:
+        raise Exception(f"Unknown reaction encoding: {repr(encoding)}")
+    
     return reactants,products
 
 def encode_reaction(reactants,products,encoding='standard'):
@@ -669,6 +845,7 @@ class ReactionNetwork:
         self.reactions.append(r)
         for species in r.reactants + r.products:
             self.species.add(species)
+        return r
 
     def remove_unnecessary_reactions(self):
         """Remove all reactions containing species that have no
@@ -923,6 +1100,29 @@ class ReactionNetwork:
                     raise Exception( 'unspecified line type',line['type'])
             ## verify
             self.check_reactions()
+
+    def load_cantera(
+            self,
+            gas,
+            forward_rates=None,
+            reverse_rates=None,
+    ):
+        """Load reaction network and rates of progress.  You might like to
+        provide separate time-dependnent rates of progress instead."""
+        ## get rate constants and rates
+        if forward_rates is None:
+            forward_rates = gas.forward_rates_of_progress
+        if reverse_rates is None:
+            reverse_rates = gas.reverse_rates_of_progress
+        ## add reactions
+        for i,name in enumerate(gas.reaction_equations()):
+            reactants,products = decode_reaction(name,'cantera')
+            ## forward reaction
+            r = self.append(reactants=reactants,products=products)
+            r.rate = forward_rates[i]
+            ## reverse reaction
+            r = self.append(reactants=products,products=reactants)
+            r.rate = reverse_rates[i]
 
 def integrate_network(reaction_network,initial_density,state,time):
     """Integrate density with time."""

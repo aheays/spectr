@@ -241,7 +241,7 @@ class AtmosphericChemistry():
             plotting.legend(ax=ax,allow_multiple_axes=True)
 
     def plot_density(self,xkeys=5,ykey='z(km)',ax=None):
-        """Plot density of speices. If xkeys is an integer then plot that many
+        """Plot density of species. If xkeys is an integer then plot that many
         most abundant anywhere species. Or else give a list of species
         names."""
         if isinstance(xkeys,int):
@@ -391,7 +391,7 @@ class AtmosphericChemistry():
             ax.cla()
         y = self[ykey]
         ## production rates
-        self.plot_rates(
+        tax,production_rates = self.plot_rates(
             ykey=ykey, ax=ax, plot_total= True,
             with_products=species,
             plot_kwargs={'linestyle':'-'},
@@ -399,7 +399,7 @@ class AtmosphericChemistry():
             nsort=nsort,
         )
         ## destruction
-        self.plot_rates(
+        tax,destruction_rates = self.plot_rates(
             ykey=ykey, ax=ax, plot_total= True,
             with_reactants=species,
             plot_kwargs={'linestyle':':',},
