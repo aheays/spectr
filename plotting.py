@@ -7,6 +7,7 @@ import shutil
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
+from matplotlib.pyplot import gca,gcf
 from scipy import constants
 
 from . import tools
@@ -449,7 +450,8 @@ def set_figsize_fullscreen(fig=None):
         x,y = get_screensize()
         return(set_figsize_in_pixels(
             x=x,
-            y=y-55,        # a bit less to fit in toolbar
+            # y=y-55,        # a bit less to fit in toolbar
+            y=y-400,        # a bit less to fit in toolbar
             fig=fig))
     except:
         # pass
@@ -1642,6 +1644,7 @@ def annotate_line(
         text_x_offset,text_y_offset = transform_points_into_axis_fraction(matplotlib.rcParams['font.size']/2,matplotlib.rcParams['font.size']/2)
     xlim,ylim = ax.get_xlim(),ax.get_ylim()
     xdata,ydata = line.get_data()
+    xdata,ydata = np.asarray(xdata),np.asarray(ydata)
     if len(xdata)==0: return    # no line
     if xpos in (None,'left'):
         annotate_kwargs['xycoords'] = matplotlib.transforms.blended_transform_factory(ax.transAxes,ax.transData)
@@ -1869,6 +1872,7 @@ def plot_and_label_points(x,y,labels,ax=None,fontsize='medium',**plot_kwargs):
     l = ax.plot(x,y,**plot_kwargs)
     a = [ax.annotate(label,(xx,yy),fontsize=fontsize) for (xx,yy,label) in zip(x,y,labels)]
     return(l,a)
+
 
 def plot_lines_and_disjointed_points(x,y,max_separation=1,ax=None,**plot_kwargs):
     """Plot continguous data (x separation < max_separation) as line
@@ -2348,8 +2352,7 @@ def annotate_spectrum_by_branch(
         if len(zlines)==0: continue
         ## get annotation name
         if name_function is None:
-            # name = ' '.join([f'{val}' for key,val in qn.items()])
-            name = repr(qn)
+            name = lines.default_zlabel_format_function(qn)
         else:
             name = name_function(qn)
         ## update kwargs for this annotation
