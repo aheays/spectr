@@ -263,7 +263,7 @@ def _f1(self,f,SJ,J_l,Λ_u,Λ_l):
     fv = f/SJ*(2.*J_l+1.)       # correct? What about 2S+1?
     fv[(Λ_l==0)&(Λ_u!=0)] *= 2
     return fv
-prototypes['fv'] = dict(description="Band f-value",units="dimensionless", kind='f',  fmt='<10.5e',cast=cast_abs_float_array, infer=[
+prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',step=1e-4,cast=cast_abs_float_array,infer=[
     (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  band_strength_to_band_fvalue(Sv,ν, Λ_u,Λ_l)),
     ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
     ( ('f','SJ','J_l','Λ_u','Λ_l'), _f1,)])
@@ -279,11 +279,22 @@ prototypes['FCfactor'] =dict(description="Franck-Condon factor",units="dimension
 prototypes['Rcentroid'] =dict(description="R-centroid",units="Å", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R','FCfactor'), lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)])),])
 
 def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
+    """Compute singlet state rotational linestrength factors."""
     if not (np.all(S_u==0) and np.all(S_l==0)):
         raise InferException('Honl-London factors only defined here for singlet states.')
     SJ = quantum_numbers.honl_london_factor(Ω_u,Ω_l,J_u,J_l)
     return SJ
-prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
+def _f1(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
+    """Compute singlet state rotational linestrength and set mutiplet
+    state SJ to 1. -- HACK"""
+    if not 'set_multiplet_SJ_to_1' in self.attributes or not self.attributes['set_multiplet_SJ_to_1'] is True:
+        raise InferException('set_multiplet_SJ_to_1 is not True')
+    SJ = np.full(S_u.shape,1.)
+    ## set singlet states to correct Honl-London factors
+    i = (S_u==0)&(S_l==0)
+    SJ[i] = quantum_numbers.honl_london_factor(Ω_u[i],Ω_l[i],J_u[i],J_l[i])
+    return SJ
+prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f1),])
 
 # prototypes['τ'] = dict(description="Integrated optical depth",units="cm-1", kind='f',  fmt='<10.5e', infer={('σ','column_densitypp'):lambda self,σ,column_densitypp: σ*column_densitypp,},)
 # prototypes['I'] = dict(description="Integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp','ν'):lambda self,Ae,populationp,column_densityp,ν: Ae*populationp*column_densityp*ν,},)
@@ -360,6 +371,8 @@ class Generic(levels.Base):
     default_prototypes = {key:prototypes[key] for key in {*_level_keys,*_line_keys}}
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
+    
+    default_zlabel_format_function = lambda self,qn:quantum_numbers.encode_transition(qn)
     
     def plot_spectrum(
             self,
@@ -591,21 +604,24 @@ class Generic(levels.Base):
             retval = [(d,x,np.exp(-y)) for d,x,y in retval]
         return retval 
 
-    def _get_level(self,u_or_l,reduce_to=None,):
+    def _get_level(self,u_or_l,reduce_to=None,required_keys=()):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
-        ## try get all deining qn
-        for key in self.defining_qn:
+        ## try get all defining qn
+        for key in self.defining_qn :
             try: 
                 self[key]
             except InferException:
                 pass
-        ## 
         if u_or_l not in ('u','l'):
             raise Exception("u_or_l must be 'u' or 'l'")
+        suffix = '_'+u_or_l
+        ## ensure all required keys available
+        for key in required_keys:
+            self.assert_known(key+suffix)
         levels = self._level_class()
         for key in self.keys():
-            if len(key)>2 and key[-2:]==('_'+u_or_l):
+            if len(key)>len(suffix) and key[-len(suffix):] == suffix:
                 levels[key[:-2]] = self[key]
         if reduce_to == None:
             pass
@@ -620,11 +636,11 @@ class Generic(levels.Base):
                 raise ImplementationError()
         return levels
 
-    def get_upper_level(self,reduce_to=None):
-        return self._get_level('u',reduce_to)
+    def get_upper_level(self,*_get_level_args,**_get_level_kwargs):
+        return self._get_level('u',*_get_level_args,**_get_level_kwargs)
 
-    def get_lower_level(self,reduce_to=None):
-        return self._get_level('l',reduce_to)
+    def get_lower_level(self,*_get_level_args,**_get_level_kwargs):
+        return self._get_level('l',*_get_level_args,**_get_level_kwargs)
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -808,98 +824,146 @@ class Generic(levels.Base):
 
     # @optimise_method()
     # def generate_from_levels(
-    #         self,
-    #         levelu,levell,    # upper and lower level objects
-    #         matchu=idict(),    # only use matching upper levels
-    #         matchl=idict(),    # only use matching lower levels
-    #         match=idict(),      # only use matching lines
-    #         _cache=()
+            # self,
+            # levelu,levell,      # upper and lower level objects
+            # matchu=idict(),     # only use matching upper levels
+            # matchl=idict(),     # only use matching lower levels
+            # match=idict(),      # only keep matching lines
+            # _cache=()
     # ):
-    #     """Combine all combination of upper and lower levels into a line list."""
-    #     self.add_suboptimiser(levelu)
-    #     self.add_suboptimiser(levell)
-    #     if len(_cache) == 0:
-    #         ## first run
-    #         ibeg = len(self)    # initial length
-    #         ## match upper and lowe levels
-    #         iu,il = levelu.match(matchu),levell.match(matchl)
-    #         nu,nl = np.sum(iu),np.sum(il)
-    #         ## first run add all data to self
-    #         for key in levelu.root_keys():
-    #             self[key+'_u'] = np.ravel(np.tile(levelu[key][iu],nl))
-    #         for key in levell.root_keys():
-    #             self[key+'_l'] = np.ravel(np.repeat(levell[key][il],nu))
-    #         ## limit to allowed transition -- record indices for later
-    #         i = self.match(match)[ibeg:]
-    #         self.index(i)
-    #         _cache['i'],_cache['iu'],_cache['il'],_cache['nu'],_cache['nl'] = i,iu,il,nu,nl
-    #     else:
-    #         ## later runs - only update changed data
-    #         ##
-    #         i,iu,il,nu,nl = _cache['i'],_cache['iu'],_cache['il'],_cache['nu'],_cache['nl']
-    #         ## collect data
-    #         data = {}
-    #         for key in levelu.root_keys():
-    #             data[key+'_u'] = np.ravel(np.tile(levelu[key][iu],nl))
-    #         for key in levell.root_keys():
-    #             data[key+'_l'] = np.ravel(np.repeat(levell[key][il],nu))
-    #         ## add to self if data has changed, assumes
-    #         ## match_keys_vals has not changed
-    #         for key,val in data.items():
-    #             if np.any(val[i] != self[key]):
-    #                 self[key] = val[i]
+        # """Combine upper and lower levels into a line list. Extend these after any existing lines."""
+        # ## get indices and lengths of levels to combine
+        # if 'iu' not in _cache:
+            # _cache['iu'] = levelu.match(matchu)
+            # _cache['il'] = levell.match(matchl)
+            # _cache['nu'] = np.sum(_cache['iu'])
+            # _cache['nl'] = np.sum(_cache['il'])
+        # iu,il,nu,nl = _cache['iu'],_cache['il'],_cache['nu'],_cache['nl']
+        # ## collect level data
+        # data = {}
+        # for key in levelu.root_keys():
+            # data[key+'_u'] = np.ravel(np.tile(levelu[key][iu],nl))
+        # for key in levell.root_keys():
+            # data[key+'_l'] = np.ravel(np.repeat(levell[key][il],nu))
+        # ## get where to add data in self
+        # if 'ibeg' not in _cache:
+            # _cache['ibeg'] = len(self)    # initial length
+        # ibeg = _cache['ibeg']             # beginning index of new data
+        # ## get combined levels to add
+        # if 'imatch' not in _cache:
+            # ## first run -- add and then reduced to matches
+            # self.extend(data)
+            # ## limit to previous data and new data matching match
+            # imatch = self.match(match)
+            # imatch[:ibeg] = True     # keep all existing data
+            # self.index(imatch)
+            # ##
+            # imatch = imatch[ibeg:]              # index of new data only
+            # iend = len(self)    # end index of new data
+            # ilines = np.arange(ibeg,iend) # index array fo new data
+            # _cache['imatch'] = imatch
+            # _cache['ilines'] = ilines
+        # else:
+            # ## later run, add to self if data has changed
+            # ilines = _cache['ilines']
+            # imatch = _cache['imatch']
+            # for key,val in data.items():
+                # val = val[imatch]
+                # ichanged = np.any(val != self[key][ilines])
+                # self.set(key,val[ichanged],index=ilines[ichanged])
 
-    @optimise_method()
-    def generate_from_levels(
+    @optimise_method(add_construct_function=False)
+    def generate_dipole_allowed_lines_from_levels(
             self,
             levelu,levell,      # upper and lower level objects
             matchu=idict(),     # only use matching upper levels
             matchl=idict(),     # only use matching lower levels
-            match=idict(),      # only keep matching lines
             _cache=()
     ):
-        """Combine upper and lower levels into a line list. Extend these after any existing lines."""
-        ## get indices and lengths of levels to combine
-        if 'iu' not in _cache:
-            _cache['iu'] = levelu.match(matchu)
-            _cache['il'] = levell.match(matchl)
-            _cache['nu'] = np.sum(_cache['iu'])
-            _cache['nl'] = np.sum(_cache['il'])
-        iu,il,nu,nl = _cache['iu'],_cache['il'],_cache['nu'],_cache['nl']
-        ## collect level data
+        """Combine upper and lower levels into a line list, only including
+        dipole-allowed transitions. SLOW IMPLEMENTATION"""
+        ## get matching upper and lower level indices
+        iu = tools.find(levelu.match(matchu))
+        il = tools.find(levell.match(matchl))
+        ## collect indices pairs of allowed transitions
+        ku,kl = [],[]
+        for species in np.unique(levelu['species'][iu]):
+            ## indices of common species
+            tiu = iu[levelu['species'][iu]==species]
+            til = il[levell['species'][il]==species]
+            for Δefabs,ΔJ in ((0,+1), (0,-1),(2,0),):
+                ## look for allowed Δef/ΔJ transitions
+                for ju in tiu:
+                    for jl in til:
+                        if (abs(levelu['ef'][ju]-levell['ef'][jl]) == Δefabs
+                            and (levelu['J'][ju]-levell['J'][jl]) == ΔJ):
+                            ku.append(ju)
+                            kl.append(jl)
+        ## collect allowed data
         data = {}
         for key in levelu.root_keys():
-            data[key+'_u'] = np.ravel(np.tile(levelu[key][iu],nl))
+            data[key+'_u'] = levelu[key][ku]
         for key in levell.root_keys():
-            data[key+'_l'] = np.ravel(np.repeat(levell[key][il],nu))
-        ## get where to add data in self
-        if 'ibeg' not in _cache:
-            _cache['ibeg'] = len(self)    # initial length
-        ibeg = _cache['ibeg']             # beginning index of new data
-        ## get combined levels to add
-        if 'imatch' not in _cache:
-            ## first run -- add and then reduced to matches
-            self.extend(data)
-            ## limit to previous data and new data matching match
-            imatch = self.match(match)
-            imatch[:ibeg] = True     # keep all existing data
-            self.index(imatch)
-            ##
-            imatch = imatch[ibeg:]              # index of new data only
-            iend = len(self)    # end index of new data
-            ilines = np.arange(ibeg,iend) # index array fo new data
-            _cache['imatch'] = imatch
-            _cache['ilines'] = ilines
-        else:
-            ## later run, add to self if data has changed
-            ilines = _cache['ilines']
-            imatch = _cache['imatch']
-            for key,val in data.items():
-                val = val[imatch]
-                ichanged = np.any(val != self[key][ilines])
-                self.set(key,val[ichanged],index=ilines[ichanged])
+            data[key+'_l'] = levell[key][kl]
+        self.extend(data,keys='all')
 
+    @optimise_method()
+    def copy_level_data(
+            self,
+            level,
+            level_match=idict(), # only copy these levels
+            _cache=(),
+    ):
+        """Copy all non-inferred keys in level into upper or lower levels in
+        self with matching quantum numbers."""
+        ## store as much information about indices etc in cache
+        if len(_cache) == 0:
+            ## substitute both upper and lower levels
+            for suffix in ('_u','_l'):
+                _cache[suffix] = {}
+                ## get real valued data to copy in to self
+                keys_to_copy = [(key,key[:-len(suffix)]) for key in self
+                                if (len(key)>len(suffix) and key[-len(suffix):] == suffix # correct upper or lower level key
+                                    and not self.is_inferred(key) # not inferred data
+                                    and not key in self.defining_qn # do not copy quantum numbers
+                                    and self.get_kind(key) == 'f')]  # real value data only for optimisation
+                ## level quantum numbers to match
+                qn_keys = [(key+suffix,key) for key in level.defining_qn if level.is_known(key)]
+                ## determine which levels are relevant
+                ilevels = level.match(level_match)
+                for key_self,key_level in qn_keys:
+                    ilevels &= level.match({key_level:self.unique(key_self)})
+                ## copy each row of level to matching quantum numbers in self
+                ilevel,iself = [],[]
+                for i in tools.find(ilevels):
+                    # ## quantum numbers to match in self
+                    qn = {key_self:level[key_level][i] for key_self,key_level in qn_keys}
+                    j = tools.find(self.match(qn))
+                    if len(j) == 0:
+                        ## no matching levels in self
+                        continue
+                    iself.append(j)
+                    ilevel.append(np.full(j.shape,i))
+                iself = np.concatenate(iself)
+                ilevel = np.concatenate(ilevel)
+                _cache[suffix]['iself'] = iself
+                _cache[suffix]['ilevel'] = ilevel
+                _cache[suffix]['keys_to_copy'] = keys_to_copy
+        ## quantum numbers to match in self
+        ## copy data
+        for suffix in ('_u','_l'):
+            iself = _cache[suffix]['iself']
+            ilevel = _cache[suffix]['ilevel']
+            keys_to_copy = _cache[suffix]['keys_to_copy']
+            ## copy all data only if it has changed
+            for key_self,key_level in keys_to_copy:
+                # print('DEBUG:', key_self,)
+                if np.any(self[key_self][iself] !=level[key_level][ilevel]):
+                    self.set(key_self,level[key_level][ilevel],index=iself)
+                # self.set(key_self,level[key_level][ilevel],index=iself)
+                 
     def set_levels(self,match=None,**keys_vals):
+        """Set level data from keys_vals into self."""
         for key,val in keys_vals.items():
             suffix = key[-2:]
             assert suffix in ('_u','_l')
@@ -926,6 +990,8 @@ class Generic(levels.Base):
                 self.set_parameter(key,vali,match=d)
     
     def vary_upper_level_energy(self,match=None,vary=False,step=None):
+        """Vary lines with common upper level energy with as common
+        parameter."""
         if match is not None:
             raise ImplementationError()
         keys = [key+'_u' for key in self._level_class.defining_qn]
@@ -959,7 +1025,9 @@ class LinearDiatomic(Linear):
     default_prototypes = {key:prototypes[key] for key in
                           {*_level_keys, *Linear.default_prototypes,}}
     default_xkey = 'J_u'
-    default_zkeys = ['species_u','label_u','v_u','species_l','label_l','v_l', 'ΔJ']
+    default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
+    default_attributes = Linear.default_attributes | {'set_multiplet_SJ_to_1': None,}
+
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -1069,3 +1137,5 @@ class LinearTriatomic(Linear):
         for key,val in quantum_numbers.items():
             self[key] = val
 
+
+            

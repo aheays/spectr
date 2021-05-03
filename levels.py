@@ -17,6 +17,7 @@ from .tools import vectorise,cache,file_to_dict,cast_abs_float_array
 from . import tools
 from . import database
 from . import kinetics
+from . import quantum_numbers
 from .exceptions import InferException,MissingDataException
 from .optimise import optimise_method
 
@@ -53,7 +54,21 @@ def _f1(self,species):
         raise InferException(str(err))
 prototypes['mass'] = dict(description="Mass (amu)",kind='f', fmt='<11.4f', infer=[(('species',), _f0),])
 prototypes['reduced_mass'] = dict(description="Reduced mass (amu)", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
-prototypes['E'] = dict(description="Level energy relative to the least",units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('Ee','ZPE'),lambda self,Ee,ZPE: Ee-ZPE),],default_step=1e-3)
+
+@vectorise(cache=True)
+def _f0(self,species,label,v,Σ,ef,J):
+    """Get diatomic molecule level energies from database."""
+    level = database.get_level(species)
+    if level['classname'] != 'levels.LinearDiatomic':
+        raise InferException('Not level.LinearDiatomic')
+    i = tools.find(level.match(species=species,label=label,v=v,Σ=Σ,ef=ef,J=J))
+    if len(i) == 0:
+        raise InferException('no match found')
+    if len(i) > 1:
+        raise InferException('multiple matches found')
+    return level['E'][i][0]
+    
+prototypes['E'] = dict(description="Level energy relative to the least",units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('Ee','ZPE'),lambda self,Ee,ZPE: Ee-ZPE),(('species','label','v','Σ','ef','J'),_f0)],default_step=1e-3)
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 (and neglecting spin for linear molecules)" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','ZPE'),lambda self,E,ZPE: E+ZPE),],default_step=1e-3)
 prototypes['ZPE'] = dict(description="Zero-point energy of the lowest level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'ZPE')),],default_step=1e-3)
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
@@ -64,10 +79,10 @@ def _f0(self,species,label,v,Σ,ef,J,E):
     sublevel rotational series."""
     order = 3
     Ereduced = np.full(E.shape,0.0)
-    for di,i in tools.unique_combinations_mask(species,label,v,Σ,ef):
+    for di,i in tools.unique_combinations_masks(species,label,v,Σ,ef):
         speciesi,labeli,vi,Σi,efi = di
         Ji,Ei = [],[]
-        for Jj,j in tools.unique_combinations_mask(J[i]):
+        for Jj,j in tools.unique_combinations_masks(J[i]):
             Ji.append(Jj[0])
             Ei.append(E[i][j][0])
         Ji,Ei = array(Ji),array(Ei)
@@ -429,6 +444,7 @@ class Generic(Base):
     defining_qn = ('species','label','ef','J')
     default_xkey = 'J'
     default_zkeys = ('species','label','ef')
+    default_zlabel_format_function = lambda self,qn:quantum_numbers.encode_level(qn)
 
 class Atomic(Generic):
     default_prototypes = _collect_prototypes(
