@@ -487,7 +487,6 @@ class Model(Optimiser):
             _suboptimiser=None,
             **set_keys_vals
     ):
-        # print('DEBUG:', lines.name)
         if (len(self.x) == 0
             or len(lines) == 0
             or ('nmatch' in _cache and _cache['nmatch'] == 0)):
@@ -526,7 +525,6 @@ class Model(Optimiser):
             nchanged = np.sum(ichanged)
             ## compute as little of the spectrum as possible
             if 'T' in _cache and nchanged == 0 and self._xchanged < self._last_construct_time:
-                # print('DEBUG:', 'a')
                 ## no change, use cache
                 pass
             elif  (
@@ -534,9 +532,7 @@ class Model(Optimiser):
                     or nchanged > (len(lines_copy)/2) # most lines change--- just recompute everything
                     or self._xchanged > self._last_construct_time # new x-coordinate
                  ):
-                # print('DEBUG:', 'b',self._xchanged)
                 ## calculate entire spectrum
-                # # print('DEBUG:', 'do not use cache -- full spectrum',nchanged,len(lines_copy),lines.name)
                 for key in keys:
                     lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
                 for key,val in set_keys_vals.items():
@@ -547,10 +543,8 @@ class Model(Optimiser):
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
                 _cache['T'] = np.exp(-τ)
             else:
-                # print('DEBUG:', 'do not use cache -- partial spectrum',nchanged,len(lines_copy),lines.name)
                 ## recompute only lines that have changed
                 lines_new = lines.copy(index=imatch[ichanged])
-                # print('DEBUG:', 'nchanged')
                 for key,val in set_keys_vals.items():
                     lines_new[key] = float(val)
                 xnew,τnew = lines_new.calculate_spectrum(
