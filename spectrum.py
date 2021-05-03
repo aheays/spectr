@@ -1513,7 +1513,7 @@ class Model(Optimiser):
                     # warnings.warn(f'Not labelling because InferException on {label_match=}')
                     continue
                 ## limit to ν-range and sufficiently strong line
-                i &= (line['ν']>self.xexp[0])&(line['ν']<self.xexp[-1])
+                i &= (line['ν']>self.x[0])&(line['ν']<self.x[-1])
                 if minimum_τ_to_label is not None:
                     i &= line['τ']>minimum_τ_to_label
                 if minimum_I_to_label is not None:
