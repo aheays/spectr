@@ -50,6 +50,8 @@ class Dataset(optimise.Optimiser):
 
     ## used for plotting and sorting perhaps
     default_zkeys = ()
+    default_zlabel_format_function = tools.dict_to_kwargs
+
 
     def __init__(
             self,
@@ -647,6 +649,34 @@ class Dataset(optimise.Optimiser):
                             for vali in val],axis=0)
         return i
 
+    # def match(self,keys_vals=idict(),**kwarg_keys_vals):
+        # """Return boolean array of data matching all key==val.\n\nIf key has
+        # suffix '_min' or '_max' then match anything greater/lesser
+        # or equal to this value"""
+        # keys_vals = keys_vals | kwarg_keys_vals
+        # i = np.full(len(self),True,dtype=bool)
+        # import time ; timer = time.time() # DEBUG
+        # for key,val in keys_vals.items():
+            # ## search for this key val
+            # if len(key) > 4 and key[-4:] == '_min':
+                # j = (self[key[:-4]][i] >= val)
+            # elif len(key) > 4 and key[-4:] == '_max':
+                # j = (self[key[:-4]][i] <= val)
+            # elif np.ndim(val)==0:
+                # if val is np.nan:
+                    # j = np.isnan(self[key][i])
+                # else:
+                    # j = (self[key][i]==val)
+            # else:
+                # j = np.any([
+                    # (np.isnan(self[key][i]) if vali is np.nan else self[key][i]==vali)
+                            # for vali in val],axis=0)
+            # ## update bool
+            # i[i] &= j
+            # print('Time elapsed:',key,format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+        # return i
+
+
     def find(self,**keys_vals):
         """Find unique indices matching keys_vals which contains one or more
         vector matches or the same length."""
@@ -865,7 +895,7 @@ class Dataset(optimise.Optimiser):
         else:
             return d
 
-    def matching_value(self,key,**keys_vals):
+    def matching_value(self,key,**matching_keys_vals):
         """Return value of key from a row that uniquely matches
         keys_vals."""
         i = self.find_unique(**matching_keys_vals)
@@ -1182,7 +1212,7 @@ class Dataset(optimise.Optimiser):
     def extend(
             self,
             keys_vals_as_dict_or_dataset=idict(),
-            keys='all',         # 'old','new','all'
+            keys='old',         # 'old','new','all'
             **keys_vals_as_kwargs
     ):
         """Extend self with new_data.  Keys must be present in both new and
@@ -1190,48 +1220,25 @@ class Dataset(optimise.Optimiser):
         ignored. If keys='new' then extra keys in old data are unset.
         If 'all' then keys must match exactly.  If key=='new' no data
         currently present then just add this data."""  
-        ## select keys, delete all inferred data first
-        self.unset_inferred()
-        if isinstance(keys_vals_as_dict_or_dataset, Dataset):
-            keys_vals_as_dict_or_dataset.unset_inferred()
-        ## get a list of keys, or shortcut if currently no data
-        if len(self) == 0 and keys in ('all','new'):
-            ## copy new data directly if no existing data
-            if keys == 'new':
-                ## delete unnecessary data in self
-                keys = list(keys_vals_as_dict_or_dataset) + list(keys_vals_as_kwargs)
-                for key in self:
-                    if key not in keys:
-                        self.unset(key)
-            for key,val in keys_vals_as_dict_or_dataset.items():
-                self[key] = val
-            for key,val in keys_vals_as_kwargs.items():
-                self[key] = val
-            return
+        ## get keys to extend
+        if keys == 'all':
+            keys = {*self,*keys_vals_as_dict_or_dataset,*keys_vals_as_kwargs}
+        elif keys == 'old':
+            keys = {*self}
+        elif keys == 'new':
+            keys = {*keys_vals_as_dict_or_dataset,*keys_vals_as_kwargs}
         else:
-            if keys == 'all':
-                keys = {*self,*keys_vals_as_dict_or_dataset,*keys_vals_as_kwargs}
-            elif keys == 'old':
-                keys = {*self}
-            elif keys == 'new':
-                keys = {*keys_vals_as_dict_or_dataset,*keys_vals_as_kwargs}
-                ## delete unnecessary data in self
-                for key in list(self):
-                    if key not in keys:
-                        self.unset(key)
-            else:
-                raise Exception(f"valid keys options: 'all', 'new', 'old'")
-        ## search for needed keys in self -- infer if necessary, end
-        ## by deleting all temporarily inferred data
-        for key in keys:
-            if not self.is_known(key):
-                raise Exception(f"Extending key not in existing data: {repr(key)}")
-            else:
-                self.unlink_inferences(key)
-        self.unset_inferred()
-        ## collect keys from the new data
+            raise Exception(f"valid keys options: 'all', 'new', 'old'")
+        ## ensure all keys are present in new and old data, and limit
+        ## old data to these
         new_data = {}
         for key in keys:
+            ## ensure keys are present in existing data
+            if len(self) == 0 and key not in self:
+                self[key] = []
+            elif not self.is_known(key):
+                raise Exception(f"Extending key not in existing data: {repr(key)}")
+            ## collect new data
             if key in keys_vals_as_dict_or_dataset:
                 new_data[key] = keys_vals_as_dict_or_dataset[key]
             elif key in keys_vals_as_kwargs:
@@ -1244,6 +1251,11 @@ class Dataset(optimise.Optimiser):
             ## could add logic for auto defaults based on kind as below
             else:
                 raise Exception(f'Extending key missing in new data: {repr(key)}')
+        ## limit self to keys and mark not inferred
+        self.unlink_inferences(*keys)
+        for key in list(self.root_keys()):
+            if key not in keys:
+                self.unset(key)
         ## determine length of data
         original_length = len(self)
         extending_length = None
@@ -1258,32 +1270,29 @@ class Dataset(optimise.Optimiser):
         total_length = original_length + extending_length
         ## add new data to old
         for key in keys:
-            if key not in self:
-                self.set(key,new_data[key])
-            else:
-                ## the object in self to extend
-                data = self._data[key] 
-                ## increase unicode dtype length if new strings are
-                ## longer than the current
-                if self.get_kind(key) == 'U':
-                    ## this is a really hacky way to get the length of string in a numpy array!!!
-                    old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
-                    new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(val).dtype)))
-                    if new_str_len > old_str_len:
-                        ## reallocate array with new dtype with overallocation
-                        t = np.empty(
-                            len(self)*self._over_allocate_factor,
-                            dtype=f'<U{new_str_len*self._over_allocate_factor}')
-                        t[:len(self)] = self.get(key)
-                        data['value'] = t
-                ## reallocate and lengthen arrays if necessary
-                if total_length > len(data['value']):
-                    data['value'] = np.concatenate((
-                        self[key],
-                        np.empty(int(total_length*self._over_allocate_factor-original_length),
-                                 dtype=data['value'].dtype)))
-                ## set extending data
-                data['value'][original_length:total_length] = data['cast'](new_data[key])
+            ## the object in self to extend
+            data = self._data[key] 
+            ## increase unicode dtype length if new strings are
+            ## longer than the current
+            if self.get_kind(key) == 'U':
+                ## this is a really hacky way to get the length of string in a numpy array!!!
+                old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
+                new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(val).dtype)))
+                if new_str_len > old_str_len:
+                    ## reallocate array with new dtype with overallocation
+                    t = np.empty(
+                        len(self)*self._over_allocate_factor,
+                        dtype=f'<U{new_str_len*self._over_allocate_factor}')
+                    t[:len(self)] = self.get(key)
+                    data['value'] = t
+            ## reallocate and lengthen arrays if necessary
+            if total_length > len(data['value']):
+                data['value'] = np.concatenate((
+                    self[key],
+                    np.empty(int(total_length*self._over_allocate_factor-original_length),
+                             dtype=data['value'].dtype)))
+            ## set extending data
+            data['value'][original_length:total_length] = data['cast'](new_data[key])
         ## finalise new length
         self._length = total_length
 
@@ -1349,13 +1358,8 @@ class Dataset(optimise.Optimiser):
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
                 z.sort(xkey)
                 if zlabel_format_function is None:
-                    # if len(dz) == 1:
-                        # zlabel = str(dz[list(dz.keys())[0]])
-                    # else:
-                        # zlabel = tools.dict_to_kwargs(dz)
-                    zlabel = tools.dict_to_kwargs(dz)
-                else:
-                    zlabel = zlabel_format_function(**dz)
+                    zlabel_format_function = self.default_zlabel_format_function
+                zlabel = zlabel_format_function(dz)
                 if ynewaxes and znewaxes:
                     ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
