@@ -2,6 +2,7 @@ import itertools
 from copy import copy,deepcopy
 from pprint import pprint
 import re
+import warnings
 
 import numpy as np
 from numpy import nan,array,linspace
@@ -168,7 +169,7 @@ prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-T
 
 
 ## linewidths
-prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or transition" ,units="cm-1.FWHM", kind='f', fmt='<10.5g',infer=[
+prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or transition" ,units="cm-1.FWHM", kind='f', fmt='<10.5g',default=0.0,infer=[
     ## manually input all permutations of broadening affects --  could
     ## use 'self' in a function but then infer connections will not be
     ## made
@@ -281,20 +282,10 @@ prototypes['Rcentroid'] =dict(description="R-centroid",units="Å", kind='f',  fm
 def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
     """Compute singlet state rotational linestrength factors."""
     if not (np.all(S_u==0) and np.all(S_l==0)):
-        raise InferException('Honl-London factors only defined here for singlet states.')
+        warnings.warn('Honl-London factors used for rotational linestrengths of multiplet states')
     SJ = quantum_numbers.honl_london_factor(Ω_u,Ω_l,J_u,J_l)
     return SJ
-def _f1(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
-    """Compute singlet state rotational linestrength and set mutiplet
-    state SJ to 1. -- HACK"""
-    if not 'set_multiplet_SJ_to_1' in self.attributes or not self.attributes['set_multiplet_SJ_to_1'] is True:
-        raise InferException('set_multiplet_SJ_to_1 is not True')
-    SJ = np.full(S_u.shape,1.)
-    ## set singlet states to correct Honl-London factors
-    i = (S_u==0)&(S_l==0)
-    SJ[i] = quantum_numbers.honl_london_factor(Ω_u[i],Ω_l[i],J_u[i],J_l[i])
-    return SJ
-prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f1),])
+prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
 
 # prototypes['τ'] = dict(description="Integrated optical depth",units="cm-1", kind='f',  fmt='<10.5e', infer={('σ','column_densitypp'):lambda self,σ,column_densitypp: σ*column_densitypp,},)
 # prototypes['I'] = dict(description="Integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp','ν'):lambda self,Ae,populationp,column_densityp,ν: Ae*populationp*column_densityp*ν,},)
@@ -588,20 +579,21 @@ class Generic(levels.Base):
 
     def calculate_transmission_spectrum(
             self,
-            *args_calculate_spectrum,
+            x=None,
             zkeys=None,
             **kwargs_calculate_spectrum,
     ):
         retval = self.calculate_spectrum(
-            *args_calculate_spectrum,
+            # *args_calculate_spectrum,
+            x=x,
             ykey='τ',
             zkeys=zkeys,
             **kwargs_calculate_spectrum,)
         if zkeys is None:
-            x,y = retval
-            retval = x,np.exp(-y)
+            xt,yt = retval
+            retval = xt,np.exp(-yt)
         else:
-            retval = [(d,x,np.exp(-y)) for d,x,y in retval]
+            retval = [(d,xt,np.exp(-yt)) for d,xt,yt in retval]
         return retval 
 
     def _get_level(self,u_or_l,reduce_to=None,required_keys=()):
@@ -1019,6 +1011,12 @@ class Linear(Generic):
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
 
+    # def set_effective_rotational_linestrengths(self,Ω_u,Ω_l):
+        # """Set SJ to Honl-London factors appropriate for Ω_u and Ω_l,
+        # regardless of the actual Ω/Λ/Σ quantum numbers. Useful if a
+        # multiplet transition is borrowing intensity."""
+        # self['SJ'] = quantum_numbers.honl_london(Ω_u,Ω_l,self[J_u],self[J_l])
+
 class LinearDiatomic(Linear):
 
     _level_class,_level_keys,defining_qn = _collect_level(levels.LinearDiatomic)
@@ -1026,8 +1024,7 @@ class LinearDiatomic(Linear):
                           {*_level_keys, *Linear.default_prototypes,}}
     default_xkey = 'J_u'
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
-    default_attributes = Linear.default_attributes | {'set_multiplet_SJ_to_1': None,}
-
+    default_attributes = Linear.default_attributes 
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
