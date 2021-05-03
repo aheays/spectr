@@ -255,17 +255,21 @@ def tanh_hat(x,xa,xb,center,ramp_width,top_width):
     """Creates a smooth match between extreme values xa and xb on grid x.
     Uses a hyperbolic tangent centred at center with the given transition
     width."""
-    if np.isscalar(x):
-        if x<=center:
-            return (np.tanh((x-center+top_width)/ramp_width)+1)/2*(xb-xa)+xa 
-        else:
-            return (np.tanh((center+top_width-x)/ramp_width)+1)/2*(xb-xa)+xa
-    else:
-        i = x<center
-        retval = np.empty(x,dtype=float)
-        retval[i] = (np.tanh((x[i]-center-top_width)/ramp_width)+1)/2*(xb-xa)+xa
-        retval[~i] = (np.tanh((center+top_width-x[i])/ramp_width)+1)/2*(xb-xa)+xa
-        return retval
+    return (
+        tanh_transition(x,xa,xb,center-top_width/2,ramp_width)
+        -tanh_transition(x,xa,xb,center+top_width/2,ramp_width)
+    )
+    # if np.isscalar(x):
+        # if x<=center:
+            # return (np.tanh((x-center+top_width)/ramp_width)+1)/2*(xb-xa)+xa 
+        # else:
+            # return (np.tanh((center+top_width-x)/ramp_width)+1)/2*(xb-xa)+xa
+    # else:
+        # i = x<center
+        # retval = np.empty(x.shape,dtype=float)
+        # retval[i] = (np.tanh((x[i]-center-top_width)/ramp_width)+1)/2*(xb-xa)+xa
+        # retval[~i] = (np.tanh((center+top_width-x[~i])/ramp_width)+1)/2*(xb-xa)+xa
+        # return retval
     
 
 def leastsq(func,
@@ -2420,7 +2424,7 @@ def unique_combinations(*args):
 #     else:
 #         return(unique_values)
 
-def unique_combinations_mask(*arrs):
+def unique_combinations_masks(*arrs):
     """All are iterables of the same length. Finds row-wise combinations of
     args that are unique. Elements of args must be hashable."""
     # ra = np.rec.fromarrays(arrs)
