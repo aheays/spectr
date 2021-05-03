@@ -10,7 +10,9 @@ import periodictable
 from tinydb import TinyDB, Query
 
 from . import tools
+from .tools import cache,vectorise
 from . import dataset
+from . import kinetics
 from .exceptions import MissingDataException
 
 ## module data and caches
@@ -22,7 +24,7 @@ from .kinetics import get_species
 
 data_directory = tools.expand_path('~/src/python/spectr/data/')
 
-# global _level_data
+
 # global _boltzmann_population_cache
 # global _boltzmann_partition_function_cache
 # _electronic_state_propety_data_cache = None   # lots of data about individual electronic states
@@ -116,43 +118,12 @@ def get_species_property(species,prop):
     # t = get_species(species)
     # return(t.mass)
 
-# ## deprecate this in favour of get_species_property?
-# def get_reduced_mass(species):
-    # raise Exception('use get_species_property(species,prop):')
-    # return(float(get_species_data(species)['reduced_mass']))
-
-# ## deprecate this in favour of get_species_property?
-# def get_isotopologue_independent_species(species):
-    # """Get the isotopologue-free name for a species, e.g, CO from
-    # 13C17O."""
-    # raise Exception('use get_species_property(species,prop):')
-    # return(get_species_data(species)['iso_indep'][0])
-
-# def get_level(species,label,Tref=0,**other_quantum_numbers):
-    # """Load a Level object containing data about an electronic
-    # level. This will be filtered by other_quantum_numbers if
-    # provided. E.g., species="12C16O", label='X'. NOTE THAT THIS IS
-    # CACHED AND MUTABLE. IF YOU CHANGE IT WITHOUT A DEEPCOPY, THINGS
-    # WILL BREAK."""
-    # import spectra
-    # ## get data from cache if already there
-    # global _level_data
-    # if (species,label) not in _level_data:
-        # filename = data_directory+'/levels/'+species+'_'+label
-        # try:
-            # level = spectra.load_level(filename)
-        # except FileNotFoundError:
-            # raise MissingDataException("Could not find data for "+repr(species)+" "+repr(label)+" in file: "+repr(filename))
-        # _level_data[(species,label)] = level
-    # else:
-        # level = _level_data[(species,label)]
-    # ## filter further if requested
-    # if len(other_quantum_numbers)!=0:
-        # level = level.matches(**other_quantum_numbers)
-    # ## set Tref
-    # if Tref!=level['Tref']:
-        # level.set_Tref(Tref)
-    # return(level)
+@cache
+def get_level(species):
+    """Load a Level object containing data about a species (all
+    isotopologues)."""
+    chemical_species = kinetics.get_chemical_name(species)
+    return dataset.load(f'{data_directory}/levels/{chemical_species}.h5')
 
 # def get_term_values(
         # species,
@@ -347,6 +318,7 @@ electronic_states={
     ("CN","B")  :{"Λ":0,"S":1,"s"  :0,"LSsign":1},
     ("CN","D")  :{"Λ":1,"S":1,"s"  :0,"LSsign":1},
     ("CN","E")  :{"Λ":0,"S":1,"s"  :0,"LSsign":1},
+
     ("CO","A")  :{"Λ":1,"S":0,"s"  :0,"LSsign":1},
     ("CO","B")  :{"Λ":0,"S":0,"s"  :0,"LSsign":1},
     ("CO","C")  :{"Λ":0,"S":0,"s"  :0,"LSsign":1},
@@ -366,6 +338,7 @@ electronic_states={
     ("CO","d")  :{"Λ":2,"S":1,"s"  :0,"LSsign":-1},
     ("CO","e")  :{"Λ":0,"S":1,"s"  :1,"LSsign":1},
     ("CO","k")  :{"Λ":1,"S":1,"s"  :0,"LSsign":1},
+
     ("H2","X")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
     ("H2","B")  :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
     ("H2","C")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
