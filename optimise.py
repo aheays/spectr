@@ -794,15 +794,15 @@ class Optimiser:
         ## set back to best fit
         self._set_parameters(p,rescale=True) # set param
         self.construct(recompute_all=True )
-        ## set zeros to very small to prevent matrix inversion problems
-        i = (jacobian == 0)
-        if np.any(i):
-            print('Some parameters have no effect on the model' )
-            jacobian[i] = 1e-50
-        i = np.isnan(jacobian)
-        if np.any(i):
-            print('Some parameters nan' )
-            jacobian[i] = 1e-50
+        # ## set zeros/nans to very small to prevent matrix inversion problems
+        # i = (jacobian == 0)
+        # if np.any(i):
+            # print('Some parameters have no effect on the model' )
+            # jacobian[i] = 1e-50
+        # i = np.isnan(jacobian)
+        # if np.any(i):
+            # print('Some parameters nan' )
+            # jacobian[i] = 1e-50
         ## return
         return jacobian
 
