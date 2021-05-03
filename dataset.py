@@ -24,20 +24,24 @@ class Dataset(optimise.Optimiser):
     """A set of data vectors of common length."""
 
 
-    ## basic properties for keys that have no or incomplete prototypes
-    default_kinds = {
-
-        'f':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','default':nan   ,'description':'float' ,},
-        'i':    {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt':'d'     ,'default':-999  ,'description':'int'   ,},
-        'b':    {'cast':convert_to_bool_vector_array       ,'fmt':''      ,'default':True  ,'description':'bool'  ,},
-        'U':    {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt':'s'     ,'default':''    ,'description':'str'   ,},
-        'O':    {'cast':lambda x:np.asarray(x,dtype=object),'fmt':''      ,'default':None  ,'description':'object',},
-        'unc' : {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':nan   ,'description':'Uncertainty'                         ,},
-        'step': {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,'description':'Numerical differentiation step size' ,},
-        # 'vary': {'cast':lambda x:np.asarray(x,dtype=bool)  ,'fmt':'5'     ,'default':False ,'description':'Whether to vary during optimisation.',},
-        'vary': {'cast':convert_to_bool_vector_array       ,'fmt':'5'     ,'default':False ,'description':'Whether to vary during optimisation.',},
-
+    ## basic kinds of data
+    kinds = {
+        'f':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','default':nan   ,'description':'float'                                  ,},
+        'i':    {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt':'d'     ,'default':-999  ,'description':'int'                                    ,},
+        'b':    {'cast':convert_to_bool_vector_array       ,'fmt':''      ,'default':True  ,'description':'bool'                                   ,},
+        'U':    {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt':'s'     ,'default':''    ,'description':'str'                                    ,},
+        'O':    {'cast':lambda x:np.asarray(x,dtype=object),'fmt':''      ,'default':None  ,'description':'object'                                 ,},
     }
+
+    ## associated data
+    associated_data_kinds = {
+        'unc' : {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':nan   ,'description':'Uncertainty'                            ,},
+        'step': {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,'description':'Numerical differentiation step size'    ,},
+        'vary': {'cast':convert_to_bool_vector_array       ,'fmt':'5'     ,'default':False ,'description':'Whether to vary during optimisation'    ,},
+        # 'res' : {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'8.2e'  ,'default':nan   ,'description':'Residual error'                         ,},
+        'ref' : {'cast':lambda x:np.asarray(x,dtype='U20')   ,'fmt':'s'   ,'default':nan   ,'description':'Source reference'                       ,},
+    }
+    kinds.update(associated_data_kinds)
 
     ## always available
     default_attributes = {
@@ -163,13 +167,13 @@ class Dataset(optimise.Optimiser):
                 raise Exception(f'Unc/step/vary only defined for kind="f" floating-point data and {root_key=} has kind={self.get_kind(root_key)}')
             if associated_data == 'vary':
                 if not self.is_set(f'{root_key}_unc'):
-                    self.set(root_key,self.default_kinds['unc']['default'],'unc')
+                    self.set(root_key,self.kinds['unc']['default'],'unc')
                 if not self.is_set(f'{root_key}_step'):
                     if 'default_step' in self._data[root_key]:
                         self.set(root_key,self._data[root_key]['default_step'],'step')
                     else:
                         self.set(root_key,self.default_step['step']['default'],'step')
-            prototype_kwargs = self.default_kinds[associated_data] | prototype_kwargs
+            prototype_kwargs = self.kinds[associated_data] | prototype_kwargs
         ## update modification if externally set, not if it is inferred
         if self.verbose:
             print(f'{self.name}: setting {key} inferred={_inferred}')
@@ -190,7 +194,7 @@ class Dataset(optimise.Optimiser):
             if key not in self:
                 raise Exception(f'Cannot set data by index for unset key: {key}')
             data['value'][:self._length][index] = data['cast'](value)
-        ## set full array -- does not hvae to existin in advacne
+        ## set full array -- does not hvae to exist in in advance
         else:
             ## create entire data dict
             ## decide whether to permit if non-prototyped
@@ -205,14 +209,16 @@ class Dataset(optimise.Optimiser):
             ## get any prototype data
             if key in self.prototypes:
                 for tkey,tval in self.prototypes[key].items():
-                    if tkey not in ('default',):
-                        data[tkey] = tval
+                    if tkey == 'default':
+                        ## do not set default from prototypes -- only 
+                        continue
+                    data[tkey] = tval
             ## apply prototype kwargs
             for tkey,tval in prototype_kwargs.items():
                 data[tkey] = tval
             ## get information from default_kinds if associated data
             if associated_data is not None:
-                assert associated_data in self.default_kinds
+                assert associated_data in self.kinds
                 data['kind'] = associated_data
             ## if a scalar value is then expand to full length, if
             ## vector then cast as a new array.  Do not use asarray
@@ -226,11 +232,11 @@ class Dataset(optimise.Optimiser):
                 data['kind'] = value.dtype.kind
             ## convert bytes string to unicode
             if data['kind'] == 'S':
-                self.kind = 'U'
+                data['kind'] = 'U'
             ## some other prototype data
             for tkey in ('description','fmt','cast'):
                 if tkey not in data:
-                    data[tkey] = self.default_kinds[data['kind']][tkey]
+                    data[tkey] = self.kinds[data['kind']][tkey]
             if data['kind']=='f' and 'default_step' not in data:
                 data['default_step'] = 1e-8
             ## infer function dict,initialise inference lists, and units if needed
@@ -285,10 +291,10 @@ class Dataset(optimise.Optimiser):
                 except InferException as err:
                     if self.auto_defaults:
                         ## try an autodefault if inference fails
-                        if key in self.prototypes:
+                        if key in self.prototypes and 'default' in self.prototypes[key]:
                             self[key] = self.prototypes[key]['default']
                         else:
-                            raise Exception(r"No prototype for autodefault: {repr(key)}")
+                            raise Exception(f"No autodefault in prototype: {repr(key)}")
                     else:
                         raise err
             if index is None:
@@ -339,7 +345,7 @@ class Dataset(optimise.Optimiser):
         if infer is None:
             infer = []
         self.prototypes[key] = dict(kind=kind,infer=infer,**kwargs)
-        for tkey,tval in self.default_kinds[kind].items():
+        for tkey,tval in self.kinds[kind].items():
             self.prototypes[key].setdefault(tkey,tval)
 
     def get_prototype(self,key):
@@ -492,7 +498,7 @@ class Dataset(optimise.Optimiser):
             if isinstance(value,optimise.P):
                 self.set_parameter(key,value)
             else:
-                for associated_data in ('unc','step','vary'):
+                for associated_data in self.associated_data_kinds:
                     n = len(associated_data)
                     if len(key) > (n+1) and key[-n:] == associated_data:
                         self.set(key[:-n-1],value,associated_data=associated_data)
@@ -1440,12 +1446,12 @@ class Dataset(optimise.Optimiser):
             self.get(ykey,'unc',index),
             **polyfit_kwargs)
 
-def find_common(x,y,*keys,verbose=False):
+def find_common(x,y,keys,verbose=False):
     """Return indices of two Datasets that have uniquely matching
     combinations of keys."""
     ## if empty list then nothing to be done
     if len(x)==0 or len(y)==0:
-        return(np.array([]),np.array([]))
+        return(np.array([],dtype=int),np.array([],dtype=int))
     # ## Make a list of default keys if not provided as inputs. If a
     # ## Level or Transition object (through a hack) then use
     # ## defining_qn, else use all set keys known to both.
@@ -1480,6 +1486,8 @@ def find_common(x,y,*keys,verbose=False):
     ## sort by index of first array -- otherwise sorting seems to be arbitrary
     i = np.argsort(ix)
     ix,iy = ix[i],iy[i]
+    ix = np.asarray(ix,dtype=int)
+    iy = np.asarray(iy,dtype=int)
     return ix,iy
 
 def get_common(x,y,*keys,**limit_to_matches):
