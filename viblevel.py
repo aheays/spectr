@@ -34,8 +34,10 @@ class VibLevel(Optimiser):
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
-        tkwargs = {'Eref':Eref, 'auto_defaults':True,
-                   'permit_nonprototyped_data':False,}
+        tkwargs = {
+            # 'Eref':Eref,
+            'auto_defaults':True,
+            'permit_nonprototyped_data':False,}
         self.manifolds = {}                                   
         self.level = levels.Diatomic(name=f'{self.name}.level',**tkwargs)
         self.level.pop_format_input_function()
@@ -66,7 +68,6 @@ class VibLevel(Optimiser):
         self.eigvals = None
         self.eigvects = None
         ## a Level object containing data, better access through level property
-        self._exp = None # an array of experimental data matching the model data in shape
         ## the optimiser
         Optimiser.__init__(self,name=self.name)
         self.pop_format_input_function()
@@ -76,7 +77,40 @@ class VibLevel(Optimiser):
         def f(directory):
             self.level.save(directory+'/level.h5')
         self.add_save_to_directory_function(f)
+        ## compute residual error if a experimental level is provided
+        self.experimental_level = experimental_level
+        self._experimental_level_cache = {}
+        if self.experimental_level is not None:
+            self.add_suboptimiser(self.experimental_level)
+            self.add_post_construct_function(self.calculate_residual)
+        ## finalise construction
         self.add_post_construct_function(self.construct_levels)
+
+    def calculate_residual(self):
+        """Compare model and experimental energy levels."""
+        ## cache experimental data and matching indices
+        if (self._experimental_level_cache is None
+            or self._last_add_construct_function_time > self._last_construct_time
+            or self.experimental_level._last_construct_time > self._last_construct_time):
+            iexp,imod = dataset.find_common(
+                self.experimental_level,
+                self.level,
+                keys=self.level.defining_qn)
+            if np.sum(iexp) == 0:
+                raise Exception('No matching experimental data')
+            self._experimental_level_cache = {'iexp':iexp,'imod':imod}
+            self.level['Eresidual'] = nan
+            self.level['Eresidual_unc'] = nan
+        ## calculate residual
+        iexp = self._experimental_level_cache['iexp']
+        imod = self._experimental_level_cache['imod']
+        Emod = self.level['E'][imod]
+        Eexp = self.experimental_level['E'][iexp]
+        residual = Eexp-Emod
+        self.level['Eresidual'][imod] = residual
+        if self.experimental_level.is_known('E_unc'):
+            self.level['Eresidual_unc'][imod] = self.experimental_level['E_unc'][iexp]
+        return residual
 
     def construct_levels(self):
         """The actual matrix diagonlisation is done last."""
@@ -151,6 +185,19 @@ class VibLevel(Optimiser):
         kw['species'] = self.species.isotopologue
         if 'S' not in kw or 's' not in kw or 'Λ' not in kw:
             raise Exception('Quantum numbers S, s, and Λ are required.')
+        ## check kwargs contains necessary quantum numbers
+        for key in ('species','label','S','Λ','s','v'):
+            if key not in kw:
+                raise Exception(f'Required quantum number: {key}')
+        ## check kwargs contains only defined data
+        for key in kw:
+            if key not in (
+                    'species','label','S','Λ','s','v',
+                    'Tv','Bv','Dv','Hv','Av','ADv',
+                    'λv','λDv','λHv','γv','γDv',
+                    'ov','pv','pDv','qv','qDv',
+                    ):
+                raise Exception(f'Keyword argument not a known quantum number of Hamiltonian parameter: {repr(key)}')
         ## Checks that integer/half-integer nature of J corresponds to
         ## quantum number S
         if kw['S']%1!=self.J[0]%1:
@@ -158,14 +205,17 @@ class VibLevel(Optimiser):
         ## get Hamiltonian and insert adjustable parameters into
         ## functions
         ef,Σ,sH,fH = _get_linear_H(kw['S'],kw['Λ'],kw['s'])
+        # import pdb; pdb.set_trace(); # DEBUG
         fH = [[lambda J,f=fH[i,j]: f(J,**kw)
                for i in range(fH.shape[0])]
               for j in range(fH.shape[1])]
         ## add to self
         ibeg = len(self.vibrational_spin_level)
         self.vibrational_spin_level.extend(
+            keys='new',
             ef=ef,Σ=Σ,
-            **{key:kw[key] for key in ('species','label','S','Λ','s','v')})
+            **{key:kw[key] for key in (
+                'species','label','S','Λ','s','v')},)
         self._H_subblocks.append((ibeg,ibeg,fH))
         if name in self.manifolds:
             raise Exception(f'Non-unique name: {repr(name)}')
@@ -296,6 +346,7 @@ class VibLine(Optimiser):
                     self.line.extend(
                         J_u=J_u,
                         J_l=J_l,
+                        keys='new',
                         # E_u=np.repeat(self.level_u.eigvals[J_u],n_l),
                         # E_l=np.tile(self.level_l.eigvals[J_l],n_u),
                         **{key+'_u':np.repeat(val,n_l) for key,val in self.level_u.vibrational_spin_level.items()},
@@ -446,6 +497,7 @@ def _get_linear_H(S,Λ,s):
                     H[j,i] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*efi
                 elif Σi==+0 and Σj==+1:
                     pass # zero
+
             # else:
                 # if 'ov' in kwargs or 'pv' in kwargs or 'qv' in kwargs:
                     # raise Exception("Cannot use ov, pv, or qv because Λ-doubling not specified for state with Λ="+repr(Λ)+" and S="+repr(S))
