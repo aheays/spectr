@@ -70,6 +70,7 @@ def _f0(self,species,label,v,Σ,ef,J):
     
 prototypes['E'] = dict(description="Level energy relative to the least",units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('Ee','ZPE'),lambda self,Ee,ZPE: Ee-ZPE),(('species','label','v','Σ','ef','J'),_f0)],default_step=1e-3)
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 (and neglecting spin for linear molecules)" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','ZPE'),lambda self,E,ZPE: E+ZPE),],default_step=1e-3)
+prototypes['Eresidual'] = dict(description="Residual error of level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],default_step=1e-3)
 prototypes['ZPE'] = dict(description="Zero-point energy of the lowest level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'ZPE')),],default_step=1e-3)
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
 prototypes['ΓD'] = dict(description="Gaussian Doppler width (cm-1 FWHM)",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν)])
@@ -99,7 +100,7 @@ def _df0(self,Ereduced,species,dspecies,label,dlabel,v,dv,Σ,dΣ,ef,ddef,J,dJ,E,
     dEreduced = dE
     return dEreduced
 
-prototypes['E_reduced'] = dict(description="Reduced level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('species','label','v','Σ','ef','J','E'),(_f0,_df0)),],)
+prototypes['Ereduced'] = dict(description="Reduced level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('species','label','v','Σ','ef','J','E'),(_f0,_df0)),],)
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,point_group):
@@ -434,7 +435,7 @@ class Generic(Base):
         'species','chemical_species',
         'label',
         'point_group',
-        'E','Ee','ZPE','E_reduced',
+        'E','Ee','ZPE','Ereduced','Eresidual',
         'Γ','ΓD',
         'J','N','S',
         'g','gnuclear',
