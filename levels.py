@@ -19,7 +19,7 @@ from . import database
 from . import kinetics
 from . import quantum_numbers
 from .exceptions import InferException,MissingDataException
-from .optimise import optimise_method
+from .optimise import optimise_method,Parameter
 
 prototypes = {}
 
@@ -92,15 +92,28 @@ def _f0(self,species,label,v,Σ,ef,J,E):
             print(f'{species=} {label=} {v=} {Σ=} {ef=} {pi=}')
         Ereduced[i] = E[i] - np.polyval(pi,J[i]*(J[i]+1))
     return Ereduced
-
 def _df0(self,Ereduced,species,dspecies,label,dlabel,v,dv,Σ,dΣ,ef,ddef,J,dJ,E,dE):
     """Uncertainty calculation to go with _f0."""
     if dE is None:
         raise InferException()
     dEreduced = dE
     return dEreduced
-
 prototypes['Ereduced'] = dict(description="Reduced level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('species','label','v','Σ','ef','J','E'),(_f0,_df0)),],)
+
+def _f0(self,J,E):
+    """Compute separate best-fit reduced energy levels for each
+    sublevel rotational series."""
+    p = np.polyfit(J*(J+1),E,min(3,len(np.unique(J))-1))
+    p[-1] = 0 
+    Ereduced_common = E - np.polyval(p,J*(J+1))
+    return Ereduced_common
+def _df0(self,Ereduced_common,J,dJ,E,dE):
+    """Uncertainty calculation to go with _f0."""
+    if dE is None:
+        raise InferException()
+    dEreduced_common = dE
+    return dEreduced_common
+prototypes['Ereduced_common'] = dict(description="Reduced level energy common to all bands." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('J','E'),(_f0,_df0)),],)
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,point_group):
@@ -292,6 +305,18 @@ prototypes['SR'] = dict(description="Signed projection of spin angular momentum 
     (('Λ','S','Σ','s','ef','LSsign'), _f6), # most general case
 ])
 
+def _f0(self):
+    for key in self.defining_qn:
+        if not self.is_known(key):
+            raise InferException(f'Cannot infer _qnhash because {key} not known')
+    _qnhash = np.empty(len(self),dtype=int)
+    for i,qn in enumerate(zip(*[self[key] for key in self.defining_qn])):
+        _qnhash[i] = hash(qn)
+    self.set('_qnhash',_qnhash,_inferred=True)
+    self._add_dependency('_qnhash',self.defining_qn)
+    return None
+prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[((),_f0),])
+
 prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", kind='f',infer=[])
 
 
@@ -378,7 +403,6 @@ def _vibrationally_reduce(
         p = my.polyfit(x,y,dy,order=max(0,min(reduced_polynomial_order,sum(i)-2)),error_on_missing_dy=False)
         reduced[i] = p['residuals']
     return(reduced)
-
 prototypes['Tvreduced'] = dict(description="Vibrational term value reduced by a polynomial in (v+1/2)",units='cm-1', kind='f',  fmt='<11.4f',
     infer=[(('self','reduced_quantum_number','reduced_polynomial_order','Tv','dTv'), _vibrationally_reduce), # dTv is known -- use in a weighted mean
            (('self','reduced_quantum_number','reduced_polynomial_order','Tv'), _vibrationally_reduce,)]) # dTv is not known
@@ -402,11 +426,21 @@ class Base(Dataset):
         kwargs.setdefault('permit_nonprototyped_data',False)
         Dataset.__init__(self,*args,**kwargs)
 
-    @optimise_method(
-        add_construct_function=False,
-        add_format_input_function=True,
-        format_single_line=True,
-        execute_now= True)
+    @optimise_method(format_single_line=True)
+    def set_by_name(self,name,_cache=None,**parameters):
+        """Set parameters to all data matching the quantum numbers
+        encoded in name."""
+        if len(_cache) == 0:
+            _cache['i'] = self.match(self.decode_qn(name))
+        i = _cache['i']
+        for key,val in parameters.items():
+            # if isinstance(val,Parameter):
+                # self.set(key,float(val),index=i)
+            # else:
+                # self.set(key,val,index=i)
+            self.set(key,val,index=i)
+
+    @optimise_method(add_construct_function=False,add_format_input_function=True,format_single_line=True,execute_now=True)
     def set_by_qn(self,**kwargs):
         """Set some data to fixed values or optimised parameters, limiting
         setting to matching defining quantum numbers, all given as key word
@@ -424,18 +458,25 @@ class Base(Dataset):
             self.pop_format_input_function()
 
     def sort(self,*sort_keys,reverse_order=False):
+        """Overload sort to include automatic keys."""
         if len(sort_keys) == 0:
             sort_keys = [key for key in self.defining_qn if self.is_known(key)]
         Dataset.sort(self,*sort_keys,reverse_order=reverse_order)
 
+    def match(self,*args,name=None,**kwargs):
+        """Overload match to include name to decode."""
+        if name is not None:
+            kwargs = self.decode_qn(name) | kwargs
+        return Dataset.match(self,*args,**kwargs)
+
 class Generic(Base):
     """A generic level."""
     default_prototypes = _collect_prototypes(
-        'reference',
+        'reference','_qnhash',
         'species','chemical_species',
         'label',
         'point_group',
-        'E','Ee','ZPE','Ereduced','Eresidual',
+        'E','Ee','ZPE','Ereduced','Eresidual','Ereduced_common',
         'Γ','ΓD',
         'J','N','S',
         'g','gnuclear',
@@ -445,8 +486,10 @@ class Generic(Base):
     defining_qn = ('species','label','ef','J')
     default_xkey = 'J'
     default_zkeys = ('species','label','ef')
-    default_zlabel_format_function = lambda self,qn:quantum_numbers.encode_level(qn)
-
+    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.decode_linear_level(qn,*args,**kwargs)
+    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.encode_linear_level(name,*args,**kwargs)
+    default_zlabel_format_function = encode_qn
+    
 class Atomic(Generic):
     default_prototypes = _collect_prototypes(
         *Generic.default_prototypes,
@@ -463,6 +506,9 @@ class Linear(Generic):
     )
     defining_qn = ('species','label','ef','J')
     default_zkeys = ('species','label','ef','Σ')
+    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.encode_linear_level(qn,*args,**kwargs)
+    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.decode_linear_level(name,*args,**kwargs)
+    default_zlabel_format_function = encode_qn
 
 class LinearTriatomic(Linear):
     """A generic level."""

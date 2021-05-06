@@ -35,7 +35,7 @@ prototypes = {}
 
 ## copy some direct from levels
 for key in (
-        'reference',
+        'reference','_qnhash',
         'species','point_group',
         'mass','reduced_mass',
         'Z',
@@ -341,7 +341,7 @@ class Generic(levels.Base):
 
     _level_class,_level_keys,defining_qn = _collect_level(levels.Generic)
     _line_keys = (
-        'reference',
+        'reference','_qnhash',
         'species', 'point_group','mass',
         'ν','ν0', # 'λ',
         'ΔJ', 'branch',
@@ -362,9 +362,10 @@ class Generic(levels.Base):
     default_prototypes = {key:prototypes[key] for key in {*_level_keys,*_line_keys}}
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
-    
-    default_zlabel_format_function = lambda self,qn:quantum_numbers.encode_transition(qn)
-    
+    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.decode_linear_line(name,*args,**kwargs)
+    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.encode_linear_line(qn,*args,**kwargs)
+    default_zlabel_format_function = encode_qn
+
     def plot_spectrum(
             self,
             *calculate_spectrum_args,
@@ -471,7 +472,7 @@ class Generic(levels.Base):
                 raise Exception("Could not find a default ykey")
         ## guess a default lineshape
         if lineshape is None:
-            if self.is_known('Γ','ΓD'):
+            if self.is_known(('Γ','ΓD')):
                 lineshape = 'voigt'
             elif self.is_known('Γ'):
                 lineshape = 'lorentzian'
@@ -489,7 +490,7 @@ class Generic(levels.Base):
             else:
                 return x,np.zeros(x.shape)
         ## get x and ykeys
-        self.assert_known(xkey,ykey)
+        self.assert_known((xkey,ykey))
         ## get a default frequency scale if none provided
         if x is None:
             if dx is not None:
@@ -1010,6 +1011,10 @@ class Linear(Generic):
     }}
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
+    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.decode_linear_line(name,*args,**kwargs)
+    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.encode_linear_line(qn,*args,**kwargs)
+    default_zlabel_format_function = encode_qn
+
 
     # def set_effective_rotational_linestrengths(self,Ω_u,Ω_l):
         # """Set SJ to Honl-London factors appropriate for Ω_u and Ω_l,

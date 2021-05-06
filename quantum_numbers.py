@@ -11,6 +11,7 @@ from immutabledict import immutabledict as idict
 
 from .dataset import Dataset
 from . import tools
+from .tools import vectorise
 
 # ## non-standard library
 # from immutabledict import immutabledict
@@ -133,6 +134,359 @@ def join_upper_lower_quantum_numbers(qn_u,qn_l):
     return qn
 
 
+# def encode_atomic_level(**quantum_numbers):
+    # """From quantum numbers to string."""
+    # string = []
+    # if 'species' in quantum_numbers:
+        # string.append(quantum_numbers.pop('species'))
+    # if 'configuration' in quantum_numbers:
+        # string.append(quantum_numbers.pop('configuration'))
+    # if len(quantum_numbers)>0:
+        # for key,val in quantum_numbers.items():
+            # string.append(f'{key}={val}')
+    # string = '_'.join(string)
+    # return(string)
+
+# def decode_atomic_level(string):
+    # """E.g., Na_2s2.3p2_J=0.5"""
+    # qn_dict = {}
+    # for qn in string.split('_'):
+        # if '=' in qn:
+            # key,val = qn.split('=')
+            # qn_dict[key] = my.string_to_number_if_possible(val)
+        # else:
+            # ## must be species of configuration -- crappy test for
+            # ## distinguishing
+            # if qn[0] in '0123456789':
+                # qn_dict['configuration'] = qn
+            # else:
+                # qn_dict['species'] = qn
+    # return qn_dict
+
+# def encode_atomic_transition(
+        # upper_quantum_numbers=None, # dict or None
+        # lower_quantum_numbers=None, # dict or None
+        # **common_quantum_numbers # ending with 'p' or 'pp'
+# ):
+    # ## deal with common_quantum_number inputs
+    # if upper_quantum_numbers is None:
+        # upper_quantum_numbers = {}
+    # if lower_quantum_numbers is None:
+        # lower_quantum_numbers = {}
+    # for key,val in common_quantum_numbers.items():
+        # if len(key)>=3 and key[-2:]=='pp':
+            # lower_quantum_numbers[key[:-2]] = val
+        # elif len(key)>=2 and key[-1:]=='p':
+            # upper_quantum_numbers[key[:-1]] = val
+        # else:
+            # raise Exception(f'Could not decode quantum numbers {repr(key)} as belonging to the upper or lower level')
+    # ## build return string
+    # string = []
+    # ## get a single species if in only upper_quantum_numbers or lower quantum numbers or they are the same
+    # if ('species' in upper_quantum_numbers and 'species' not in lower_quantum_numbers):
+        # string.append(upper_quantum_numbers.pop('species'))
+    # elif ('species' not in upper_quantum_numbers and 'species' in lower_quantum_numbers):
+        # string.append(lower_quantum_numbers.pop('species'))
+    # elif ('species'  in upper_quantum_numbers and 'species' in lower_quantum_numbers and lower_quantum_numbers['species']==upper_quantum_numbers['species']):
+        # string.append(lower_quantum_numbers.pop('species'))
+        # upper_quantum_numbers.pop("species")
+    # string.append(encode_atomic_level(**upper_quantum_numbers)) # add upper level 
+    # string.append('-')          # add transtion line
+    # string.append(encode_atomic_level(**lower_quantum_numbers)) # add lower level
+    # string = '_'.join(string)
+    # return(string)
+
+# def decode_atomic_transition(
+        # string,
+        # return_upper_lower_qn_separately=True, # as two dictionaries, else as one with 'p'/'pp' endings added
+# ):
+    # """E.g., Na_2d3p_J=1.5_-_4s5d_J=0.5."""
+    # qn_dict = {}
+    # string_upper,string_lower = string.split('_-_')
+    # qn_upper = decode_atomic_level(string_upper)
+    # qn_lower = decode_atomic_level(string_lower)
+    # ## assume common species if in upper and not lower
+    # if 'species' in qn_upper and 'species' not in qn_lower:
+        # qn_lower['species'] = qn_upper['species']
+    # if return_upper_lower_qn_separately:
+        # return(qn_upper,qn_lower)
+    # else:
+        # qn_common = dict(**{key+'p':val for key,val in qn_upper.items()},
+                         # **{key+'pp':val for key,val in qn_lower.items()},)
+        # return(qn_common)
+
+# def encode_term_symbol(S,Λ,s=None,gu=None,Ω=None,ef=None,pm=None):
+    # """Beginning only."""
+    # vectorised_retval = my.vectorise_function(encode_term_symbol,S=S,Λ=Λ,s=s,gu=gu,Ω=Ω,ef=ef,pm=pm)
+    # if vectorised_retval is not None:
+        # return(vectorised_retval)
+    # ## scalar
+    # t = {0:r'\Sigma', 1:r'\Pi', 2:r'\Delta', 3:r'\Phi'}
+    # retval = format(int(2*S+1),'d')+encode_Λ(Λ)
+    # if s is not None:
+        # assert Λ==0 or s==0
+        # if Λ==0:
+            # retval += ('+' if s==0 else '-')
+    # if pm is not None:
+        # assert pm in ('+','-')
+        # retval += pm
+    # if gu is not None:
+        # assert gu in ('g','u')
+        # retval += gu
+    # if Ω is not None:
+        # retval += gu
+    # if ef is not None:
+        # assert ef in ('e','f')
+        # retval += ef
+    # return(retval)
+
+_translate_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
+def encode_rotational_transition(qn):
+    """ONLY JUST BEGUN"""
+    qn = copy(qn)
+    if 'ΔJ' not in qn and 'J_l' in qn and 'J_u' in qn:
+        qn['ΔJ'] = qn['J_u']-qn['J_l']
+    name = _translate_ΔJ[qn['ΔJ']]
+    return name
+
+def decode_rotational_transition(name,return_separately=False):
+    """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
+    upper,lower,Δ = {},{},{}
+    # data = {}
+    t = name
+    if len(t)==0: return(data)
+    ## get Δ['J']
+    if   t[0]=='O': Δ['J'] = -2
+    elif t[0]=='P': Δ['J'] = -1
+    elif t[0]=='Q': Δ['J'] =  0
+    elif t[0]=='R': Δ['J'] = +1
+    elif t[0]=='S': Δ['J'] = +2
+    else:
+        raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
+    t = t[1:]
+    if len(t)>0:
+        ## look for FpFppefpefpp
+        if re.match(r'([0-9]{2}[ef]{2}).*',t):
+            upper['F'] =      int(t[0])
+            upper['ef'] =     t[2]
+            lower['F'] =     int(t[1])
+            lower['ef'] =    t[3]
+            t = t[4:]
+    ## look for ΔJ
+    if len(t)>0:
+        try:
+            lower['J'] = float(t)
+            upper['J'] = lower['J'] + Δ['J']
+        except ValueError:
+            raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
+    ## return dict
+    if return_separately:
+        return (upper,lower,Δ)
+    else:
+        retval = join_upper_lower_quantum_numbers(upper,lower)
+        for key,val in Δ.items():
+            retval['Δ'+key] = val
+        return retval 
+
+@vectorise()
+def decode_linear_level(name):
+    """Decode something of the form 32S16O_A.3Π(v=0,Ω=1,J=5) etc."""
+    name = name.replace('Sigma','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') 
+    ## get all data
+    data = dict()
+    ## match species_term "species_term"
+    if re.match(r'(?:([^_]+)_)?(.+)',name):
+        r = re.match(r'(?:([^_]+)_)?(.+)',name)
+        if r.group(1) is not None: data['species'] = r.group(1)
+        term = r.groups()[1]
+        ## term of the form b07 or o3_00 o3.00
+        if re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term):
+            r = re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term)
+            data['label'] = r.group(1)
+            data['v'] = float(r.group(2))
+        elif re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term):
+            r = re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term)
+            data['label'] = r.groups()[0]
+            data['v'] = float(r.groups()[1])
+        ## term of the form c4.3Sigma-1e(0) etc
+        elif re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term):
+            r = re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term)
+            if r.group(1) not in (None,''): data['label'] = r.group(1)
+            if r.group(2) not in (None,''): data['S'] = float((int(r.group(2))-1)/2)
+            if r.group(3) not in (None,''):
+                term_symbol = r.groups()[2]
+                data['s'] = 0
+                if   term_symbol=='Σ+': data['Λ'] = 0
+                elif term_symbol=='Σ-': data['Λ'],data['s'] = 0,1
+                elif term_symbol=='Π':  data['Λ'] = 1
+                elif term_symbol=='Δ':  data['Λ'] = 2
+                elif term_symbol=='Φ':  data['Λ'] = 3
+            ## if not Σ/Π etc term symbol then this must be the vibrational level (in old system)
+            if r.group(3) is None and r.group(4) is not None and re.match('[0-9]+',r.group(4)):
+                data['v'] = float(r.group(4))
+                rest = None
+            ## otherwise must be electronic quantum numbers
+            else:
+                rest = r.group(4)
+            if rest is not None:
+                r = re.match(r'([^(]*)\((.*)\)',rest)
+                if r:
+                    rest,parenthesised = r.groups()
+                else:
+                    rest,parenthesised = rest,None
+                ## match rest
+                r = re.match(r'([gu]?)?([0-9]+)?([ef+-]?)?$',rest)
+                if r:
+                    if r.group(1) not in (None,''):
+                        data['gu'] = int(r.group(1))
+                    if r.group(2) is not None:
+                        data['F'] = float(r.group(2))
+                    if r.group(3) not in (None,''):
+                        data['ef'] = int(r.group(1))
+                ## split parenthesised stuff on comma and look for v, J etc. Assume (v) of (v,J)
+                if parenthesised is not None:
+                    x = re.split(r' *, *',parenthesised)
+                    ## look for J=5 etc
+                    for t in copy(x):
+                        if r:=re.match(r' *([^ )]+) *= *([^ )]+) *',t):
+                            data[r.group(1)] = r.group(2)
+                            x.pop(x.index(t))
+                    ## else assume (v) or (v,J)
+                    if len(x)==1:
+                        data['v'] = float(x[0])
+                    if len(x)==2:
+                        data['v'],data['J'] = float(x[0]),float(x[1])
+        ## cast
+        for key,val in data.items():
+            if key in ('v','Λ','s','ef','gu','pm'):
+                data[key] = int(val)
+            elif key in ('J','Ω','S','Σ','SR'):
+                data[key] = float(val)
+    return data
+
+def encode_linear_level(qn):
+    """Turn quantum numbers etc (as in decode_level) into a string name. """
+    ## Test code
+    ## t = encode_level(species='N2',label='cp4',Λ=0,s=0,gu='u',S=0,v=5,F=1,ef='e',Ω=0)
+    ## print(t)
+    ## pprint(decode_level(t))
+    qn = copy(qn)  # all values get popped below, so make a ocpy
+    retval = ''                 # output string
+    ## electronic state label and then get symmetry symbol, first get whether Σ+/Σ-/Π etc, then add 2S+1 then add g/u
+    if 'Λ' in qn:
+        Λ = qn.pop('Λ')
+        if Λ==0:
+            retval = 'Σ'
+            ## get + or - superscript
+            if 's' in qn:
+                retval += ('+' if qn.pop('s')==0 else '-')
+        elif Λ==1:
+            retval = 'Π'
+        elif Λ==2:
+            retval = 'Δ'
+        elif Λ==3:
+            retval = 'Φ'
+        else:
+            raise Exception('Λ>3 not implemented')
+        if Λ>0 and 's' in qn: qn.pop('s') # not needed
+        if 'S' in qn: retval = str(int(2*float(qn.pop('S'))+1))+retval
+        if 'gu' in qn: retval += qn.pop('gu')
+    ## add electronic state label
+    if 'label' in qn and retval=='':
+        retval =  qn.pop('label')
+    elif 'label' in qn:
+        retval = qn.pop('label')+'.'+retval
+    ## prepend species
+    if 'species' in qn and retval=='':
+        retval =  qn.pop('species')
+    elif 'species' in qn:
+        retval =  qn.pop('species')+'_'+retval
+    ## append all other quantum numbers in parenthese
+    if len(qn)>0:
+        t = []
+        for key in qn:
+            if key in ('v','F'): # ints
+                t.append(key+'='+str(int(qn[key])))
+            elif key in ('Ω','Σ','SR'): 
+                t.append(key+'='+format(qn[key],'g'))
+            else:
+                t.append(key+'='+str(qn[key]))
+        retval = retval + '('+','.join(t)+')'
+    return retval
+
+
+
+
+
+
+    
+def decode_linear_line(name,return_separately=False):
+    """Name must be in the form
+    species_levelp-levelpp_rotationaltransition. Matched from beginning,
+    and returns when matching runs out."""
+    original_name = name
+    name = name.replace(' ','') # all white space removed
+    qn = dict()                 # determined quantum numbers
+    ## look for rotational name as e.g., ..._P11fe23, if found
+    ## decode and remove from name
+    rot_qn_upper = rot_qn_lower = rot_qn_Δ = None
+    r = re.match(r'^(.*)_([^_—]+)$',name)
+    if r:
+        try:
+            rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
+            name = r.group(1)
+        except InvalidEncodingException: # not a valid rotational name
+            pass
+    ## split upper and lower level
+    name = name.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
+    if r:=re.match(r'^([^—]+)—([^—]+)$',name):
+        upper,lower = r.groups()
+    else:
+        raise Exception('Incorrectly encoded linear line name: No "—" present dividing upper and lowe levels.')
+    upper,lower = decode_linear_level(upper),decode_linear_level(lower)
+    ## add rotational qn if found above
+    if rot_qn_lower is not None:
+        lower.update(rot_qn_lower)
+    if rot_qn_upper is not None:
+        upper.update(rot_qn_upper)
+    ## assume common species if only given once
+    if 'species' in upper and 'species' not in lower:
+        lower['species'] = upper['species'] 
+    if return_separately:
+        return(upper,lower)
+    else:
+        retval = join_upper_lower_quantum_numbers(upper,lower)
+        if rot_qn_Δ is not None:
+            for key,val in rot_qn_Δ.items():
+                retval['Δ'+key] = val
+        return retval
+
+def encode_linear_line(qn=None,qnl=None,qnu=None,):
+    ## get all upper and lower qn
+    if qnl is None:
+        qnl = {}
+    else:
+        qnl = copy(qnl)
+    if qnu is None:
+        qnu = {}
+    else:
+        qnu = copy(qnu)
+    if qn is not None:
+        for key,val in qn.items():
+            if key=='species':
+                qnu.setdefault(key,val)
+            if len(key)>2:
+                if key[-2:]=='_u':
+                    qnu.setdefault(key[:-2],val)
+                if key[-2:]=='_l':
+                    qnl.setdefault(key[:-2],val)
+    if 'species' in qnl and 'species' in qnu and qnu['species']==qnl['species']:
+        qnl.pop('species')
+    retval = encode_linear_level(qnu)+'-'+encode_linear_level(qnl)
+    if 'ΔJ' in qn:
+        retval += '_'+encode_rotational_transition(qn)
+    return retval
+
 def decode_level(name):
     """Decode something of the form 32S16O_A.3Π(v=0,Ω=1,J=5) etc."""
     ## vectorise
@@ -219,89 +573,8 @@ def decode_level(name):
                 data[key] = int(val)
             elif key in ('J','Ω','S','Σ','SR'):
                 data[key] = float(val)
-    return(data)
+    return data
 
-# def encode_atomic_level(**quantum_numbers):
-    # """From quantum numbers to string."""
-    # string = []
-    # if 'species' in quantum_numbers:
-        # string.append(quantum_numbers.pop('species'))
-    # if 'configuration' in quantum_numbers:
-        # string.append(quantum_numbers.pop('configuration'))
-    # if len(quantum_numbers)>0:
-        # for key,val in quantum_numbers.items():
-            # string.append(f'{key}={val}')
-    # string = '_'.join(string)
-    # return(string)
-
-# def decode_atomic_level(string):
-    # """E.g., Na_2s2.3p2_J=0.5"""
-    # qn_dict = {}
-    # for qn in string.split('_'):
-        # if '=' in qn:
-            # key,val = qn.split('=')
-            # qn_dict[key] = my.string_to_number_if_possible(val)
-        # else:
-            # ## must be species of configuration -- crappy test for
-            # ## distinguishing
-            # if qn[0] in '0123456789':
-                # qn_dict['configuration'] = qn
-            # else:
-                # qn_dict['species'] = qn
-    # return qn_dict
-
-# def encode_atomic_transition(
-        # upper_quantum_numbers=None, # dict or None
-        # lower_quantum_numbers=None, # dict or None
-        # **common_quantum_numbers # ending with 'p' or 'pp'
-# ):
-    # ## deal with common_quantum_number inputs
-    # if upper_quantum_numbers is None:
-        # upper_quantum_numbers = {}
-    # if lower_quantum_numbers is None:
-        # lower_quantum_numbers = {}
-    # for key,val in common_quantum_numbers.items():
-        # if len(key)>=3 and key[-2:]=='pp':
-            # lower_quantum_numbers[key[:-2]] = val
-        # elif len(key)>=2 and key[-1:]=='p':
-            # upper_quantum_numbers[key[:-1]] = val
-        # else:
-            # raise Exception(f'Could not decode quantum numbers {repr(key)} as belonging to the upper or lower level')
-    # ## build return string
-    # string = []
-    # ## get a single species if in only upper_quantum_numbers or lower quantum numbers or they are the same
-    # if ('species' in upper_quantum_numbers and 'species' not in lower_quantum_numbers):
-        # string.append(upper_quantum_numbers.pop('species'))
-    # elif ('species' not in upper_quantum_numbers and 'species' in lower_quantum_numbers):
-        # string.append(lower_quantum_numbers.pop('species'))
-    # elif ('species'  in upper_quantum_numbers and 'species' in lower_quantum_numbers and lower_quantum_numbers['species']==upper_quantum_numbers['species']):
-        # string.append(lower_quantum_numbers.pop('species'))
-        # upper_quantum_numbers.pop("species")
-    # string.append(encode_atomic_level(**upper_quantum_numbers)) # add upper level 
-    # string.append('-')          # add transtion line
-    # string.append(encode_atomic_level(**lower_quantum_numbers)) # add lower level
-    # string = '_'.join(string)
-    # return(string)
-
-# def decode_atomic_transition(
-        # string,
-        # return_upper_lower_qn_separately=True, # as two dictionaries, else as one with 'p'/'pp' endings added
-# ):
-    # """E.g., Na_2d3p_J=1.5_-_4s5d_J=0.5."""
-    # qn_dict = {}
-    # string_upper,string_lower = string.split('_-_')
-    # qn_upper = decode_atomic_level(string_upper)
-    # qn_lower = decode_atomic_level(string_lower)
-    # ## assume common species if in upper and not lower
-    # if 'species' in qn_upper and 'species' not in qn_lower:
-        # qn_lower['species'] = qn_upper['species']
-    # if return_upper_lower_qn_separately:
-        # return(qn_upper,qn_lower)
-    # else:
-        # qn_common = dict(**{key+'p':val for key,val in qn_upper.items()},
-                         # **{key+'pp':val for key,val in qn_lower.items()},)
-        # return(qn_common)
-   #  
 # def encode_level(**kwargs):
     # """Turn quantum numbers etc (as in decode_level) into a string name. """
     # ## Test code
@@ -354,50 +627,25 @@ def decode_level(name):
                 # t.append(key+'='+str(kwargs[key]))
         # retval = retval + '('+','.join(t)+')'
     # return(retval)
-   #  
-# def encode_latex_term_symbol(**qn):
-    # """Beginning only."""
-    # t = {0:r'\Sigma', 1:r'\Pi', 2:r'\Delta', 3:r'\Phi'}
-    # retval = f'{{}}^{int(2*qn["S"]+1)}{t[qn["Λ"]]}'
-    # if 's' in qn and qn['Λ']==0: retval += ('^+' if qn['s']==0 else  '^-')
-    # subscript = ''
-    # if 'gu' in qn: subscript += qn['gu']
-    # if 'F'  in qn: subscript += 'F_'+str(int(qn['F']))
-    # if 'Ω'  in qn:
-        # if qn['Ω']%1==0: subscript += str(int(qn['Ω']))
-        # else:            subscript += r'\frac{{{}}}{{2}}'.format(int(qn['Ω']*2))
-    # if 'ef' in qn: subscript += qn['ef']
-    # if len(subscript)>0: retval += r'_{'+subscript+r'}'
-    # return(retval)
-   #  
-# _encode_Λ_data = {0:'Σ',1:'Π',2:'Δ',3:'Φ',4:'Γ'}
-# def encode_Λ(Λ):
-    # return(_encode_Λ_data[Λ])
-
-# def encode_term_symbol(S,Λ,s=None,gu=None,Ω=None,ef=None,pm=None):
-    # """Beginning only."""
-    # vectorised_retval = my.vectorise_function(encode_term_symbol,S=S,Λ=Λ,s=s,gu=gu,Ω=Ω,ef=ef,pm=pm)
-    # if vectorised_retval is not None:
-        # return(vectorised_retval)
-    # ## scalar
-    # t = {0:r'\Sigma', 1:r'\Pi', 2:r'\Delta', 3:r'\Phi'}
-    # retval = format(int(2*S+1),'d')+encode_Λ(Λ)
-    # if s is not None:
-        # assert Λ==0 or s==0
-        # if Λ==0:
-            # retval += ('+' if s==0 else '-')
-    # if pm is not None:
-        # assert pm in ('+','-')
-        # retval += pm
-    # if gu is not None:
-        # assert gu in ('g','u')
-        # retval += gu
-    # if Ω is not None:
-        # retval += gu
-    # if ef is not None:
-        # assert ef in ('e','f')
-        # retval += ef
-    # return(retval)
+    
+def encode_latex_term_symbol(**qn):
+    """Beginning only."""
+    t = {0:r'\Sigma', 1:r'\Pi', 2:r'\Delta', 3:r'\Phi'}
+    retval = f'{{}}^{int(2*qn["S"]+1)}{t[qn["Λ"]]}'
+    if 's' in qn and qn['Λ']==0: retval += ('^+' if qn['s']==0 else  '^-')
+    subscript = ''
+    if 'gu' in qn: subscript += qn['gu']
+    if 'F'  in qn: subscript += 'F_'+str(int(qn['F']))
+    if 'Ω'  in qn:
+        if qn['Ω']%1==0: subscript += str(int(qn['Ω']))
+        else:            subscript += r'\frac{{{}}}{{2}}'.format(int(qn['Ω']*2))
+    if 'ef' in qn: subscript += qn['ef']
+    if len(subscript)>0: retval += r'_{'+subscript+r'}'
+    return(retval)
+    
+_encode_Λ_data = {0:'Σ',1:'Π',2:'Δ',3:'Φ',4:'Γ'}
+def encode_Λ(Λ):
+    return(_encode_Λ_data[Λ])
 
 def decode_transition(transition,return_separately=False):
     """Transition must be in the form
@@ -445,94 +693,88 @@ def decode_transition(transition,return_separately=False):
         if rot_qn_Δ is not None:
             for key,val in rot_qn_Δ.items():
                 retval['Δ'+key] = val
-        return(retval)
+        return retval
 
-def decode_diatomic_transition(transition,return_separately=False):
-    """Transition must be in the form
-    species_levelp-levelpp_rotationaltransition. Matched from beginning,
-    and returns when matching runs out."""
-    original_transition = transition
-    transition = transition.replace(' ','') # all white space removed
-    qn = dict()                 # determined quantum numbers
-    ## look for rotational transition as e.g., ..._P11fe23, if found
-    ## decode and remove from transition
-    rot_qn_upper = rot_qn_lower = rot_qn_Δ = None
-    r = re.match(r'^(.*)_([^_-]+)$',transition)
-    if r:
-        try:
-            rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
-            transition = r.group(1)
-        except InvalidEncodingException: # not a valid rotational transition
-            pass
-    ## split upper and lower level
-    transition = transition.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
-    transition = transition.replace('Σ-','SigmaMinus') # hack to temporarily protect minus sign
-    if transition.count('--')==1:                       # upper-lower
-        upper,lower = transition.split('--')            # upper (lower not given)
-    elif transition.count('-')==1:                       # upper-lower
-        upper,lower = transition.split('-')            # upper (lower not given)
-    elif transition.count('-')==0:
-        # upper,lower = transition,''
-        raise InvalidEncodingException(f'Is this an encoded transition? "-" not found: {repr(original_transition)}')
+_translate_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
+def encode_transition(
+        qn=None,
+        qnl=None,
+        qnu=None,
+):
+    ## get all upper and lower qn
+    if qnl is None:
+        qnl = {}
     else:
-        raise InvalidEncodingException(f'Require only one "-" in an encoded transition: {repr(original_transition)}')
-    upper,lower = upper.replace('SigmaMinus','Σ-'),lower.replace('SigmaMinus','Σ-') # put this back after split
-    upper,lower = decode_level(upper),decode_level(lower)
-    ## add rotataional qn if found above
-    if rot_qn_lower is not None:
-        lower.update(rot_qn_lower)
-    if rot_qn_upper is not None:
-        upper.update(rot_qn_upper)
-    ## assume common species if only given once
-    if 'species' in upper and 'species' not in lower:
-        lower['species'] = upper['species'] 
-    if return_separately:
-        return(upper,lower)
+        qnl = copy(qnl)
+    if qnu is None:
+        qnu = {}
     else:
-        retval = join_upper_lower_quantum_numbers(upper,lower)
-        if rot_qn_Δ is not None:
-            for key,val in rot_qn_Δ.items():
-                retval['Δ'+key] = val
-        return(retval)
-
-def decode_rotational_transition(name,return_separately=False):
-    """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
-    upper,lower,Δ = {},{},{}
-    # data = {}
-    t = name
-    if len(t)==0: return(data)
-    ## get Δ['J']
-    if   t[0]=='O': Δ['J'] = -2
-    elif t[0]=='P': Δ['J'] = -1
-    elif t[0]=='Q': Δ['J'] =  0
-    elif t[0]=='R': Δ['J'] = +1
-    elif t[0]=='S': Δ['J'] = +2
-    else:
-        raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
-    t = t[1:]
-    if len(t)>0:
-        ## look for FpFppefpefpp
-        if re.match(r'([0-9]{2}[ef]{2}).*',t):
-            upper['F'] =      int(t[0])
-            upper['ef'] =     t[2]
-            lower['F'] =     int(t[1])
-            lower['ef'] =    t[3]
-            t = t[4:]
-    ## look for ΔJ
-    if len(t)>0:
-        try:
-            lower['J'] = float(t)
-            upper['J'] = lower['J'] + Δ['J']
-        except ValueError:
-            raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
-    ## return dict
-    if return_separately:
-        return(upper,lower,Δ)
-    else:
-        retval = join_upper_lower_quantum_numbers(upper,lower)
-        for key,val in Δ.items():
-            retval['Δ'+key] = val
-        return(retval)
+        qnu = copy(qnu)
+    if qn is not None:
+        for key,val in qn.items():
+            if key=='species':
+                qnu.setdefault(key,val)
+            if len(key)>2:
+                if key[-2:]=='_u':
+                    qnu.setdefault(key[:-2],val)
+                if key[-2:]=='_l':
+                    qnl.setdefault(key[:-2],val)
+    if 'species' in qnl and 'species' in qnu and qnu['species']==qnl['species']:
+        qnl.pop('species')
+    retval = encode_level(qnu)+'-'+encode_level(qnl)
+    if 'ΔJ' in qn:
+        retval += '_'+_translate_ΔJ[qn['ΔJ']] 
+    return retval
+    
+def encode_level(qn):
+    """Turn quantum numbers etc (as in decode_level) into a string name. """
+    ## Test code
+    ## t = encode_level(species='N2',label='cp4',Λ=0,s=0,gu='u',S=0,v=5,F=1,ef='e',Ω=0)
+    ## print(t)
+    ## pprint(decode_level(t))
+    qn = copy(qn)  # all values get popped below, so make a ocpy
+    retval = ''                 # output string
+    ## electronic state label and then get symmetry symbol, first get whether Σ+/Σ-/Π etc, then add 2S+1 then add g/u
+    if 'Λ' in qn:
+        Λ = qn.pop('Λ')
+        if Λ==0:
+            retval = 'Σ'
+            ## get + or - superscript
+            if 's' in qn:
+                retval += ('+' if qn.pop('s')==0 else '-')
+        elif Λ==1:
+            retval = 'Π'
+        elif Λ==2:
+            retval = 'Δ'
+        elif Λ==3:
+            retval = 'Φ'
+        else:
+            raise Exception('Λ>3 not implemented')
+        if Λ>0 and 's' in qn: qn.pop('s') # not needed
+        if 'S' in qn: retval = str(int(2*float(qn.pop('S'))+1))+retval
+        if 'gu' in qn: retval += qn.pop('gu')
+    ## add electronic state label
+    if 'label' in qn and retval=='':
+        retval =  qn.pop('label')
+    elif 'label' in qn:
+        retval = qn.pop('label')+'.'+retval
+    ## prepend species
+    if 'species' in qn and retval=='':
+        retval =  qn.pop('species')
+    elif 'species' in qn:
+        retval =  qn.pop('species')+'_'+retval
+    ## append all other quantum numbers in parenthese
+    if len(qn)>0:
+        t = []
+        for key in qn:
+            if key in ('v','F'): # ints
+                t.append(key+'='+str(int(qn[key])))
+            elif key in ('Ω','Σ','SR'): 
+                t.append(key+'='+format(qn[key],'g'))
+            else:
+                t.append(key+'='+str(qn[key]))
+        retval = retval + '('+','.join(t)+')'
+    return retval
 
 # def decode_branch(branch):
     # """Expect e.g., P13ee, P11, P1, P. Return as dict."""
@@ -619,88 +861,6 @@ def decode_rotational_transition(name,return_separately=False):
     # ## combine parts
     # return('_'.join(retval))
 
-
-_translate_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
-def encode_transition(
-        qn=None,
-        qnl=None,
-        qnu=None,
-):
-    ## get all upper and lower qn
-
-    if qnl is None:
-        qnl = {}
-    else:
-        qnl = copy(qnl)
-    if qnu is None:
-        qnu = {}
-    else:
-        qnu = copy(qnu)
-    if qn is not None:
-        for key,val in qn.items():
-            if key=='species':
-                qnu.setdefault(key,val)
-            if len(key)>2:
-                if key[-2:]=='_u':
-                    qnu.setdefault(key[:-2],val)
-                if key[-2:]=='_l':
-                    qnl.setdefault(key[:-2],val)
-    if 'species' in qnl and 'species' in qnu and qnu['species']==qnl['species']:
-        qnl.pop('species')
-    retval = encode_level(qnu)+'-'+encode_level(qnl)
-    if 'ΔJ' in qn:
-        retval += '_'+_translate_ΔJ[qn['ΔJ']] 
-    return retval
-    
-def encode_level(qn):
-    """Turn quantum numbers etc (as in decode_level) into a string name. """
-    ## Test code
-    ## t = encode_level(species='N2',label='cp4',Λ=0,s=0,gu='u',S=0,v=5,F=1,ef='e',Ω=0)
-    ## print(t)
-    ## pprint(decode_level(t))
-    qn = copy(qn)  # all values get popped below, so make a ocpy
-    retval = ''                 # output string
-    ## electronic state label and then get symmetry symbol, first get whether Σ+/Σ-/Π etc, then add 2S+1 then add g/u
-    if 'Λ' in qn:
-        Λ = qn.pop('Λ')
-        if Λ==0:
-            retval = 'Σ'
-            ## get + or - superscript
-            if 's' in qn:
-                retval += ('+' if qn.pop('s')==0 else '-')
-        elif Λ==1:
-            retval = 'Π'
-        elif Λ==2:
-            retval = 'Δ'
-        elif Λ==3:
-            retval = 'Φ'
-        else:
-            raise Exception('Λ>3 not implemented')
-        if Λ>0 and 's' in qn: qn.pop('s') # not needed
-        if 'S' in qn: retval = str(int(2*float(qn.pop('S'))+1))+retval
-        if 'gu' in qn: retval += qn.pop('gu')
-    ## add electronic state label
-    if 'label' in qn and retval=='':
-        retval =  qn.pop('label')
-    elif 'label' in qn:
-        retval = qn.pop('label')+'.'+retval
-    ## prepend species
-    if 'species' in qn and retval=='':
-        retval =  qn.pop('species')
-    elif 'species' in qn:
-        retval =  qn.pop('species')+'_'+retval
-    ## append all other quantum numbers in parenthese
-    if len(qn)>0:
-        t = []
-        for key in qn:
-            if key in ('v','F'): # ints
-                t.append(key+'='+str(int(qn[key])))
-            elif key in ('Ω','Σ','SR'): 
-                t.append(key+'='+format(qn[key],'g'))
-            else:
-                t.append(key+'='+str(qn[key]))
-        retval = retval + '('+','.join(t)+')'
-    return retval
     
 def encode_latex_term_symbol(**qn):
     """Beginning only."""
