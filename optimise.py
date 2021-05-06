@@ -115,7 +115,7 @@ def optimise_method(
                         formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
                         return f'{self.name}.{function.__name__}({formatted_kwargs},)'
                     else:
-                        formatted_kwargs = ',\n    '.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                        formatted_kwargs = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs_to_format.items()])
                         return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
                 self.add_format_input_function(f)
             ## returns all args as a dictionary -- but not _cache
