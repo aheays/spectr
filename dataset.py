@@ -402,33 +402,43 @@ class Dataset(optimise.Optimiser):
         given, then only set these."""
         ## To do: cache values or match results so only update if
         ## knots or match values have changed
-        xspline,yspline = zip(*knots)
-        if index is not None:
-            i = index
-        elif match is not None:
-            i = self.match(**match)
-        else:
-            i = None
-        self.set(
-            ykey,
-            value=tools.spline(xspline,yspline,self.get(xkey,index=i),order=order),
-            index=i,
-        )
+        if len(_cache) == 0: 
+            xspline,yspline = zip(*knots)
+            if index is not None:
+                i = index
+            elif match is not None:
+                i = self.match(**match)
+            else:
+                i = np.full(len(self),True)
+            ## limit to defined xkey range
+            i &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
+            _cache['i'] = i
+            _cache['xspline'],_cache['yspline'] = xspline,yspline
+        ## get cached data
+        i,xspline,yspline = _cache['i'],_cache['xspline'],_cache['yspline']
+        self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=i),order=order),index=i)
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
-            if i is None:
-                self.set(ykey,'unc')
-            else:
-                self.set(ykey,'unc',index=i)
+            self.set(ykey,nan,'unc',index=i)
 
     def keys(self):
         return list(self._data.keys())
+
+    def limit_to_keys(self,keys):
+        """Unset all keys except these."""
+        keys = tools.ensure_iterable(keys)
+        self.assert_known(keys)
+        self.unlink_inferences(keys)
+        self.unset([key for key in self if key not in keys])
 
     def optimised_keys(self):
         return [key for key in self.keys() if self.is_set(key,'vary')]
 
     def root_keys(self):
         return [key for key in self.keys() if 'root_data' not in self._data[key]]
+
+    def explicitly_set_keys(self):
+        return [key for key in self if not self.is_inferred(key)]
 
     def __iter__(self):
         for key in self._data:
@@ -453,13 +463,13 @@ class Dataset(optimise.Optimiser):
                 return True
         return False
 
-    def assert_known(self,*keys):
-        for key in keys:
+    def assert_known(self,keys):
+        for key in tools.ensure_iterable(keys):
             self[key]
 
-    def is_known(self,*keys):
+    def is_known(self,keys):
         try:
-            self.assert_known(*keys)
+            self.assert_known(keys)
             return True 
         except InferException:
             return False
@@ -512,16 +522,20 @@ class Dataset(optimise.Optimiser):
         self._length = 0
         self._data.clear()
 
-    def unset(self,key):
+    def unset(self,keys):
         """Delete data.  Also clean up inferences."""
-        self.unlink_inferences(key)
-        data = self._data[key]
-        if 'root_key' in data:
-            self._data[data['root_key']['associated_data']].pop(key)
-        else:
-            for associated_key in data['associated_data']:
-                self.pop(f'{key}_{associated_key}')
-        self._data.pop(key)
+        keys = tools.ensure_iterable(keys)
+        for key in keys:
+            if key not in self:
+                continue
+            self.unlink_inferences(key)
+            data = self._data[key]
+            if 'root_key' in data:
+                self._data[data['root_key']['associated_data']].pop(key)
+            else:
+                for associated_key in data['associated_data']:
+                    self.pop(f'{key}_{associated_key}')
+            self._data.pop(key)
 
     def is_inferred(self,key):
         if len(self._data[key]['inferred_from']) > 0:
@@ -536,11 +550,12 @@ class Dataset(optimise.Optimiser):
                 self.unlink_inferences(key)
                 self.unset(key)
    
-    def unlink_inferences(self,*keys,unset_inferred=True):
+    def unlink_inferences(self,keys,unset_inferred=True):
         """Delete any record of inferences to or from the given keys and
         delete anything inferred from these keys (but not if it is  among
         keys itself)."""
-        self.assert_known(*keys)
+        keys = tools.ensure_iterable(keys)
+        self.assert_known(keys)
         for key in keys:
             if key in self:     # test this since key might have been unset earlier in this loop
                 for inferred_from in list(self._data[key]['inferred_from']):
@@ -654,34 +669,6 @@ class Dataset(optimise.Optimiser):
                     (np.isnan(self[key]) if vali is np.nan else self[key]==vali)
                             for vali in val],axis=0)
         return i
-
-    # def match(self,keys_vals=idict(),**kwarg_keys_vals):
-        # """Return boolean array of data matching all key==val.\n\nIf key has
-        # suffix '_min' or '_max' then match anything greater/lesser
-        # or equal to this value"""
-        # keys_vals = keys_vals | kwarg_keys_vals
-        # i = np.full(len(self),True,dtype=bool)
-        # import time ; timer = time.time() # DEBUG
-        # for key,val in keys_vals.items():
-            # ## search for this key val
-            # if len(key) > 4 and key[-4:] == '_min':
-                # j = (self[key[:-4]][i] >= val)
-            # elif len(key) > 4 and key[-4:] == '_max':
-                # j = (self[key[:-4]][i] <= val)
-            # elif np.ndim(val)==0:
-                # if val is np.nan:
-                    # j = np.isnan(self[key][i])
-                # else:
-                    # j = (self[key][i]==val)
-            # else:
-                # j = np.any([
-                    # (np.isnan(self[key][i]) if vali is np.nan else self[key][i]==vali)
-                            # for vali in val],axis=0)
-            # ## update bool
-            # i[i] &= j
-            # print('Time elapsed:',key,format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-        # return i
-
 
     def find(self,**keys_vals):
         """Find unique indices matching keys_vals which contains one or more
@@ -800,9 +787,14 @@ class Dataset(optimise.Optimiser):
             try:
                 for dependency in dependencies:
                     self._infer(dependency,copy(already_attempted),depth=depth+1) # copy of already_attempted so it will not feed back here
-                ## compute value if dependencies successfully inferred
-                    
-                self.set(key,function(self,*[self[dependency] for dependency in dependencies]),_inferred=True)
+                ## compute value if dependencies successfully
+                ## inferred.  If value is None then the data and
+                ## dependencies are set internally in the infer
+                ## function.
+                value = function(self,*[self[dependency] for dependency in dependencies])
+                if value is not None:
+                    self.set(key,value,_inferred=True)
+                    self._add_dependency(key,dependencies)
                 ## compute uncertainties by linearisation
                 if unc_function is None:
                     squared_contribution = []
@@ -835,10 +827,6 @@ class Dataset(optimise.Optimiser):
                         self.set(key,unc_function(*args),'unc')
                     except InferException:
                         pass
-                ## if we get this far without an InferException then
-                ## success!.  Record inference dependencies.
-                ## replace this block with
-                self._add_dependency(key,dependencies)
                 break           
             ## some kind of InferException, try next set of dependencies
             except InferException as err:
@@ -1208,6 +1196,22 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
 
+    @optimise_method()
+    def extend_from_level(self,level,_cache=None):
+        """Extend self by level using keys existing in
+        self. Optimisable."""
+        if len(_cache) == 0:
+            level.construct()
+            _cache['nnew'] = len(level)
+            _cache['ibeg'] = len(self)
+            self.extend(level,keys='old')
+        else:
+            ibeg,nnew = _cache['ibeg'],_cache['nnew'] 
+            assert len(level) == nnew
+            index = slice(ibeg,ibeg+nnew)
+            for key in self.root_keys():
+                self.set(key,level[key],index=index)
+
     def append(self,keys_vals_as_dict=idict(),keys='all',**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
         keys_vals = dict(**keys_vals_as_dict,**keys_vals_as_kwargs)
@@ -1225,16 +1229,19 @@ class Dataset(optimise.Optimiser):
         old data.  If keys='old' then extra keys in new data are
         ignored. If keys='new' then extra keys in old data are unset.
         If 'all' then keys must match exactly.  If key=='new' no data
-        currently present then just add this data."""  
-        ## get keys to extend
-        if keys == 'all':
-            keys = {*self,*keys_vals_as_dict_or_dataset,*keys_vals_as_kwargs}
-        elif keys == 'old':
-            keys = {*self}
-        elif keys == 'new':
-            keys = {*keys_vals_as_dict_or_dataset,*keys_vals_as_kwargs}
-        else:
-            raise Exception(f"valid keys options: 'all', 'new', 'old'")
+        currently present then just add this data."""
+        ## get preset lists of keys to extend
+        if keys in ('old','all','new'):
+            tkeys = set()
+            if keys in ('old','all'):
+                tkeys = tkeys.union(self.explicitly_set_keys())
+            if keys in ('new','all'):
+                tkeys = tkeys.union(keys_vals_as_kwargs)
+                if isinstance(keys_vals_as_dict_or_dataset,Dataset):
+                    tkeys = tkeys.union(keys_vals_as_dict_or_dataset.explicitly_set_keys())
+                else:
+                    tkeys = tkeys.union(keys_vals_as_dict_or_dataset)
+            keys = tkeys
         ## ensure all keys are present in new and old data, and limit
         ## old data to these
         new_data = {}
@@ -1258,7 +1265,7 @@ class Dataset(optimise.Optimiser):
             else:
                 raise Exception(f'Extending key missing in new data: {repr(key)}')
         ## limit self to keys and mark not inferred
-        self.unlink_inferences(*keys)
+        self.unlink_inferences(keys)
         for key in list(self.root_keys()):
             if key not in keys:
                 self.unset(key)
@@ -1356,7 +1363,7 @@ class Dataset(optimise.Optimiser):
             zkeys = self.default_zkeys
         zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
         ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
-        self.assert_known(xkey,*ykeys,*zkeys)
+        self.assert_known((xkey,*ykeys,*zkeys))
         ## plot each 
         ymin = {}
         for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
@@ -1446,12 +1453,18 @@ class Dataset(optimise.Optimiser):
             self.get(ykey,'unc',index),
             **polyfit_kwargs)
 
-def find_common(x,y,keys,verbose=False):
+def find_common(x,y,keys=None,verbose=False):
     """Return indices of two Datasets that have uniquely matching
     combinations of keys."""
     ## if empty list then nothing to be done
     if len(x)==0 or len(y)==0:
         return(np.array([],dtype=int),np.array([],dtype=int))
+    ## use quantum numbers as default keys -- could use _qnhash instead
+    if keys is None:
+        if hasattr(x,'defining_qn') and hasattr(y,'defining_qn'):
+            keys = list(getattr(x,'defining_qn'))
+        else:
+            raise Exception("No keys provided and defining_qn unavailable x.")
     # ## Make a list of default keys if not provided as inputs. If a
     # ## Level or Transition object (through a hack) then use
     # ## defining_qn, else use all set keys known to both.
