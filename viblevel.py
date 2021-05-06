@@ -25,7 +25,7 @@ class VibLevel(Optimiser):
     def __init__(
             self,
             name='viblevel',
-            species='14N2',
+            species='[14N][14N]',
             J=None,                       # compute on this, or default added
             # ef=None,                      # compute for these e/f parities , default ('e','f')
             experimental_level=None,      # a Level object for optimising relative to 
@@ -38,8 +38,9 @@ class VibLevel(Optimiser):
             # 'Eref':Eref,
             'auto_defaults':True,
             'permit_nonprototyped_data':False,}
-        self.manifolds = {}                                   
-        self.level = levels.Diatomic(name=f'{self.name}.level',**tkwargs)
+        self.manifolds = {}
+        self._shifts = []       # used to shift individual levels after diagonalisation
+        self.level = levels.LinearDiatomic(name=f'{self.name}.level',**tkwargs)
         self.level.pop_format_input_function()
         self.level.add_suboptimiser(self)
         self.level.pop_format_input_function()
@@ -74,9 +75,8 @@ class VibLevel(Optimiser):
         self.automatic_format_input_function(
             multiline=False,
             limit_to_args=('name', 'species', 'J', 'Eref',))
-        def f(directory):
-            self.level.save(directory+'/level.h5')
-        self.add_save_to_directory_function(f)
+        self.add_save_to_directory_function(
+            lambda directory: self.level.save(f'{directory}/level.h5'))
         ## compute residual error if a experimental level is provided
         self.experimental_level = experimental_level
         self._experimental_level_cache = {}
@@ -85,6 +85,16 @@ class VibLevel(Optimiser):
             self.add_post_construct_function(self.calculate_residual)
         ## finalise construction
         self.add_post_construct_function(self.construct_levels)
+
+    def _get_J(self):
+        return self._J
+
+    def _set_J(self,J):
+        self._J = J
+        ## also reset H so full reconstruct is triggered
+        self.H = None
+
+    J = property(_get_J,_set_J)
 
     def calculate_residual(self):
         """Compare model and experimental energy levels."""
@@ -117,9 +127,10 @@ class VibLevel(Optimiser):
         ## if first run or model changed then construct Hamiltonian
         ## and blank rotational level, and determine which levels are
         ## actually allowed
-        if self.H is None or self._last_add_construct_function_time > self._last_construct_time:
-            ## construct Hamiltonian
-            self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.)
+        if (self.H is None
+            or self._last_add_construct_function_time > self._last_construct_time):
+            # ## construct Hamiltonian
+            self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
             self.level.clear()
@@ -158,26 +169,30 @@ class VibLevel(Optimiser):
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
             eigvects = np.zeros((self.H.shape[2],self.H.shape[2]),dtype=float)
             if je is not None:
-                eigvals_e,eigvects_e = linalg.eigh(H[np.ix_(je,je)])
+                eigvals_e,eigvects_e = linalg.eig(H[np.ix_(je,je)])
                 eigvals_e,eigvects_e = _diabaticise_eigenvalues(eigvals_e,eigvects_e)
                 eigvals[je] = eigvals_e
-                eigvects[np.ix_(je,je)] = eigvects_e
+                eigvects[np.ix_(je,je)] = np.real(eigvects_e)
             if jf is not None:
                 eigvals_f,eigvects_f = linalg.eigh(H[np.ix_(jf,jf)])
                 eigvals_f,eigvects_f = _diabaticise_eigenvalues(eigvals_f,eigvects_f)
                 eigvals[jf] = eigvals_f
-                eigvects[np.ix_(jf,jf)] = eigvects_f
+                eigvects[np.ix_(jf,jf)] = np.real(eigvects_f)
             ## diagonaliase all at once
             ## eigvals,eigvects = linalg.eigh(H)
             ## eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
-            self.eigvals[J] = eigvals.real
-            self.eigvects[J] = eigvects.real
+            self.eigvals[J] = eigvals
+            self.eigvects[J] = eigvects
+        ## shift some levels
+        for shift in self._shifts:
+            self.eigvals[shift['J']][shift['i']] += float(shift['shift'])
         ## insert energies into level
-        self.level['E'] = np.concatenate(list(self.eigvals.values()))
-        # self.level.index((self.level['J']>self.level['Ω']))
+        t = np.concatenate(list(self.eigvals.values()))
+        self.level['E'] = t.real
+        self.level['Γ'] = t.imag
 
     @optimise_method(add_construct_function=False)
-    def add_level(self,name,**kwargs):
+    def add_level(self,name,Γv=0,**kwargs):
         """Add a new electronic vibrational level. kwargs contains fitting
         parameters and optionally extra quantum numbers."""
         ## all quantum numbers and molecular parameters
@@ -203,10 +218,9 @@ class VibLevel(Optimiser):
         if kw['S']%1!=self.J[0]%1:
             raise Exception(f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}')
         ## get Hamiltonian and insert adjustable parameters into
-        ## functions
+        ## functions, including complex width
         ef,Σ,sH,fH = _get_linear_H(kw['S'],kw['Λ'],kw['s'])
-        # import pdb; pdb.set_trace(); # DEBUG
-        fH = [[lambda J,f=fH[i,j]: f(J,**kw)
+        fH = [[lambda J,f=fH[i,j]: f(J,**kw)+1j*Γv
                for i in range(fH.shape[0])]
               for j in range(fH.shape[1])]
         ## add to self
@@ -220,6 +234,27 @@ class VibLevel(Optimiser):
         if name in self.manifolds:
             raise Exception(f'Non-unique name: {repr(name)}')
         self.manifolds[name] = dict(ibeg=ibeg,ef=ef,Σ=Σ,n=len(ef),**kw) 
+
+    @optimise_method(add_construct_function=False)
+    def add_spline_width(self,name,knots,ef=None,Σ=None,order=3):
+        """Add complex width to manifold 'name' according to the given spline knots.. If ef and Σ are not none then set these levels only."""
+        ## load data about this level from name
+        kw = self.manifolds[name]
+        ibeg = kw['ibeg']
+        ## get indices to add width to
+        i = np.full(kw['n'],True)
+        if ef is not None:
+            i &= kw['ef'] == ef
+        if Σ is not None:
+            i &= kw['Σ'] == Σ
+        i = ibeg + tools.find(i)
+        ## get spline points and J range
+        xs = [knot[0] for knot in knots]
+        ys = [knot[1] for knot in knots]
+        Jbeg,Jend = np.min(xs),np.max(xs)
+        iJ = (self.J>=Jbeg) & (self.J<=Jend)
+        ## insert imaginary spline widths
+        self.H[iJ,:,:][i,:][:,i] = tools.spline(xs,ys,self.J[iJ],order=order)*1j
 
     @optimise_method(add_construct_function=False)
     def add_LS_coupling(self,name1,name2,ηv=0,ηDv=0):
@@ -259,6 +294,14 @@ class VibLevel(Optimiser):
         for i in np.ndindex(H.shape):
             H[i] = lambda J,i=i: pv*JS[i](J)
         self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
+
+
+    @optimise_method(add_construct_function=False)
+    def shift(self,name,Σ=0,ef=1,J=0,shift=0):
+        """Shift one level after diagonalisation."""
+        manifold = self.manifolds[name]
+        i = manifold['ibeg']+tools.find_unique((manifold['Σ']==Σ)&(manifold['ef']==ef))
+        self._shifts.append({'J':J,'i':i,'shift':shift})
 
     def plot(self,**kwargs):
         kwargs.setdefault('xkey','J')
