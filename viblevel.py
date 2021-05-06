@@ -2,6 +2,7 @@ from copy import copy,deepcopy
 from pprint import pprint
 from functools import lru_cache
 import itertools
+from time import perf_counter as timestamp
 
 import numpy as np
 from numpy import nan,array
@@ -34,38 +35,18 @@ class VibLevel(Optimiser):
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
-        tkwargs = {
-            # 'Eref':Eref,
-            'auto_defaults':True,
-            'permit_nonprototyped_data':False,}
+        tkwargs = {'auto_defaults':True,'permit_nonprototyped_data':False}
         self.manifolds = {}
         self._shifts = []       # used to shift individual levels after diagonalisation
         self.level = levels.LinearDiatomic(name=f'{self.name}.level',**tkwargs)
         self.level.pop_format_input_function()
         self.level.add_suboptimiser(self)
         self.level.pop_format_input_function()
-        # self.vibrational_level = levels.Diatomic(**tkwargs)
-        self.vibrational_spin_level = levels.Diatomic(**tkwargs) 
+        self.vibrational_spin_level = levels.LinearDiatomic(**tkwargs) 
         self.interactions = Dataset() 
-        species_object = get_species(species)
-        J_is_half_integer = species_object['nelectrons']%2==1
-        if J is None:
-            if J_is_half_integer:
-                self.J = np.arange(0.5,30.5,1)
-            else:
-                self.J = np.arange(31)
-        else:
-            self.J = np.array(J)
-            if J_is_half_integer:
-                assert np.all(np.mod(self.J,1)==0.5),f'Half-integer J required for {repr(species)}'
-            else:
-                assert np.all(np.mod(self.J,1)==0),f'Integer J required for {repr(species)}'
+        self.J = J
         self.verbose = False
-        ## various options for how to assign the perturbed levels: None
-        # self.eigenvalue_ordering = eigenvalue_ordering
         ## inputs / outputs of diagonalisation
-        self._H_subblocks = []
-        self.H = None
         self.eigvals = None
         self.eigvects = None
         ## a Level object containing data, better access through level property
@@ -82,7 +63,6 @@ class VibLevel(Optimiser):
         self._experimental_level_cache = {}
         if self.experimental_level is not None:
             self.add_suboptimiser(self.experimental_level)
-            self.add_post_construct_function(self.calculate_residual)
         ## finalise construction
         self.add_post_construct_function(self.construct_levels)
 
@@ -90,65 +70,38 @@ class VibLevel(Optimiser):
         return self._J
 
     def _set_J(self,J):
+        J_is_half_integer = self.species['nelectrons']%2==1
+        if J is None:
+            if J_is_half_integer:
+                J = np.arange(0.5,30.5,1)
+            else:
+                J = np.arange(31)
+        J = np.asarray(J)
+        if J_is_half_integer:
+            assert np.all(np.mod(J,1)==0.5),f'Half-integer J required for {repr(species)}'
+        else:
+            assert np.all(np.mod(J,1)==0),f'Integer J required for {repr(species)}'
         self._J = J
         ## also reset H so full reconstruct is triggered
-        self.H = None
+        self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
+        ## trigger reconstruct elsewhere
+        self._last_add_construct_function_time = timestamp()
+
 
     J = property(_get_J,_set_J)
-
-    def calculate_residual(self):
-        """Compare model and experimental energy levels."""
-        ## cache experimental data and matching indices
-        if (self._experimental_level_cache is None
-            or self._last_add_construct_function_time > self._last_construct_time
-            or self.experimental_level._last_construct_time > self._last_construct_time):
-            iexp,imod = dataset.find_common(
-                self.experimental_level,
-                self.level,
-                keys=self.level.defining_qn)
-            if np.sum(iexp) == 0:
-                raise Exception('No matching experimental data')
-            self._experimental_level_cache = {'iexp':iexp,'imod':imod}
-            self.level['Eresidual'] = nan
-            self.level['Eresidual_unc'] = nan
-        ## calculate residual
-        iexp = self._experimental_level_cache['iexp']
-        imod = self._experimental_level_cache['imod']
-        Emod = self.level['E'][imod]
-        Eexp = self.experimental_level['E'][iexp]
-        residual = Eexp-Emod
-        self.level['Eresidual'][imod] = residual
-        if self.experimental_level.is_known('E_unc'):
-            self.level['Eresidual_unc'][imod] = self.experimental_level['E_unc'][iexp]
-        return residual
 
     def construct_levels(self):
         """The actual matrix diagonlisation is done last."""
         ## if first run or model changed then construct Hamiltonian
         ## and blank rotational level, and determine which levels are
         ## actually allowed
-        if (self.H is None
-            or self._last_add_construct_function_time > self._last_construct_time):
-            # ## construct Hamiltonian
-            self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
+        if self._last_add_construct_function_time > self._last_construct_time:
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
             self.level.clear()
             self.level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
             for key in self.vibrational_spin_level:
-                self.level[key] = np.tile(self.vibrational_spin_level[key], len(self.J))
-        ## compute upper-triangular part of H from subblocks
-        self.H[:] = 0.0
-        for ibeg,jbeg,fH in self._H_subblocks:
-            for (i,j),fHi in np.ndenumerate(fH):
-                if ibeg == jbeg:
-                    ## manifold 
-                    self.H[:,i+ibeg,j+jbeg] += fHi(self.J)
-                else:
-                    ## coupling between manifolds
-                    t = fHi(self.J)
-                    self.H[:,i+ibeg,j+jbeg] += t
-                    self.H[:,j+jbeg,i+ibeg] += t
+                self.level[key] = np.tile(self.vibrational_spin_level[key],len(self.J))
         ## nothing to be done
         if len(self.vibrational_spin_level) == 0:
             return
@@ -167,75 +120,109 @@ class VibLevel(Optimiser):
             ## compute e- and f-parity matrcies separatesly.  Might be
             ## nice to automatically convert matrix into blocks
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
-            eigvects = np.zeros((self.H.shape[2],self.H.shape[2]),dtype=float)
+            eigvects = np.zeros(self.H.shape[1:3],dtype=float)
             if je is not None:
-                eigvals_e,eigvects_e = linalg.eig(H[np.ix_(je,je)])
+                He = H[np.ix_(je,je)]
+                eigvals_e,eigvects_e = linalg.eig(He)
                 eigvals_e,eigvects_e = _diabaticise_eigenvalues(eigvals_e,eigvects_e)
                 eigvals[je] = eigvals_e
                 eigvects[np.ix_(je,je)] = np.real(eigvects_e)
             if jf is not None:
-                eigvals_f,eigvects_f = linalg.eigh(H[np.ix_(jf,jf)])
+                Hf = H[np.ix_(jf,jf)]
+                eigvals_f,eigvects_f = linalg.eig(Hf)
                 eigvals_f,eigvects_f = _diabaticise_eigenvalues(eigvals_f,eigvects_f)
                 eigvals[jf] = eigvals_f
                 eigvects[np.ix_(jf,jf)] = np.real(eigvects_f)
             ## diagonaliase all at once
-            ## eigvals,eigvects = linalg.eigh(H)
+            ## eigvals,eigvects = linalg.eig(H)
             ## eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
             self.eigvals[J] = eigvals
             self.eigvects[J] = eigvects
-        ## shift some levels
-        for shift in self._shifts:
-            self.eigvals[shift['J']][shift['i']] += float(shift['shift'])
         ## insert energies into level
         t = np.concatenate(list(self.eigvals.values()))
         self.level['E'] = t.real
         self.level['Γ'] = t.imag
+        ## compute residual
+        if self.experimental_level is not None:
+            if (not hasattr(self,'_construct_levels_cache')
+                or self._last_add_construct_function_time > self._last_construct_time
+                or self.experimental_level._last_construct_time > self._last_construct_time):
+                ## cache common quantum number indices
+                iexp,imod = dataset.find_common(
+                    self.experimental_level,
+                    self.level,
+                    keys=self.level.defining_qn)
+                if np.sum(iexp) == 0:
+                    raise Exception('No matching experimental data')
+                self.level['Eresidual'] = nan
+                self.level['Eresidual_unc'] = nan
+                self._construct_levels_cache = {'iexp':iexp,'imod':imod}
+            iexp,imod = self._construct_levels_cache['iexp'],self._construct_levels_cache['imod']
+            Emod = self.level['E'][imod]
+            Eexp = self.experimental_level['E'][iexp]
+            residual = Eexp-Emod
+            self.level['Eresidual'][imod] = residual
+            if self.experimental_level.is_known('E_unc'):
+                self.level['Eresidual_unc'][imod] = self.experimental_level['E_unc'][iexp]
+            return residual
 
-    @optimise_method(add_construct_function=False)
-    def add_level(self,name,Γv=0,**kwargs):
+
+    @optimise_method()
+    def add_level(self,name,Γv=0,_cache=None,**kwargs):
         """Add a new electronic vibrational level. kwargs contains fitting
         parameters and optionally extra quantum numbers."""
-        ## all quantum numbers and molecular parameters
-        kw = quantum_numbers.decode_level(name) | kwargs 
-        kw['species'] = self.species.isotopologue
-        if 'S' not in kw or 's' not in kw or 'Λ' not in kw:
-            raise Exception('Quantum numbers S, s, and Λ are required.')
-        ## check kwargs contains necessary quantum numbers
-        for key in ('species','label','S','Λ','s','v'):
-            if key not in kw:
-                raise Exception(f'Required quantum number: {key}')
-        ## check kwargs contains only defined data
-        for key in kw:
-            if key not in (
-                    'species','label','S','Λ','s','v',
-                    'Tv','Bv','Dv','Hv','Av','ADv',
-                    'λv','λDv','λHv','γv','γDv',
-                    'ov','pv','pDv','qv','qDv',
-                    ):
-                raise Exception(f'Keyword argument not a known quantum number of Hamiltonian parameter: {repr(key)}')
+        ## process inputs
+        if 'kw' not in _cache:
+            ## all quantum numbers and molecular parameters
+            kw = quantum_numbers.decode_linear_level(name) | kwargs 
+            kw['species'] = self.species.isotopologue
+            if 'S' not in kw or 's' not in kw or 'Λ' not in kw:
+                raise Exception('Quantum numbers S, s, and Λ are required.')
+            ## check kwargs contains necessary quantum numbers
+            for key in ('species','label','S','Λ','s','v'):
+                if key not in kw:
+                    raise Exception(f'Required quantum number: {key}')
+            ## check kwargs contains only defined data
+            for key in kw:
+                if key not in (
+                        'species','label','S','Λ','s','v',
+                        'Tv','Bv','Dv','Hv','Av','ADv',
+                        'λv','λDv','λHv','γv','γDv',
+                        'ov','pv','pDv','qv','qDv',
+                        ):
+                    raise Exception(f'Keyword argument not a known quantum number of Hamiltonian parameter: {repr(key)}')
+            _cache['kw'] = kw
+        kw = _cache['kw']
         ## Checks that integer/half-integer nature of J corresponds to
         ## quantum number S
         if kw['S']%1!=self.J[0]%1:
             raise Exception(f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}')
-        ## get Hamiltonian and insert adjustable parameters into
-        ## functions, including complex width
-        ef,Σ,sH,fH = _get_linear_H(kw['S'],kw['Λ'],kw['s'])
-        fH = [[lambda J,f=fH[i,j]: f(J,**kw)+1j*Γv
-               for i in range(fH.shape[0])]
-              for j in range(fH.shape[1])]
-        ## add to self
-        ibeg = len(self.vibrational_spin_level)
-        self.vibrational_spin_level.extend(
-            keys='new',
-            ef=ef,Σ=Σ,
-            **{key:kw[key] for key in (
-                'species','label','S','Λ','s','v')},)
-        self._H_subblocks.append((ibeg,ibeg,fH))
-        if name in self.manifolds:
-            raise Exception(f'Non-unique name: {repr(name)}')
-        self.manifolds[name] = dict(ibeg=ibeg,ef=ef,Σ=Σ,n=len(ef),**kw) 
+        ## get qunatum numbers and Hamiltonian
+        if 'fH' not in _cache:
+            ## get Hamiltonian and insert adjustable parameters into
+            ## functions, including complex width
+            ef,Σ,sH,fH = _get_linear_H(kw['S'],kw['Λ'],kw['s'])
+            n = len(ef)
+            ibeg = len(self.vibrational_spin_level)
+            iend = ibeg + n
+            _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend'] = n,ef,Σ,fH,ibeg,iend
+            ## add manifold data and list of vibrational_spin_levels
+            if name in self.manifolds:
+                raise Exception(f'Non-unique name: {repr(name)}')
+            self.manifolds[name] = dict(ibeg=ibeg,iend=iend,ef=ef,Σ=Σ,n=len(ef),**kw) 
+            self.vibrational_spin_level.extend(
+                keys='new',ef=ef,Σ=Σ,
+                **{key:kw[key] for key in ('species','label','S','Λ','s','v')},)
+            ## make H bigger
+            tH = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
+            tH[:,:ibeg,:ibeg] = self.H
+            self.H = tH
+        n,ef,Σ,fH,ibeg,iend = _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend']
+        ## update H
+        for i,j in np.ndindex((n,n)):
+            self.H[:,i+ibeg,j+ibeg] = fH[i,j](self.J,**kw) + 1j*Γv
 
-    @optimise_method(add_construct_function=False)
+    @optimise_method()
     def add_spline_width(self,name,knots,ef=None,Σ=None,order=3):
         """Add complex width to manifold 'name' according to the given spline knots.. If ef and Σ are not none then set these levels only."""
         ## load data about this level from name
@@ -256,52 +243,32 @@ class VibLevel(Optimiser):
         ## insert imaginary spline widths
         self.H[iJ,:,:][i,:][:,i] = tools.spline(xs,ys,self.J[iJ],order=order)*1j
 
-    @optimise_method(add_construct_function=False)
-    def add_LS_coupling(self,name1,name2,ηv=0,ηDv=0):
-        kw1 = self.manifolds[name1]
-        kw2 = self.manifolds[name2]
-        ## get coupling matrices -- cached
-        JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
-            kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
-        ## substitute in adjustable parameter
-        H = np.full(LS.shape,None)
-        for i in np.ndindex(JL.shape):
-            H[i] = lambda J,i=i: ηv*LS[i](J) + ηDv*NNLS[i](J)
-        self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
-
-    @optimise_method(add_construct_function=False)
-    def add_JL_coupling(self,name1,name2,ξv=0,ξDv=0):
-        kw1 = self.manifolds[name1]
-        kw2 = self.manifolds[name2]
-        ## get coupling matrices -- cached
-        JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
-            kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
-        ## substitute in adjustable parameter
-        H = np.full(JL.shape,None)
-        for i in np.ndindex(H.shape):
-            H[i] = lambda J,i=i: -ξv*JL[i](J) - ξDv*NNJL[i](J)
-        self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
-
-    @optimise_method(add_construct_function=False)
-    def add_JS_coupling(self,name1,name2,pv=0):
-        kw1 = self.manifolds[name1]
-        kw2 = self.manifolds[name2]
-        ## get coupling matrices -- cached
-        JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
-            kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
-        ## substitute in adjustable parameter
-        H = np.full(JL.shape,None)
-        for i in np.ndindex(H.shape):
-            H[i] = lambda J,i=i: pv*JS[i](J)
-        self._H_subblocks.append((kw1['ibeg'],kw2['ibeg'],H))
-
-
-    @optimise_method(add_construct_function=False)
-    def shift(self,name,Σ=0,ef=1,J=0,shift=0):
-        """Shift one level after diagonalisation."""
-        manifold = self.manifolds[name]
-        i = manifold['ibeg']+tools.find_unique((manifold['Σ']==Σ)&(manifold['ef']==ef))
-        self._shifts.append({'J':J,'i':i,'shift':shift})
+    @optimise_method()
+    def add_coupling(
+            self,
+            name1,name2,        
+            ηv=0,ηDv=0,         # LS -- spin-orbit coupling
+            ξv=0,ξDv=0,         # JL -- L-uncoupling
+            pv=0,pDv=0,         # JS -- S-uncoupling
+            _cache=None):
+        """Add spin-orbit coupling of two manifolds."""
+        ## get matrix cache of matrix elements
+        if 'kw1' not in _cache:
+            kw1 = self.manifolds[name1]
+            kw2 = self.manifolds[name2]
+            ## get coupling matrices -- cached
+            JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
+                kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
+            ibeg,jbeg = kw1['ibeg'],kw2['ibeg']
+            _cache['ibeg'],_cache['jbeg'],_cache['JL'],_cache['JS'],_cache['LS'],_cache['NNJL'],_cache['NNLS'],_cache['NNLS'] = ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS
+        ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS = _cache['ibeg'],_cache['jbeg'],_cache['JL'],_cache['JS'],_cache['LS'],_cache['NNJL'],_cache['NNLS'],_cache['NNLS']
+        ## substitute into Hamiltonian (both upper and lowe diagonals, treated as real)
+        for i,j in np.ndindex(JL.shape):
+            t = (ηv*LS[i,j](self.J) + ηDv*NNLS[i,j](self.J)
+                 + -ξv*JL[i,j](self.J) - ξDv*NNJL[i,j](self.J)
+                 + pv*JS[i,j](self.J)  )
+            self.H[:,i+ibeg,j+jbeg] = t
+            self.H[:,j+jbeg,i+ibeg] = np.conj(t)
 
     def plot(self,**kwargs):
         kwargs.setdefault('xkey','J')
@@ -549,7 +516,6 @@ def _get_linear_H(S,Λ,s):
         # print( )
         # print(self.format_input_functions[-1]())
         # print_matrix_elements(case_a['qnef'],H,'H')
-    # print( H)                  #  DEBUG
     ## Convert elements of symbolic Hamiltonian into lambda functions
     fH = np.full(H.shape,None)
     for i in range(len(Σs)):
@@ -847,9 +813,6 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp,verbose=False):
                     *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj')  # Wigner 3J line strength factor vectorised over Jpp
                 )
                 retval[np.isnan(retval)] = 0. # not allowed
-                # print('DEBUG:', Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp)
-                # print('DEBUG:', quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj'))
-                # print('DEBUG:', retval)
                 return retval
             fi.append(fij)
         fμ[ip,ipp] = lambda Jpp,ΔJ,fi=fi: np.sum([fij(Jpp,ΔJ) for fij in fi],axis=0)
