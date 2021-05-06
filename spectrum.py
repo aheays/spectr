@@ -874,8 +874,10 @@ class Model(Optimiser):
     def auto_add_intensity_spline(self,xstep=1000.,y=1.):
         """Quickly add an evenly-spaced intensity spline."""
         self.experiment.construct()
+        xbeg,xend = self.x[0]-50,self.x[-1]+50 # boundaries to cater to instrument convolution
         knots = [[x,P(y,True)] for x in
-                 np.arange(self.experiment.x[0]-xstep,self.experiment.x[-1]+xstep*1.01,xstep)]
+                 linspace(xbeg,xend,
+                          min(2,1+int((xend-xbeg)/xstep+0.99999999)))]
         self.add_intensity_spline(knots=knots)
         return knots
 
