@@ -47,6 +47,9 @@ def presetRcParams(
     ## try and get screen size
     try:
         xscreen,yscreen = get_screensize() # pts
+        ## subtrace some screenspace for toolbar etc
+        yscreen -= 50
+        xscreen -= 15
         xscreen,yscreen = xscreen/matplotlib.rcParams['figure.dpi'],yscreen/matplotlib.rcParams['figure.dpi'] # inches
     except:
         warnings.warn("could not get screensize")
