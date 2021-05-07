@@ -407,18 +407,27 @@ class Mixture():
         retval.update({reaction_names[ii]:rates[ii] for ii in i})
         return retval
 
-    def plot_density(self,species=5,xkey='t',ax=None):
+    def plot_density(
+            self,
+            species=5,
+            xkey='t',
+            ax=None,
+            labelstyle='legend',
+    ):
         """Plot density of species. If xkeys is an integer then plot that many
         most abundant anywhere species. Or else give a list of species
         names."""
         if isinstance(species,int):
             ## get most abundance species anywhere
             all_keys = np.array(self.density.keys())
+            nsort = species
             species = []
             for i in range(len(self.density)):
                 j = np.argsort([-self.density[t][i] for t in self.density])
-                species.extend(all_keys[j[:5]])
+                species.extend(all_keys[j[:nsort]])
             species = tools.unique(species)
+            i = np.argsort([-np.max(self.density[tspecies]) for tspecies in species])
+            species = np.array(species)[i]
         if ax is None:
             ax = plotting.gca()
         # ## plot total density
@@ -430,7 +439,13 @@ class Mixture():
         # ax.set_ylim(self[ykey].min(),self[ykey].max())
         ax.set_xlabel(ykey)
         ax.set_ylabel('Density (cm-3)')
-        plotting.legend(ax=ax)
+        if labelstyle == 'legend':
+            plotting.legend(ax=ax)
+        elif labelstyle == 'annotate':
+            plotting.annotate_line(ax=ax)
+        else:
+            raise Exception(f'Unknown labelstyle: {repr(labelstyle)}')
+                
 
     def plot_rates(
             self,
@@ -477,36 +492,62 @@ class Mixture():
             ax=None,
             normalise=False,    # divide rates by species abundance
             nsort=3,            # include this many ranked rates at each altitude
+            plot_production=True,
+            plot_destruction=True,
+            plot_total=True,
+            plot_difference=True,
+            separate_axes=False
     ):
         """Plot destruction and production rates of on especies."""
+        if separate_axes:
+            fig = plotting.gcf()
+            fig.clf()
+            ax = plotting.subplot()
+            self.plot_production_destruction(species,xkey,ax,normalise,nsort,True,False,plot_total,plot_difference,False)
+            ax = plotting.subplot()
+            self.plot_production_destruction(species,xkey,ax,normalise,nsort,False,True,plot_total,plot_difference,False)
+            return
+        ## start plot
         if ax is None:
             ax = plotting.plt.gca()
             ax.cla()
-        x = self[xkey]
         ## production rates
-        tax,production_rates = self.plot_rates(
-            xkey=xkey, ax=ax, plot_total= True,
-            with_products=species,
-            plot_kwargs={'linestyle':'-'},
-            normalise_to_species=(species if normalise else None),
-            nsort=nsort,
-        )
+        if plot_production:
+            tax,production_rates = self.plot_rates(
+                xkey=xkey,ax=ax,plot_total=plot_total,
+                with_products=species,
+                plot_kwargs={'linestyle':'-'},
+                normalise_to_species=(species if normalise else None),
+                nsort=nsort,
+            )
         ## destruction
-        tax,destruction_rates = self.plot_rates(
-            xkey=xkey, ax=ax, plot_total= True,
-            with_reactants=species,
-            plot_kwargs={'linestyle':':',},
-            normalise_to_species=(species if normalise else None),
-            nsort=nsort
-        )
-        ## plot the difference betwee producti
-        y = production_rates['total']-destruction_rates['total']
-        i = y>0
-        kwargs = dict(alpha=0.3,markersize=10,marker='o',linestyle='',zorder=-10)
-        ax.plot(x[i],y[i],label='total production > destruction',color='blue',**kwargs)
-        ax.plot(x[~i],np.abs(y[~i]),label='total production < destruction',color='red',**kwargs)
-        plotting.legend(show_style=True,title=f'Production and destruction rates of {species}')
-        # ax.set_title(f'Production and destruction rates of {species}')
+        if plot_destruction:
+            tax,destruction_rates = self.plot_rates(
+                xkey=xkey,ax=ax,plot_total=plot_total,
+                with_reactants=species,
+                plot_kwargs={'linestyle':':',},
+                normalise_to_species=(species if normalise else None),
+                nsort=nsort
+            )
+        ## plot the difference between production and
+        ## destruction
+        if plot_difference and plot_production and plot_destruction and plot_total:
+            x = self[xkey]
+            y = production_rates['total']-destruction_rates['total']
+            i = y>0
+            kwargs = dict(alpha=0.3,markersize=10,marker='o',linestyle='',zorder=-10)
+            ax.plot(x[i],y[i],label='total production > destruction',color='blue',**kwargs)
+            ax.plot(x[~i],np.abs(y[~i]),label='total production < destruction',color='red',**kwargs)
+        ## finish plot
+        if plot_production and plot_destruction:
+            title = f'Production and destruction rates of {species}'
+        elif plot_production:
+            title = f'Production rates of {species}'
+        elif plot_destruction:
+            title = f'Destruction rates of {species}'
+        else:
+            title = ''    
+        plotting.legend(show_style=True,title=title)
         return ax
 
     # def get_most_abundant(self,n=5):
@@ -524,7 +565,7 @@ class Mixture():
             reverse_rates=None,
     ):
         ## load state
-        self.state.extend(t=states.t,T=states.T,p=states.P)
+        self.state.extend(t=states.t,T=states.T,p=states.P,keys='new')
         ## load densities -- empty if states is None
         for species in gas.kinetics_species_names:
             self.density[species] = states.X[:, gas.species_index(species)]
