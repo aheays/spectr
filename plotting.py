@@ -409,15 +409,15 @@ def qfig(
         set_figsize_fullscreen(fig=fig)
     elif figsize is not None:
         set_figsize_in_pixels(*figsize,fig=fig)
-    if hide_toolbar:
-        # from PyQt5 import QtWidgets 
-        # from PyQt4 import QtGui as QtWidgets 
-        try:
-            win = fig.canvas.manager.window
-        except AttributeError:
-            win = fig.canvas.window()
-        # toolbar = win.findChild(QtWidgets.QToolBar)
-        # toolbar.setVisible(False)
+    # if hide_toolbar:
+        # # from PyQt5 import QtWidgets 
+        # # from PyQt4 import QtGui as QtWidgets 
+        # try:
+            # win = fig.canvas.manager.window
+        # except AttributeError:
+            # win = fig.canvas.window()
+        # # toolbar = win.findChild(QtWidgets.QToolBar)
+        # # toolbar.setVisible(False)
     # ax = fig.gca()
     def format_coord(x,y):
         if x<1e-5 or x>1e5: xstr = f'{x:0.18e}'
