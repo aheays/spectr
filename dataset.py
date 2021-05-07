@@ -9,6 +9,7 @@ import warnings
 import numpy as np
 from numpy import nan
 from immutabledict import immutabledict as idict
+import h5py
 
 from . import tools
 from .tools import AutoDict,convert_to_bool_vector_array
@@ -34,14 +35,15 @@ class Dataset(optimise.Optimiser):
     }
 
     ## associated data
-    associated_data_kinds = {
-        'unc' : {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':nan   ,'description':'Uncertainty'                            ,},
-        'step': {'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,'description':'Numerical differentiation step size'    ,},
-        'vary': {'cast':convert_to_bool_vector_array       ,'fmt':'5'     ,'default':False ,'description':'Whether to vary during optimisation'    ,},
-        # 'res' : {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'8.2e'  ,'default':nan   ,'description':'Residual error'                         ,},
-        'ref' : {'cast':lambda x:np.asarray(x,dtype='U20')   ,'fmt':'s'   ,'default':nan   ,'description':'Source reference'                       ,},
+    associated_kinds = {
+
+        'unc'      : {'description':'Uncertainty'                         , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':0.0   ,},
+        'step'     : {'description':'Numerical differentiation step size' , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,},
+        'vary'     : {'description':'Whether to vary during optimisation' , 'kind':'b' , 'valid_kinds':('f',), 'cast':convert_to_bool_vector_array       ,'fmt':'5'     ,'default':False ,},
+        'residual' : {'description':'Residual error'                      , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'8.2e'  ,'default':nan   ,},
+        'ref'      : {'description':'Source reference'                    , 'kind':'U' , 'valid_kinds':('f',), 'cast':lambda x:np.asarray(x,dtype='U20') ,'fmt':'s'     ,'default':nan   ,},
+
     }
-    kinds.update(associated_data_kinds)
 
     ## always available
     default_attributes = {
@@ -142,38 +144,22 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
-    def set(
-            self,
-            key,
-            value,
-            associated_data=None,
-            index=None,
-            _inferred=False,    # internal use -- mark if this is set call is due to inference
-            match=None,
-            **prototype_kwargs
-    ):
-        """Set a value"""
-        if match is not None:
-            assert index is None
-            index = self.match(match)
-        ## check errors in 'associated_data'
-        if associated_data is None:
-            root_key = None
+    def set(self,key,value,index=None,_inferred=False,match=None,**prototype_kwargs):
+        """Set value of key or (key,assoc)"""
+        if isinstance(key,str):
+            return self._set_data(key,value,index,match,_inferred,**prototype_kwargs)
         else:
-            root_key,key = key,f'{key}_{associated_data}'
-            if not self.is_known(root_key):
-                raise Exception(f"Value for {root_key=} must be set before {key=}")
-            if self.get_kind(root_key) != 'f':
-                raise Exception(f'Unc/step/vary only defined for kind="f" floating-point data and {root_key=} has kind={self.get_kind(root_key)}')
-            if associated_data == 'vary':
-                if not self.is_set(f'{root_key}_unc'):
-                    self.set(root_key,self.kinds['unc']['default'],'unc')
-                if not self.is_set(f'{root_key}_step'):
-                    if 'default_step' in self._data[root_key]:
-                        self.set(root_key,self._data[root_key]['default_step'],'step')
-                    else:
-                        self.set(root_key,self.default_step['step']['default'],'step')
-            prototype_kwargs = self.kinds[associated_data] | prototype_kwargs
+            key,assoc = key
+            return self._set_associated_data(key,assoc,value,index,match,_inferred)
+        
+    def _set_data(self,key,value,index=None,match=None,_inferred=False,**prototype_kwargs):
+        """Set a value"""
+        ## determine index
+        if match is not None:
+            if index is None:
+                index = self.match(match)
+            else:
+                index &= self.match(match)
         ## update modification if externally set, not if it is inferred
         if self.verbose:
             print(f'{self.name}: setting {key} inferred={_inferred}')
@@ -186,10 +172,7 @@ class Dataset(optimise.Optimiser):
         ## new indeed data and return
         if index is not None:
             if key not in self and 'default' in prototype_kwargs:
-                if associated_data is None:
-                    self.set(key,prototype_kwargs['default'])
-                else:
-                    self.set(root_key,prototype_kwargs['default'],associated_data)
+                self.set(key,prototype_kwargs['default'])
             data = self._data[key]
             if key not in self:
                 raise Exception(f'Cannot set data by index for unset key: {key}')
@@ -198,28 +181,23 @@ class Dataset(optimise.Optimiser):
         else:
             ## create entire data dict
             ## decide whether to permit if non-prototyped
-            if not self.permit_nonprototyped_data:
-                if associated_data is None:
-                    if key not in self.prototypes:
-                        raise Exception(f'New data is not in prototypes: {repr(key)}')
+            if not self.permit_nonprototyped_data and key not in self.prototypes:
+                raise Exception(f'New data is not in prototypes: {repr(key)}')
             ## new data
-            data = dict()
+            data = {'assoc':{},'default':None,'units':None,
+                    'infer':[],'inferred_from':[],'inferred_to':[]}
             self._data[key] = data
-            data['associated_data'] = {}
+            data['assoc'] = {}
             ## get any prototype data
             if key in self.prototypes:
                 for tkey,tval in self.prototypes[key].items():
-                    if tkey == 'default':
+                    if tkey == 'default' and not self.auto_defaults:
                         ## do not set default from prototypes -- only 
                         continue
                     data[tkey] = tval
             ## apply prototype kwargs
             for tkey,tval in prototype_kwargs.items():
                 data[tkey] = tval
-            ## get information from default_kinds if associated data
-            if associated_data is not None:
-                assert associated_data in self.kinds
-                data['kind'] = associated_data
             ## if a scalar value is then expand to full length, if
             ## vector then cast as a new array.  Do not use asarray
             ## but instead make a copy -- this will prevent mysterious
@@ -233,23 +211,13 @@ class Dataset(optimise.Optimiser):
             ## convert bytes string to unicode
             if data['kind'] == 'S':
                 data['kind'] = 'U'
-            ## some other prototype data
+            ## some other prototype data based on kind
             for tkey in ('description','fmt','cast'):
                 if tkey not in data:
                     data[tkey] = self.kinds[data['kind']][tkey]
             if data['kind']=='f' and 'default_step' not in data:
                 data['default_step'] = 1e-8
-            ## infer function dict,initialise inference lists, and units if needed
-            for tkey,tval in (('infer',[]),
-                              ('inferred_from',[]),
-                              ('inferred_to',[]),):
-                if tkey not in data:
-                    data[tkey] = tval
-            ## deal with this being or having associated data
-            if root_key is not None:
-                self._data[root_key]['associated_data'][associated_data] = data
-                data['root_data'] = self._data[root_key]
-            ## if a scalar expand to lenght of self and also set as
+            ## if a scalar expand to length of self and also set as
             ## default
             if not tools.isiterable(value):
                 data['default'] = value
@@ -271,14 +239,61 @@ class Dataset(optimise.Optimiser):
             ## cast and set data
             data['value']  = data['cast'](value)
 
-    def get(
-            self,
-            key,
-            associated_data=None,
-            index=None,
-            units=None,
-    ):
-        """Get value."""
+    def _set_associated_data(self,key,assoc,value,index=None,match=None,_inferred=False):
+        """Set associated data for key to value."""
+        ## basic error checks
+        if assoc not in self.associated_kinds:
+            raise Exception(f'Invalid associated data: {repr(assoc)}')
+        if not self.is_known(key):
+            raise Exception(f"Key {repr(key)} must be set before setting associated data {repr(assoc)}")
+        if self.get_kind(key) not in self.associated_kinds[assoc]['valid_kinds']:
+            raise Exception(f"Key {repr(key)} is not a valid kind for associated data {repr(assoc)}")
+        if self.associated_kinds[assoc]['kind'] == 'O':
+            raise ImplementationError()
+        ## deal with infererence tracking
+        if self.verbose:
+            print(f'{self.name}: setting ({key},{assoc}) inferred={_inferred}')
+        if not _inferred:
+            ## mark explicit data has changed
+            self._last_modify_data_time = timestamp()
+        if key in self:
+            ## delete inferences since data has changed
+            self.unlink_inferences(key)
+        ## determine index
+        if match is not None:
+            if index is None:
+                index = self.match(match)
+            else:
+                index &= self.match(match)
+        ## set data
+        if index is None:
+            ## set entire array
+            if not tools.isiterable(value):
+                ## expand scalar input
+                value = np.full(len(self),value)
+            elif len(value) != len(self):
+                raise Exception(f'Length of new ({key},{assoc}) ({len(value)} does not match existing data ({len(self)})')
+            ## set data
+            self._data[key]['assoc'][assoc] = self.associated_kinds[assoc]['cast'](value)
+        else:
+            ## set part of array by index
+            if assoc not in self._data[key]['assoc']:
+                ## set missing data outside indexed range to a default
+                ## value using the get method
+                self._get_associated_data(key,assoc)
+            ## set indexed data
+            self._data[key]['assoc'][assoc][index] = self.associated_kinds[assoc]['cast'](value)
+
+    def get(self,key,index=None,units=None):
+        """Get value for key or (key,assoc)."""
+        if isinstance(key,str):
+            return self._get_data(key,index,units)
+        else:
+            key,assoc = key
+            return self._get_associated_data(key,assoc,index,units)
+
+    def _get_data(self,key,index=None,units=None):
+        """Get value for key."""
         if key in self.attributes:
             ## return if an attribute
             retval = self.attributes[key]
@@ -298,32 +313,44 @@ class Dataset(optimise.Optimiser):
                     else:
                         raise err
             if index is None:
-                ## get deafult entire index
+                ## get default entire index
                 index = slice(0,len(self))
-            if associated_data is None:
-                data = self._data[key]
-            else:
-                data = self._data[key]['associated_data'][associated_data]
+            data = self._data[key]
             retval = data['value'][:self._length][index]
         if units is not None:
             ## convert units before setting
-            retval = convert.units(retval,self.get_units(key),units)
+            retval = convert.units(retval,self._data[key]['units'],units)
+        return retval
+
+    def _get_associated_data(self,key,assoc,index=None,units=None):
+        """Get associatedf value."""
+        ## basic error checks
+        if assoc not in self.associated_kinds:
+            raise Exception(f'Invalid associated data: {repr(assoc)}')
+        if not self.is_known(key):
+            raise Exception(f"Key {repr(key)} must be set before getting associated data {repr(assoc)}")
+        if self.get_kind(key) not in self.associated_kinds[assoc]['valid_kinds']:
+            raise Exception(f"Key {repr(key)} is not a valid kind for associated data {repr(assoc)}")
+        ## get default index
+        if index is None:
+            index = slice(0,len(self))
+        ## set default if value if necessary, look for default_assoc
+        ## from prototypes or use associated_kinds default
+        if not self.is_set(key,assoc):
+            if (tkey:=f'default_{assoc}') in self._data[key]:
+                self._set_associated_data(key,assoc,self._data[key][tkey])
+            else:
+                self._set_associated_data(key,assoc,self.associated_kinds[assoc]['default'])
+        ## return data
+        retval = self._data[key]['assoc'][assoc][0:len(self)][index]
+        if units is not None:
+            retval = convert.units(retval,self._data[key]['units'],units)
         return retval
 
     def set_default(self,key,value):
         self._data[key]['default'] = value
         if key not in self:
             self[key] = value
-
-    def get_default(self,key):
-        if 'default' not in self._data[key]:
-            return None
-        return self._data[key]['default']
-
-    def get_units(self,key):
-        if 'units' not in self._data[key]:
-            return None
-        return self._data[key]['units']
 
     def cast(self,key,value):
         """Returns value cast appropriately for key."""
@@ -342,17 +369,9 @@ class Dataset(optimise.Optimiser):
             kind = 'b'
         elif kind is object:
             kind = 'O'
-        if infer is None:
-            infer = []
-        self.prototypes[key] = dict(kind=kind,infer=infer,**kwargs)
+        self.prototypes[key] = dict(kind=kind,**kwargs)
         for tkey,tval in self.kinds[kind].items():
             self.prototypes[key].setdefault(tkey,tval)
-
-    def get_prototype(self,key):
-        """Get prototype as a dictionary."""
-        if key not in self.prototypes:
-            return None
-        return self.prototypes[key]
 
     def get_kind(self,key):
         return self._data[key]['kind']
@@ -383,16 +402,14 @@ class Dataset(optimise.Optimiser):
                         and (np.any(self.get(key,'unc',index=index) != value.unc))) # data has changed some other way and differs from parameter
                 ):
                 self.set(key,value.value,index=index)
-                self.set(key,value.unc,'unc',index=index)
-                self.set(key,value.step,'step',index=index)
+                self.set((key,'unc'),value.unc,index=index)
+                self.set((key,'step'),value.step,index=index)
         elif key in self.attributes:
             self.attributes[key] = value
         else:
             ## only reconstruct for the following reasons
-            if (
-                    key not in self.keys() # key is unknown -- first run
-                    or np.any(self.get(key,index=index) != value) # data has changed some other way and differs from parameter
-                ):
+            if (key not in self.keys() # key is unknown -- first run
+                or np.any(self.get(key,index=index) != value)): # data has changed some other way and differs from parameter
                 self.set(key,value=value,index=index)
 
     @optimise_method()
@@ -419,7 +436,7 @@ class Dataset(optimise.Optimiser):
         self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=i),order=order),index=i)
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
-            self.set(ykey,nan,'unc',index=i)
+            self.set((ykey,'unc'),nan,index=i)
 
     def keys(self):
         return list(self._data.keys())
@@ -433,9 +450,6 @@ class Dataset(optimise.Optimiser):
 
     def optimised_keys(self):
         return [key for key in self.keys() if self.is_set(key,'vary')]
-
-    def root_keys(self):
-        return [key for key in self.keys() if 'root_data' not in self._data[key]]
 
     def explicitly_set_keys(self):
         return [key for key in self if not self.is_inferred(key)]
@@ -455,46 +469,42 @@ class Dataset(optimise.Optimiser):
         self.unset(key)
         return value
 
-    def is_set(self,key,associated_data=None):
+    def is_set(self,key,assoc=None):
         if key in self._data:
-            if associated_data is None:
+            if assoc is None:
                 return True
-            if associated_data in self._data[key]['associated_data']:
+            if assoc in self._data[key]['assoc']:
                 return True
         return False
 
-    def assert_known(self,keys):
-        for key in tools.ensure_iterable(keys):
-            self[key]
+    def assert_known(self,keys,assoc=None):
+        if assoc is None:
+            for key in tools.ensure_iterable(keys):
+                self[key]
+        else:
+            for key in tools.ensure_iterable(keys):
+                self[key,assoc]
 
-    def is_known(self,keys):
+    def is_known(self,keys,assoc=None):
         try:
-            self.assert_known(keys)
+            self.assert_known(keys,assoc)
             return True 
         except InferException:
             return False
-
-    # def _decode_key_with_associated_data(self,key_with_associated_data):
-        # """ Split associated associated_data key, e.g., abs_unc, into 'abs' and
-        # 'unc'"""
-        # for associated_data in self.associated_associated_datas:
-            # n = len(associated_data)
-            # if (len(key_with_associated_data) > (n+1)
-                # and key_with_associated_data[-n-1] == '_'
-                # and key_with_associated_data[-n:] == associated_data):
-                # return key_with_associated_data[:-n-1],key_with_associated_data[-n:]
-        # else:
-            # return key_with_associated_data,'value'
             
     def __getitem__(self,arg):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
         that data. If an index, return an indexed copy of self."""
         if isinstance(arg,str):
+            ## a key -- return data
             return self.get(arg)
-        elif tools.isiterable(arg) and len(arg)>0 and isinstance(arg[0],str):
+        elif isinstance(arg,list):
             ## make a copy of a list of keys
             return self.copy(keys=arg)
+        elif tools.isiterable(arg) and len(arg)==2 and isinstance(arg[0],str) and isinstance(arg[1],str):
+            ## (key,assoc) tuple, return data
+            return self.get(arg)
         else:
             ## make an indexed copy
             return self.copy(index=arg)
@@ -504,17 +514,10 @@ class Dataset(optimise.Optimiser):
         key_step then set optimisation parameters"""
         if key in self.attributes:
             self.attributes[key] = value
+        elif isinstance(value,optimise.P):
+            self.set_parameter(key,value)
         else:
-            if isinstance(value,optimise.P):
-                self.set_parameter(key,value)
-            else:
-                for associated_data in self.associated_data_kinds:
-                    n = len(associated_data)
-                    if len(key) > (n+1) and key[-n:] == associated_data:
-                        self.set(key[:-n-1],value,associated_data=associated_data)
-                        break
-                else:
-                    self.set(key,value)
+            self.set(key,value)
        
     def clear(self):
         """Clear all data"""
@@ -530,11 +533,6 @@ class Dataset(optimise.Optimiser):
                 continue
             self.unlink_inferences(key)
             data = self._data[key]
-            if 'root_key' in data:
-                self._data[data['root_key']['associated_data']].pop(key)
-            else:
-                for associated_key in data['associated_data']:
-                    self.pop(f'{key}_{associated_key}')
             self._data.pop(key)
 
     def is_inferred(self,key):
@@ -585,6 +583,8 @@ class Dataset(optimise.Optimiser):
         original_length = len(self)
         for data in self._data.values():
             data['value'] = data['value'][:original_length][index]
+            for key,value in data['assoc'].items():
+                data['assoc'][key] = value[:original_length][index]
             self._length = len(data['value'])
 
     def copy(self,keys=None,index=None):
@@ -601,15 +601,13 @@ class Dataset(optimise.Optimiser):
             keys=None,          # keys to copy
             index=None,         # indices to copy
             match=None,         # copy matching {key:val,...} 
-            copy_opt=False,
+            copy_assoc=False,
     ):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
         self.clear()            # total data reset
         if keys is None:
             keys = source.keys()
-        if not copy_opt:
-            keys = [key for key in keys if not re.match(r'.+_(vary|step)$',key)]
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         ## get matching indices
         if match is not None:
@@ -620,8 +618,13 @@ class Dataset(optimise.Optimiser):
                 ## on index array or slice, could add logic for those
                 ## cases
                 index &= source.match(**match)
+        ## copy data
         for key in keys:
             self[key] = source.get(key,index=index)
+            if copy_assoc:
+                ## copy associated data
+                for assoc,value in source._data[key]['assoc'].items():
+                    self[key,assoc] = value[index]
         ## copy all attributes
         for key in source.attributes:
             self[key] = source[key]
@@ -774,9 +777,9 @@ class Dataset(optimise.Optimiser):
             ## if function is a tuple of two functions then the second
             ## is for computing uncertainties
             if tools.isiterable(function):
-                function,unc_function = function
+                function,uncertainty_function = function
             else:
-                unc_function = None
+                uncertainty_function = None
             if isinstance(dependencies,str):
                 ## sometimes dependencies end up as a string instead
                 ## of a list of strings
@@ -796,22 +799,19 @@ class Dataset(optimise.Optimiser):
                     self.set(key,value,_inferred=True)
                     self._add_dependency(key,dependencies)
                 ## compute uncertainties by linearisation
-                if unc_function is None:
+                if uncertainty_function is None:
                     squared_contribution = []
                     value = self[key]
                     parameters = [self[t] for t in dependencies]
                     for i,dependency in enumerate(dependencies):
                         if self.is_set(dependency,'unc'):
-                            if 'step' in self._data[key]['associated_data']:
-                                step = self.get(dependency,'step')
-                            else:
-                                step = 1e-8    
+                            step = self.get((dependency,'step'))
                             parameters[i] = self[dependency] + step # shift one
                             dvalue = value - function(self,*parameters)
                             parameters[i] = self[dependency] # put it back
-                            squared_contribution.append((self.get(dependency,'unc')*dvalue/step)**2)
+                            squared_contribution.append((self.get((dependency,'unc'))*dvalue/step)**2)
                     if len(squared_contribution)>0:
-                        self.set(key,np.sqrt(np.sum(squared_contribution,axis=0)),associated_data='unc')
+                        self.set((key,'unc'),np.sqrt(np.sum(squared_contribution,axis=0)))
                 else:
                     ## args for uncertainty_function.  First is the
                     ## result of calculating keys, after that paris of
@@ -820,11 +820,12 @@ class Dataset(optimise.Optimiser):
                     args = [self,self[key]]
                     for dependency in dependencies:
                         if self.is_set(dependency,'unc'):
-                            args.extend((self[dependency],self.get(dependency,'unc')))
+                            t_uncertainty = self.get((dependency,'unc'))
                         else:
-                            args.extend((self[dependency],None))
+                            t_uncertainty = None
+                        args.extend((self[dependency],t_uncertainty))
                     try:
-                        self.set(key,unc_function(*args),'unc')
+                        self.set((key,'unc'),uncertainty_function(*args))
                     except InferException:
                         pass
                 break           
@@ -845,13 +846,41 @@ class Dataset(optimise.Optimiser):
         for key in keys_inferred_from:
             self._data[key]['inferred_to'].append(key_inferred_to)
 
-    def as_dict(self,keys=None,index=None,include_opt=False):
+    def as_flat_dict(self,keys=None,index=None):
         """Return as a dict of arrays, including uncertainties."""
         if keys is None:
             keys = self.keys()
         retval = {}
         for key in keys:
             retval[key] = self.get(key,index=index)
+            if self.is_set(key,'unc'):
+                retval[f'{key}_unc'] = self.get((key,'unc'),index=index)
+        return retval
+
+    def as_dict(self,keys=None,index=None):
+        """Return as a structured dict."""
+        retval = {}
+        for key,val in self.attributes.items():
+            if keys is not None and key not in keys:
+                continue
+            retval[key] = val
+        for key in self:
+            if keys is not None and key not in keys:
+                continue
+            data = self._data[key]
+            retval[key] = {}
+            for tkey,tval in data.items():
+                if tkey == 'value':
+                    ## data
+                    retval[key]['value'] = self.get(key,index)
+                elif tkey == 'assoc':
+                    ## associated data
+                    retval[key]['assoc'] = {}
+                    for assoc in retval[key]['assoc']:
+                        retval[key]['assoc'][assoc] = self.get((key,assoc),index)
+                else:
+                    ## attributes
+                    retval[tkey] = tval
         return retval
         
     def rows(self,keys=None):
@@ -860,7 +889,7 @@ class Dataset(optimise.Optimiser):
         if keys is None:
             keys = self.keys()
         for i in range(len(self)):
-            yield(self.as_dict(keys=keys,index=i))
+            yield(self.as_flat_dict(keys=keys,index=i))
 
     def row_data(self,keys=None,index=None):
         """Iterate rows, returning data in a tuple."""
@@ -883,7 +912,7 @@ class Dataset(optimise.Optimiser):
     def matching_row(self,return_index=False,**matching_keys_vals):
         """Return uniquely-matching row as a dictionary."""
         i = self.find_unique(**matching_keys_vals)
-        d = self.as_dict(index=i)
+        d = self.as_flat_dict(index=i)
         if return_index:
             return d,i
         else:
@@ -913,6 +942,7 @@ class Dataset(optimise.Optimiser):
             unique_values_in_header=True,
             include_description=True,
             include_attributes=True,
+            include_assoc=True,
             quote_strings=False,
             quote_keys=False,
     ):
@@ -956,7 +986,7 @@ class Dataset(optimise.Optimiser):
                 else:
                     line += f'{"":23}'    
                 line += f' # '+self._data[key]['description']
-                if (units:=self.get_units(key)) is not None:
+                if (units:=self._data[key]['units']) is not None:
                     line += f' [{units}]'
                 header.append(line)
         else:
@@ -975,9 +1005,7 @@ class Dataset(optimise.Optimiser):
         retval = f'[ \n'
         data = self.format(
             delimiter=' , ',
-            format_unc=True,
-            format_vary=True,
-            format_step= True,
+            format_assoc=True,
             unique_values_in_header=False,
             include_description=False,
             include_attributes=False,
@@ -994,35 +1022,11 @@ class Dataset(optimise.Optimiser):
     def __str__(self):
         return self.format(
             delimiter=' | ',
-            # format_unc=True,
-            # format_vary=True,
-            # format_step=True,
+            include_assoc=True,
             unique_values_in_header=True,
             include_description=False,
         )
 
-    def _save_to_hdf5(self,filename,keys):
-        """Save self to hdf5 format"""
-        import h5py
-        filename = tools.expand_path(filename)
-        tools.mkdir(tools.dirname(filename)) # make leading directories if not currently there
-        with h5py.File(filename,mode='w') as fid:
-            ## add global attributes
-            for key,val in self.attributes.items():
-                if val is not None:
-                    fid.attrs.create(key,val)
-            ## add data 
-            for key in self:
-                val = self[key]
-                if not np.isscalar(val) and val.dtype.kind=='U':
-                    val = np.array(val, dtype=h5py.string_dtype(encoding='utf-8'))
-                dset = fid.create_dataset(key,data=val)
-                ## add selected prototypes of data as attributes
-                data = self._data[key]
-                for tkey in ('description','units'):
-                    if tkey in data:
-                        dset.attrs.create(tkey,data[tkey])
-        
     def save(
             self,
             filename,
@@ -1034,18 +1038,10 @@ class Dataset(optimise.Optimiser):
             keys = self.keys()
         if re.match(r'.*\.npz',filename):
             ## numpy archive
-            np.savez(
-                filename,
-                **self.as_dict(),
-                **{key:val for key,val in self.attributes.items() if val is not None}
-            )
+            np.savez(filename,self.as_dict())
         elif re.match(r'.*\.h5',filename):
             ## hdf5 file
-            self._save_to_hdf5(filename,keys)
-            # tools.dict_to_hdf5(
-                # filename,
-                # self.as_dict(),
-                # attributes={key:val for key,val in self.attributes.items() if val is not None})
+            tools.dict_to_hdf5(filename,self.as_dict(),verbose=False)
         else:
             ## text file
             if re.match(r'.*\.csv',filename):
@@ -1068,16 +1064,20 @@ class Dataset(optimise.Optimiser):
             translate_keys=None, # from key in file to key in self, None for skip
             return_classname_only=False, # do not load the file -- just try and load the classname and return it
             vector_data_labels_commented=False,
+            load_assoc=True,
             **set_keys_vals   # set this data after loading is done
     ):
         '''Load data from a file.'''
         if re.match(r'.*\.(h5|hdf5)',filename):
             ## hdf5 archive, load data then top-level attributes
-            data =  tools.hdf5_to_dict(filename)
-            import h5py
-            with h5py.File(tools.expand_path(filename),'r') as fid:
-                for key,val in fid.attrs.items():
-                    data[key] = val
+            data = tools.hdf5_to_dict(filename)
+            ## hack to get flat data or not
+            for val in data.values():
+                if isinstance(val,dict):
+                    data_is_flat = False
+                    break
+            else:
+                data_is_flat = True
         elif re.match(r'.*\.npz',filename):
             ## numpy npz archive.  get as scalar rather than
             ## zero-dimensional numpy array
@@ -1086,10 +1086,13 @@ class Dataset(optimise.Optimiser):
                 if val.ndim == 0:
                     val = val.item()
                 data[key] = val
+            data_is_flat = True
         elif re.match(r'.*\.org',filename):
+            ## org to dict -- no header
             data = tools.org_table_to_dict(filename,table_name)
+            data_is_flat = True
         else:
-            ## text file
+            ## text table to dict with header
             if re.match(r'.*\.csv',filename):
                 delimiter = ','
             elif re.match(r'.*\.rs',filename):
@@ -1132,13 +1135,30 @@ class Dataset(optimise.Optimiser):
                 delimiter=delimiter,
                 labels_commented=vector_data_labels_commented,
                 skiprows=iline))
-
+            data_is_flat = True
+        ## build structured data from flat data by associated keys
+        if data_is_flat:
+            flat_data = data
+            data = {}
+            while len(flat_data)>0:
+                key = list(flat_data.keys())[0]
+                val = flat_data.pop(key)
+                if np.isscalar(val):
+                    ## attribute
+                    data[key] = val
+                else:
+                    ## data
+                    data[key] = {'value':val,'assoc':{}}
+                    for suffix in self.associated_kinds:
+                        if (tkey:=f'{key}_{suffix}') in flat_data:
+                            data[key]['assoc'][suffix] = flat_data.pop(tkey)
+        ##
         ## temp hack delete
         for key in list(data.keys()): #  HACK
             if 'HT_HITRAN' in key:    #  HACK
                 data[key.replace('HT_HITRAN','HITRAN_HT')] = data.pop(key) #  HACK
         ## end of temp hack delete
-
+        ##
         ## translate keys
         if translate_keys is not None:
             for from_key,to_key in translate_keys.items():
@@ -1158,13 +1178,15 @@ class Dataset(optimise.Optimiser):
             warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self["classname"])}, and it will be ignored.')
             data.pop('classname')
         ## Set data in self and selected attributes
-        if keys is None:
-            keys = data.keys()
-        for key in keys:
+        for key,val in data.items():
+            if keys is not None and key not in keys:
+                continue
             if key in self.attributes:
-                self.attributes[key] = data[key]
+                self.attributes[key] = val
             else:
-                self[key] = data[key]
+                self[key] = val['value']
+                for tkey,tval in val['assoc'].items():
+                    self[(key,tkey)] = tval
 
     def load_from_string(
             self,
@@ -1197,20 +1219,47 @@ class Dataset(optimise.Optimiser):
         self.add_format_input_function(format_input_function)
 
     @optimise_method()
-    def extend_from_level(self,level,_cache=None):
+    def extend_from_level(self,level,keys='old',_cache=None):
         """Extend self by level using keys existing in
         self. Optimisable."""
         if len(_cache) == 0:
+            ## extend with new data
             level.construct()
-            _cache['nnew'] = len(level)
-            _cache['ibeg'] = len(self)
-            self.extend(level,keys='old')
+            ## limit to keys
+            if keys == 'old':
+                keys = list(self.explicitly_set_keys())
+            elif keys == 'new':
+                keys = list(level.explicitly_set_keys())
+            elif keys == 'all':
+                keys = {*self.explicitly_set_keys(),*level.explicitly_set_keys()}
+            self.assert_known(keys)
+            self.unlink_inferences(keys)
+            for key in list(self):
+                if key not in keys:
+                    self.unset(key)
+            ## set new data
+            old_length = len(self)
+            new_length = len(level)
+            total_length = len(self) + len(level)
+            self._reallocate(total_length)
+            ## set extending data and associated data known to either
+            ## new or old
+            for key,data in self._data.items():
+                data['value'][old_length:total_length] = data['cast'](level[key])
+                for assoc in {*data['assoc'],*level._data[key]['assoc']}:
+                    self.assert_known(key,assoc)
+                    cast = self.associated_kinds[assoc]['cast']
+                    data['assoc'][assoc][old_length:total_length] = cast(level[key,assoc])
+            _cache['old_length'],_cache['new_length'],_cache['total_length'] = old_length,new_length,total_length
         else:
-            ibeg,nnew = _cache['ibeg'],_cache['nnew'] 
-            assert len(level) == nnew
-            index = slice(ibeg,ibeg+nnew)
-            for key in self.root_keys():
-                self.set(key,level[key],index=index)
+            ## update data in place
+            old_length,new_length,total_length = _cache['old_length'],_cache['new_length'],_cache['total_length']
+            assert len(level) == new_length
+            index = slice(old_length,total_length)
+            for key in self:
+                self.set(key,level[key],index)
+                for assoc in self._data[key]['assoc']:
+                    self.set((key,assoc),level[key,assoc],index)
 
     def append(self,keys_vals_as_dict=idict(),keys='all',**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
@@ -1259,14 +1308,14 @@ class Dataset(optimise.Optimiser):
             elif (isinstance(keys_vals_as_dict_or_dataset,Dataset)
                   and keys_vals_as_dict_or_dataset.is_known(key)):
                 new_data[key] = keys_vals_as_dict_or_dataset[key]
-            elif self.get_default(key) is not None:
-                new_data[key] = self.get_default(key)
+            elif (default:=self._data[key]['default']) is not None:
+                new_data[key] = default
             ## could add logic for auto defaults based on kind as below
             else:
                 raise Exception(f'Extending key missing in new data: {repr(key)}')
         ## limit self to keys and mark not inferred
         self.unlink_inferences(keys)
-        for key in list(self.root_keys()):
+        for key in list(self):
             if key not in keys:
                 self.unset(key)
         ## determine length of data
@@ -1281,6 +1330,8 @@ class Dataset(optimise.Optimiser):
         if extending_length is None:
             raise Exception("No vector data in new data")
         total_length = original_length + extending_length
+        ## reallocate and lengthen arrays if necessary
+        self._reallocate(total_length)
         ## add new data to old
         for key in keys:
             ## the object in self to extend
@@ -1298,16 +1349,28 @@ class Dataset(optimise.Optimiser):
                         dtype=f'<U{new_str_len*self._over_allocate_factor}')
                     t[:len(self)] = self.get(key)
                     data['value'] = t
-            ## reallocate and lengthen arrays if necessary
-            if total_length > len(data['value']):
-                data['value'] = np.concatenate((
-                    self[key],
-                    np.empty(int(total_length*self._over_allocate_factor-original_length),
-                             dtype=data['value'].dtype)))
-            ## set extending data
+            ## set extending data and associated data
             data['value'][original_length:total_length] = data['cast'](new_data[key])
         ## finalise new length
-        self._length = total_length
+
+    def _reallocate(self,new_length):
+        """Lengthen data array and associated data"""
+        for data in self._data.values():
+            old_length = len(data['value'])
+            if new_length > old_length:
+                data['value'] = np.concatenate(
+                    (data['value'],
+                     np.empty(int(new_length*self._over_allocate_factor-old_length),
+                              dtype=data['value'].dtype)))
+            for key in data['assoc']:
+                old_length = len(data['assoc'][key])
+                if new_length > old_length:
+                    data['assoc'][key] = np.concatenate(
+                        (data['assoc'][key],
+                         np.full(int(new_length*self._over_allocate_factor-old_length),
+                                 self.associated_kinds[key]['default'],
+                                  dtype=data['assoc'][key].dtype)))
+        self._length = new_length
 
     def __add__(self,other):
         """Adding dataset concatenates data in all keys."""
@@ -1408,7 +1471,7 @@ class Dataset(optimise.Optimiser):
                 if label is not None:
                     kwargs.setdefault('label',label)
                 if plot_errorbars and z.is_set(ykey,'unc'):
-                    dy = z.get(ykey,'unc')
+                    dy = z.get((ykey,'unc'))
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
                     dy[np.isnan(dy)] = 0.
@@ -1450,7 +1513,7 @@ class Dataset(optimise.Optimiser):
         return tools.polyfit(
             self.get(xkey,index=index),
             self.get(ykey,index=index),
-            self.get(ykey,'unc',index),
+            self.get((ykey,'unc'),index),
             **polyfit_kwargs)
 
 def find_common(x,y,keys=None,verbose=False):

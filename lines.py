@@ -894,9 +894,9 @@ class Generic(levels.Base):
                             kl.append(jl)
         ## collect allowed data
         data = {}
-        for key in levelu.root_keys():
+        for key in levelu:
             data[key+'_u'] = levelu[key][ku]
-        for key in levell.root_keys():
+        for key in levell:
             data[key+'_l'] = levell[key][kl]
         self.extend(data,keys='all')
 
