@@ -451,10 +451,10 @@ class Optimiser:
                     unique_parameters.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
-                    vary = optimiser.get(key,'vary')
+                    vary = optimiser.get((key,'vary'))
                     value.extend(optimiser[key][vary])
-                    unc.extend(optimiser.get(key,'unc',index=vary))
-                    step.extend(optimiser.get(key,'step',index=vary))
+                    unc.extend(optimiser.get((key,'unc'),index=vary))
+                    step.extend(optimiser.get((key,'step'),index=vary))
         return value,step,unc
 
     def _set_parameters(self,p,dp=None,rescale=False):
@@ -484,11 +484,11 @@ class Optimiser:
                     already_set.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
-                    vary = optimiser.get(key,'vary')
+                    vary = optimiser.get((key,'vary'))
                     ## could speed up using slice rather than pop?
                     for i in tools.find(vary):
                         optimiser.set(key,p.pop(0),index=i)
-                        optimiser.set(key,dp.pop(0),'unc',index=i)
+                        optimiser.set((key,'unc'),dp.pop(0),index=i)
 
     def has_changed(self):
         """Whether the construction of this optimiser has been changed or any
@@ -978,8 +978,10 @@ def _calculate_jacobian_multiprocessing_worker(shared_namespace,p,i):
     """Calculate part of a jacobian."""
     import dill
     from time import perf_counter as timestamp
+    import np
     optimiser = dill.loads(shared_namespace.dill_pickle)
     residual = shared_namespace.residual
+    rms = np.sqrt(np.mean(residual**2))
     pnew = copy(p)
     jacobian = []
     step = 1e-8                 # nmust be consistent abovce
@@ -988,9 +990,14 @@ def _calculate_jacobian_multiprocessing_worker(shared_namespace,p,i):
         pnew[ii] += step
         optimiser._set_parameters(pnew,rescale=True)
         residualnew = optimiser.construct()
+        rmsnew = np.sqrt(np.mean(residualnew**2))
         dresidual = (residualnew-residual)
         jacobian.append((residualnew-residual)/step)
         pnew[ii] = p[ii]
-        print(f'Jacobian calc: {ii:4} {i[0]:4} {timestamp()-timer:7.2e}')
+        if rms == rmsnew:
+            message = 'parameter has no effect'
+        else:
+            message = ''    
+        print(f'jcbn: {ii:>6d} time: {timestamp()-timer:>7.2e} rms: {rmsnew:>12.8e} {message}')
     return jacobian
 
