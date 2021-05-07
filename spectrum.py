@@ -553,7 +553,8 @@ class Model(Optimiser):
                 xold,τold = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
-                T = _cache['T'] / np.exp(-τold) * np.exp(-τnew)
+                # ## substitute transmission, crudely avoid 
+                T = _cache['T']*np.exp(τold-τnew)
                 ## update cache to new lines
                 for key in keys:
                     lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
@@ -1368,6 +1369,7 @@ class Model(Optimiser):
             y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
         ## if necessary account for phase correction by convolving with a signum
         if signum_magnitude is not None:
+            x[imidpoint] = 1e-99  # avoid divide by zero warning
             ty = 1/x*signum_magnitude # hyperbolically decaying signum on either side
             ty[imidpoint] = 1 # the central part  -- a delta function
             y = signal.oaconvolve(y,ty,'same')
@@ -1450,8 +1452,20 @@ class Model(Optimiser):
             xlabel=None,ylabel=None,
             invert_model=False,
             plot_kwargs=None,
+            xticks=None,
+            yticks=None,
+            remove_all_text=False,
     ):
         """Plot experimental and model spectra."""
+        if remove_all_text:
+            plot_labels=False
+            plot_title=False
+            plot_legend=False
+            xlabel=''
+            ylabel=''
+            xticks=[]
+            yticks=[]
+        ## faster plotting
         if plot_kwargs is None:
             plot_kwargs = {}
         ## get axes if not specified
@@ -1571,6 +1585,10 @@ class Model(Optimiser):
             ax.set_xlabel(xlabel)
         if ylabel is not None:
             ax.set_ylabel(ylabel)
+        if xticks is not None:
+            ax.xaxis.set_ticks(xticks)
+        if yticks is not None:
+            ax.yaxis.set_ticks(yticks)
         self._figure = fig
         return fig 
 
@@ -1589,8 +1607,8 @@ class Model(Optimiser):
         # if output_residual and self.residual is not None:
             # tools.array_to_file(directory+'/residual.h5', self.xexp,self.residual)
         if self._figure is not None:
-            self._figure.savefig(directory+'/figure.png',dpi=300) # save figure
-        ## save transition linelists
+            # self._figure.savefig(directory+'/figure.png',dpi=300) # save figure
+            self._figure.savefig(directory+'/figure.svg') # save figure
         if output_transition_linelists:
             tools.mkdir_if_necessary(directory+'/transitions')
             for transition in self.absorption_transitions:
