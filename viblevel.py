@@ -241,7 +241,9 @@ class VibLevel(Optimiser):
         Jbeg,Jend = np.min(xs),np.max(xs)
         iJ = (self.J>=Jbeg) & (self.J<=Jend)
         ## insert imaginary spline widths
-        self.H[iJ,:,:][i,:][:,i] = tools.spline(xs,ys,self.J[iJ],order=order)*1j
+        t = tools.spline(xs,ys,self.J[iJ],order=order)*1j
+        for ii in i:
+            self.H[iJ,i,i] += t
 
     @optimise_method()
     def add_coupling(

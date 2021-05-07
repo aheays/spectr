@@ -57,9 +57,9 @@ def _collect_parameters_and_optimisers(x):
 def optimise_method(
         add_construct_function=True,
         add_format_input_function=True,
+        execute_now= True,
         format_single_line=None,
         format_multi_line=None,
-        execute_now= True,
 ):
     """A decorator factory for automatically adding parameters,
     construct_function, and input_format_function to a method in an
