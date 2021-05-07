@@ -77,20 +77,24 @@ def vectorise(vargs=None,dtype=None,cache=False):
 
         ## get a cached version fo the function if requested
         if cache:
+
             ## works with multiprocessing -- can be dill pickled
-            # _cache_max_len = 10000
-            # _cache = {}
-            # def function_maybe_cached(*args):
-                # hashed_args = hash(tuple(args))
-                # if hashed_args not in _cache:
-                    # retval = function(*args)
-                    # if len(_cache) < _cache_max_len:
-                        # _cache[hashed_args] = retval
-                    # else:
-                        # raise Exception(f'Need to implement a limited cache: {function.__name__}')
-                # return _cache[hashed_args]
-            ## will not work with dill for some reason
-            function_maybe_cached = lru_cache(function)
+            _cache_max_len = 10000
+            _cache = {}
+            def function_maybe_cached(*args):
+                hashed_args = hash(tuple(args))
+                if hashed_args not in _cache:
+                    retval = function(*args)
+                    if len(_cache) < _cache_max_len:
+                        _cache[hashed_args] = retval
+                    else:
+                        _cache.clear()
+                        warnings.warn(f'Need to implement a limited cache: {function.__name__}')
+                return _cache[hashed_args]
+
+            # ## will not work with dill for some reason
+            # function_maybe_cached = lru_cache(function)
+
         else:
             function_maybe_cached = function
 
@@ -1062,36 +1066,86 @@ def hdf5_get_attributes(filename):
     with h5py.File(expand_path(filename_or_hdf5_object),'r') as fid:
         return {key:val for key,val in fid.attrs.items()}
 
-def hdf5_to_dict(filename_or_hdf5_object):
+def hdf5_to_numpy(value):
+    if not np.isscalar(value):
+        value = value[()]
+    ## convert bytes string to unicode
+    if np.isscalar(value):
+        if isinstance(value,bytes):
+            value = value.decode()
+    else:
+        ## this is a test for bytes string (kind='S') but for
+        ## some reason sometimes (always?) loads as object
+        ## type
+        if value.dtype.kind in ('S','O'):
+            value = np.asarray(value,dtype=str)
+    return value
+
+def numpy_to_hdf5(value):
+    ## deal with missing unicode type in hdft
+    ## http://docs.h5py.org/en/stable/strings.html#what-about-numpy-s-u-type
+    if not np.isscalar(value) and value.dtype.kind=='U':
+        value = np.array(value, dtype=h5py.string_dtype(encoding='utf-8'))
+    return value
+    
+def hdf5_to_dict(fid):
     """Load all elements in hdf5 into a dictionary. Groups define
-    subdictionaries."""
-    ## decide if filename and open -- STR TEST MAY NOT BE A GOOD TEST
-    if isinstance(filename_or_hdf5_object,str):
-        filename_or_hdf5_object = h5py.File(expand_path(filename_or_hdf5_object),'r')
-    retval_dict = {}            # the output data
-    ## recurse through object loading data 
-    for key in filename_or_hdf5_object.keys():
-        ## make a new subdict recursively
-        if isinstance(filename_or_hdf5_object[key],h5py.Dataset):
-            # if filename_or_hdf5_object[key].shape == ():
-                # print(f'warning: Cannot import hdf5 dataset with shape () from {key=}')
-                # continue
-            value = filename_or_hdf5_object[key][()]
-            ## convert bytes string to unicode
-            if np.isscalar(value):
-                if isinstance(value,bytes):
-                    value = value.decode()
-            else:
-                ## this is a test for bytes string (kind='S') but for
-                ## some reason sometimes (always?) loads as object
-                ## type
-                if value.dtype.kind in ('S','O'):
-                    value = np.asarray(value,dtype=str)
-            retval_dict[str(key)] = value
-        ## add data
+    subdictionaries. Scalar data set as attributes."""
+    ## open file if necessary
+    if isinstance(fid,str):
+        with h5py.File(expand_path(fid),'r') as fid2:
+            return hdf5_to_dict(fid2)
+    retval = {}            # the output data
+    ## load attributes
+    for tkey,tval in fid.attrs.items():
+        retval[str(tkey)] = hdf5_to_numpy(tval)
+    ## load data and subdicts
+    for key,val in fid.items():
+        if isinstance(val,h5py.Dataset):
+            retval[str(key)] = hdf5_to_numpy(val)
         else:
-            retval_dict[str(key)] = hdf5_to_dict(filename_or_hdf5_object[key])
-    return retval_dict
+            retval[str(key)] = hdf5_to_dict(val)
+    return retval
+
+def dict_to_hdf5(fid,data,compress=False,verbose=True):
+    """Save all elements of a dictionary as datasets, attributes, or
+    subgropus in an hdf5 file."""
+    if isinstance(fid,str):
+        ## open file if necessary
+        fid = expand_path(fid)
+        mkdir(dirname(fid)) # make leading directories if not currently there
+        with h5py.File(fid,mode='w') as new_fid:
+            dict_to_hdf5(new_fid,data,compress,verbose)
+            return
+    ## add data
+    for key,val in data.items():
+        if isinstance(val,dict):
+            ## recursively create groups
+            group = fid.create_group(key)
+            dict_to_hdf5(group,val,compress)
+        else:
+            if isinstance(val,np.ndarray):
+                ## add arrays as a dataset
+                if compress:
+                    kwargs={'compression':"gzip",'compression_opts':9}
+                else:
+                    kwargs = {}
+                fid.create_dataset(key,data=numpy_to_hdf5(val),**kwargs)
+            else:
+                ## add non-array data as attribute
+                try:
+                    fid.attrs.create(key,val)
+                except TypeError as error:
+                    if verbose:
+                        raise error
+                        print(error)
+
+def append_to_hdf5(filename,**keys_vals):
+    """Added key=val to hdf5 file."""
+    import h5py
+    with h5py.File(expand_path(filename),'a') as d:
+        for key,val in keys_vals.items() :
+            d[key] = val
 
 
 # def print_hdf5_tree(filename_or_hdf5_object,make_print=True):
@@ -1242,42 +1296,6 @@ def make_recarray(**kwargs):
 # def kwargs_to_hdf5(filename,**kwargs):
     # return(dict_to_hdf5(filename,dict(**kwargs)))
 
-def dict_to_hdf5(
-        filename,
-        data,
-        attributes=None,        #  a separate dictionary of attributes
-        compress=True,
-):
-    """Save all elements of a dictionary as datasets in an hdf5 file.
-    Compression options a la h5py, e.g., 'gzip' or True for defaults"""
-    import h5py
-    import os
-    filename = expand_path(filename)
-    mkdir(dirname(filename)) # make leading directories if not currently there
-    with h5py.File(filename,mode='w') as f:
-        ## add attributes
-        if attributes is not None:
-            for key,val in attributes.items():
-                f.attrs.create(key,val)
-        ## add data
-        if data is not None:
-            for key,val in data.items():
-                kwargs = {}
-                if compress and not np.isscalar(val):
-                    kwargs['compression'] = "gzip"
-                    kwargs['compression_opts'] = 9
-                val = np.asarray(val)
-                ## deal with missing unicode type in hdft http://docs.h5py.org/en/stable/strings.html#what-about-numpy-s-u-type
-                if not np.isscalar(val) and val.dtype.kind=='U':
-                    val = np.array(val, dtype=h5py.string_dtype(encoding='utf-8'))
-                f.create_dataset(key,data=val,**kwargs)
-
-def append_to_hdf5(filename,**keys_vals):
-    """Added key=val to hdf5 file."""
-    import h5py
-    with h5py.File(expand_path(filename),'a') as d:
-        for key,val in keys_vals.items() :
-            d[key] = val
 
 # def kwargs_to_directory(directory, **dict_to_directory_kwargs,):
     # dict_to_directory(directory,dict_to_directory_kwargs)
