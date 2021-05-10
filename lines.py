@@ -905,13 +905,17 @@ class Generic(levels.Base):
             self,
             level,
             level_match=idict(), # only copy these levels
+            check_for_unused_levels=False,
+            check_for_unconstrained_lines=False,
             _cache=(),
     ):
         """Copy all non-inferred keys in level into upper or lower levels in
         self with matching quantum numbers."""
         ## store as much information about indices etc in cache
         if len(_cache) == 0:
+            level.assert_unique_qn()
             ## substitute both upper and lower levels
+            all_ilevel = []
             for suffix in ('_u','_l'):
                 _cache[suffix] = {}
                 ## get real valued data to copy in to self
@@ -927,33 +931,52 @@ class Generic(levels.Base):
                 for key_self,key_level in qn_keys:
                     ilevels &= level.match({key_level:self.unique(key_self)})
                 ## copy each row of level to matching quantum numbers in self
-                ilevel,iself = [],[]
+                ilevel,iline = [],[]
                 for i in tools.find(ilevels):
-                    # ## quantum numbers to match in self
+                    ## quantum numbers to match in self
                     qn = {key_self:level[key_level][i] for key_self,key_level in qn_keys}
                     j = tools.find(self.match(qn))
                     if len(j) == 0:
                         ## no matching levels in self
                         continue
-                    iself.append(j)
+                    iline.append(j)
                     ilevel.append(np.full(j.shape,i))
-                iself = np.concatenate(iself)
+                iline = np.concatenate(iline)
                 ilevel = np.concatenate(ilevel)
-                _cache[suffix]['iself'] = iself
+                ## find line data not constrained by any level
+                if check_for_unconstrained_lines:
+                    i,c = np.unique(iline,return_counts=True)
+                    upper_or_lower = ( "upper" if suffix=="_u" else "lower" )
+                    if len(i) < len(self):
+                        if self.verbose:
+                            print(f'\nLines with unconstrained {upper_or_lower} level:\n')
+                            print(self[[j for j in range(len(self)) if j not in i]])
+                            print()
+                        raise Exception(f"Some lines ({len(level)-len(i)}) in {repr(self.name)} are not constrained by any {upper_or_lower} level from {repr(level.name)} (set verbose=True to print).")
+                all_ilevel.append(ilevel)
+                ## save in cache
+                _cache[suffix]['iline'] = iline
                 _cache[suffix]['ilevel'] = ilevel
                 _cache[suffix]['keys_to_copy'] = keys_to_copy
+            ## find levels not used in any line (self)
+            if check_for_unused_levels:
+                i,c = np.unique(np.concatenate(all_ilevel),return_counts=True)
+                if len(i) < len(level):
+                    if self.verbose:
+                        print('\nLevels with no corresponding lines:\n')
+                        print(level[[j for j in range(len(level)) if j not in i]])
+                        print()
+                    raise Exception(f"Some levels ({len(level)-len(i)}) in {repr(level.name)} have no corresponding lines in {repr(self.name)} (set verbose=True to print).")
         ## quantum numbers to match in self
         ## copy data
         for suffix in ('_u','_l'):
-            iself = _cache[suffix]['iself']
+            iline = _cache[suffix]['iline']
             ilevel = _cache[suffix]['ilevel']
             keys_to_copy = _cache[suffix]['keys_to_copy']
             ## copy all data only if it has changed
             for key_self,key_level in keys_to_copy:
-                # print('DEBUG:', key_self,)
-                if np.any(self[key_self][iself] !=level[key_level][ilevel]):
-                    self.set(key_self,level[key_level][ilevel],index=iself)
-                # self.set(key_self,level[key_level][ilevel],index=iself)
+                if np.any(self[key_self][iline] !=level[key_level][ilevel]):
+                    self.set(key_self,level[key_level][ilevel],index=iline)
                  
     def set_levels(self,match=None,**keys_vals):
         """Set level data from keys_vals into self."""
