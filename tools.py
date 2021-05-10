@@ -78,22 +78,21 @@ def vectorise(vargs=None,dtype=None,cache=False):
         ## get a cached version fo the function if requested
         if cache:
 
-            ## works with multiprocessing -- can be dill pickled
-            _cache_max_len = 10000
-            _cache = {}
-            def function_maybe_cached(*args):
-                hashed_args = hash(tuple(args))
-                if hashed_args not in _cache:
-                    retval = function(*args)
-                    if len(_cache) < _cache_max_len:
-                        _cache[hashed_args] = retval
-                    else:
-                        _cache.clear()
-                        warnings.warn(f'Need to implement a limited cache: {function.__name__}')
-                return _cache[hashed_args]
+            # ## works with multiprocessing -- can be dill pickled
+            # _cache_max_len = 10000
+            # _cache = {}
+            # def function_maybe_cached(*args):
+                # hashed_args = hash(tuple(args))
+                # if hashed_args not in _cache:
+                    # retval = function(*args)
+                    # if len(_cache) < _cache_max_len:
+                        # _cache[hashed_args] = retval
+                    # else:
+                        # warnings.warn(f'Need to implement a limited cache: {function.__name__}')
+                # return _cache[hashed_args]
 
-            # ## will not work with dill for some reason
-            # function_maybe_cached = lru_cache(function)
+            ## will not work with dill for some reason
+            function_maybe_cached = lru_cache(function)
 
         else:
             function_maybe_cached = function
@@ -1122,7 +1121,7 @@ def dict_to_hdf5(fid,data,compress=False,verbose=True):
         if isinstance(val,dict):
             ## recursively create groups
             group = fid.create_group(key)
-            dict_to_hdf5(group,val,compress)
+            dict_to_hdf5(group,val,compress,verbose)
         else:
             if isinstance(val,np.ndarray):
                 ## add arrays as a dataset
