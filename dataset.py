@@ -1239,7 +1239,7 @@ class Dataset(optimise.Optimiser):
         self.add_format_input_function(format_input_function)
 
     @optimise_method()
-    def extend_from_level(self,level,keys='old',_cache=None):
+    def concatenate(self,level,keys='old',_cache=None):
         """Extend self by level using keys existing in
         self. Optimisable."""
         if len(_cache) == 0:
