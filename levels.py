@@ -35,6 +35,8 @@ def _f0(self,species):
 
 prototypes['chemical_species'] = dict(description="Chemical species without isotope specification" ,kind='U' ,infer=[('species',_f0)])
 
+# prototypes['name'] = dict(description="Quantum numbers encoded into a string" ,kind='U' ,infer=[('species',_f0)])
+
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
     try:
@@ -69,7 +71,7 @@ def _f0(self,species,label,v,Σ,ef,J):
     return level['E'][i][0]
     
 prototypes['E'] = dict(description="Level energy relative to the least",units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('Ee','ZPE'),lambda self,Ee,ZPE: Ee-ZPE),(('species','label','v','Σ','ef','J'),_f0)],default_step=1e-3)
-prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 (and neglecting spin for linear molecules)" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','ZPE'),lambda self,E,ZPE: E+ZPE),],default_step=1e-3)
+prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','ZPE'),lambda self,E,ZPE: E+ZPE),],default_step=1e-3)
 prototypes['Eresidual'] = dict(description="Residual error of level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],default_step=1e-3)
 prototypes['ZPE'] = dict(description="Zero-point energy of the lowest level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'ZPE')),],default_step=1e-3)
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
@@ -423,6 +425,18 @@ class Base(Dataset):
         for key,val in p.items():
             self.set_parameter(key,val,match=qn)
             self.pop_format_input_function()
+
+    def assert_unique_qn(self):
+        t,i,c = np.unique(self['_qnhash'],return_index=True,return_counts=True)
+        if len(i) < len(self):
+            j = [ti for ti,tc in zip(i,c) if tc > 1]
+            if self.verbose:
+                print('\nNon-unique levels:\n')
+                print(self[j])
+                print()
+            raise Exception(f"There are {len(j)} sets of quantum numbers that are repeated (set verbose=True to print).")
+
+        
 
     def sort(self,*sort_keys,reverse_order=False):
         """Overload sort to include automatic keys."""
