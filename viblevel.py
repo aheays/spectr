@@ -155,15 +155,15 @@ class VibLevel(Optimiser):
                 if np.sum(iexp) == 0:
                     raise Exception('No matching experimental data')
                 self.level['Eresidual'] = nan
-                self.level['Eresidual_unc'] = nan
+                self.level['Eresidual','unc'] = nan
                 self._construct_levels_cache = {'iexp':iexp,'imod':imod}
             iexp,imod = self._construct_levels_cache['iexp'],self._construct_levels_cache['imod']
             Emod = self.level['E'][imod]
             Eexp = self.experimental_level['E'][iexp]
             residual = Eexp-Emod
             self.level['Eresidual'][imod] = residual
-            if self.experimental_level.is_known('E_unc'):
-                self.level['Eresidual_unc'][imod] = self.experimental_level['E_unc'][iexp]
+            if self.experimental_level.is_known('E','unc'):
+                self.level['Eresidual','unc'][imod] = self.experimental_level['E','unc'][iexp]
             return residual
 
 
@@ -186,7 +186,8 @@ class VibLevel(Optimiser):
             for key in kw:
                 if key not in (
                         'species','label','S','Λ','s','v',
-                        'Tv','Bv','Dv','Hv','Av','ADv',
+                        'Tv','Bv','Dv','Hv','Lv','Mv',
+                        'Av','ADv',
                         'λv','λDv','λHv','γv','γDv',
                         'ov','pv','pDv','qv','qDv',
                         ):
@@ -197,7 +198,7 @@ class VibLevel(Optimiser):
         ## quantum number S
         if kw['S']%1!=self.J[0]%1:
             raise Exception(f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}')
-        ## get qunatum numbers and Hamiltonian
+        ## get quantum numbers and Hamiltonian
         if 'fH' not in _cache:
             ## get Hamiltonian and insert adjustable parameters into
             ## functions, including complex width
@@ -439,7 +440,7 @@ def _get_linear_H(S,Λ,s):
     of a linear molecule."""
     ## symbolic variables, Note that expected value of ef is +1 or -1 for 'e' and 'f'
     p = {key:sympy.Symbol(key) for key in (
-        'Tv','Bv','Dv','Hv','Av','ADv','λv','λDv','λHv','γv','γDv','ov','pv','pDv','qv','qDv')}
+        'Tv','Bv','Dv','Hv','Lv','Mv','Av','ADv','λv','λDv','λHv','γv','γDv','ov','pv','pDv','qv','qDv')}
     J = sympy.Symbol('J')
     case_a = quantum_numbers.get_case_a_basis(S,Λ,s,print_output=False)
     efs = case_a['qnef']['ef']
@@ -451,7 +452,7 @@ def _get_linear_H(S,Λ,s):
         return(X*Y+Y*X)
     I  = sympy.eye(case_a['n']) # unit matrix
     ## Equation 18 of brown1979
-    H = p['Tv']*I + p['Bv']*NN - p['Dv']*NN**2 + p['Hv']*NN**3       # T + BN**2 - DN**4 + HN**6
+    H = p['Tv']*I + p['Bv']*NN - p['Dv']*NN**2 + p['Hv']*NN**3 + p['Lv']*NN**4 + p['Mv']*NN**5
     if S>0:
         if Λ>0: H += anticommutate(p['Av']*I+p['ADv']*NN,sympy.diag(*[float(Λ*Σ) for Σ in Σs]))/2 # 1/2[A+AN2,LzSz]+
         H += (p['γv']*I+p['γDv']*NN)*NS # (γ+γD.N**2)N.S
