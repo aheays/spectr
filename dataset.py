@@ -49,6 +49,7 @@ class Dataset(optimise.Optimiser):
     default_attributes = {
         'classname':None,
         'description':None,
+        'default_step':1e-8,
     }
 
     ## prototypes on instantiation
@@ -492,22 +493,32 @@ class Dataset(optimise.Optimiser):
         except InferException:
             return False
             
-    def __getitem__(self,arg):
+    def __getitem__(self,index):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
         that data. If an index, return an indexed copy of self."""
-        if isinstance(arg,str):
+        if isinstance(index,str):
             ## a key -- return data
-            return self.get(arg)
-        elif isinstance(arg,list):
-            ## make a copy of a list of keys
-            return self.copy(keys=arg)
-        elif tools.isiterable(arg) and len(arg)==2 and isinstance(arg[0],str) and isinstance(arg[1],str):
-            ## (key,assoc) tuple, return data
-            return self.get(arg)
+            return self.get(index)
+        elif isinstance(index,int):
+            ## an index -- return as flat dict containing scalar data
+            return self.as_flat_dict(index=index)
+        elif tools.isiterable(index):
+            if len(index) == 0:
+                ## empty index, make an empty copy of self
+                return self.copy(index=index)
+            elif isinstance(index[0],str):
+                if isinstance(index,tuple) and len(index) == 2:
+                    ## (key,assoc) tuple, return data
+                    return self.get(index)
+                else:
+                    ## list of keys, make a copy containing these
+                    return self.copy(keys=index)
+            else:
+                ## array index, make an index copy of self
+                return self.copy(index=index)
         else:
-            ## make an indexed copy
-            return self.copy(index=arg)
+            raise Exception(f"Cannot interpret index: {repr(index)}")
 
     def __setitem__(self,key,value):
         """Set a key to value. If key_unc then set uncertainty. If key_vary or
@@ -591,7 +602,7 @@ class Dataset(optimise.Optimiser):
         """Get a copy of self with possible restriction to indices and
         keys."""
         retval = self.__class__() # new version of self
-        retval.copy_from(self,keys,index)
+        retval.copy_from(self,keys,index,copy_assoc=True)
         return retval
 
     @optimise_method()
@@ -623,8 +634,8 @@ class Dataset(optimise.Optimiser):
             self[key] = source.get(key,index=index)
             if copy_assoc:
                 ## copy associated data
-                for assoc,value in source._data[key]['assoc'].items():
-                    self[key,assoc] = value[index]
+                for assoc in source._data[key]['assoc']:
+                    self[key,assoc] = source[key,assoc][index]
         ## copy all attributes
         for key in source.attributes:
             self[key] = source[key]
@@ -859,28 +870,33 @@ class Dataset(optimise.Optimiser):
 
     def as_dict(self,keys=None,index=None):
         """Return as a structured dict."""
+        ## default to all data
+        if keys is None: 
+            keys = list(self.keys())
+            keys += [key for key in self.attributes if self.attributes[key] is not None]
+        ## add data and attributes
         retval = {}
-        for key,val in self.attributes.items():
-            if keys is not None and key not in keys:
-                continue
-            retval[key] = val
-        for key in self:
-            if keys is not None and key not in keys:
-                continue
-            data = self._data[key]
-            retval[key] = {}
-            for tkey,tval in data.items():
-                if tkey == 'value':
-                    ## data
-                    retval[key]['value'] = self.get(key,index)
-                elif tkey == 'assoc':
-                    ## associated data
-                    retval[key]['assoc'] = {}
-                    for assoc in retval[key]['assoc']:
-                        retval[key]['assoc'][assoc] = self.get((key,assoc),index)
-                else:
-                    ## attributes
-                    retval[tkey] = tval
+        for key in keys:
+            if key in self.attributes:
+                retval[key] = self.attributes[key]
+            else:
+                data = self._data[key]
+                retval[key] = {}
+                for tkey,tval in data.items():
+                    if tkey == 'value':
+                        ## data
+                        retval[key]['value'] = self.get(key,index)
+                    elif tkey == 'assoc':
+                        ## associated data
+                        retval[key]['assoc'] = {}
+                        for assoc in tval:
+                            retval[key]['assoc'][assoc] = self.get((key,assoc),index)
+                    elif tkey in ('kind','units','description','fmt'):
+                        ## attributes
+                        retval[key][tkey] = tval
+                    else:
+                        ## do not save anything else
+                        pass
         return retval
         
     def rows(self,keys=None):
@@ -938,24 +954,28 @@ class Dataset(optimise.Optimiser):
             self,
             keys=None,
             delimiter=' | ',
-            format_opt=True,
             unique_values_in_header=True,
             include_description=True,
             include_attributes=True,
             include_assoc=True,
+            include_keys_with_leading_underscore=False,
             quote_strings=False,
             quote_keys=False,
     ):
         """Format data into a string representation."""
-        if len(self)==0:
-            return ''
+        # if len(self)==0:
+            # return ''
         if keys is None:
             keys = self.keys()
+            if not include_keys_with_leading_underscore:
+                keys = [key for key in keys if key[0]!='_']
         ## data to store in header
         ## collect columns of data -- maybe reducing to unique values
         columns = []
         header_values = {}
         for key in keys:
+            if len(self) == 0:
+                break
             formatted_key = ( "'"+key+"'" if quote_keys else key )
             if (unique_values_in_header
                 and len(tval:=self.unique(key)) == 1
@@ -1250,13 +1270,13 @@ class Dataset(optimise.Optimiser):
                     self.assert_known(key,assoc)
                     cast = self.associated_kinds[assoc]['cast']
                     data['assoc'][assoc][old_length:total_length] = cast(level[key,assoc])
-            _cache['old_length'],_cache['new_length'],_cache['total_length'] = old_length,new_length,total_length
+            _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
         else:
             ## update data in place
-            old_length,new_length,total_length = _cache['old_length'],_cache['new_length'],_cache['total_length']
+            keys,old_length,new_length,total_length = _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length']
             assert len(level) == new_length
             index = slice(old_length,total_length)
-            for key in self:
+            for key in keys:
                 self.set(key,level[key],index)
                 for assoc in self._data[key]['assoc']:
                     self.set((key,assoc),level[key,assoc],index)
