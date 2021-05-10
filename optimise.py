@@ -12,6 +12,7 @@ import multiprocessing
 import numpy as np
 from numpy import nan,inf,array,arange,linspace
 from scipy import optimize,linalg
+from immutabledict import immutabledict as idict
 
 # from . import dataset
 from . import tools
@@ -152,7 +153,8 @@ class Optimiser:
         self._post_construct_functions = {} # run in reverse order after other construct functions
         self._plot_functions = [] 
         self._monitor_functions = [] # call these functions at special times during optimisation
-        self._monitor_frequency = 'every iteration' # when to call monitor fuctions: 'never', 'every iteration', 'rms decrease'
+        self._monitor_frequency = 'every iteration' # when to call monitor fuctions: 'never', 'every iteration', 'rms decrease', 'significant rms decrease'
+        self._monitor_frequency_significant_rms_decrease_fraction = 1e-2
         self._monitor_parameters = False            # print out each on monitor
         self._save_to_directory_functions = [] # call these functions when calling save_to_directory (input argument is the directory)
         self._format_input_functions = {}        # call these functions (return strings) to build a script recreating an optimisation
@@ -565,12 +567,19 @@ class Optimiser:
         if len(residuals) == 0:
             raise Exception("No residuals to optimise.")
         ## monitor
-        # if residuals is not None and len(residuals)>0 and self._monitor_frequency!='never':
         rms = tools.nanrms(residuals)
         if np.isinf(rms) or np.isnan(rms):
             raise Exception(f'rms is {rms}')
-        if (self._monitor_frequency=='every iteration'
-            or (self._monitor_frequency=='rms decrease' and rms < self._rms_minimum)):
+        if (
+                ## every iteration
+                (self._monitor_frequency=='every iteration')
+                ## every time rms decreases
+                or (self._monitor_frequency=='rms decrease'
+                    and rms < self._rms_minimum)
+                ## every time rms decreases by at least self._monitor_frequency_significant_rms_decrease_fraction
+                or (self._monitor_frequency=='significant rms decrease'
+                    and (self._rms_minimum-rms)/rms < self._monitor_frequency_significant_rms_decrease_fraction)
+        ):
             current_time = timestamp()
             print(f'call: {self._number_of_optimisation_function_calls:>6d} time: {current_time-self._previous_time:<7.2e} rms: {rms:<12.8e}')
             self.monitor()
@@ -579,98 +588,98 @@ class Optimiser:
                 self._rms_minimum = rms
         return residuals
 
-    @optimise_method(add_construct_function=False,)
+    @optimise_method(add_construct_function=False)
     def optimise(
             self,
             # compute_unc_only=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
-            rms_noise=None,
-            monitor_frequency='every iteration', # 'rms decrease', 'never'
+            # rms_noise=None,
+            monitor_frequency='every iteration', # 'never', 'every iteration', 'rms decrease', 'significant rms decrease'
             verbose=True,
-            normalise_suboptimiser_residuals=False,
-            max_nfev=None,         # max number of iterations
+            # normalise_suboptimiser_residuals=False,
             method=None,
-            xtol=1e-10,
-            ftol=1e-10,
-            gtol=1e-10,
-            ncpus=1,
+            least_squares_options=idict(),
+            ncpus=1,            # Controls the use of multiprocessing of the Jacobian
             monitor_parameters=None,
     ):
         """Optimise parameters."""
         self._ncpus = ncpus
-        if normalise_suboptimiser_residuals:
-            ## normalise all suboptimiser residuals before handing to
-            ## the least-squares routine
-            for suboptimiser in self._get_all_suboptimisers():
-                self.construct(recompute_all=True)
-                if suboptimiser.residual is not None and len(suboptimiser.residual)>0:
-                    if suboptimiser.residual_scale_factor is None:
-                        suboptimiser.residual_scale_factor = 1/tools.rms(suboptimiser.residual)
-                    else:
-                        suboptimiser.residual_scale_factor /= tools.rms(suboptimiser.residual)
+        # if normalise_suboptimiser_residuals:
+            # ## normalise all suboptimiser residuals before handing to
+            # ## the least-squares routine
+            # for suboptimiser in self._get_all_suboptimisers():
+                # self.construct(recompute_all=True)
+                # if suboptimiser.residual is not None and len(suboptimiser.residual)>0:
+                    # if suboptimiser.residual_scale_factor is None:
+                        # suboptimiser.residual_scale_factor = 1/tools.rms(suboptimiser.residual)
+                    # else:
+                        # suboptimiser.residual_scale_factor /= tools.rms(suboptimiser.residual)
         ## get initial values and reset uncertainties
         self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
-        ## some communication variables between methods
+        ## some communication variables between methods to do with
+        ## monitoring the optimisation
         self._monitor_frequency = monitor_frequency
         self._monitor_parameters = monitor_parameters
-        assert monitor_frequency in ('rms decrease','every iteration','never'),f"Valid monitor_frequency: {repr(('rms decrease','every iteration','never'))}"
+        valid_monitor_frequency = ('never', 'every iteration', 'rms decrease', 'significant rms decrease')
+        if monitor_frequency not in valid_monitor_frequency:
+            raise Exception(f'Invalid monitor_frequency, choose from: {repr(valid_monitor_frequency)}')
         self._rms_minimum,self._previous_time = inf,timestamp()
         self._number_of_optimisation_function_calls = 0
         ## describe the upcoming optimisation
         if verbose or self.verbose:
             print(f'{self.name}: optimising')
-            print('Number of varied parameters:',len(self._initial_p))
+            print('number of varied parameters:',len(self._initial_p))
         ## the optimisation
         if len(self._initial_p)>0:
-            optargs = {
+            least_squares_options = {
                 'fun':self._optimisation_function,
                 'x0':[0. for t in self._initial_p],
                 'diff_step':np.full(len(self._initial_p),1e-8),
                 ## 'x0':copy(self._initial_p),
                 ## 'diff_step':copy(self._initial_step),
                 ## 'diff_step':1e-8,
-                'xtol':xtol,
-                'ftol':ftol,
-                'gtol':gtol,
-                'max_nfev':max_nfev,
-                'method':method,
+                # 'xtol':(1e-10 if xtol is None else xtol),
+                # 'ftol':(1e-10 if ftol is None else ftol),
+                # 'gtol':(1e-10 if gtol is None else gtol),
+                # 'max_nfev':max_nfev,
+                'method':None,
                 'jac':'2-point',
-                }
-            if optargs['method'] is None:
+                } | least_squares_options
+            if least_squares_options['method'] is None:
                 ## get a default method
                 if len(self._initial_p) == 1:
-                    # optargs['method'] = 'lm'
-                    optargs['method'] = 'trf'
+                    # least_squares_options['method'] = 'lm'
+                    least_squares_options['method'] = 'trf'
                 else:
-                    optargs['method'] = 'trf'
-            if optargs['method'] == 'lm':
+                    least_squares_options['method'] = 'trf'
+            if least_squares_options['method'] == 'lm':
                 ## use 'lm' Levenberg-Marquadt
                 pass
-            elif optargs['method'] == 'trf':
+            elif least_squares_options['method'] == 'trf':
                 ## use 'trf' -- trust region
-                optargs['x_scale'] = 'jac'
-                optargs['loss'] = 'linear'
+                least_squares_options['x_scale'] = 'jac'
+                least_squares_options['loss'] = 'linear'
                 if len(self._initial_p) < 5:
-                    optargs['tr_solver'] = 'exact'
+                    least_squares_options['tr_solver'] = 'exact'
                 else:
-                    optargs['tr_solver'] = 'lsmr'
+                    least_squares_options['tr_solver'] = 'lsmr'
             else:
-                raise Exception(f'Unknown optimsiation method: {repr(optargs["method"])}')
-            optargs['jac'] = self._calculate_jacobian
+                raise Exception(f'Unknown optimsiation method: {repr(least_squares_options["method"])}')
+            least_squares_options['jac'] = self._calculate_jacobian
             # if self._ncpus > 1:
-                # optargs['jac'] = self._calculate_jacobian
+                # least_squares_options['jac'] = self._calculate_jacobian
             ## call optimisation routine -- KeyboardInterrupt possible
             try:
                 if verbose or self.verbose:
-                    print('Method:',optargs['method'])
+                    print('method:',least_squares_options['method'])
                     # print("Optimisation parameters:")
-                    # print('    '+pformat(optargs).replace('\n','\n    '))
-                result = optimize.least_squares(**optargs)
+                    # print('    '+pformat(least_squares_options).replace('\n','\n    '))
+                result = optimize.least_squares(**least_squares_options)
                 if verbose or self.verbose:
-                    print('Optimisation complete')
-                    print('    Number parameters:    ',len(result['x']))
-                    print('    Number of evaluations:',self._number_of_optimisation_function_calls)
-                    print('    Number of iterations: ',result['nfev'])
-                    print('    Termination reason:   ',result['message'])
+                    print('optimisation complete')
+                    print('    number parameters:    ',len(result['x']))
+                    print('    number of evaluations:',self._number_of_optimisation_function_calls)
+                    print('    number of iterations: ',result['nfev'])
+                    print('    termination reason:   ',result['message'])
             except KeyboardInterrupt:
                 pass
             ## calculate uncertainties -- KeyboardInterrupt possible
@@ -678,7 +687,7 @@ class Optimiser:
                 self.calculate_uncertainty()
             except KeyboardInterrupt:
                 pass
-        ## even if not optimsied collect residual and run monitor functions
+        ## even if not optimised collect residual and run monitor functions
         residual = self.construct(recompute_all=True) # run at least once, recompute_all to get uncertainties
         self.monitor() 
         ## describe result
@@ -823,19 +832,31 @@ class Optimiser:
             print(f'{self.name}: computing uncertainty for {len(p)} parameters')
         ## get jacobian using rescaled parameters
         jacobian = self._calculate_jacobian(p)
-        inonzero = np.any(jacobian!=0,axis=0)
-        ## compute 1σ uncertainty from Jacobian
-        unc = np.full(len(p),np.nan)
-        if len(jacobian) > 0:
-            t = jacobian[:,inonzero]
-            covariance = linalg.inv(np.dot(t.T,t))
-            if rms_noise is None:
-                chisq = np.sum(residual**2)
-                dof = len(residual)-len(p)+1
-                rms_noise = np.sqrt(chisq/dof)
-            unc[inonzero] = np.sqrt(covariance.diagonal())*rms_noise
-        else:
-            print('All parameters have no effect, uncertainties not calculated')
+        min_valid = 0
+        while True:
+            try: 
+                inonzero = np.any(np.abs(jacobian)>min_valid,axis=0)
+                t = np.sum(~inonzero)
+                if t>0:
+                    print(f'Jacobian is not invertible so discarding {t} our of {len(inonzero)} columns with no values greater than {min_valid:0.0e}.')
+                ## compute 1σ uncertainty from Jacobian
+                unc = np.full(len(p),np.nan)
+                if len(jacobian) > 0:
+                    t = jacobian[:,inonzero]
+                    covariance = linalg.inv(np.dot(t.T,t))
+                    if rms_noise is None:
+                        chisq = np.sum(residual**2)
+                        dof = len(residual)-len(p)+1
+                        rms_noise = np.sqrt(chisq/dof)
+                    unc[inonzero] = np.sqrt(covariance.diagonal())*rms_noise
+                else:
+                    print('All parameters have no effect, uncertainties not calculated')
+                break
+            except linalg.LinAlgError as error:
+                if min_valid == 0:
+                    min_valid = 1e-10
+                else:
+                    min_valid *= 10
         self._set_parameters(p,unc,rescale=True)
         self.construct()
 
@@ -978,7 +999,7 @@ def _calculate_jacobian_multiprocessing_worker(shared_namespace,p,i):
     """Calculate part of a jacobian."""
     import dill
     from time import perf_counter as timestamp
-    import np
+    import numpy as np
     optimiser = dill.loads(shared_namespace.dill_pickle)
     residual = shared_namespace.residual
     rms = np.sqrt(np.mean(residual**2))
