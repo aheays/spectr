@@ -253,6 +253,7 @@ class VibLevel(Optimiser):
             ηv=0,ηDv=0,         # LS -- spin-orbit coupling
             ξv=0,ξDv=0,         # JL -- L-uncoupling
             pv=0,pDv=0,         # JS -- S-uncoupling
+            He=0,               # electronic coupling
             _cache=None):
         """Add spin-orbit coupling of two manifolds."""
         ## get matrix cache of matrix elements
@@ -267,9 +268,13 @@ class VibLevel(Optimiser):
         ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS = _cache['ibeg'],_cache['jbeg'],_cache['JL'],_cache['JS'],_cache['LS'],_cache['NNJL'],_cache['NNLS'],_cache['NNLS']
         ## substitute into Hamiltonian (both upper and lowe diagonals, treated as real)
         for i,j in np.ndindex(JL.shape):
-            t = (ηv*LS[i,j](self.J) + ηDv*NNLS[i,j](self.J)
-                 + -ξv*JL[i,j](self.J) - ξDv*NNJL[i,j](self.J)
-                 + pv*JS[i,j](self.J)  )
+            t = (
+                ηv*LS[i,j](self.J) 
+                + ηDv*NNLS[i,j](self.J)
+                + -ξv*JL[i,j](self.J) - ξDv*NNJL[i,j](self.J)
+                + pv*JS[i,j](self.J) 
+                + float(He)
+            )
             self.H[:,i+ibeg,j+jbeg] = t
             self.H[:,j+jbeg,i+ibeg] = np.conj(t)
 
