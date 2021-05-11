@@ -567,7 +567,7 @@ class Optimiser:
         if len(residuals) == 0:
             raise Exception("No residuals to optimise.")
         ## monitor
-        rms = tools.nanrms(residuals)
+        rms = tools.rms(residuals)
         if np.isinf(rms) or np.isnan(rms):
             raise Exception(f'rms is {rms}')
         if (
@@ -580,12 +580,13 @@ class Optimiser:
                 or (self._monitor_frequency=='significant rms decrease'
                     and (self._rms_minimum-rms)/rms < self._monitor_frequency_significant_rms_decrease_fraction)
         ):
-            current_time = timestamp()
-            print(f'call: {self._number_of_optimisation_function_calls:>6d} time: {current_time-self._previous_time:<7.2e} rms: {rms:<12.8e}')
             self.monitor()
-            self._previous_time = current_time
-            if rms < self._rms_minimum:
-                self._rms_minimum = rms
+        ## print rms
+        current_time = timestamp()
+        print(f'call: {self._number_of_optimisation_function_calls:>6d} time: {current_time-self._previous_time:<7.2e} rms: {rms:<12.8e}')
+        self._previous_time = current_time
+        if rms < self._rms_minimum:
+            self._rms_minimum = rms
         return residuals
 
     @optimise_method(add_construct_function=False)
@@ -840,8 +841,10 @@ class Optimiser:
                 if t>0:
                     print(f'Jacobian is not invertible so discarding {t} our of {len(inonzero)} columns with no values greater than {min_valid:0.0e}.')
                 ## compute 1σ uncertainty from Jacobian
-                unc = np.full(len(p),np.nan)
-                if len(jacobian) > 0:
+                unc = np.full(len(p),nan)
+                if len(jacobian) == 0 or np.sum(inonzero) == 0:
+                    print('All parameters have no effect, uncertainties not calculated')
+                else:
                     t = jacobian[:,inonzero]
                     covariance = linalg.inv(np.dot(t.T,t))
                     if rms_noise is None:
@@ -849,8 +852,6 @@ class Optimiser:
                         dof = len(residual)-len(p)+1
                         rms_noise = np.sqrt(chisq/dof)
                     unc[inonzero] = np.sqrt(covariance.diagonal())*rms_noise
-                else:
-                    print('All parameters have no effect, uncertainties not calculated')
                 break
             except linalg.LinAlgError as error:
                 if min_valid == 0:
