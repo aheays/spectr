@@ -1607,8 +1607,10 @@ class Model(Optimiser):
         # if output_residual and self.residual is not None:
             # tools.array_to_file(directory+'/residual.h5', self.xexp,self.residual)
         if self._figure is not None:
-            # self._figure.savefig(directory+'/figure.png',dpi=300) # save figure
-            self._figure.savefig(directory+'/figure.svg') # save figure
+            ## svg / pdf are the fastest output formats. Significantly
+            ## faster if there is not text on the figure
+            # self._figure.savefig(directory+'/figure.png',dpi=300)
+            self._figure.savefig(directory+'/figure.svg')
         if output_transition_linelists:
             tools.mkdir_if_necessary(directory+'/transitions')
             for transition in self.absorption_transitions:
