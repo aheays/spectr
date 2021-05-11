@@ -560,15 +560,16 @@ class Mixture():
     def load_cantera(
             self,
             gas,
-            states,
+            states=None,
             forward_rates=None,
             reverse_rates=None,
     ):
-        ## load state
-        self.state.extend(t=states.t,T=states.T,p=states.P,keys='new')
-        ## load densities -- empty if states is None
-        for species in gas.kinetics_species_names:
-            self.density[species] = states.X[:, gas.species_index(species)]
+        if states is not None:
+            ## load state
+            self.state.extend(t=states.t,T=states.T,p=states.P,keys='new')
+            ## load densities -- empty if states is None
+            for species in gas.kinetics_species_names:
+                self.density[species] = states.X[:, gas.species_index(species)]
         ## load reaction netwrok
         self.reaction_network = ReactionNetwork()
         self.reaction_network.load_cantera(gas,forward_rates,reverse_rates)
@@ -602,16 +603,19 @@ def decode_reaction(reaction,encoding='standard'):
                     r_or_p_list.append(species)
             r_or_p_list.sort()
     elif encoding == 'cantera':
+        reaction = reaction.replace('(+M)',' + M')
+        reaction = reaction.replace('(+M)',' + M')
         ## split parts
-        reactants_string,products_string = re.split(r'[<>=]+',reaction)
+        reactants_string,products_string = re.split(r'\s[<>=]+\s',reaction)
+        ## delete reference to 3rd bodies
         reactants,products = [],[]
         for r_or_p_string,r_or_p_list in ((reactants_string,reactants), (products_string,products)):
             ## decode reactants or products string into a list
             for species in r_or_p_string.split(' + '):
                 species = species.strip()
-                if species == 'M':
-                    ## neglect 3rd bodies
-                    continue
+                # if species == 'M':
+                    # ## neglect 3rd bodies
+                    # continue
                 if r:=re.match(r'^([0-9]+) *(.*)',species):
                     multiplicity = int(r.group(1))
                     species = r.group(2)
