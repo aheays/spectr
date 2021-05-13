@@ -395,36 +395,50 @@ class Base(Dataset):
         kwargs.setdefault('permit_nonprototyped_data',False)
         Dataset.__init__(self,*args,**kwargs)
 
+    # @optimise_method(format_single_line=True)
+    # def set_by_name(self,name,_cache=None,**parameters):
+        # """Set parameters to all data matching the quantum numbers
+        # encoded in name."""
+        # if len(_cache) == 0:
+            # _cache['i'] = self.match(self.decode_qn(name))
+        # i = _cache['i']
+        # for key,val in parameters.items():
+            # self.set(key,val,index=i)
+
     @optimise_method(format_single_line=True)
-    def set_by_name(self,name,_cache=None,**parameters):
-        """Set parameters to all data matching the quantum numbers
-        encoded in name."""
+    def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
+        """Set parameters to all data matching quantum numbers."""
         if len(_cache) == 0:
-            _cache['i'] = self.match(self.decode_qn(name))
-        i = _cache['i']
-        for key,val in parameters.items():
-            # if isinstance(val,Parameter):
-                # self.set(key,float(val),index=i)
-            # else:
-                # self.set(key,val,index=i)
+            qn,p = {},{}
+            for key,val in defining_qn_and_parameters.items():
+                if key in self.defining_qn:
+                    qn[key] = val
+                else:
+                    p[key] = val
+            if encoded_qn is not None:
+                qn = qn | self.decode_qn(encoded_qn)
+            i = self.match(qn)
+            _cache['p'],_cache['i'] = p,i
+        p,i = _cache['p'],_cache['i']
+        for key,val in p.items():
             self.set(key,val,index=i)
 
-    @optimise_method(add_construct_function=False,add_format_input_function=True,format_single_line=True,execute_now=True)
-    def set_by_qn(self,**kwargs):
-        """Set some data to fixed values or optimised parameters, limiting
-        setting to matching defining quantum numbers, all given as key word
-        arguments."""
-        ## collect quantum numbers and set data
-        qn,p = {},{}
-        for key,val in kwargs.items():
-            if key in self.defining_qn:
-                qn[key] = val
-            else:
-                p[key] = val
-        ## set data
-        for key,val in p.items():
-            self.set_parameter(key,val,match=qn)
-            self.pop_format_input_function()
+    # @optimise_method(add_construct_function=False,add_format_input_function=True,format_single_line=True,execute_now=True)
+    # def set_by_qn(self,**kwargs):
+        # """Set some data to fixed values or optimised parameters, limiting
+        # setting to matching defining quantum numbers, all given as key word
+        # arguments."""
+        # ## collect quantum numbers and set data
+        # qn,p = {},{}
+        # for key,val in kwargs.items():
+            # if key in self.defining_qn:
+                # qn[key] = val
+            # else:
+                # p[key] = val
+        # ## set data
+        # for key,val in p.items():
+            # self.set_parameter(key,val,match=qn)
+            # self.pop_format_input_function()
 
     def assert_unique_qn(self):
         t,i,c = np.unique(self['_qnhash'],return_index=True,return_counts=True)
@@ -444,10 +458,10 @@ class Base(Dataset):
             sort_keys = [key for key in self.defining_qn if self.is_known(key)]
         Dataset.sort(self,*sort_keys,reverse_order=reverse_order)
 
-    def match(self,*args,name=None,**kwargs):
-        """Overload match to include name to decode."""
-        if name is not None:
-            kwargs = self.decode_qn(name) | kwargs
+    def match(self,*args,encoded_qn=None,**kwargs):
+        """Overload Dataset.match to handle encoded_qn."""
+        if encoded_qn is not None:
+            kwargs = self.decode_qn(encoded_qn) | kwargs
         return Dataset.match(self,*args,**kwargs)
 
 class Generic(Base):
