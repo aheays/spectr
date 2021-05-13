@@ -722,8 +722,8 @@ class Dataset(optimise.Optimiser):
     def limit_to_match(self,**keys_vals):
         self.index(self.match(**keys_vals))
 
-    def remove_match(self,**keys_vals):
-        self.index(~self.match(**keys_vals))
+    def remove_match(self,*match_args,**match_keys_vals):
+        self.index(~self.match(*match_args,**match_keys_vals))
 
     def unique(self,key):
         """Return unique values of one key."""
@@ -1422,6 +1422,7 @@ class Dataset(optimise.Optimiser):
             yscale='linear',     # 'log' or 'linear'
             ncolumns=None,       # number of columsn of subplot -- None to automatically select
             show=False,          # show figure after issuing plot commands
+            ylim=None,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
         """Plot data."""
@@ -1437,11 +1438,11 @@ class Dataset(optimise.Optimiser):
             fig = plt.gcf()
             fig.clf()
         ## xkey, ykeys, zkeys
-        if xkey == 'index':
-            if 'index'  in self.keys():
-                raise Exception("Index already exists")
-            self['index'] = np.arange(len(self),dtype=int)
-            xkey = 'index'
+        # if xkey == 'index':
+            # if 'index'  in self.keys():
+                # raise Exception("Index already exists")
+            # self['index'] = np.arange(len(self),dtype=int)
+            # xkey = 'index'
         if zkeys is None:
             zkeys = self.default_zkeys
         zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
@@ -1519,6 +1520,17 @@ class Dataset(optimise.Optimiser):
                         plotting.legend(fontsize='x-small')
                     if annotate_lines:
                         plotting.annotate_line(line=line)
+                if ylim is not None:
+                    if ylim == 'data':
+                        t,t,ybeg,yend = plotting.get_data_range(ax)
+                        ax.set_ylim(ybeg,yend)
+                    elif tools.isiterable(ylim) and len(ylim) == 2:
+                        ybeg,yend = ylim
+                        if ybeg == 'data':
+                            t,t,ybeg,t = plotting.get_data_range(ax)
+                        if yend == 'data':
+                            t,t,t,yend = plotting.get_data_range(ax)
+                    ax.set_ylim(ybeg,yend)
                 ax.set_xlabel(xkey)
                 ax.set_xscale(xscale)
                 ax.set_yscale(yscale)
