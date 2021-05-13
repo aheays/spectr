@@ -229,6 +229,22 @@ def dict_to_kwargs(d,keys=None):
         keys = d.keys() # default to all keys
     return(','.join([key+'='+repr(d[key]) for key in keys]))
 
+def dict_expanded_repr(d,indent=''):
+    """pprint dict recursively but repr non-dict elements."""
+    retval = '{'
+    for i,(key,val) in enumerate(d.items()):
+        prefix = '\n'+indent+'    '
+        if (
+                not isinstance(val,dict)
+                or len(val) == 0
+                or (len(val) == 1 and not any([isinstance(t,dict) for t in val.values()]))
+        ):
+            retval += f'{prefix}{repr(key):10}: {repr(val)},'
+        else:
+            retval += f'{prefix}{repr(key):10}: {dict_expanded_repr(val,indent+"    ")},'
+    retval += f'\n{indent}}}'
+    return retval
+
 def compute_matrix_of_function(A,*args,**kwargs):
     """2D only"""
     retval = np.matrix([[Aij(*args,**kwargs) for Aij in Ai] for Ai in A])
@@ -417,6 +433,26 @@ def randn(shape=None):
 ###########################
 ## convenience functions ##
 ###########################
+
+def uniquify_strings(strings):
+    repeats = {}
+    for s in strings:
+        if s in repeats:
+            repeats[s] +=1
+        else:
+            repeats[s] = 1
+    retval = []
+    counts = {}
+    for s in strings:
+        if s in counts:
+            counts[s] += 1
+        else:
+            counts[s] = 1
+        if repeats[s] == 1:
+            retval.append(s)
+        else:
+            retval.append(s+'_'+str(counts[s]))
+    return retval
 
 def convert_to_bool_vector_array(x):
     ## use numpy directlry
