@@ -80,7 +80,7 @@ class Experiment(Optimiser):
         ## other changes
         self.x,self.y = copy(_cache['x']),copy(_cache['y']) 
 
-    @optimise_method()
+    @optimise_method(add_construct_function=False)
     def set_spectrum_from_file(
             self,
             filename,
@@ -94,6 +94,7 @@ class Experiment(Optimiser):
         # x,y = tools.file_to_array_unpack(filename,**load_function_kwargs)
         x,y = tools.loadxy(filename, xcol=xcol,ycol=ycol, xkey=xkey,ykey=ykey,)
         self.set_spectrum(x,y,xbeg,xend)
+        self.pop_format_input_function()
 
     def set_spectrum_from_dataset(self,filename,xbeg=None,xend=None,xkey='x',ykey='y'):
         """Load a spectrum to fit from an x,y file."""
@@ -276,31 +277,38 @@ class Model(Optimiser):
 
 
     @optimise_method(add_format_input_function=False)
-    def _initialise(self):
+    def _initialise(self,_cache=None):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
-        self.residual_scale_factor = 1
-        if self._xin is not None:
-            ## x is from a call to get_spectrum
-            self.x = self._xin
-            self.xexp = self.yexp = None
-        elif self.experiment is not None:
-            ## get domain from experimental data
-            self.xexp = self.experiment.x
-            self.yexp = self.experiment.y
-            if self.xbeg is not None:
-                i = self.xexp>=self.xbeg
-                self.xexp,self.yexp = self.xexp[i],self.yexp[i]
-            if self.xend is not None:
-                i = self.xexp<=self.xend
-                self.xexp,self.yexp = self.xexp[i],self.yexp[i]
+        if self.full_construct:
+            ## build cache of data
+            self.residual_scale_factor = 1
+            if self._xin is not None:
+                ## x is from a call to get_spectrum
+                self.x = self._xin
+                self.xexp = self.yexp = None
+            elif self.experiment is not None:
+                ## get domain from experimental data
+                self.xexp = self.experiment.x
+                self.yexp = self.experiment.y
+                iexp = np.full(len(self.xexp),True)
+                if self.xbeg is not None:
+                    iexp &= self.xexp >= self.xbeg
+                if self.xend is not None:
+                    iexp &= self.xexp <= self.xend
+                _cache['iexp'] = iexp
+                ## if known use experimental noise RMS to normalise
+                ## residuals
+                if 'noise_rms' in self.experiment.experimental_parameters:
+                    self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
+            else:
+                self.x = np.array([],dtype=float,ndmin=1)
+        ## reload x if experimental
+        if 'iexp' in _cache:
+            iexp = _cache['iexp']
+            self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
             self.x = copy(self.xexp)
-            ## if known use experimental noise RMS to normalise
-            ## residuals
-            if 'noise_rms' in self.experiment.experimental_parameters:
-                self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
-        else:
-            self.x = np.array([],dtype=float,ndmin=1)
+        ## start y
         self.y = np.zeros(self.x.shape,dtype=float)
         ## record whether x has changed from previous construct
         if (self._xcache is None
@@ -326,11 +334,10 @@ class Model(Optimiser):
             residual *= self.residual_weighting
         return residual
 
-    @optimise_method()
+    @optimise_method(execute_now=False)
     def interpolate(self,dx):
         """When calculating model set to dx grid (or less to achieve
         overlap with experimental points. DELETES CURRENT Y!"""
-        
         xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
         self._interpolate_factor = int(np.ceil(xstep/dx))
         self.x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*self._interpolate_factor)
@@ -477,7 +484,7 @@ class Model(Optimiser):
             self,
             lines=None,
             nfwhmL=20,
-            nfwhmG=100,
+            nfwhmG=10,
             τmin=None,
             lineshape=None,
             ncpus=1,
@@ -875,10 +882,8 @@ class Model(Optimiser):
     def auto_add_intensity_spline(self,xstep=1000.,y=1.):
         """Quickly add an evenly-spaced intensity spline."""
         self.experiment.construct()
-        xbeg,xend = self.x[0]-50,self.x[-1]+50 # boundaries to cater to instrument convolution
-        knots = [[x,P(y,True)] for x in
-                 linspace(xbeg,xend,
-                          min(2,1+int((xend-xbeg)/xstep+0.99999999)))]
+        xbeg,xend = self.x[0]-xstep/2,self.x[-1]+xstep+2 # boundaries to cater to instrument convolution
+        knots = [[x,P(y,True)] for x in linspace(xbeg,xend,max(2,int((xend-xbeg)/xstep)))]
         self.add_intensity_spline(knots=knots)
         return knots
 
