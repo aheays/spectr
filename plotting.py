@@ -471,6 +471,19 @@ def set_figsize_in_pixels(x,y,fig=None):
     return(figsize)
 
 
+def get_data_range(axes=None):
+    """Return (xbeg,xend,ybeg,yend) encompassing all data plotted in
+    axes."""
+    if axes is None:
+        axes = plt.gca()
+    lines  = [line for line in axes.get_lines()
+              if line.get_visible() and isinstance(line.get_xdata(),np.ndarray)]
+    ybeg = np.nanmin([line.get_ydata().min() for line in lines])
+    yend = np.nanmax([line.get_ydata().max() for line in lines])
+    xbeg = np.nanmin([line.get_xdata().min() for line in lines])
+    xend = np.nanmax([line.get_xdata().max() for line in lines])
+    return xbeg,xend,ybeg,yend
+
 def extra_interaction(fig=None,pickradius=5):
     """Call this to customise the matplotlib interactive gui experience
     for this figure."""
