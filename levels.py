@@ -57,7 +57,7 @@ def _f1(self,species):
 prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species',), _f0),])
 prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
 
-@vectorise(cache=True)
+@vectorise(vargs=(1,2,3,4,5,6),cache= True)
 def _f0(self,species,label,v,Σ,ef,J):
     """Get diatomic molecule level energies from database."""
     level = database.get_level(species)
@@ -407,7 +407,7 @@ class Base(Dataset):
     @optimise_method(format_single_line=True)
     def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
         """Set parameters to all data matching quantum numbers."""
-        if len(_cache) == 0:
+        if self._clean_construct == 0:
             qn,p = {},{}
             for key,val in defining_qn_and_parameters.items():
                 if key in self.defining_qn:
@@ -480,8 +480,8 @@ class Generic(Base):
     defining_qn = ('species','label','ef','J')
     default_xkey = 'J'
     default_zkeys = ('species','label','ef')
-    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.decode_linear_level(qn,*args,**kwargs)
-    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.encode_linear_level(name,*args,**kwargs)
+    encode_qn = lambda self,qn: quantum_numbers.decode_linear_level(qn)
+    decode_qn = lambda self,name: quantum_numbers.encode_linear_level(name)
     default_zlabel_format_function = encode_qn
     
 class Atomic(Generic):
@@ -500,8 +500,8 @@ class Linear(Generic):
     )
     defining_qn = ('species','label','ef','J')
     default_zkeys = ('species','label','ef','Σ')
-    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.encode_linear_level(qn,*args,**kwargs)
-    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.decode_linear_level(name,*args,**kwargs)
+    encode_qn = lambda self,qn: quantum_numbers.encode_linear_level(qn)
+    decode_qn = lambda self,name: quantum_numbers.decode_linear_level(name)
     default_zlabel_format_function = encode_qn
 
 class LinearTriatomic(Linear):

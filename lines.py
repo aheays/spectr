@@ -362,8 +362,8 @@ class Generic(levels.Base):
     default_prototypes = {key:prototypes[key] for key in {*_level_keys,*_line_keys}}
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
-    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.decode_linear_line(name,*args,**kwargs)
-    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.encode_linear_line(qn,*args,**kwargs)
+    decode_qn = lambda self,name: quantum_numbers.decode_linear_line(name)
+    encode_qn = lambda self,qn: quantum_numbers.encode_linear_line(qn)
     default_zlabel_format_function = encode_qn
 
     def plot_spectrum(
@@ -1035,8 +1035,8 @@ class Linear(Generic):
     }}
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
-    decode_qn = lambda self,name,*args,**kwargs: quantum_numbers.decode_linear_line(name,*args,**kwargs)
-    encode_qn = lambda self,qn,*args,**kwargs: quantum_numbers.encode_linear_line(qn,*args,**kwargs)
+    decode_qn = lambda self,name: quantum_numbers.decode_linear_line(name)
+    encode_qn = lambda self,qn: quantum_numbers.encode_linear_line(qn)
     default_zlabel_format_function = encode_qn
 
 
