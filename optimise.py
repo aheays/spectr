@@ -119,10 +119,9 @@ def optimise_method(
                         formatted_kwargs = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs_to_format.items()])
                         return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
                 self.add_format_input_function(f)
-            ## returns all args as a dictionary -- but not _cache
-            retval = copy(kwargs)
-            if "_cache" in retval:
-                retval.pop('_cache')
+            ## returns all args as a dictionary except added
+            ## optimsation variables
+            retval = {key:val for key,val in kwargs.items() if key not in ('_cache','_parameters','_suboptimisers')}
             return retval
         return new_function
     return actual_decorator
