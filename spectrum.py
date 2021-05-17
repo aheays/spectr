@@ -286,16 +286,16 @@ class Model(Optimiser):
             if self._xin is not None:
                 ## x is from a call to get_spectrum
                 self.x = self._xin
-                self.xexp = self.yexp = None
+                self.experimental = None # used as flag throughout program
             elif self.experiment is not None:
                 ## get domain from experimental data
-                self.xexp = self.experiment.x
-                self.yexp = self.experiment.y
-                iexp = np.full(len(self.xexp),True)
+                iexp = np.full(len(self.experiment.x),True)
                 if self.xbeg is not None:
-                    iexp &= self.xexp >= self.xbeg
+                    iexp &= self.experiment.x >= self.xbeg
                 if self.xend is not None:
-                    iexp &= self.xexp <= self.xend
+                    iexp &= self.experiment.x <= self.xend
+                self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
+                self.x = self.xexp
                 _cache['iexp'] = iexp
                 ## if known use experimental noise RMS to normalise
                 ## residuals
@@ -303,19 +303,17 @@ class Model(Optimiser):
                     self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
             else:
                 self.x = np.array([],dtype=float,ndmin=1)
-        ## reload x if experimental
-        if 'iexp' in _cache:
+            self._xchanged =  True
+        elif 'iexp' in _cache :
+            ## reload x if experimental
             iexp = _cache['iexp']
+            if (len(self.x) != len(self.experiment.x[iexp])
+                or np.any(self.x != self.experiment.x[iexp])):
+                self._xchanged = True
             self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
-            self.x = copy(self.xexp)
-        ## start y
+            self.x = self.xexp
+        ## new grid
         self.y = np.zeros(self.x.shape,dtype=float)
-        ## record whether x has changed from previous construct
-        if (self._xcache is None
-            or len(self._xcache) != len(self.x)
-            or np.any(self._xcache != self.x)):
-            self._xchanged = timestamp()
-        self._xcache = copy(self.x)
         
     def get_spectrum(self,x):
         """Construct a model spectrum at x."""
@@ -327,7 +325,7 @@ class Model(Optimiser):
 
     def _get_residual(self):
         """Compute residual error."""
-        if self.xexp is None:
+        if self.experiment is None:
             return []
         residual = self.yexp - self.y
         if self.residual_weighting is not None:
@@ -530,13 +528,13 @@ class Model(Optimiser):
             for key,val in set_keys_vals.items():
                 ichanged |= lines_copy[key] != lines_copy.cast(key,float(val))
             nchanged = np.sum(ichanged)
-            if 'transmittance' in _cache and nchanged == 0 and self._xchanged < self._last_construct_time:
+            if 'transmittance' in _cache and nchanged == 0 and not self._xchanged:
                 ## no change, use cache if nothing has changed
                 pass
             elif  (
                     'transmittance' not in _cache # first run
                     or nchanged > (len(lines_copy)/2) # most lines change--- just recompute everything
-                    or self._xchanged > self._last_construct_time # new x-coordinate
+                    or self._xchanged # new x-coordinate
                  ):
                 ## recalculate entire spectrum
                 ##
@@ -631,7 +629,7 @@ class Model(Optimiser):
         cache = {}
         def construct_function():
             ## first call -- no good, x not set yet
-            if self.xexp is None:
+            if self.experiment is None:
                 # self.emission_intensities[name] = None
                 return
             ## recompute spectrum
@@ -639,8 +637,8 @@ class Model(Optimiser):
                 # or self.emission_intensities[name] is None # currently no spectrum computed
                 or self.timestamp<lines.timestamp # transition has changed
                 or self.timestamp<p.timestamp     # optimise_keys_vals has changed
-                or not (len(cache['experiment.x']) == len(self.xexp)) # experimental domain has changed
-                or not np.all( cache['experiment.x'] == self.xexp )): # experimental domain has changed
+                or self._xchanged
+                ):
                 ## update optimise_keys_vals that have changed
                 for key,val in p.items():
                     if (not lines.is_set(key)
@@ -661,7 +659,6 @@ class Model(Optimiser):
                     use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
                     use_cache=(use_cache if use_cache is not None else True),
                 )
-                cache['experiment.x'] = copy(self.xexp)
                 cache['intensity'] = y
             ## add emission intensity to the overall model
             self.y += cache['intensity']
@@ -694,10 +691,10 @@ class Model(Optimiser):
         self.add_format_input_function(f)
         def f():
             if xbeg is None and xend is None:
-                self.residual_weighting = np.full(self.xexp.shape,weighting,dtype=float)
+                self.residual_weighting = np.full(self.yexp.shape,weighting,dtype=float)
             else:
                 if self.residual_weighting is None:
-                    self.residual_weighting = np.ones(self.xexp.shape,dtype=float)
+                    self.residual_weighting = np.ones(self.yexp.shape,dtype=float)
                 self.residual_weighting[
                     (self.xexp>=(xbeg if xbeg is not None else -np.inf))
                     &(self.xexp<=(xend if xend is not None else np.inf))
@@ -728,7 +725,8 @@ class Model(Optimiser):
         ## get something to find lines in
         if filename is None:
             x = copy(self.xexp)
-            if self.residual is not None: y = copy(self.residual) # get from residual
+            if self.residual is not None:
+                y = copy(self.residual) # get from residual
             else:    y = copy(self.yexp-self.yexp.mean()) # get from data after removing mean / background
         else:
             x,y = tools.file_to_array_unpack(filename) # else get from a specified data file
@@ -791,7 +789,7 @@ class Model(Optimiser):
     def scale_by_spline(self,ν=50,amplitudes=1,vary=True,step=0.0001,order=3):
         """Scale by a spline defined function."""
         if np.isscalar(ν):
-            ν = np.arange(self.xexp[0]-ν,self.xexp[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
+            ν = np.arange(self.x[0]-ν,self.x[-1]+ν*1.01,ν) # default to a list of ν with spacing given by ν
         if np.isscalar(amplitudes):
             amplitudes = amplitudes*np.ones(len(ν)) # default amplitudes to list of hge same length
         ν,amplitudes = np.array(ν),np.array(amplitudes)
@@ -969,7 +967,7 @@ class Model(Optimiser):
         max_width = 1
         if abswidth > 1e2:
             raise Exception(f'Gaussian width > 100')
-        if self.verbose and abswidth<3*np.diff(self.xexp).min(): 
+        if self.verbose and abswidth < 3*np.diff(self.x).min(): 
             warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         ## get padded spectrum to minimise edge effects
         dx = (x[-1]-x[0])/(len(x)-1)
@@ -996,7 +994,7 @@ class Model(Optimiser):
         def f():
             x,y = self.x,self.y
             width = np.abs(p['width'])
-            if self.verbose and width<3*np.diff(self.xexp).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            if self.verbose and width < 3*np.diff(self.x).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
             ## get padded spectrum to minimise edge effects
             dx = (x[-1]-x[0])/(len(x)-1)
             padding = np.arange(dx,fwhms_to_include*width+dx,dx)
@@ -1019,7 +1017,7 @@ class Model(Optimiser):
             if width is None: width = self.experimental_parameters['sinc_FWHM']
             if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
         self.add_format_input_function(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
-        if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        if self.verbose and p['width'] < 3*np.diff(self.x).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         def f():
             x,y = self.x,self.y
             width = np.abs(p['width'])
@@ -1079,7 +1077,6 @@ class Model(Optimiser):
             retval += ')'
             return(retval)
         self.add_format_input_function(f)
-        # if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
         instrument_function_cache = dict(y=None,width=None,) # for persistence between optimsiation function calls
         def f():
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
@@ -1200,33 +1197,6 @@ class Model(Optimiser):
         # self.construct_functions.append(f)
         self.add_format_input_function(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
 
-
-    # def convolve_with_blackman_harris(self,terms=3,fwhms_to_include=100):
-        # """Convolve with sinc function, width is FWHM."""
-        # ## check if there is a risk that subsampling will ruin the convolution
-        # p = self.add_parameter_set('convolve_with_sinc',width=width)
-        # if 'sinc_FWHM' in self.experimental_parameters: # get auto width and make sure consistent with what is given
-            # if width is None: width = self.experimental_parameters['sinc_FWHM']
-            # if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
-        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
-        # if self.verbose and p['width']<3*np.diff(self.xexp).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
-        # def f():
-            # x,y = self.x,self.y
-            # width = np.abs(p['width'])
-            # ## get padded spectrum to minimise edge effects
-            # dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
-            # padding = np.arange(dx,fwhms_to_include*width+dx,dx)
-            # xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-            # ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-            # ## generate sinc to convolve with
-            # xconv = np.arange(-fwhms_to_include*width,fwhms_to_include*width,dx)
-            # if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-            # yconv = np.sinc((xconv-xconv.mean())/width*1.2)*1.2/width # unit integral normalised sinc
-            # yconv = yconv/yconv.sum() # sum normalised
-            # ## convolve and return, discarding padding
-            # self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        # self.add_construct_function(f)
-
     @optimise_method()
     def convolve_with_blackman_harris(
             self,
@@ -1335,7 +1305,7 @@ class Model(Optimiser):
         if gaussian_fwhm is None:
             gaussian_fwhm = 0.1
         ## compute instrument function
-        dx = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1) # ASSUMES EVEN SPACED GRID
+        dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
         _cache['dx'] = dx
         ## get total extent of instrument function
         width = 0.0
@@ -1501,9 +1471,9 @@ class Model(Optimiser):
         if plot_experiment and self.experiment is not None and self.yexp is not None:
             # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
             ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
-            xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
+            xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
             tkwargs = dict(color=plotting.newcolor(0), label='Experimental spectrum', **plot_kwargs)
-            ax.plot(self.xexp,self.yexp,**tkwargs)
+            ax.plot(self.x,self.yexp,**tkwargs)
         if plot_model and self.y is not None:
             if invert_model:
                 self.y *= -1
@@ -1515,9 +1485,9 @@ class Model(Optimiser):
                 self.y *= -1
         if plot_residual and self.residual is not None and len(self.residual)>0:
             ymin,ymax = min(ymin,self.residual.min()+shift_residual),max(ymax,self.residual.max()+shift_residual)
-            xmin,xmax = min(xmin,self.xexp.min()),max(xmax,self.xexp.max())
+            xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
             tkwargs = dict(color=plotting.newcolor(2), label='Exp-Mod residual error', **plot_kwargs)
-            ax.plot(self.xexp,self.residual+shift_residual,zorder=-1,**tkwargs) # plot fit residual
+            ax.plot(self.x,self.residual+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
