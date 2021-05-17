@@ -472,7 +472,7 @@ class Generic(levels.Base):
                 raise Exception("Could not find a default ykey")
         ## guess a default lineshape
         if lineshape is None:
-            if self.is_known(('Γ','ΓD')):
+            if self.is_known('Γ','ΓD') and self.is_known(('Γ','ΓD')):
                 lineshape = 'voigt'
             elif self.is_known('Γ'):
                 lineshape = 'lorentzian'

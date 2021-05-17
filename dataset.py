@@ -166,6 +166,13 @@ class Dataset(optimise.Optimiser):
         ## update modification if externally set, not if it is inferred
         if self.verbose:
             print(f'{self.name}: setting {key}')
+        ## explicitly set data
+        if dependencies is None:
+            ## self has changed explicitly
+            self._last_modify_data_time = timestamp()
+            ## if data already existed delete anything inferred from it
+            if key in self:
+                self.unlink_inferences(key)
         ## if an index is provided then data must already exist, set
         ## new indeed data and return
         if index is not None:
@@ -236,14 +243,8 @@ class Dataset(optimise.Optimiser):
                 raise Exception(f'Length of new data {repr(key)} is {len(value)} and does not match the length of existing data: {len(self)}.')
             ## cast and set data
             data['value'] = data['cast'](value)
-        ## If this is explicitly set data then delete inferences since
-        ## data has changed and timestamp the change.  If it has
-        ## dependencies then record connection with them
-        if dependencies is None:
-            if key in self:
-                self.unlink_inferences(key)
-            self._last_modify_data_time = timestamp()
-        else:
+        ## If this is inferred data then record dependencies
+        if dependencies is not None:
             self._set_dependency(key,dependencies)
 
     def _set_associated_data(self,key,assoc,value,index=None,match=None):
@@ -497,14 +498,15 @@ class Dataset(optimise.Optimiser):
                 return True
         return False
 
-    def assert_known(self,key_assoc):
+    def assert_known(self,*key_assoc):
         """Check is known by trying to get item."""
-        self[key_assoc]
+        for t in key_assoc:
+            self[t]
 
-    def is_known(self,key_assoc):
+    def is_known(self,*key_assoc):
         """Test if key is known."""
         try:
-            self.assert_known(key_assoc)
+            self.assert_known(*key_assoc)
             return True 
         except InferException:
             return False
@@ -615,13 +617,23 @@ class Dataset(optimise.Optimiser):
                 data['assoc'][key] = value[:original_length][index]
             self._length = len(data['value'])
 
-    def copy(self,keys=None,index=None,name=None):
+    def copy(
+            self,
+            keys=None,
+            index=None,
+            name=None,
+            copy_assoc=False,
+            copy_inferred_data=False,
+    ):
         """Get a copy of self with possible restriction to indices and
         keys."""
         if name is None:
             name = f'copy_of_{self.name}'
         retval = self.__class__(name=name) # new version of self
-        retval.copy_from(self,keys,index,copy_assoc=True)
+        retval.copy_from(
+            self,keys,index,
+            copy_assoc=copy_assoc,
+            copy_inferred_data=copy_inferred_data)
         return retval
 
     @optimise_method()
@@ -632,12 +644,16 @@ class Dataset(optimise.Optimiser):
             index=None,         # indices to copy
             match=None,         # copy matching {key:val,...} 
             copy_assoc=False,
+            copy_inferred_data=False,
     ):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
         self.clear()            # total data reset
         if keys is None:
-            keys = source.keys()
+            if copy_inferred_data:
+                keys = source.keys()
+            else:
+                keys = source.explicitly_set_keys()
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         ## get matching indices
         if match is not None:
