@@ -85,7 +85,7 @@ class VibLevel(Optimiser):
         ## also reset H so full reconstruct is triggered
         self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
         ## trigger reconstruct elsewhere
-        self._last_add_construct_function_time = timestamp()
+        self._clean_construct = True
 
 
     J = property(_get_J,_set_J)
@@ -95,7 +95,7 @@ class VibLevel(Optimiser):
         ## if first run or model changed then construct Hamiltonian
         ## and blank rotational level, and determine which levels are
         ## actually allowed
-        if self._last_add_construct_function_time > self._last_construct_time:
+        if self._clean_construct:
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
             self.level.clear()
@@ -145,7 +145,7 @@ class VibLevel(Optimiser):
         ## compute residual
         if self.experimental_level is not None:
             if (not hasattr(self,'_construct_levels_cache')
-                or self._last_add_construct_function_time > self._last_construct_time
+                or self._clean_construct
                 or self.experimental_level._last_construct_time > self._last_construct_time):
                 ## cache common quantum number indices
                 iexp,imod = dataset.find_common(
@@ -345,7 +345,7 @@ class VibLine(Optimiser):
 
     def construct_lines(self):
         ## initialise μ0 and line arrays if model has changed
-        if self._last_add_construct_function_time > self._last_construct_time:
+        if self._clean_construct:
             ## initialise μ0
             self.μ0 = np.full((
                 len(self.J_l),

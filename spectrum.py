@@ -280,7 +280,7 @@ class Model(Optimiser):
     def _initialise(self,_cache=None):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
-        if self.full_construct:
+        if self._clean_construct:
             ## build cache of data
             self.residual_scale_factor = 1
             if self._xin is not None:
