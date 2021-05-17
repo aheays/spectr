@@ -490,7 +490,8 @@ class Generic(levels.Base):
             else:
                 return x,np.zeros(x.shape)
         ## get x and ykeys
-        self.assert_known((xkey,ykey))
+        for t in (xkey,ykey):
+            self.assert_known(t)
         ## get a default frequency scale if none provided
         if x is None:
             if dx is not None:

@@ -357,7 +357,7 @@ class Dataset(optimise.Optimiser):
             index = slice(0,len(self))
         ## set default if value if necessary, look for default_assoc
         ## from prototypes or use associated_kinds default
-        if not self.is_set(key,assoc):
+        if not self.is_set((key,assoc)):
             if (tkey:=f'default_{assoc}') in self._data[key]:
                 self._set_associated_data(key,assoc,self._data[key][tkey])
             else:
@@ -418,7 +418,7 @@ class Dataset(optimise.Optimiser):
                     key not in self.keys() # key is unknown -- first run
                     or value._last_modify_value_time > self._last_construct_time # parameter has been set
                     or np.any(self.get(key,index=index) != value.value) # data has changed some other way and differs from parameter
-                    or (self.is_set(key,'unc')
+                    or (self.is_set((key,'unc'))
                         and not np.isnan(value.unc)
                         and (np.any(self.get(key,'unc',index=index) != value.unc))) # data has changed some other way and differs from parameter
                 ):
@@ -456,7 +456,7 @@ class Dataset(optimise.Optimiser):
         i,xspline,yspline = _cache['i'],_cache['xspline'],_cache['yspline']
         self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=i),order=order),index=i)
         ## set previously-set uncertainties to NaN
-        if self.is_set(ykey,'unc'):
+        if self.is_set((ykey,'unc')):
             self.set((ykey,'unc'),nan,index=i)
 
     def keys(self):
@@ -470,7 +470,7 @@ class Dataset(optimise.Optimiser):
         self.unset([key for key in self if key not in keys])
 
     def optimised_keys(self):
-        return [key for key in self.keys() if self.is_set(key,'vary')]
+        return [key for key in self.keys() if self.is_set((key,'vary'))]
 
     def explicitly_set_keys(self):
         return [key for key in self if not self.is_inferred(key)]
@@ -490,7 +490,18 @@ class Dataset(optimise.Optimiser):
         self.unset(key)
         return value
 
-    def is_set(self,key,assoc=None):
+    def _separate_key_assoc(self,key_assoc):
+        if isinstance(key_assoc,str):
+            return key_assoc,None
+        else:
+            if len(key_assoc) != 2:
+                raise Exception
+            if key_assoc[1] not in self.associated_kinds:
+                raise Exception('Unknown associated kind: {repr(key_assoc[1])}')
+            return key_assoc
+
+    def is_set(self,key_assoc):
+        key,assoc = self._separate_key_assoc(key_assoc)
         if key in self._data:
             if assoc is None:
                 return True
@@ -498,17 +509,14 @@ class Dataset(optimise.Optimiser):
                 return True
         return False
 
-    def assert_known(self,keys,assoc=None):
-        if assoc is None:
-            for key in tools.ensure_iterable(keys):
-                self[key]
-        else:
-            for key in tools.ensure_iterable(keys):
-                self[key,assoc]
+    def assert_known(self,key_assoc):
+        """Check is known by trying to get item."""
+        self[key_assoc]
 
-    def is_known(self,keys,assoc=None):
+    def is_known(self,key_assoc):
+        """Test if key is known."""
         try:
-            self.assert_known(keys,assoc)
+            self.assert_known(key_assoc)
             return True 
         except InferException:
             return False
@@ -584,7 +592,8 @@ class Dataset(optimise.Optimiser):
         delete anything inferred from these keys (but not if it is  among
         keys itself)."""
         keys = tools.ensure_iterable(keys)
-        self.assert_known(keys)
+        for t in keys:
+            self.assert_known(t)
         for key in keys:
             if key in self:     # test this since key might have been unset earlier in this loop
                 for inferred_from in list(self._data[key]['inferred_from']):
@@ -839,7 +848,7 @@ class Dataset(optimise.Optimiser):
                     value = self[key]
                     parameters = [self[t] for t in dependencies]
                     for i,dependency in enumerate(dependencies):
-                        if self.is_set(dependency,'unc'):
+                        if self.is_set((dependency,'unc')):
                             step = self.get((dependency,'step'))
                             parameters[i] = self[dependency] + step # shift one
                             dvalue = value - function(self,*parameters)
@@ -857,7 +866,7 @@ class Dataset(optimise.Optimiser):
                     ## have no uncertainty then None is substituted.
                     args = [self,self[key]]
                     for dependency in dependencies:
-                        if self.is_set(dependency,'unc'):
+                        if self.is_set((dependency,'unc')):
                             t_uncertainty = self.get((dependency,'unc'))
                         else:
                             t_uncertainty = None
@@ -885,7 +894,7 @@ class Dataset(optimise.Optimiser):
         retval = {}
         for key in keys:
             retval[key] = self.get(key,index=index)
-            if self.is_set(key,'unc'):
+            if self.is_set((key,'unc')):
                 retval[f'{key}_unc'] = self.get((key,'unc'),index=index)
         return retval
 
@@ -1273,7 +1282,8 @@ class Dataset(optimise.Optimiser):
                 keys = list(level.explicitly_set_keys())
             elif keys == 'all':
                 keys = {*self.explicitly_set_keys(),*level.explicitly_set_keys()}
-            self.assert_known(keys)
+            for t in keys:
+                self.assert_known(t)
             self.unlink_inferences(keys)
             for key in list(self):
                 if key not in keys:
@@ -1288,7 +1298,7 @@ class Dataset(optimise.Optimiser):
             for key,data in self._data.items():
                 data['value'][old_length:total_length] = data['cast'](level[key])
                 for assoc in {*data['assoc'],*level._data[key]['assoc']}:
-                    self.assert_known(key,assoc)
+                    self.assert_known((key,assoc))
                     cast = self.associated_kinds[assoc]['cast']
                     data['assoc'][assoc][old_length:total_length] = cast(level[key,assoc])
             _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
@@ -1468,7 +1478,8 @@ class Dataset(optimise.Optimiser):
             zkeys = self.default_zkeys
         zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
         ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
-        self.assert_known((xkey,*ykeys,*zkeys))
+        for t in [xkey,*ykeys,*zkeys]:
+            self.assert_known(t)
         ## plot each 
         ymin = {}
         for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
@@ -1512,7 +1523,7 @@ class Dataset(optimise.Optimiser):
                 y = z[ykey]
                 if label is not None:
                     kwargs.setdefault('label',label)
-                if plot_errorbars and z.is_set(ykey,'unc'):
+                if plot_errorbars and z.is_set((ykey,'unc')):
                     dy = z.get((ykey,'unc'))
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
@@ -1591,8 +1602,9 @@ def find_common(x,y,keys=None,verbose=False):
             # keys = [t for t in x.keys() if x.is_known(t) and y.is_known(t)]
     if verbose:
         print('find_commmon keys:',keys)
-    x.assert_known(keys)
-    y.assert_known(keys)
+    for key in keys:
+        x.assert_known(key)
+        y.assert_known(key)
     ## sort by first calculating a hash of sort keys
     xhash = np.array([hash(t) for t in x.row_data(keys=keys)])
     yhash = np.array([hash(t) for t in y.row_data(keys=keys)])

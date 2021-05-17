@@ -530,11 +530,11 @@ class Model(Optimiser):
             for key,val in set_keys_vals.items():
                 ichanged |= lines_copy[key] != lines_copy.cast(key,float(val))
             nchanged = np.sum(ichanged)
-            if 'T' in _cache and nchanged == 0 and self._xchanged < self._last_construct_time:
+            if 'transmittance' in _cache and nchanged == 0 and self._xchanged < self._last_construct_time:
                 ## no change, use cache if nothing has changed
                 pass
             elif  (
-                    'T' not in _cache # first run
+                    'transmittance' not in _cache # first run
                     or nchanged > (len(lines_copy)/2) # most lines change--- just recompute everything
                     or self._xchanged > self._last_construct_time # new x-coordinate
                  ):
@@ -549,7 +549,7 @@ class Model(Optimiser):
                 x,τ = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
-                _cache['T'] = np.exp(-τ)
+                _cache['transmittance'] = np.exp(-τ)
             else:
                 ## recalcualte changed part of spectrum only
                 ##
@@ -567,9 +567,9 @@ class Model(Optimiser):
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
                 ## substitute transmission
-                _cache['T'] = _cache['T']*np.exp(τold-τnew)
+                _cache['transmittance'] = _cache['transmittance']*np.exp(τold-τnew)
         ## set absorbance in self
-        self.y *= _cache['T']
+        self.y *= _cache['transmittance']
 
     @optimise_method()
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
