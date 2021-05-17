@@ -539,6 +539,7 @@ class Model(Optimiser):
                 _cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
                 _cache['lines_copy'],_cache['transmittance'])
             full_recalculation = False
+            lines_changed = False
             ## nothing to be done
             if nmatch == 0:
                 return
@@ -564,18 +565,17 @@ class Model(Optimiser):
                 if nchanged > (len(lines_copy)/2):
                     ## most lines change — just recompute everything
                     full_recalculation = True
+                lines_changed = True
             ## recalculate
             if full_recalculation:
-                for key in changed_keys:
-                    lines_copy.set(key,lines[key][imatch])
+                if lines_changed:
+                    for key in changed_keys:
+                        lines_copy.set(key,lines[key][imatch])
                 x,τ = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin,ncpus=ncpus,lineshape=lineshape,)
                 transmittance = np.exp(-τ)
-            else:
-                ## nothing to be done
-                if nchanged == 0:
-                    return
+            elif lines_changed:
                 ## recompute old version of lines that have changed
                 xold,τold = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
@@ -589,6 +589,9 @@ class Model(Optimiser):
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
                 ## update transmittance
                 transmittance *= np.exp(τold-τnew)
+            else:
+                ## re-use previous transmittance
+                pass
         ## set absorbance in self
         self.y *= transmittance
         _cache['transmittance'] = transmittance
