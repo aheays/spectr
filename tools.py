@@ -229,20 +229,26 @@ def dict_to_kwargs(d,keys=None):
         keys = d.keys() # default to all keys
     return(','.join([key+'='+repr(d[key]) for key in keys]))
 
-def dict_expanded_repr(d,indent=''):
+def dict_expanded_repr(d,indent='',maxdepth=1,_depth=0):
     """pprint dict recursively but repr non-dict elements."""
-    retval = '{'
+    indent = '    '
+    lines = ['{']
     for i,(key,val) in enumerate(d.items()):
         prefix = '\n'+indent+'    '
-        if (
-                not isinstance(val,dict)
-                or len(val) == 0
-                or (len(val) == 1 and not any([isinstance(t,dict) for t in val.values()]))
-        ):
-            retval += f'{prefix}{repr(key):10}: {repr(val)},'
+        if (not isinstance(val,dict) # not a dict
+            or _depth >= maxdepth    # already too deep
+            or len(val) == 0         # empty dict
+            or (len(val) == 1 and not any([isinstance(t,dict) for t in val.values()])) # dict contains no other dicts
+            ):
+            ## put on one line
+            lines.append(f'{indent}{repr(key):20}: {repr(val)},')
         else:
-            retval += f'{prefix}{repr(key):10}: {dict_expanded_repr(val,indent+"    ")},'
-    retval += f'\n{indent}}}'
+            ## expand as subdict
+            subdict = dict_expanded_repr(val,indent+"    ",_depth=_depth+1)
+            lines.append(f'{indent}{repr(key):10}: {subdict},')
+    lines.append('}')
+    lines = [indent*_depth+t for t in lines]
+    retval = '\n'.join(lines)
     return retval
 
 def compute_matrix_of_function(A,*args,**kwargs):
