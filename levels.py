@@ -313,7 +313,7 @@ def _f0(self):
     _qnhash = np.empty(len(self),dtype=int)
     for i,qn in enumerate(zip(*[self[key] for key in self.defining_qn])):
         _qnhash[i] = hash(qn)
-    self.set('_qnhash',_qnhash,dependencies=self.defining_qn)
+    self._set_value('_qnhash',_qnhash,dependencies=self.defining_qn)
     return None
 prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[((),_f0),])
 
@@ -457,11 +457,15 @@ class Base(Dataset):
             sort_keys = [key for key in self.defining_qn if self.is_known(key)]
         Dataset.sort(self,*sort_keys,reverse_order=reverse_order)
 
-    def match(self,*args,encoded_qn=None,**kwargs):
-        """Overload Dataset.match to handle encoded_qn."""
-        if encoded_qn is not None:
-            kwargs = self.decode_qn(encoded_qn) | kwargs
-        return Dataset.match(self,*args,**kwargs)
+    def match(self,keys_vals=None,**kwargs):
+        """Overload Dataset.match to handle 'encoded_qn'."""
+        if keys_vals is None:
+            keys_vals = {}
+        keys_vals = keys_vals | kwargs 
+        if 'encoded_qn' in keys_vals:
+            for key,val in self.decode_qn(keys_vals.pop('encoded_qn')).items():
+                keys_vals.setdefault(key,val)
+        return Dataset.match(self,keys_vals)
 
 class Generic(Base):
     """A generic level."""
