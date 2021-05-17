@@ -494,6 +494,7 @@ class Model(Optimiser):
             _suboptimiser=None,
             **set_keys_vals
     ):
+
         if (len(self.x) == 0
             or len(lines) == 0
             or ('nmatch' in _cache and _cache['nmatch'] == 0)):
@@ -511,7 +512,6 @@ class Model(Optimiser):
                 imatch = tools.find(lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match))
                 lines_copy = lines.copy(index=imatch)
                 _cache['keys'] = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
-                lines_copy.verbose = self.verbose
                 for key,val in set_keys_vals.items():
                     lines_copy[key] = float(val)
                 _cache['imatch'] = imatch
@@ -530,44 +530,44 @@ class Model(Optimiser):
             for key,val in set_keys_vals.items():
                 ichanged |= lines_copy[key] != lines_copy.cast(key,float(val))
             nchanged = np.sum(ichanged)
-            ## compute as little of the spectrum as possible
             if 'T' in _cache and nchanged == 0 and self._xchanged < self._last_construct_time:
-                ## no change, use cache
+                ## no change, use cache if nothing has changed
                 pass
             elif  (
                     'T' not in _cache # first run
                     or nchanged > (len(lines_copy)/2) # most lines change--- just recompute everything
                     or self._xchanged > self._last_construct_time # new x-coordinate
                  ):
-                ## calculate entire spectrum
+                ## recalculate entire spectrum
+                ##
+                ## update data
                 for key in keys:
                     lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
                 for key,val in set_keys_vals.items():
-                    lines_copy.set(key,float(val),index=ichanged)
+                    lines_copy.set(key,float(val))
                 ## select correct lineshape if not given explicitly
                 x,τ = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,)
                 _cache['T'] = np.exp(-τ)
             else:
-                ## recompute only lines that have changed
-                lines_new = lines.copy(index=imatch[ichanged])
-                for key,val in set_keys_vals.items():
-                    lines_new[key] = float(val)
-                xnew,τnew = lines_new.calculate_spectrum(
-                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=τmin, ncpus=ncpus, lineshape=lineshape)
+                ## recalcualte changed part of spectrum only
+                ##
+                ## recompute old version of lines that have changed
                 xold,τold = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
-                # ## substitute transmission, crudely avoid 
-                T = _cache['T']*np.exp(τold-τnew)
-                ## update cache to new lines
+                    ymin=τmin,ncpus=ncpus,lineshape=lineshape,index=ichanged)
+                ## update data in lines_copy and compute new version
+                ## of changed lines
                 for key in keys:
                     lines_copy.set(key,lines[key][imatch][ichanged],index=ichanged)
                 for key,val in set_keys_vals.items():
-                    lines_copy.set(key,float(val),index=ichanged)
-                _cache['T'] = T
+                    lines_copy.set(key,float(val))
+                xnew,τnew = lines_copy.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
+                ## substitute transmission
+                _cache['T'] = _cache['T']*np.exp(τold-τnew)
         ## set absorbance in self
         self.y *= _cache['T']
 

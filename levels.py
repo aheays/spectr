@@ -313,8 +313,7 @@ def _f0(self):
     _qnhash = np.empty(len(self),dtype=int)
     for i,qn in enumerate(zip(*[self[key] for key in self.defining_qn])):
         _qnhash[i] = hash(qn)
-    self.set('_qnhash',_qnhash,_inferred=True)
-    self._add_dependency('_qnhash',self.defining_qn)
+    self.set('_qnhash',_qnhash,dependencies=self.defining_qn)
     return None
 prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[((),_f0),])
 

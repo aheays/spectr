@@ -491,6 +491,24 @@ class Optimiser:
                     ## could speed up using slice rather than pop?
                     for i in tools.find(vary):
                         optimiser.set(key,p.pop(0),index=i)
+                        # print('DEBUG:', optimiser.keys())
+
+                        # i = optimiser.match(encoded_qn='[13C][16O]_x(v=0)—X_R')
+                        # if np.sum(i)>0:
+                            # optimiser.verbose = True 
+                            # print( 'DEBUG:','ggg',
+                                   # tools.find(i),
+                                   # optimiser.name,
+                                   # optimiser['fv'][i],
+                                   # optimiser['f'][i],
+                                   # # optimiser['SJ'][i],
+                                   # # optimiser['f'][i],
+                                   # # optimiser['σ'][i],
+                                   # # optimiser['τ'][i],
+                                  # )
+                            # optimiser.verbose = False 
+ 
+
                         optimiser.set((key,'unc'),dp.pop(0),index=i)
 
     def has_changed(self):
@@ -670,7 +688,7 @@ class Optimiser:
                     least_squares_options['tr_solver'] = 'lsmr'
             else:
                 raise Exception(f'Unknown optimsiation method: {repr(least_squares_options["method"])}')
-            least_squares_options['jac'] = self._calculate_jacobian
+            # least_squares_options['jac'] = self._calculate_jacobian
             # if self._ncpus > 1:
                 # least_squares_options['jac'] = self._calculate_jacobian
             ## call optimisation routine -- KeyboardInterrupt possible

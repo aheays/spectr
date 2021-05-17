@@ -145,15 +145,15 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
-    def set(self,key,value,index=None,_inferred=False,match=None,**prototype_kwargs):
+    def set(self,key,value,index=None,match=None,**prototype_kwargs):
         """Set value of key or (key,assoc)"""
         if isinstance(key,str):
-            return self._set_data(key,value,index,match,_inferred,**prototype_kwargs)
+            return self._set_value(key,value,index,match,**prototype_kwargs)
         else:
             key,assoc = key
-            return self._set_associated_data(key,assoc,value,index,match,_inferred)
+            return self._set_associated_data(key,assoc,value,index,match)
         
-    def _set_data(self,key,value,index=None,match=None,_inferred=False,**prototype_kwargs):
+    def _set_value(self,key,value,index=None,match=None,dependencies=None,**prototype_kwargs):
         """Set a value"""
         ## determine index
         if match is not None:
@@ -163,12 +163,7 @@ class Dataset(optimise.Optimiser):
                 index &= self.match(match)
         ## update modification if externally set, not if it is inferred
         if self.verbose:
-            print(f'{self.name}: setting {key} inferred={_inferred}')
-        if not _inferred:
-            self._last_modify_data_time = timestamp()
-        ## delete inferences since data has changed
-        if key in self:
-            self.unlink_inferences(key)
+            print(f'{self.name}: setting {key}')
         ## if an index is provided then data must already exist, set
         ## new indeed data and return
         if index is not None:
@@ -223,9 +218,9 @@ class Dataset(optimise.Optimiser):
             if not tools.isiterable(value):
                 data['default'] = value
                 value = np.full(len(self),value)
-            ## If this is the data set other than defaults then add to set
-            ## length of self and add corresponding data for any defaults
-            ## set.
+            ## If this is the nonzero-length data set then increase
+            ## length of self and set any other keys with defaults to
+            ## their default values
             if len(self) == 0 and len(value) > 0:
                 self._length = len(value)
                 for tkey,tdata in self._data.items():
@@ -238,9 +233,18 @@ class Dataset(optimise.Optimiser):
             elif len(value) != len(self):
                 raise Exception(f'Length of new data {repr(key)} is {len(value)} and does not match the length of existing data: {len(self)}.')
             ## cast and set data
-            data['value']  = data['cast'](value)
+            data['value'] = data['cast'](value)
+        ## If this is explicitly set data then delete inferences since
+        ## data has changed and timestamp the change.  If it has
+        ## dependencies then record connection with them
+        if dependencies is None:
+            if key in self:
+                self.unlink_inferences(key)
+            self._last_modify_data_time = timestamp()
+        else:
+            self._set_dependency(key,dependencies)
 
-    def _set_associated_data(self,key,assoc,value,index=None,match=None,_inferred=False):
+    def _set_associated_data(self,key,assoc,value,index=None,match=None):
         """Set associated data for key to value."""
         ## basic error checks
         if assoc not in self.associated_kinds:
@@ -251,15 +255,12 @@ class Dataset(optimise.Optimiser):
             raise Exception(f"Key {repr(key)} is not a valid kind for associated data {repr(assoc)}")
         if self.associated_kinds[assoc]['kind'] == 'O':
             raise ImplementationError()
-        ## deal with infererence tracking
         if self.verbose:
-            print(f'{self.name}: setting ({key},{assoc}) inferred={_inferred}')
-        if not _inferred:
-            ## mark explicit data has changed
-            self._last_modify_data_time = timestamp()
-        if key in self:
-            ## delete inferences since data has changed
-            self.unlink_inferences(key)
+            print(f'{self.name}: setting ({key},{assoc})')
+
+        # if key in self:
+            # ## delete inferences since data has changed
+            # self.unlink_inferences(key)
         ## determine index
         if match is not None:
             if index is None:
@@ -284,6 +285,25 @@ class Dataset(optimise.Optimiser):
                 self._get_associated_data(key,assoc)
             ## set indexed data
             self._data[key]['assoc'][assoc][index] = self.associated_kinds[assoc]['cast'](value)
+        # ## If this is explicitly set data then delete inferences since
+        # ## data has changed and timestamp the change.  If it has
+        # ## dependencies then record connection with them
+        # if dependencies is None:
+            # if key in self:
+                # self.unlink_inferences(key)
+            # self._last_modify_data_time = timestamp()
+        # else:
+            # self._set_dependency(key,dependencies)
+
+    def _set_dependency(self,key,dependencies):
+        """Set a dependence connection between a key and its
+        dependencies."""
+        if self.verbose:
+            print(f'{self.name}: Setting dependencies for {repr(key)}: {repr(list(dependencies))}')
+        self._data[key]['inferred_from'].extend(dependencies)
+        for dependency in dependencies:
+            self._data[dependency]['inferred_to'].append(key)
+
 
     def get(self,key,index=None,units=None):
         """Get value for key or (key,assoc)."""
@@ -598,10 +618,12 @@ class Dataset(optimise.Optimiser):
                 data['assoc'][key] = value[:original_length][index]
             self._length = len(data['value'])
 
-    def copy(self,keys=None,index=None):
+    def copy(self,keys=None,index=None,name=None):
         """Get a copy of self with possible restriction to indices and
         keys."""
-        retval = self.__class__() # new version of self
+        if name is None:
+            name = f'copy_of_{self.name}'
+        retval = self.__class__(name=name) # new version of self
         retval.copy_from(self,keys,index,copy_assoc=True)
         return retval
 
@@ -796,7 +818,8 @@ class Dataset(optimise.Optimiser):
                 ## of a list of strings
                 dependencies = (dependencies,)
             if self.verbose:
-                print(''.join(['    ' for t in range(depth)])
+                print(f'{self.name}:',
+                      ''.join(['    ' for t in range(depth)])
                       +f'Attempting to infer {repr(key)} from {repr(dependencies)}')
             try:
                 for dependency in dependencies:
@@ -807,8 +830,9 @@ class Dataset(optimise.Optimiser):
                 ## function.
                 value = function(self,*[self[dependency] for dependency in dependencies])
                 if value is not None:
-                    self.set(key,value,_inferred=True)
-                    self._add_dependency(key,dependencies)
+                    self._set_value(key,value,dependencies=dependencies)
+                if self.verbose:
+                    print(f'{self.name}: Sucessfully inferred: {repr(key)}')
                 ## compute uncertainties by linearisation
                 if uncertainty_function is None:
                     squared_contribution = []
@@ -822,7 +846,10 @@ class Dataset(optimise.Optimiser):
                             parameters[i] = self[dependency] # put it back
                             squared_contribution.append((self.get((dependency,'unc'))*dvalue/step)**2)
                     if len(squared_contribution)>0:
-                        self.set((key,'unc'),np.sqrt(np.sum(squared_contribution,axis=0)))
+                        uncertainty = np.sqrt(np.sum(squared_contribution,axis=0))
+                        self._set_associated_data(key,'unc',uncertainty)
+                        if self.verbose:
+                            print(f'{self.name}: Inferred uncertainty: {repr(key)}')
                 else:
                     ## args for uncertainty_function.  First is the
                     ## result of calculating keys, after that paris of
@@ -839,23 +866,17 @@ class Dataset(optimise.Optimiser):
                         self.set((key,'unc'),uncertainty_function(*args))
                     except InferException:
                         pass
-                break           
+                break           # success
             ## some kind of InferException, try next set of dependencies
             except InferException as err:
                 if self.verbose:
-                    print(''.join(['    ' for t in range(depth)])
+                    print(f'{self.name}:',
+                          ''.join(['    ' for t in range(depth)])
                           +'    InferException: '+str(err))
-                continue      
+                continue     
         ## complete failure to infer
         else:
             raise InferException(f"Could not infer key: {repr(key)}")
-
-    def _add_dependency(self,key_inferred_to,keys_inferred_from):
-        """Set a dependence connection between a key and its
-        dependencies."""
-        self._data[key_inferred_to]['inferred_from'].extend(keys_inferred_from)
-        for key in keys_inferred_from:
-            self._data[key]['inferred_to'].append(key_inferred_to)
 
     def as_flat_dict(self,keys=None,index=None):
         """Return as a dict of arrays, including uncertainties."""
@@ -1238,10 +1259,10 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
 
-    @optimise_method()
+    @optimise_method(add_construct_function=True)
     def concatenate(self,level,keys='old',_cache=None):
-        """Extend self by level using keys existing in
-        self. Optimisable."""
+        """Extend self by level using keys existing in self. New data updated
+        on optimisaion if level changes."""
         if len(_cache) == 0:
             ## extend with new data
             level.construct()
@@ -1569,7 +1590,7 @@ def find_common(x,y,keys=None,verbose=False):
         # else:
             # keys = [t for t in x.keys() if x.is_known(t) and y.is_known(t)]
     if verbose:
-        print('keys:',keys)
+        print('find_commmon keys:',keys)
     x.assert_known(keys)
     y.assert_known(keys)
     ## sort by first calculating a hash of sort keys
