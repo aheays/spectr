@@ -145,18 +145,20 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
-    def set(self,key,value,index=None,match=None,**prototype_kwargs):
+    def set(self,key_assoc,value,index=None,match=idict(),**match_kwargs):
         """Set value of key or (key,assoc)"""
-        if isinstance(key,str):
-            return self._set_value(key,value,index,match,**prototype_kwargs)
+        key,assoc = self._separate_key_assoc(key_assoc)
+        match = {**match,**match_kwargs}
+        ## set value or associated data
+        if assoc is None:
+            return self._set_value(key,value,index,match)
         else:
-            key,assoc = key
             return self._set_associated_data(key,assoc,value,index,match)
         
     def _set_value(self,key,value,index=None,match=None,dependencies=None,**prototype_kwargs):
         """Set a value"""
         ## determine index
-        if match is not None:
+        if match is not None and len(match) > 0:
             if index is None:
                 index = self.match(match)
             else:
@@ -168,7 +170,7 @@ class Dataset(optimise.Optimiser):
         ## new indeed data and return
         if index is not None:
             if key not in self and 'default' in prototype_kwargs:
-                self.set(key,prototype_kwargs['default'])
+                self.set(key,value=prototype_kwargs['default'])
             data = self._data[key]
             if key not in self:
                 raise Exception(f'Cannot set data by index for unset key: {key}')
@@ -257,12 +259,8 @@ class Dataset(optimise.Optimiser):
             raise ImplementationError()
         if self.verbose:
             print(f'{self.name}: setting ({key},{assoc})')
-
-        # if key in self:
-            # ## delete inferences since data has changed
-            # self.unlink_inferences(key)
         ## determine index
-        if match is not None:
+        if match is not None and len(match) > 0:
             if index is None:
                 index = self.match(match)
             else:
@@ -284,16 +282,7 @@ class Dataset(optimise.Optimiser):
                 ## value using the get method
                 self._get_associated_data(key,assoc)
             ## set indexed data
-            self._data[key]['assoc'][assoc][index] = self.associated_kinds[assoc]['cast'](value)
-        # ## If this is explicitly set data then delete inferences since
-        # ## data has changed and timestamp the change.  If it has
-        # ## dependencies then record connection with them
-        # if dependencies is None:
-            # if key in self:
-                # self.unlink_inferences(key)
-            # self._last_modify_data_time = timestamp()
-        # else:
-            # self._set_dependency(key,dependencies)
+            self._data[key]['assoc'][assoc][:len(self)][index] = self.associated_kinds[assoc]['cast'](value)
 
     def _set_dependency(self,key,dependencies):
         """Set a dependence connection between a key and its
@@ -303,7 +292,6 @@ class Dataset(optimise.Optimiser):
         self._data[key]['inferred_from'].extend(dependencies)
         for dependency in dependencies:
             self._data[dependency]['inferred_to'].append(key)
-
 
     def get(self,key,index=None,units=None):
         """Get value for key or (key,assoc)."""
