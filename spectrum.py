@@ -143,24 +143,42 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
 
     @optimise_method()
-    def set_soleil_sidebands(self,yscale=0.1,shift=1000,_cache=idict()):
+    def set_soleil_sidebands(self,yscale=0.1,shift=1000,
+                             signum_magnitude=None,
+                             _cache=idict()):
         """Adds two copies of spectrum onto itself shifted rightwards and
         leftwards by shift (cm-1) and scaled by ±yscale."""
-        ## load spectrum
-        if len(_cache) == 0:
-            _cache['x'],_cache['y'],header = load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
+        ## load and cache spectrum
+        if self._clean_construct:
+            x,y,header = load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
+            _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
+
+        ## get signum convolution kernel
+        if signum_magnitude is not None:
+            dx = (x[-1]-x[0])/(len(x)-1)
+            nconv = int(10/dx)
+            xconv = np.linspace(-nconv,nconv,2*nconv+1)
+            yconv = np.full(len(xconv),1.0)
+            i = xconv!=0
+            yconv[i] = 1/xconv[i]*signum_magnitude
         ## shift from left
         i = ((x+shift) >= self.x[0]) & ((x+shift) <= self.x[-1])
         xi,yi = x[i]+shift,y[i]
-        j = ( self.x >= xi[0] ) & ( self.x <= xi[-1] )
-        self.y[j] += yscale*tools.spline(xi,yi,self.x[j])
+        j = (self.x>=xi[0]) & (self.x<=xi[-1])
+        sideband = yscale*tools.spline(xi,yi,self.x[j])
+        if signum_magnitude is not None:
+            sideband = signal.convolve(sideband,yconv,'same')
+        self.y[j] += sideband
         ## shift from right
         i = ((x-shift) >= self.x[0]) & ((x-shift) <= self.x[-1])
         xi,yi = x[i]-shift,y[i]
-        j = ( self.x >= xi[0] ) & ( self.x <= xi[-1] )
-        self.y[j] -= yscale*tools.spline(xi,yi,self.x[j])
-
+        j = (self.x>=xi[0]) & (self.x<=xi[-1])
+        sideband = yscale*tools.spline(xi,yi,self.x[j])
+        if signum_magnitude is not None:
+            sideband = signal.convolve(sideband,yconv,'same')
+        self.y[j] -= sideband
+        
     @optimise_method()
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
@@ -310,6 +328,8 @@ class Model(Optimiser):
             if (len(self.x) != len(self.experiment.x[iexp])
                 or np.any(self.x != self.experiment.x[iexp])):
                 self._xchanged = True
+            else:
+                self._xchanged = False
             self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
             self.x = self.xexp
         ## new grid
@@ -500,10 +520,11 @@ class Model(Optimiser):
             imatch = tools.find(lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match))
             nmatch = np.sum(imatch)
             lines_copy = lines.copy(index=imatch)
+            ## keys that might possibly change
+            variable_keys = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
+            ## set parameter data
             for key,val in set_keys_vals.items():
                 lines_copy[key] = float(val)
-            # keys that might possibly change
-            variable_keys = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f'] 
             ## cache
             (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['lines_copy']) = (
                 variable_keys,imatch,nmatch,lines_copy)
@@ -545,6 +566,8 @@ class Model(Optimiser):
                     full_recalculation = True
             ## recalculate
             if full_recalculation:
+                for key in changed_keys:
+                    lines_copy.set(key,lines[key][imatch])
                 x,τ = lines_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin,ncpus=ncpus,lineshape=lineshape,)
