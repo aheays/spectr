@@ -18,24 +18,24 @@ from . import plotting
 
 class OneDimensionalAtmosphere(Dataset):
 
-    prototypes = {}
-    prototypes['description'] = dict( description="",kind=str ,infer=[])
-    prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer=[])
-    prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
-    prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer=[])
-    prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
-    prototypes['z'] = dict(description="Height above surface (cm)" ,kind='f' ,infer=[])
-    prototypes['z(km)'] = dict(description="Height above surface (km)" ,kind='f' ,infer=[('z',lambda self,z: z*1e-5,),])
-    prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind='f' ,infer=[('T',lambda self,T:T),])
-    prototypes['T'] = dict(description="Temperature (K)" ,kind='f' ,infer=[])
-    prototypes['nt'] = dict(description="Total number density (cm-3)" ,kind='f' ,infer=[])
-    prototypes['Nt'] = dict(description="Total number column density (cm-2)" ,kind='f' ,infer=[(('z','nt'),lambda self,z,nt: tools.cumtrapz(nt,z,reverse=True),),])
-    prototypes['p'] = dict(description="Pressure (bar)" ,kind='f' ,infer=[])
-    prototypes['Kzz'] = dict(description="Turbulent diffusion constant (cm2.s-1)" ,kind='f' ,infer=[])
-    prototypes['Hz'] = dict(description="Local scale height (cm1)" ,kind='f' ,infer=[])
-    prototypes['zeta(s-1)'] = dict(description="not implemented" ,kind='f' ,infer=[])
-    prototypes['h'] = dict(description="not implemented" ,kind='f' ,infer=[])
-    prototypes['f+'] = dict(description="not implemented" ,kind='f' ,infer=[])
+    default_prototypes = {}
+    default_prototypes['description'] = dict( description="",kind=str ,infer=[])
+    default_prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer=[])
+    default_prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
+    default_prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer=[])
+    default_prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
+    default_prototypes['z'] = dict(description="Height above surface (cm)" ,kind='f' ,infer=[])
+    default_prototypes['z(km)'] = dict(description="Height above surface (km)" ,kind='f' ,infer=[('z',lambda self,z: z*1e-5,),])
+    default_prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind='f' ,infer=[('T',lambda self,T:T),])
+    default_prototypes['T'] = dict(description="Temperature (K)" ,kind='f' ,infer=[])
+    default_prototypes['nt'] = dict(description="Total number density (cm-3)" ,kind='f' ,infer=[])
+    default_prototypes['Nt'] = dict(description="Total number column density (cm-2)" ,kind='f' ,infer=[(('z','nt'),lambda self,z,nt: tools.cumtrapz(nt,z,reverse=True),),])
+    default_prototypes['p'] = dict(description="Pressure (bar)" ,kind='f' ,infer=[])
+    default_prototypes['Kzz'] = dict(description="Turbulent diffusion constant (cm2.s-1)" ,kind='f' ,infer=[])
+    default_prototypes['Hz'] = dict(description="Local scale height (cm1)" ,kind='f' ,infer=[])
+    default_prototypes['zeta(s-1)'] = dict(description="not implemented" ,kind='f' ,infer=[])
+    default_prototypes['h'] = dict(description="not implemented" ,kind='f' ,infer=[])
+    default_prototypes['f+'] = dict(description="not implemented" ,kind='f' ,infer=[])
     def _f(self,z):
         """Get height intervals. CURRENTLY NAIVELY COMPUTED!!!!"""
         dz = np.full(z.shape,0.)
@@ -43,15 +43,11 @@ class OneDimensionalAtmosphere(Dataset):
         dz[0] = (z[1]-z[0])/2
         dz[-1] = (z[-1]-z[-2])/2
         return dz
-    prototypes['dz'] = dict(description="Depth of grid cell (cm)." ,kind='f' ,infer=[('z',_f),])
+    default_prototypes['dz'] = dict(description="Depth of grid cell (cm)." ,kind='f' ,infer=[('z',_f),])
 
     def __init__(self):
-        Dataset.__init__(
-            self,
-            prototypes=self.prototypes,
-            permit_nonprototyped_data = False,
-        )
-
+        Dataset.__init__(self)
+        self.permit_nonprototyped_data = False
 
 class AtmosphericChemistry():
     """1D model atmosphere"""
@@ -391,7 +387,7 @@ class AtmosphericChemistry():
             ax.cla()
         y = self[ykey]
         ## production rates
-        tax,production_rates = self.plot_rates(
+        self.plot_rates(
             ykey=ykey, ax=ax, plot_total= True,
             with_products=species,
             plot_kwargs={'linestyle':'-'},
@@ -399,7 +395,7 @@ class AtmosphericChemistry():
             nsort=nsort,
         )
         ## destruction
-        tax,destruction_rates = self.plot_rates(
+        self.plot_rates(
             ykey=ykey, ax=ax, plot_total= True,
             with_reactants=species,
             plot_kwargs={'linestyle':':',},

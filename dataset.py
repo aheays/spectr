@@ -80,13 +80,10 @@ class Dataset(optimise.Optimiser):
         self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self.prototypes
         self.auto_defaults = auto_defaults # set default values if necessary automatically
         self.verbose = False                             # print extra information at various places
-        self.prototypes = {}                            # predefined data keys 
-        ## set default prototypes
+        ## get prototypes from defaults and then input argument
         self.prototypes = copy(self.default_prototypes)
-        ## set prototypes given as an argument
         if prototypes is not None:
-            for key,val in prototypes.items():
-                self.set_prototype(key,**val)
+            self.prototypes |= prototypes
         ## initialise default attributes
         for key,val in self.default_attributes.items():
             self.attributes[key] = val
