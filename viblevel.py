@@ -936,3 +936,14 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         eigvects[:,not_found] = (eigvects[:,not_found])[:,best_permutation]
         eigvals[not_found] = (eigvals[not_found])[best_permutation]
     return eigvals,eigvects
+def calc_level(species,J=None,levels=(),spline_widths=()):
+    """Compute a VibLevel model and return the generated level
+    object. levels and splinewidths etc are lists of kwargss for
+    add_level, add_spline_width etc."""
+    v = VibLevel(species=species,J=J)
+    for kwargs in levels:
+        v.add_level(**kwargs)
+    for kwargs in spline_widths:
+        v.add_spline_width(**kwargs)
+    v.construct()
+    return v.level
