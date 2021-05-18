@@ -3,7 +3,7 @@
 #####################
 
 ## compiler command with flags
-FC := gfortran -fopenmp  -lgomp -O3 -llapack -Wall -ffree-line-length-none # normal / optimised / parallel
+FC := gfortran -fopenmp -lgomp -O3 -llapack -Wall -ffree-line-length-none # normal / optimised / parallel
 
 ## make rule
 %.mod: %.f90 ; $(FC) -c $<
