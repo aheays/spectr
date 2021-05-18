@@ -8,6 +8,7 @@ from copy import copy,deepcopy
 import warnings
 import types
 import multiprocessing
+import functools
 
 import numpy as np
 from numpy import nan,inf,array,arange,linspace
@@ -73,6 +74,7 @@ def optimise_method(
     Not that new_function does not actually run function!  Instead it
     is run by add_construct_function and construct."""
     def actual_decorator(function):
+        @functools.wraps(function)
         def new_function(self,*args,**kwargs):
             ## this block subtitutes into kwargs with keys taken from
             ## the function signature.  get signature arguments -- skip
