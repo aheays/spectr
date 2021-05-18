@@ -466,7 +466,7 @@ def convert_to_bool_vector_array(x):
         return np.asarray(x,dtype=bool,ndmin=1)
     except:
         pass
-    return array([bool(t) for t in tools.ensure_iterable(x)])
+    return array([bool(t) for t in tools.ensure_iterable(x)],dtype=bool)
 
 def warnings_off():
     warnings.simplefilter("ignore")
