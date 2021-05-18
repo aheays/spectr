@@ -348,9 +348,10 @@ class Dataset(optimise.Optimiser):
         ## from prototypes or use associated_kinds default
         if not self.is_set((key,assoc)):
             if (tkey:=f'default_{assoc}') in self._data[key]:
-                self._set_associated_data(key,assoc,self._data[key][tkey])
+                default_value = self._data[key][tkey]
             else:
-                self._set_associated_data(key,assoc,self.associated_kinds[assoc]['default'])
+                default_value = self.associated_kinds[assoc]['default']
+            self._set_associated_data(key,assoc,default_value)
         ## return data
         retval = self._data[key]['assoc'][assoc][0:len(self)][index]
         if units is not None:
@@ -393,12 +394,18 @@ class Dataset(optimise.Optimiser):
             value,          # a scalar or Parameter
             index=None,         # only apply to these indices
             match=None,
+            **match_kwargs
             # **prototype_kwargs,
     ):
         """Set a value and it will be updated every construction and possible
         optimised."""
-        if match is not None:
-            index = self.match(**match)
+        ## determining indicies to set
+        match = ({} if match is None else match) | match_kwargs
+        if len(match) > 0:
+            if index is None:
+                index = self.match(**match)
+            else:
+                index &= self.match(**match)
         ## if not a parameter then treat as a float -- could use set(
         ## instead and branch there, requiring a Parameter here
         if isinstance(value,Parameter):
@@ -617,6 +624,11 @@ class Dataset(optimise.Optimiser):
                 data['assoc'][key] = value[:original_length][index]
             self._length = len(data['value'])
 
+    def remove(self,index):
+        """Remove boolean indices."""
+        self.index(~index)
+
+
     def copy(
             self,
             keys=None,
@@ -634,9 +646,10 @@ class Dataset(optimise.Optimiser):
             self,keys,index,
             copy_assoc=copy_assoc,
             copy_inferred_data=copy_inferred_data)
+        retval.pop_format_input_function()
         return retval
 
-    @optimise_method()
+    @optimise_method(add_construct_function=False)
     def copy_from(
             self,
             source,             # Dataset to copy
@@ -666,7 +679,7 @@ class Dataset(optimise.Optimiser):
                 index &= source.match(**match)
         ## copy data
         for key in keys:
-            self[key] = source.get(key,index=index)
+            self[key] = source[key][index]
             if copy_assoc:
                 ## copy associated data
                 for assoc in source._data[key]['assoc']:
@@ -752,7 +765,9 @@ class Dataset(optimise.Optimiser):
 
     def matches(self,*args,**kwargs):
         """Returns a copy reduced to matching values."""
-        return self.copy(index=self.match(*args,**kwargs))
+        return self.copy(
+            index=self.match(*args,**kwargs),
+            copy_assoc=True,)
 
     def limit_to_match(self,**keys_vals):
         self.index(self.match(**keys_vals))
