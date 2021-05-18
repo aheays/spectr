@@ -407,7 +407,7 @@ class Base(Dataset):
     @optimise_method(format_single_line=True)
     def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
         """Set parameters to all data matching quantum numbers."""
-        if self._clean_construct == 0:
+        if self._clean_construct:
             qn,p = {},{}
             for key,val in defining_qn_and_parameters.items():
                 if key in self.defining_qn:
