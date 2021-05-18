@@ -482,7 +482,7 @@ def encode_linear_line(qn=None,qnl=None,qnu=None,):
                     qnl.setdefault(key[:-2],val)
     if 'species' in qnl and 'species' in qnu and qnu['species']==qnl['species']:
         qnl.pop('species')
-    retval = encode_linear_level(qnu)+'-'+encode_linear_level(qnl)
+    retval = encode_linear_level(qnu)+'—'+encode_linear_level(qnl)
     if 'ΔJ' in qn:
         retval += '_'+encode_rotational_transition(qn)
     return retval
