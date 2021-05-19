@@ -96,7 +96,8 @@ prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f'
 prototypes['Teq'] = dict(description="Equilibriated temperature",units="K", kind='f', fmt='0.2f', infer=[],default_step=0.1)
 prototypes['Tex'] = dict(description="Excitation temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)],default_step=0.1)
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
-prototypes['ΔJ'] = dict(description="Jp-Jpp", kind='f', fmt='>+4g', infer=[(('Jp','Jpp'),lambda self,Jp,Jpp: Jp-Jpp,)],)
+prototypes['ΔJ'] = dict(description="Jupper - vlower", kind='f', fmt='>+4g', infer=[(('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l,)],)
+prototypes['Δv'] = dict(description="vupper - vlower", kind='f', fmt='>+4g', infer=[(('v_u','v_l'),lambda self,v_u,v_l: v_u-v_l,)],)
 
 
 ## column 
@@ -273,9 +274,9 @@ prototypes['σv'] =dict(description="Integrated cross section of an entire band.
 prototypes['Sij'] =dict(description=" strength",units="au", kind='f',  fmt='<10.5e', infer=[
     (('μ',), lambda self,μ: μ**2),
     (('Sv','SJ'), lambda self,Sv,SJ:  Sv*SJ),
-    ( ('f','ν','Jpp'), lambda self,f,ν,Jpp: f/3.038e-6/ν*(2*Jpp+1)),
-    ( ('Ae','ν','Jp'), lambda self,Ae,ν,Jp: Ae/(2.026e-6*ν**3/(2*Jp+1)),)])
-prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('f','ν','Jp','Jpp'), lambda self,f,ν,Jp,Jpp: f*0.666886/(2*Jp+1)*(2*Jpp+1)*ν**2),( ('Sij','ν','Jp'), lambda self,Sij,ν,Jp: Sij*2.026e-6*ν**3/(2*Jp+1))],)
+    ( ('f','ν','J_l'), lambda self,f,ν,J_l: f/3.038e-6/ν*(2*J_l+1)),
+    ( ('Ae','ν','J_u'), lambda self,Ae,ν,J_u: Ae/(2.026e-6*ν**3/(2*J_u+1)),)])
+prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('f','ν','J_u','J_l'), lambda self,f,ν,J_u,J_l: f*0.666886/(2*J_u+1)*(2*J_l+1)*ν**2),( ('Sij','ν','J_u'), lambda self,Sij,ν,J_u: Sij*2.026e-6*ν**3/(2*J_u+1))],)
 prototypes['FCfactor'] =dict(description="Franck-Condon factor",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R'), lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)])),],)
 prototypes['Rcentroid'] =dict(description="R-centroid",units="Å", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R','FCfactor'), lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)])),])
 
@@ -288,7 +289,7 @@ def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
 prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
 
 # prototypes['τ'] = dict(description="Integrated optical depth",units="cm-1", kind='f',  fmt='<10.5e', infer={('σ','column_densitypp'):lambda self,σ,column_densitypp: σ*column_densitypp,},)
-# prototypes['I'] = dict(description="Integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp','ν'):lambda self,Ae,populationp,column_densityp,ν: Ae*populationp*column_densityp*ν,},)
+prototypes['I'] = dict(description="Integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",kind='f',fmt='<10.5e',infer=[(('Ae','α_u','ν'),lambda self,Ae,α_u,ν: Ae*α_u*ν,)],)
 # prototypes['Ip'] = dict(description="Integrated emission photon intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp'):lambda self,Ae,populationp,column_densityp: Ae*populationp*column_densityp,},)
 # prototypes['σd'] = dict(description="Integrated photodissociation cross section.",units="cm2.cm-1", kind='f',  fmt='<10.5e', infer={('σ','ηdp'):lambda self,σ,ηdp: σ*ηdp,})
 # prototypes['Sabs'] = dict(description="Absorption intensity).",units="cm-1/(molecule.cm-1", kind='f',  fmt='<10.5e', infer=[])
@@ -324,6 +325,8 @@ prototypes['species']['infer'].append((('species_u'),lambda self,species_u: spec
 prototypes['ΔJ']['infer'].append((('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l))
 prototypes['J_u']['infer'].append((('J_l','ΔJ'),lambda self,J_l,ΔJ: J_l+ΔJ))
 prototypes['J_l']['infer'].append((('J_u','ΔJ'),lambda self,J_u,ΔJ: J_u-ΔJ))
+prototypes['v_u']['infer'].append((('v_l','Δv'),lambda self,v_l,Δv: v_l+Δv))
+prototypes['v_l']['infer'].append((('v_u','Δv'),lambda self,v_u,Δv: v_u-Δv))
 prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
 prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
 
@@ -346,7 +349,7 @@ class Generic(levels.Base):
         'ν','ν0', # 'λ',
         'ΔJ', 'branch',
         'ΔJ',
-        'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ',
+        'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ','I',
         'Nself',
         'Teq','Tex','Ttr','Z',
         'Γ','ΓD',
@@ -472,7 +475,7 @@ class Generic(levels.Base):
                 raise Exception("Could not find a default ykey")
         ## guess a default lineshape
         if lineshape is None:
-            if self.is_known('Γ','ΓD') and self.is_known(('Γ','ΓD')):
+            if self.is_known('Γ','ΓD'):
                 lineshape = 'voigt'
             elif self.is_known('Γ'):
                 lineshape = 'lorentzian'
@@ -744,8 +747,8 @@ class Generic(levels.Base):
                 raise Exception("Could not find beginning of linelist in file: "+repr(filename))
             ## loop through each line in linelist -- saving to dict of lists
             data = {key:[] for key in (
-                'ν','E_l','E_u','v_u', 'label_u', 'J_u', 'N_u', 'F_u', 'ef_u', 
-                'v_l', 'label_l', 'J_l', 'N_l', 'F_l', 'ef_l', 
+                'ν','E_l','E_u','v_u', 'label_u', 'J_u', 'N_u', 'Fi_u', 'ef_u', 
+                'v_l', 'label_l', 'J_l', 'N_l', 'Fi_l', 'ef_l', 
                 'Sij',
                 # 'Ae',
             )}
@@ -768,7 +771,7 @@ class Generic(levels.Base):
                 ## data['σ'].append(float(line[10])) # actually a cross section?
                 # data['Ae'].append(float(line[14]))
                 ## Decode transition name. Split into upper and lower
-                ## levels. Get J, F, ef from pgopher encoded parts of
+                ## levels. Get J, Fi, ef from pgopher encoded parts of
                 ## the string. Use decode_lower_name_re and
                 ## decode_upper_name_re to get the label and v which
                 ## are influenced by the user.
@@ -780,14 +783,14 @@ class Generic(levels.Base):
                             label = r.group(2),
                             v = int(r.group(3)),
                             N = float(r.group(5)),
-                            F = float(r.group(6)),
+                            Fi = float(r.group(6)),
                         ))
                     r = re.match(r'(.*) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$',name) # e.g., "Excited A(v=1) 0.5  1 F2f"
                     if r:
                         retval = {}
                         label_v = r.group(1)
                         retval['N'] = float(r.group(3))
-                        retval['F'] = float(r.group(4))
+                        retval['Fi'] = float(r.group(4))
                         decoded_level_name = quantum_numbers.decode_level(label_v.strip()[len(manifold_name):])
                         if 'label' in decoded_level_name: 
                             retval['label'] = decoded_level_name['label']
@@ -814,7 +817,7 @@ class Generic(levels.Base):
         for key in [t for t in data.keys()]:
             if len(data[key])==0: data.pop(key) # remove empty keys
             
-        self.extend(**data)
+        self.extend(**data,keys='new')
 
     # @optimise_method()
     # def generate_from_levels(
@@ -1050,7 +1053,7 @@ class LinearDiatomic(Linear):
 
     _level_class,_level_keys,defining_qn = _collect_level(levels.LinearDiatomic)
     default_prototypes = {key:prototypes[key] for key in
-                          {*_level_keys, *Linear.default_prototypes,}}
+                          {*_level_keys, *Linear.default_prototypes,'Δv'}}
     default_xkey = 'J_u'
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
     default_attributes = Linear.default_attributes 

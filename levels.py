@@ -147,9 +147,9 @@ def _f1(self,point_group,Inuclear,sa):
                 return neven
     else:
         raise InferException()
-
-prototypes['conf'] = dict(description="Electronic configuration", kind='U', fmt='10s', infer=[])
 prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)" , kind='i' , infer=[(('point_group',),_f0),( ('point_group','Inuclear','sa'),_f1),])
+
+prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", kind='f',infer=[(('species',), lambda self,species: database.get_species_property(species,'Inuclear'))])
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[(('A',),lambda self,τ: 5.309e-12*A,)])
@@ -161,6 +161,7 @@ prototypes['S'] = dict(description="Total electronic spin quantum number", kind=
 # prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum.",units='cm-1', kind='f',infer=[((),lambda self,: 0.,)])
 prototypes['Teq'] = dict(description="Equilibriated temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array)
 prototypes['Tex'] = dict(description="Excitation temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq)],cast=cast_abs_float_array)
+prototypes['conf'] = dict(description="Electronic configuration", kind='U', fmt='10s', infer=[])
 
 # @vectorise(cache=True,vargs=(1,2))
 def _f5(self,species,Tex):
@@ -316,8 +317,6 @@ def _f0(self):
     self._set_value('_qnhash',_qnhash,dependencies=self.defining_qn)
     return None
 prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[((),_f0),])
-
-prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", kind='f',infer=[])
 
 
 ## Effective Hamiltonian parameters
@@ -477,7 +476,7 @@ class Generic(Base):
         'E','Ee','ZPE','Ereduced','Eresidual','Ereduced_common',
         'Γ','ΓD',
         'J','N','S',
-        'g','gnuclear',
+        'g','gnuclear','Inuclear',
         'Teq','Tex','Z','α',
         'Nself',
     )
