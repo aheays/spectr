@@ -116,13 +116,15 @@ class VibLevel(Optimiser):
             ## diagonalise independent block submatrices separately
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
             eigvects = np.zeros(self.H.shape[1:3],dtype=float)
-            for i in tools.find_blocks(H!=0):
+            for i in tools.find_blocks(H!=0,error_on_empty_block=False):
                 He = H[np.ix_(i,i)]
                 eigvalsi,eigvectsi = linalg.eig(He)
                 if self.sort_eigvals:
                     eigvalsi,eigvectsi = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
                 eigvals[i] = eigvalsi
                 eigvects[np.ix_(i,i)] = np.real(eigvectsi)
+            ## ## diagonaliase all at once
+            ## eigvals,eigvects = linalg.eig(H)
             self.eigvals[J] = eigvals
             self.eigvects[J] = eigvects
         ## insert energies into level
@@ -161,7 +163,7 @@ class VibLevel(Optimiser):
         ## process inputs
         if 'kw' not in _cache:
             ## all quantum numbers and molecular parameters
-            kw = quantum_numbers.decode_linear_level(name) | kwargs 
+            kw = quantum_numbers.decode_linear_level(name) | kwargs
             kw['species'] = self.species.isotopologue
             if 'S' not in kw or 's' not in kw or 'Λ' not in kw:
                 raise Exception('Quantum numbers S, s, and Λ are required.')
@@ -199,7 +201,7 @@ class VibLevel(Optimiser):
             self.manifolds[name] = dict(ibeg=ibeg,iend=iend,ef=ef,Σ=Σ,n=len(ef),**kw) 
             self.vibrational_spin_level.extend(
                 keys='new',ef=ef,Σ=Σ,
-                **{key:kw[key] for key in ('species','label','S','Λ','s','v')},)
+                **{key:kw[key] for key in ('species','label','S','Λ','s','v','gu') if key in kw},)
             ## make H bigger
             tH = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
             tH[:,:ibeg,:ibeg] = self.H
@@ -275,14 +277,7 @@ class VibLine(Optimiser):
     two states defined by LocalDeperturbation objects. Currently only
     for single-photon transitions. """
 
-    def __init__(
-            self,
-            name,
-            level_u,
-            level_l,
-            J_l=None,
-            ΔJ=None,
-    ):
+    def __init__(self,name,level_u,level_l,J_l=None,ΔJ=None):
         ## add upper and lower levels
         self.name = name
         self.level_u = level_u
@@ -324,13 +319,14 @@ class VibLine(Optimiser):
             multiline=False,
             limit_to_args=('name', 'level_u', 'level_l', 'J_l', 'ΔJ',))
         self.add_suboptimiser(self.level_u,self.level_l,add_format_function=False)
-        def f(directory):
+        def f(directory): 
             self.line.save(directory+'/line.h5')
         self.add_save_to_directory_function(f)
         self.add_post_construct_function(self.construct_lines)
+        self.initialise_construct()
 
-    def construct_lines(self):
-        ## initialise μ0 and line arrays if model has changed
+    @optimise_method(add_format_input_function=False)
+    def initialise_construct(self,_cache=None):
         if self._clean_construct:
             ## initialise μ0
             self.μ0 = np.full((
@@ -351,18 +347,18 @@ class VibLine(Optimiser):
                         J_u=J_u,
                         J_l=J_l,
                         keys='new',
-                        # E_u=np.repeat(self.level_u.eigvals[J_u],n_l),
-                        # E_l=np.tile(self.level_l.eigvals[J_l],n_u),
                         **{key+'_u':np.repeat(val,n_l) for key,val in self.level_u.vibrational_spin_level.items()},
                         **{key+'_l':np.tile(val,n_u) for key,val in self.level_l.vibrational_spin_level.items()},)
+
+
+    def construct_lines(self):
+        """Finalise construct."""
         ## build μ0
         for iu,jl,fμ in self._transition_moment_functions:
             for iΔJ,ΔJ in enumerate(self.ΔJ):
                 self.μ0[:,iΔJ,iu,jl] = fμ(self.J_l,ΔJ)
         ## could vectorise linalg with np.dot
-        μs = []
-        E_us = []
-        E_ls = []
+        μs,E_us,E_ls,Γ_us,Γ_ls = [],[],[],[],[]
         for iJ_l,J_l in enumerate(self.J_l):
             for iΔJ,ΔJ in enumerate(self.ΔJ):
                 J_u = J_l + ΔJ
@@ -375,13 +371,17 @@ class VibLine(Optimiser):
                 μ = np.dot(np.transpose(c_u),np.dot(μ0,c_l))
                 μs.append(μ)
                 ## get energy levels for this J_u,J_l transition
-                E_us.append(np.repeat(self.level_u.eigvals[J_u],len(self.level_l.vibrational_spin_level)))
-                E_ls.append(np.tile(  self.level_l.eigvals[J_l],len(self.level_u.vibrational_spin_level)))
+                E_us.append(np.repeat(self.level_u.eigvals[J_u].real,len(self.level_l.vibrational_spin_level)))
+                E_ls.append(np.tile(  self.level_l.eigvals[J_l].real,len(self.level_u.vibrational_spin_level)))
+                Γ_us.append(np.repeat(self.level_u.eigvals[J_u].imag,len(self.level_l.vibrational_spin_level)))
+                Γ_ls.append(np.tile(  self.level_l.eigvals[J_l].imag,len(self.level_u.vibrational_spin_level)))
         ## add all new data to rotational line
         self.line['μ'] = np.ravel(μs)
         self.line['E_u'] = np.ravel(E_us)
         self.line['E_l'] = np.ravel(E_ls)
-        ## remove forbidden lines
+        self.line['Γ_u'] = np.ravel(Γ_us)
+        self.line['Γ_l'] = np.ravel(Γ_ls)
+        # ## remove forbidden lines
         # self.line.index(
             # ## levels do not exist
             # (self.line['J_l'] >= self.line['Ω_l'])
@@ -397,28 +397,29 @@ class VibLine(Optimiser):
         # )
         # self.line.remove_match(Sij=0)
 
-
-    @optimise_method(add_construct_function=False)
-    def add_transition_moment(self,name_u,name_l,μv=1):
+    @optimise_method()
+    def add_transition_moment(self,name_u,name_l,μv=1,_cache=None):
         """Add constant transition moment. μv can be optimised."""
         """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed
         transitions. μv should be in atomic units and can be specifed
         as a value (optimisable), a function of R or a suboptimiser
         given ['μ']."""
-
-        ## get all quantum numbers
-        kwu = self.level_u.manifolds[name_u]
-        kwl = self.level_l.manifolds[name_l]
-        ## get transition moment functions for all ef/Σ combinations
-        ## and add optimisable parameter to functions
-        fμ = _get_linear_transition_moment(kwu['S'],kwu['Λ'],kwu['s'],kwl['S'],kwl['Λ'],kwl['s'],verbose=self.verbose)
-        ## find indices of transitioning state and add to
-        ## self._transition_moment_functions
+        if self._clean_construct:
+            ## get all quantum numbers
+            kwu = self.level_u.manifolds[name_u]
+            kwl = self.level_l.manifolds[name_l]
+            ## get transition moment functions for all ef/Σ combinations
+            ## and add optimisable parameter to functions
+            fμ = _get_linear_transition_moment(kwu['S'],kwu['Λ'],kwu['s'],kwl['S'],kwl['Λ'],kwl['s'],verbose=self.verbose)
+            _cache['kwu'],_cache['kwl'],_cache['fμ'] = kwu,kwl,fμ
+        else:
+            kwu,kwl,fμ = _cache['kwu'],_cache['kwl'],_cache['fμ']
+        ## Add transition moment to μ0 array
         for i,j in np.ndindex(fμ.shape):
             if fμ[i,j] is None:
                 continue
-            self._transition_moment_functions.append((
-                i+kwu['ibeg'],j+kwl['ibeg'],lambda J,ΔJ,f=fμ[i,j]: f(J,ΔJ)*μv))
+            for iΔJ,ΔJ in enumerate(self.ΔJ):
+                self.μ0[:,iΔJ,i+kwu['ibeg'],j+kwl['ibeg']] += fμ[i,j](self.J_l,ΔJ)*μv
 
     def plot(self,**kwargs):
         kwargs.setdefault('xkey','ν')

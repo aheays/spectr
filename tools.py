@@ -2725,7 +2725,7 @@ def findin_numeric(x,y,tolerance=1e-10):
     # else:
         # raise Exception('Only implemented for 1D and 2D arrays.')
 
-def find_blocks(b):
+def find_blocks(b,error_on_empty_block=True):
     """Find boolean index arrays that divide boolean array b into
     independent True blocks."""
     i = np.full(len(b),True)    # not yet in a block
@@ -2734,7 +2734,14 @@ def find_blocks(b):
         ## start new block with first remaining row
         block = b[find(i)[0],:]
         if np.sum(block) == 0:
-            raise Exception('empty block found')
+            ## a block is all zero -- connected to nothing
+            if error_on_empty_block:
+                ## raise an error
+                raise Exception('empty block found')
+            else:
+                ## return as one connected block
+                blocks.append(block|True)
+                break
         ## add coupled elements to this block until no new ones found
         while np.any((t:=np.any(b[block,:],0)) & ~block):
             block |= t
