@@ -335,14 +335,21 @@ def decode_linear_level(name):
                 else:
                     rest,parenthesised = rest,None
                 ## match rest
-                r = re.match(r'([gu]?)?([0-9]+)?([ef+-]?)?$',rest)
-                if r:
-                    if r.group(1) not in (None,''):
-                        data['gu'] = int(r.group(1))
-                    if r.group(2) is not None:
-                        data['F'] = float(r.group(2))
-                    if r.group(3) not in (None,''):
-                        data['ef'] = int(r.group(1))
+                if r:=re.match(r'^([gu]?)([0-9]*)([ef+-]?)$',rest):
+                    if r.group(1) == 'g':
+                        data['gu'] = +1
+                    elif r.group(1) == 'u':
+                        data['gu'] = -1
+                    if r.group(2) != '':
+                        data['F'] = int(r.group(2))
+                    if r.group(3) == 'e':
+                        data['ef'] = +1
+                    elif r.group(3) == 'f':
+                        data['ef'] = -1
+                    elif r.group(3) == '+':
+                        data['σv'] = +1
+                    elif r.group(3) == '-':
+                        data['σv'] = -1
                 ## split parenthesised stuff on comma and look for v, J etc. Assume (v) of (v,J)
                 if parenthesised is not None:
                     x = re.split(r' *, *',parenthesised)
@@ -364,13 +371,15 @@ def decode_linear_level(name):
                 data[key] = float(val)
     return data
 
-def encode_linear_level(qn):
+def encode_linear_level(qn=None,**more_qn):
     """Turn quantum numbers etc (as in decode_level) into a string name. """
     ## Test code
     ## t = encode_level(species='N2',label='cp4',Λ=0,s=0,gu='u',S=0,v=5,F=1,ef='e',Ω=0)
     ## print(t)
     ## pprint(decode_level(t))
-    qn = copy(qn)  # all values get popped below, so make a ocpy
+    if qn is None:
+        qn = {}
+    qn = qn | more_qn
     retval = ''                 # output string
     ## electronic state label and then get symmetry symbol, first get whether Σ+/Σ-/Π etc, then add 2S+1 then add g/u
     if 'Λ' in qn:
@@ -389,8 +398,16 @@ def encode_linear_level(qn):
         else:
             raise Exception('Λ>3 not implemented')
         if Λ>0 and 's' in qn: qn.pop('s') # not needed
-        if 'S' in qn: retval = str(int(2*float(qn.pop('S'))+1))+retval
-        if 'gu' in qn: retval += qn.pop('gu')
+        if 'S' in qn:
+            retval = str(int(2*float(qn.pop('S'))+1))+retval
+        if 'gu' in qn:
+            gu = qn.pop('gu')
+            if gu == +1:
+                retval += 'g'
+            elif gu == -1:
+                retval += 'u'
+            else:
+                raise Exception(f'Invalid quantum number value: {gu=}')
     ## add electronic state label
     if 'label' in qn and retval=='':
         retval =  qn.pop('label')
