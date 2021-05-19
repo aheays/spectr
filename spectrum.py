@@ -168,7 +168,7 @@ class Experiment(Optimiser):
         j = (self.x>=xi[0]) & (self.x<=xi[-1])
         sideband = yscale*tools.spline(xi,yi,self.x[j])
         if signum_magnitude is not None:
-            sideband = signal.convolve(sideband,yconv,'same')
+            sideband = signal.oaconvolve(sideband,yconv,'same')
         self.y[j] += sideband
         ## shift from right
         i = ((x-shift) >= self.x[0]) & ((x-shift) <= self.x[-1])
@@ -176,7 +176,7 @@ class Experiment(Optimiser):
         j = (self.x>=xi[0]) & (self.x<=xi[-1])
         sideband = yscale*tools.spline(xi,yi,self.x[j])
         if signum_magnitude is not None:
-            sideband = signal.convolve(sideband,yconv,'same')
+            sideband = signal.oaconvolve(sideband,yconv,'same')
         self.y[j] -= sideband
         
     @optimise_method()
@@ -1132,18 +1132,18 @@ class Model(Optimiser):
                 y[imidpoint] = 1.
                 ## convolve with sinc function
                 if p['sinc_fwhm']!=0:
-                    y = signal.convolve(y,lineshapes.sinc(x,Γ=abs(p['sinc_fwhm'])),'same')
+                    y = signal.oaconvolve(y,lineshapes.sinc(x,Γ=abs(p['sinc_fwhm'])),'same')
                 ## convolve with gaussian function
                 if p['gaussian_fwhm']!=0:
-                    y = signal.convolve(y,lineshapes.gaussian(x,Γ=abs(p['gaussian_fwhm'])),'same')
+                    y = signal.oaconvolve(y,lineshapes.gaussian(x,Γ=abs(p['gaussian_fwhm'])),'same')
                 ## convolve with lorentzian function
                 if p['lorentzian_fwhm']!=0:
-                    y = signal.convolve(y,lineshapes.lorentzian(x,Γ=abs(p['lorentzian_fwhm'])),'same')
+                    y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(p['lorentzian_fwhm'])),'same')
                 ## if necessary account for phase correction by convolving with a signum
                 if p['signum_magnitude']!=0:
                     ty = 1/x*p['signum_magnitude'] # hyperbolically decaying signum on either side
                     ty[imidpoint] = 1 # the central part  -- a delta function
-                    y = signal.convolve(y,ty,'same')
+                    y = signal.oaconvolve(y,ty,'same')
                 ## convert back to data grid if it has been subsampled
                 if subsample_factor!=1:
                     a = y[imidpoint-subsample_factor:0:-subsample_factor][::-1]
