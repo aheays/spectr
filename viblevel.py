@@ -3,6 +3,7 @@ from pprint import pprint
 from functools import lru_cache
 import itertools
 from time import perf_counter as timestamp
+import warnings
 
 import numpy as np
 from numpy import nan,array
@@ -46,6 +47,7 @@ class VibLevel(Optimiser):
         self.interactions = Dataset() 
         self.J = J
         self.verbose = False
+        self.sort_eigvals = True # try to reorder eigenvalues/eigenvectors after diagonalisation into diabatic levels
         ## inputs / outputs of diagonalisation
         self.eigvals = None
         self.eigvects = None
@@ -108,34 +110,19 @@ class VibLevel(Optimiser):
         ## compute mixed energies and mixing coefficients
         self.eigvals = {}             # eignvalues
         self.eigvects = {}             # mixing coefficients
-        je = self.vibrational_spin_level['ef'] == +1
-        jf = self.vibrational_spin_level['ef'] == -1
-        if np.sum(je) == 0:
-            je = None
-        if np.sum(jf) == 0:
-            jf = None
         for iJ,J in enumerate(self.J):
             H = self.H[iJ,:,:]
             H[np.isnan(H)] = 0.0 # better to solve at source
-            ## compute e- and f-parity matrcies separatesly.  Might be
-            ## nice to automatically convert matrix into blocks
+            ## diagonalise independent block submatrices separately
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
             eigvects = np.zeros(self.H.shape[1:3],dtype=float)
-            if je is not None:
-                He = H[np.ix_(je,je)]
-                eigvals_e,eigvects_e = linalg.eig(He)
-                eigvals_e,eigvects_e = _diabaticise_eigenvalues(eigvals_e,eigvects_e)
-                eigvals[je] = eigvals_e
-                eigvects[np.ix_(je,je)] = np.real(eigvects_e)
-            if jf is not None:
-                Hf = H[np.ix_(jf,jf)]
-                eigvals_f,eigvects_f = linalg.eig(Hf)
-                eigvals_f,eigvects_f = _diabaticise_eigenvalues(eigvals_f,eigvects_f)
-                eigvals[jf] = eigvals_f
-                eigvects[np.ix_(jf,jf)] = np.real(eigvects_f)
-            ## diagonaliase all at once
-            ## eigvals,eigvects = linalg.eig(H)
-            ## eigvals,eigvects = _diabaticise_eigenvalues(eigvals,eigvects)
+            for i in tools.find_blocks(H!=0):
+                He = H[np.ix_(i,i)]
+                eigvalsi,eigvectsi = linalg.eig(He)
+                if self.sort_eigvals:
+                    eigvalsi,eigvectsi = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
+                eigvals[i] = eigvalsi
+                eigvects[np.ix_(i,i)] = np.real(eigvectsi)
             self.eigvals[J] = eigvals
             self.eigvects[J] = eigvects
         ## insert energies into level
@@ -185,10 +172,9 @@ class VibLevel(Optimiser):
             ## check kwargs contains only defined data
             for key in kw:
                 if key not in (
-                        'species','label','S','Λ','s','v',
+                        'species','label','S','Λ','s','v','gu',
                         'Tv','Bv','Dv','Hv','Lv','Mv',
-                        'Av','ADv',
-                        'λv','λDv','λHv','γv','γDv',
+                        'Av','ADv','λv','λDv','λHv','γv','γDv',
                         'ov','pv','pDv','qv','qDv',
                         ):
                     raise Exception(f'Keyword argument not a known quantum number of Hamiltonian parameter: {repr(key)}')
@@ -896,7 +882,26 @@ def _format_matrix_element(qn1,qn2,operator=None,value=None):
         retval += f' = {value}'
     return retval
 
+def _diabaticise_eigenvalues_in_blocks(eigvals,eigvects):
+    """Diabaticise eigvects after first dividing into independent
+    blocks."""
+    ## find indices of independent blocks
+    blocks = tools.find_blocks(np.abs(eigvects.real)>1e-1)
+    ## build new arrays out of diabaticised independent blocks
+    retval_eigvals = []
+    retval_eigvects = []
+    for i in blocks:
+        # t0,t1 = _diabaticise_eigenvalues(eigvals[i],eigvects[i,:][:,i])
+        # retval_eigvals.append(t0)
+        # retval_eigvects.append(t1)
+        retval_eigvals.append(eigvals[i])
+        retval_eigvects.append(eigvects[i,:][:,i])
+    retval_eigvals = np.concatenate(retval_eigvals)
+    retval_eigvects =  linalg.block_diag(*retval_eigvects)
+    return retval_eigvals,retval_eigvects
+        
 def _diabaticise_eigenvalues(eigvals,eigvects):
+    """Re-order eigvals/eigvects to maximise eigvects diagonal."""
     ## fractional character array
     c = eigvects.real**2
     ## mask of levels without confirmed assignments
@@ -920,7 +925,7 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         c_not_found = c[not_found,:][:,not_found]
         number_not_found = len(c_not_found)
         if number_not_found > 10:
-            warnings.warn(f'Trialling all permutations of {number_not_found} levels.')
+            warnings.warn(f'Trialing all permutations of {number_not_found} levels.')
         ## loop through all permutations, looking for globally best metric
         best_permutation = None
         best_metric = 0
@@ -936,11 +941,54 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         eigvects[:,not_found] = (eigvects[:,not_found])[:,best_permutation]
         eigvals[not_found] = (eigvals[not_found])[best_permutation]
     return eigvals,eigvects
-def calc_level(species,J=None,levels=(),spline_widths=()):
+
+# def _diabaticise_eigenvalues(eigvals,eigvects):
+#     """Re-order eigvals/eigvects to maximise eigvects diagonal."""
+#     ## fractional character array
+#     c = eigvects.real**2
+#     ## mask of levels without confirmed assignments
+#     not_found = np.full(len(c), True) 
+#     ## find all mixing coefficients greater than
+#     ## 0.5 and fix their assignments
+#     for i in range(len(c)):
+#         j = np.argsort(-c[i,:])
+#         if c[i,j[0]] > 0.5:
+#             j = j[0]
+#             ii = list(range(len(c)))           # index of columns
+#             ii[i],ii[j] = j,i                  # swap largest c into diagonal position 
+#             c = c[:,ii]                        # swap for all columns
+#             eigvals,eigvects = eigvals[ii],eigvects[:,ii] # and eigvalues
+#             not_found[i] = False 
+#     ## trial all permutations of remaining
+#     ## unassigned levels, looking for the one
+#     ## which gives the best assignments
+#     if np.any(not_found):
+#         ## limit to mixing coefficient array of unassigned levels
+#         c_not_found = c[not_found,:][:,not_found]
+#         number_not_found = len(c_not_found)
+#         if number_not_found > 10:
+#             warnings.warn(f'Trialling all permutations of {number_not_found} levels.')
+#         ## loop through all permutations, looking for globally best metric
+#         best_permutation = None
+#         best_metric = 0
+#         for permutation in itertools.permutations(range(number_not_found)):
+#             ## metric is the smallest diagonal coefficient
+#             metric = np.min([tci[pi] for tci,pi in zip(c_not_found,permutation)])
+#             if metric > best_metric:
+#                 best_permutation = permutation
+#                 best_metric = metric
+#         ## reorder arrays to match best permuation
+#         best_permutation = np.array(best_permutation)
+#         c[:,not_found] = (c[:,not_found])[:,best_permutation]
+#         eigvects[:,not_found] = (eigvects[:,not_found])[:,best_permutation]
+#         eigvals[not_found] = (eigvals[not_found])[best_permutation]
+#     return eigvals,eigvects
+
+def calc_level(name=None,species=None,J=None,levels=(),spline_widths=()):
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_level, add_spline_width etc."""
-    v = VibLevel(species=species,J=J)
+    v = VibLevel(name=name,species=species,J=J)
     for kwargs in levels:
         v.add_level(**kwargs)
     for kwargs in spline_widths:

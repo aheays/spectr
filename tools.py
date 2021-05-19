@@ -2725,6 +2725,25 @@ def findin_numeric(x,y,tolerance=1e-10):
     # else:
         # raise Exception('Only implemented for 1D and 2D arrays.')
 
+def find_blocks(b):
+    """Find boolean index arrays that divide boolean array b into
+    independent True blocks."""
+    i = np.full(len(b),True)    # not yet in a block
+    blocks = []                 # final list of blocks
+    while np.any(i):            # until all rows in a block
+        ## start new block with first remaining row
+        block = b[find(i)[0],:]
+        if np.sum(block) == 0:
+            raise Exception('empty block found')
+        ## add coupled elements to this block until no new ones found
+        while np.any((t:=np.any(b[block,:],0)) & ~block):
+            block |= t
+            t = np.any(b[block,:],0)
+        ## record found block and blocked rows
+        blocks.append(block)
+        i &= ~block
+    return blocks
+
 def inrange(x,xbeg,xend=None):
     """Return arrays of booleans same size as x, True for all those
     elements that xbeg<=x<=xend.\n\nIf xend is none and xbeg is an
