@@ -568,6 +568,11 @@ class Dataset(optimise.Optimiser):
             data = self._data[key]
             self._data.pop(key)
 
+    def pop(self,key):
+        """Return data and unset key."""
+        retval = self[key]
+        self.unset(key)
+        return retval
     def is_inferred(self,key):
         if len(self._data[key]['inferred_from']) > 0:
             return True
@@ -1129,7 +1134,7 @@ class Dataset(optimise.Optimiser):
             table_name=None,
             translate_keys=None, # from key in file to key in self, None for skip
             return_classname_only=False, # do not load the file -- just try and load the classname and return it
-            vector_data_labels_commented=False,
+            labels_commented=False,
             load_assoc=True,
             **set_keys_vals   # set this data after loading is done
     ):
@@ -1199,7 +1204,7 @@ class Dataset(optimise.Optimiser):
             data.update(tools.txt_to_dict(
                 filename,
                 delimiter=delimiter,
-                labels_commented=vector_data_labels_commented,
+                labels_commented=labels_commented,
                 skiprows=iline))
             data_is_flat = True
         ## build structured data from flat data by associated keys
@@ -1461,9 +1466,10 @@ class Dataset(optimise.Optimiser):
             ynewaxes=True,      # plot y-keys on separates axes -- else as different lines
             znewaxes=False,     # plot z-keys on separates axes -- else as different lines
             legend=True,        # plot a legend or not
+            legend_loc='best',
             annotate_lines=False, # annotate lines with their labels
             zlabel_format_function=None, # accept key=val pairs, defaults to printing them
-            label_prefix=None, # put this before label otherwise generated
+            label_prefix='', # put this before label otherwise generated
             plot_errorbars=True, # if uncertainty available
             xscale='linear',     # 'log' or 'linear'
             yscale='linear',     # 'log' or 'linear'
@@ -1526,8 +1532,7 @@ class Dataset(optimise.Optimiser):
                     # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = ylabel+' '+zlabel
                     title = None
-                if label_prefix is not None and label is not None:
-                    label = label_prefix + label
+                ## plotting kwargs
                 kwargs = copy(plot_kwargs)
                 kwargs.setdefault('marker',marker)
                 kwargs.setdefault('ls',linestyle)
@@ -1535,10 +1540,11 @@ class Dataset(optimise.Optimiser):
                 kwargs.setdefault('markersize',7)
                 kwargs.setdefault('color',color)
                 kwargs.setdefault('mec',kwargs['color'])
+                if label is not None:
+                    kwargs.setdefault('label',label_prefix+label)
+                ## plotting data
                 x = z[xkey]
                 y = z[ykey]
-                if label is not None:
-                    kwargs.setdefault('label',label)
                 if plot_errorbars and z.is_set((ykey,'unc')):
                     dy = z.get((ykey,'unc'))
                     ## plot errorbars
@@ -1565,7 +1571,7 @@ class Dataset(optimise.Optimiser):
                     ax.set_title(title)
                 if 'label' in kwargs:
                     if legend:
-                        plotting.legend(fontsize='x-small')
+                        plotting.legend(fontsize='x-small',loc=legend_loc)
                     if annotate_lines:
                         plotting.annotate_line(line=line)
                 if ylim is not None:
@@ -1674,13 +1680,7 @@ def make(classname='dataset.Dataset',*args,**kwargs):
     """Make an instance of the this classname."""
     return _get_class(classname)(*args,**kwargs)
 
-def load(
-        filename,
-        classname=None,
-        # translate_keys=None,
-        # vector_data_labels_commented=False,
-        **load_kwargs
-):
+def load(filename,classname=None,**load_kwargs):
     """Load a Dataset.  Attempts to automatically find the correct
     subclass if it is not provided as an argument, but this requires
     loading the file twice."""
