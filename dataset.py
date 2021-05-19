@@ -311,12 +311,10 @@ class Dataset(optimise.Optimiser):
                     ## attempt to infer
                     self._infer(key)
                 except InferException as err:
-                    if self.auto_defaults:
-                        ## try an autodefault if inference fails
-                        if key in self.prototypes and 'default' in self.prototypes[key]:
+                    if (self.auto_defaults
+                        and key in self.prototypes
+                        and 'default' in self.prototypes[key]):
                             self[key] = self.prototypes[key]['default']
-                        else:
-                            raise Exception(f"No autodefault in prototype: {repr(key)}")
                     else:
                         raise err
             if index is None:
@@ -522,6 +520,9 @@ class Dataset(optimise.Optimiser):
         if isinstance(index,str):
             ## a key -- return data
             return self.get(index)
+        elif isinstance(index,slice):
+            ## a slice -- return indexed copy
+            return self.copy(index=index)
         elif isinstance(index,int):
             ## an index -- return as flat dict containing scalar data
             return self.as_flat_dict(index=index)
@@ -530,9 +531,19 @@ class Dataset(optimise.Optimiser):
                 ## empty index, make an empty copy of self
                 return self.copy(index=index)
             elif isinstance(index[0],str):
-                if isinstance(index,tuple) and len(index) == 2:
-                    ## (key,assoc) tuple, return data
-                    return self.get(index)
+                if isinstance(index,tuple):
+                    if len(index) == 2:
+                        if  isinstance(index[1],str):
+                            ## (key,assoc) tuple, return data
+                            return self.get(index)
+                        else:
+                            ## (key,index) tuple, return data
+                            return self.get(index[0],index=index[1])
+                    elif len(index) == 3:
+                        ## (key,assoc,index) tuple, return data
+                        return self.get(index[:2],index=index[2])
+                    else:
+                        raise Exception
                 else:
                     ## list of keys, make a copy containing these
                     return self.copy(keys=index)
@@ -543,14 +554,26 @@ class Dataset(optimise.Optimiser):
             raise Exception(f"Cannot interpret index: {repr(index)}")
 
     def __setitem__(self,key,value):
-        """Set a key to value. If key_unc then set uncertainty. If key_vary or
-        key_step then set optimisation parameters"""
+        """Set a key to value. If (key,assoc) then set associated data. If
+        (key,index/slice) or (key,assoc,index/slice) then set only that
+        index/slice."""
+        ## look for index
+        index = None
+        if tools.isiterable(key):
+            if not isinstance(key[-1],str):
+                ## must be an index/slice
+                index = key[-1]
+                if len(key) == 3:
+                    key = key[0:2]
+                elif len(key) == 2:
+                    key = key[0]
+        ## set
         if key in self.attributes:
             self.attributes[key] = value
         elif isinstance(value,optimise.P):
-            self.set_parameter(key,value)
+            self.set_parameter(key,value,index=index)
         else:
-            self.set(key,value)
+            self.set(key,value,index=index)
        
     def clear(self):
         """Clear all data"""
@@ -558,15 +581,21 @@ class Dataset(optimise.Optimiser):
         self._length = 0
         self._data.clear()
 
-    def unset(self,keys):
+    def unset(self,*keys):
         """Delete data.  Also clean up inferences."""
-        keys = tools.ensure_iterable(keys)
         for key in keys:
+            key,assoc = self._separate_key_assoc(key)
             if key not in self:
                 continue
-            self.unlink_inferences(key)
-            data = self._data[key]
-            self._data.pop(key)
+            if assoc is None:
+                self.unlink_inferences(key)
+                data = self._data[key]
+                self._data.pop(key)
+            else:
+                if assoc in self._data[key]['assoc']:
+                    self._data[key]['assoc'].pop(assoc)
+                
+                
 
     def pop(self,key):
         """Return data and unset key."""
@@ -1249,15 +1278,25 @@ class Dataset(optimise.Optimiser):
             warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self["classname"])}, and it will be ignored.')
             data.pop('classname')
         ## Set data in self and selected attributes
+        scalar_data = {}
         for key,val in data.items():
+            ## only load requested keys
             if keys is not None and key not in keys:
                 continue
+            ## attribute
             if key in self.attributes:
                 self.attributes[key] = val
+            ## vector data but given as a scalar -- defer loading until after vector data so the length of data is known
+            elif np.isscalar(val):
+                scalar_data[key] = val
+            ## vector data
             else:
                 self[key] = val['value']
                 for tkey,tval in val['assoc'].items():
                     self[(key,tkey)] = tval
+            ## load scalar data
+            for key,val in scalar_data.items():
+                self[key] = val
 
     def load_from_string(
             self,
@@ -1303,8 +1342,8 @@ class Dataset(optimise.Optimiser):
                 keys = list(level.explicitly_set_keys())
             elif keys == 'all':
                 keys = {*self.explicitly_set_keys(),*level.explicitly_set_keys()}
-            for t in keys:
-                self.assert_known(t)
+            ## make sure necessary keys are known
+            self.assert_known(*keys)
             self.unlink_inferences(keys)
             for key in list(self):
                 if key not in keys:
