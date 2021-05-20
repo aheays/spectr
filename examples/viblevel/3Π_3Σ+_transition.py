@@ -14,8 +14,8 @@ transition.add_transition_moment('B.3Π(v=0)','X.3Σ+(v=0)',μv=1)
 transition.construct()
 
 ## save output
-transition.rotational_line['ν']
-transition.rotational_line.save('t0.psv')
+transition.line['ν']
+transition.line.save('t0.psv')
 
 ## plot
 qfig(1)

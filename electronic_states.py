@@ -2,13 +2,19 @@ from copy import copy
 from pprint import pprint
 from functools import lru_cache
 import itertools
+import warnings
 
 import numpy as np
 from numpy import nan,array
 # import sympy
 # from scipy import linalg
 
-from .fortran_tools import fortran_tools
+try:
+    from .fortran_tools import fortran_tools
+except ModuleNotFoundError:
+    warnings.warn("Could not import fortran_tools.  Is it compiled?")
+
+
 # from . import levels,lines
 # from . import quantum_numbers
 # from . import tools
@@ -191,6 +197,7 @@ def find_single_channel_bound_levels(
     vfound,i = np.unique(vfound,return_index=True)
     Efound,χfound = Efound[i],χfound[i]
     return(vfound,Efound,χfound)
+
 
 
 

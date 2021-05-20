@@ -2,6 +2,7 @@
 from copy import copy,deepcopy
 from pprint import pprint,pformat
 import shutil
+import warnings
 
 ## nonstandard library
 import numpy as np
@@ -12,7 +13,10 @@ from scipy import integrate
 from scipy.constants import pi as π
 
 ## import subpackages of this library
-from .fortran_tools import fortran_tools
+try:
+    from .fortran_tools import fortran_tools
+except ModuleNotFoundError:
+    warnings.warn("Could not import fortran_tools.  Is it compiled?")
 from . import tools
 from . import plotting
 from . import optimise
