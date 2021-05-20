@@ -66,7 +66,8 @@ class VibLevel(Optimiser):
         if self.experimental_level is not None:
             self.add_suboptimiser(self.experimental_level)
         ## finalise construction
-        self.add_post_construct_function(self.construct_levels)
+        self._initialise_construct()
+        self.add_post_construct_function(self._finalise_construct)
 
     def _get_J(self):
         return self._J
@@ -84,14 +85,20 @@ class VibLevel(Optimiser):
         else:
             assert np.all(np.mod(J,1)==0),f'Integer J required for {repr(species)}'
         self._J = J
-        ## also reset H so full reconstruct is triggered
-        self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
-        ## trigger reconstruct elsewhere
         self._clean_construct = True
 
     J = property(_get_J,_set_J)
 
-    def construct_levels(self):
+    @optimise_method(add_format_input_function=False)
+    def _initialise_construct(self,_cache=None):
+        """Make a new array if a clean construct, or set to zero."""
+        if self._clean_construct:
+            self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
+        else:
+            self.H *= 0    
+        
+
+    def _finalise_construct(self):
         """The actual matrix diagonlisation is done last."""
         ## if first run or model changed then construct Hamiltonian
         ## and blank rotational level, and determine which levels are
@@ -159,7 +166,7 @@ class VibLevel(Optimiser):
         """Add a new electronic vibrational level. kwargs contains fitting
         parameters and optionally extra quantum numbers."""
         ## process inputs
-        if 'kw' not in _cache:
+        if self._clean_construct:
             ## all quantum numbers and molecular parameters
             kw = quantum_numbers.decode_linear_level(name) | kwargs
             kw['species'] = self.species.isotopologue
@@ -243,7 +250,7 @@ class VibLevel(Optimiser):
             _cache=None):
         """Add spin-orbit coupling of two manifolds."""
         ## get matrix cache of matrix elements
-        if 'kw1' not in _cache:
+        if self._clean_construct:
             kw1 = self.manifolds[name1]
             kw2 = self.manifolds[name2]
             ## get coupling matrices -- cached
