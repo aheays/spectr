@@ -1019,6 +1019,15 @@ class Generic(levels.Base):
             i = tools.find(m)
             self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)
 
+    def sort_upper_lower_level(self):
+        """Swap upper and lower levels if E_u < E_l.  DOES NOT CHANGE
+        CALCULATED TRANSITION DATA!!!"""
+        i = self['E_u'] < self['E_l']
+        for key in self:
+            if len(key)>2 and key[-2:]=='_l':
+                key = key[:-2]
+                self[f'{key}_u'][i],self[f'{key}_l'][i] = self[f'{key}_l'][i],self[f'{key}_u'][i]
+
 class Atomic(Generic):
     _level_class,_level_keys,defining_qn = _collect_level(levels.Atomic)
     default_prototypes = {key:prototypes[key] for key in {

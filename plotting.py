@@ -625,11 +625,15 @@ def _extra_interaction_on_key(event):
     move_factor = 0.2
     zoom_factor = 1.5
     if event.key=='d':
-        ## delete line
+        ## hide line
         if axes._my_extra_interaction['selected_line'] is not None:
             line = axes._my_extra_interaction['selected_line']
             _extra_interaction_deselect_line(line)
             line.set_visible(False)
+    elif event.key=='D':
+        ## unhide all lines
+        for line in axes.lines:
+            line.set_visible( True)
     elif event.key=='a':
         ## autoscale
         axes.autoscale(enable=True,axis='both')

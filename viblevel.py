@@ -964,7 +964,7 @@ def calc_level(*args_viblevel,**kwargs_viblevel):
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_level, add_spline_width etc."""
-    v = _calc_viblevel(*args_viblevel,**kwargs_viblevel)
+    v = calc_viblevel(*args_viblevel,**kwargs_viblevel)
     return v.level
 
 def calc_line(
