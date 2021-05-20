@@ -938,14 +938,50 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         eigvals[not_found] = (eigvals[not_found])[best_permutation]
     return eigvals,eigvects
 
-def calc_level(name=None,species=None,J=None,levels=(),spline_widths=()):
+def calc_viblevel(
+        species=None,J=None,
+        levels=None,         # {name:add_level_kwargs,...}
+        couplings=None, # None or {name1,name2:add_coupling_kwargs,...}
+        spline_widths=None, # None or {name:add_spline_width_kwargs,...}
+):
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_level, add_spline_width etc."""
-    v = VibLevel(name=name,species=species,J=J)
-    for kwargs in levels:
-        v.add_level(**kwargs)
-    for kwargs in spline_widths:
-        v.add_spline_width(**kwargs)
+    v = VibLevel(species=species,J=J)
+    if levels is not None:
+        for name,kwargs in levels.items():
+            v.add_level(name,**kwargs)
+    if couplings is not None:
+        for (name1,name2),kwargs in couplings.items():
+            v.add_coupling(name1,name2,**kwargs)
+    if spline_widths is not None:
+        for name,kwargs in spline_widths.items():
+            v.add_spline_width(name,**kwargs)
     v.construct()
+    return v
+
+def calc_level(*args_viblevel,**kwargs_viblevel):
+    """Compute a VibLevel model and return the generated level
+    object. levels and splinewidths etc are lists of kwargss for
+    add_level, add_spline_width etc."""
+    v = _calc_viblevel(*args_viblevel,**kwargs_viblevel)
     return v.level
+
+def calc_line(
+        species=None,J_l=None,ΔJ=None,
+        upper=None,           # kwargs for calc_level
+        lower=None,           # kwargs for calc_level
+        transition_moments=None,# None or {name_u,name_l:add_transition_moment,...}
+):
+    """Compute a VibLevel model and return the generated level
+    object. levels and splinewidths etc are lists of kwargss for
+    add_level, add_spline_width etc."""
+    upper['species'] = lower['species'] = species
+    upper = calc_viblevel(**upper)
+    lower = calc_viblevel(**lower)
+    v = VibLine('vibline',upper,lower,J_l=J_l,ΔJ=ΔJ)
+    if transition_moments is not None:
+        for (name1,name2),kwargs in transition_moments.items():
+            v.add_transition_moment(name1,name2,**kwargs)
+    v.construct()
+    return v.line
