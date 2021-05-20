@@ -89,7 +89,6 @@ class VibLevel(Optimiser):
         ## trigger reconstruct elsewhere
         self._clean_construct = True
 
-
     J = property(_get_J,_set_J)
 
     def construct_levels(self):
@@ -154,7 +153,6 @@ class VibLevel(Optimiser):
             if self.experimental_level.is_known('E','unc'):
                 self.level['Eresidual','unc'][imod] = self.experimental_level['E','unc'][iexp]
             return residual
-
 
     @optimise_method()
     def add_level(self,name,Γv=0,_cache=None,**kwargs):
@@ -263,8 +261,8 @@ class VibLevel(Optimiser):
                 + pv*JS[i,j](self.J) 
                 + float(He)
             )
-            self.H[:,i+ibeg,j+jbeg] = t
-            self.H[:,j+jbeg,i+ibeg] = np.conj(t)
+            self.H[:,i+ibeg,j+jbeg] += t
+            self.H[:,j+jbeg,i+ibeg] += np.conj(t)
 
     def plot(self,**kwargs):
         kwargs.setdefault('xkey','J')
@@ -502,7 +500,6 @@ def _get_linear_H(S,Λ,s):
                     H[j,i] += -sympy.sqrt(J*(J+1)*(J*(J+1)-2))*1/2*p['qv']*efi
                 elif Σi==+0 and Σj==+1:
                     pass # zero
-
             # else:
                 # if 'ov' in kwargs or 'pv' in kwargs or 'qv' in kwargs:
                     # raise Exception("Cannot use ov, pv, or qv because Λ-doubling not specified for state with Λ="+repr(Λ)+" and S="+repr(S))
@@ -892,11 +889,9 @@ def _diabaticise_eigenvalues_in_blocks(eigvals,eigvects):
     retval_eigvals = []
     retval_eigvects = []
     for i in blocks:
-        # t0,t1 = _diabaticise_eigenvalues(eigvals[i],eigvects[i,:][:,i])
-        # retval_eigvals.append(t0)
-        # retval_eigvects.append(t1)
-        retval_eigvals.append(eigvals[i])
-        retval_eigvects.append(eigvects[i,:][:,i])
+        t0,t1 = _diabaticise_eigenvalues(eigvals[i],eigvects[i,:][:,i])
+        retval_eigvals.append(t0)
+        retval_eigvects.append(t1)
     retval_eigvals = np.concatenate(retval_eigvals)
     retval_eigvects =  linalg.block_diag(*retval_eigvects)
     return retval_eigvals,retval_eigvects
@@ -942,48 +937,6 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         eigvects[:,not_found] = (eigvects[:,not_found])[:,best_permutation]
         eigvals[not_found] = (eigvals[not_found])[best_permutation]
     return eigvals,eigvects
-
-# def _diabaticise_eigenvalues(eigvals,eigvects):
-#     """Re-order eigvals/eigvects to maximise eigvects diagonal."""
-#     ## fractional character array
-#     c = eigvects.real**2
-#     ## mask of levels without confirmed assignments
-#     not_found = np.full(len(c), True) 
-#     ## find all mixing coefficients greater than
-#     ## 0.5 and fix their assignments
-#     for i in range(len(c)):
-#         j = np.argsort(-c[i,:])
-#         if c[i,j[0]] > 0.5:
-#             j = j[0]
-#             ii = list(range(len(c)))           # index of columns
-#             ii[i],ii[j] = j,i                  # swap largest c into diagonal position 
-#             c = c[:,ii]                        # swap for all columns
-#             eigvals,eigvects = eigvals[ii],eigvects[:,ii] # and eigvalues
-#             not_found[i] = False 
-#     ## trial all permutations of remaining
-#     ## unassigned levels, looking for the one
-#     ## which gives the best assignments
-#     if np.any(not_found):
-#         ## limit to mixing coefficient array of unassigned levels
-#         c_not_found = c[not_found,:][:,not_found]
-#         number_not_found = len(c_not_found)
-#         if number_not_found > 10:
-#             warnings.warn(f'Trialling all permutations of {number_not_found} levels.')
-#         ## loop through all permutations, looking for globally best metric
-#         best_permutation = None
-#         best_metric = 0
-#         for permutation in itertools.permutations(range(number_not_found)):
-#             ## metric is the smallest diagonal coefficient
-#             metric = np.min([tci[pi] for tci,pi in zip(c_not_found,permutation)])
-#             if metric > best_metric:
-#                 best_permutation = permutation
-#                 best_metric = metric
-#         ## reorder arrays to match best permuation
-#         best_permutation = np.array(best_permutation)
-#         c[:,not_found] = (c[:,not_found])[:,best_permutation]
-#         eigvects[:,not_found] = (eigvects[:,not_found])[:,best_permutation]
-#         eigvals[not_found] = (eigvals[not_found])[best_permutation]
-#     return eigvals,eigvects
 
 def calc_level(name=None,species=None,J=None,levels=(),spline_widths=()):
     """Compute a VibLevel model and return the generated level
