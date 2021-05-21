@@ -149,16 +149,32 @@ class VibLevel(Optimiser):
                     keys=self.level.defining_qn)
                 if np.sum(iexp) == 0:
                     raise Exception('No matching experimental data')
+                ## initalis residual errors
                 self.level['Eresidual'] = nan
                 self.level['Eresidual','unc'] = nan
+                self.level['Γresidual'] = nan
+                self.level['Γresidual','unc'] = nan
                 self._construct_levels_cache = {'iexp':iexp,'imod':imod}
             iexp,imod = self._construct_levels_cache['iexp'],self._construct_levels_cache['imod']
-            Emod = self.level['E'][imod]
-            Eexp = self.experimental_level['E'][iexp]
-            residual = Eexp-Emod
-            self.level['Eresidual'][imod] = residual
-            if self.experimental_level.is_known('E','unc'):
-                self.level['Eresidual','unc'][imod] = self.experimental_level['E','unc'][iexp]
+            ## Get residual error of E and Γ and set in
+            ## self.level. Weight by inverse uncertainty of
+            ## experimental if it is known
+            residual = []
+            if self.experimental_level.is_known('E'):
+                Eresidual = self.level['Eresidual'][imod] = self.experimental_level['E'][iexp] - self.level['E'][imod]
+                if self.experimental_level.is_known('E','unc'):
+                    self.level['Eresidual','unc'][imod] = self.experimental_level['E','unc'][iexp]
+                    i = self.level['Eresidual','unc'][imod] > 0
+                    Eresidual[i] /= self.level['Eresidual','unc'][imod]/[i]
+                residual.append(Eresidual)
+            if self.experimental_level.is_known('Γ'):
+                Γresidual = self.level['Γresidual'][imod] = self.experimental_level['Γ'][iexp] - self.level['Γ'][imod]
+                if self.experimental_level.is_known('Γ','unc'):
+                    self.level['Γresidual','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
+                    i = self.level['Γresidual','unc'][imod] > 0
+                    Γresidual[i] /= self.level['Γresidual','unc'][imod]/[i]
+                residual.append(Γresidual)
+            residual = np.concatenate(residual,dtype=float)
             return residual
 
     @optimise_method()
@@ -946,6 +962,7 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
     return eigvals,eigvects
 
 def calc_viblevel(
+        name=None,
         species=None,J=None,
         levels=None,         # {name:add_level_kwargs,...}
         couplings=None, # None or {name1,name2:add_coupling_kwargs,...}
@@ -954,7 +971,7 @@ def calc_viblevel(
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_level, add_spline_width etc."""
-    v = VibLevel(species=species,J=J)
+    v = VibLevel(name=name,species=species,J=J)
     if levels is not None:
         for name,kwargs in levels.items():
             v.add_level(name,**kwargs)
