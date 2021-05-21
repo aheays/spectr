@@ -572,7 +572,8 @@ class Optimiser:
             self.monitor()
         ## print rms
         current_time = timestamp()
-        print(f'call: {self._number_of_optimisation_function_calls:>6d} time: {current_time-self._previous_time:<7.2e} rms: {rms:<12.8e}')
+        if self._monitor_iterations:
+            print(f'call: {self._number_of_optimisation_function_calls:>6d} time: {current_time-self._previous_time:<7.2e} rms: {rms:<12.8e}')
         self._previous_time = current_time
         if rms < self._rms_minimum:
             self._rms_minimum = rms
@@ -583,13 +584,14 @@ class Optimiser:
             self,
             # compute_unc_only=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
             # rms_noise=None,
-            monitor_frequency='every iteration', # 'never', 'every iteration', 'rms decrease', 'significant rms decrease'
             verbose=True,
             # normalise_suboptimiser_residuals=False,
             method=None,
             least_squares_options=idict(),
             ncpus=1,            # Controls the use of multiprocessing of the Jacobian
-            monitor_parameters=None,
+            monitor_iterations=True, # print rms evey iteration
+            monitor_parameters=False, # print parameters every iteration
+            monitor_frequency='significant rms decrease', # run monitor functions 'never', 'end', 'every iteration', 'rms decrease', 'significant rms decrease'
     ):
         """Optimise parameters."""
         self._ncpus = ncpus
@@ -611,7 +613,8 @@ class Optimiser:
         ## monitoring the optimisation
         self._monitor_frequency = monitor_frequency
         self._monitor_parameters = monitor_parameters
-        valid_monitor_frequency = ('never', 'every iteration', 'rms decrease', 'significant rms decrease')
+        self._monitor_iterations = monitor_iterations
+        valid_monitor_frequency = ('never','end','every iteration','rms decrease','significant rms decrease')
         if monitor_frequency not in valid_monitor_frequency:
             raise Exception(f'Invalid monitor_frequency, choose from: {repr(valid_monitor_frequency)}')
         self._rms_minimum,self._previous_time = inf,timestamp()
@@ -681,7 +684,8 @@ class Optimiser:
                 pass
         ## rest to final solution
         residual = self.construct()
-        self.monitor() 
+        if self.monitor_frequency != 'never':
+            self.monitor() 
         ## describe result
         if verbose or self.verbose:
             print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
@@ -756,8 +760,9 @@ class Optimiser:
                 if rms == rmsnew:
                     message = 'parameter has no effect'
                 else:
-                    message = ''    
-                print(f'jcbn: {i:>6d} time: {timestamp()-timer:>7.2e} rms: {rmsnew:>12.8e} {message}')
+                    message = ''
+                if self._monitor_iterations:
+                    print(f'jcbn: {i:>6d} time: {timestamp()-timer:>7.2e} rms: {rmsnew:>12.8e} {message}')
             jacobian = np.transpose(jacobian)
         else:
             ## multiprocessing, requires serialisation
