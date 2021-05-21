@@ -330,6 +330,15 @@ prototypes['v_l']['infer'].append((('v_u','Δv'),lambda self,v_u,Δv: v_u-Δv))
 prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
 prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
 
+## parity transition selection rules
+def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
+    retval = copy(ef)
+    i = ΔJ==0
+    retval[i] *= -1
+    return retval
+prototypes['ef_u']['infer'].append((('ΔJ','ef_l'),_parity_selection_rule_upper_or_lower))
+prototypes['ef_l']['infer'].append((('ΔJ','ef_u'),_parity_selection_rule_upper_or_lower))
+
 def _collect_level(level_class):
     """Get prototype keys and defining qn from a level class."""
     keys = []
@@ -605,10 +614,12 @@ class Generic(levels.Base):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
         ## try get all defining qn
-        for key in self.defining_qn :
+        for key in self.defining_qn:
             try: 
                 self[key]
             except InferException:
+                if self.verbose:
+                    warnings.warn(f'cannot determine defining level key: {key}')
                 pass
         if u_or_l not in ('u','l'):
             raise Exception("u_or_l must be 'u' or 'l'")
