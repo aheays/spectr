@@ -153,6 +153,7 @@ prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", 
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[(('A',),lambda self,τ: 5.309e-12*A,)])
+prototypes['Γresidual'] = dict(description="Residual error of natural linewidth" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],default_step=1e-3)
 prototypes['τ'] = dict(description="Total decay lifetime",units="s", kind='f', infer=[(('A',), lambda self,A: 1/A,)])       
 prototypes['A'] = dict(description="Total decay rate",units="s-1", kind='f', infer=[(('Γ',),lambda self,Γ: Γ/5.309e-12,)])
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin", kind='f',fmt='>0.1f',infer=[])
@@ -474,7 +475,7 @@ class Generic(Base):
         'label',
         'point_group',
         'E','Ee','ZPE','Ereduced','Eresidual','Ereduced_common',
-        'Γ','ΓD',
+        'Γ','Γresidual','ΓD',
         'J','N','S',
         'g','gnuclear','Inuclear',
         'Teq','Tex','Z','α',
