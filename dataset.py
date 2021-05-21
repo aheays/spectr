@@ -142,10 +142,10 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
-    def set(self,key_assoc,value,index=None,match=idict(),**match_kwargs):
+    def set(self,key_assoc,value,index=None,match=None,**match_kwargs):
         """Set value of key or (key,assoc)"""
         key,assoc = self._separate_key_assoc(key_assoc)
-        match = {**match,**match_kwargs}
+        match = {**({} if match is None else match),**match_kwargs}
         ## set value or associated data
         if assoc is None:
             return self._set_value(key,value,index,match)
@@ -291,8 +291,14 @@ class Dataset(optimise.Optimiser):
         for dependency in dependencies:
             self._data[dependency]['inferred_to'].append(key)
 
-    def get(self,key,index=None,units=None):
+    def get(self,key,index=None,units=None,match=None,**match_kwargs):
         """Get value for key or (key,assoc)."""
+        match = {**({} if match is None else match),**match_kwargs}
+        if len(match) > 0:
+            if index is None:
+                index = self.match(match)
+            else:
+                index &= self.match(match)
         if isinstance(key,str):
             return self._get_data(key,index,units)
         else:
