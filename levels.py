@@ -439,11 +439,11 @@ class Base(Dataset):
             # self.set_parameter(key,val,match=qn)
             # self.pop_format_input_function()
 
-    def assert_unique_qn(self):
+    def assert_unique_qn(self,verbose=False):
         t,i,c = np.unique(self['_qnhash'],return_index=True,return_counts=True)
         if len(i) < len(self):
             j = [ti for ti,tc in zip(i,c) if tc > 1]
-            if self.verbose:
+            if verbose or self.verbose:
                 print('\nNon-unique levels:\n')
                 print(self[j])
                 print()

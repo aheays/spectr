@@ -922,13 +922,14 @@ class Generic(levels.Base):
             level_match=idict(), # only copy these levels
             check_for_unused_levels=False,
             check_for_unconstrained_lines=False,
+            verbose=False,
             _cache=(),
     ):
         """Copy all non-inferred keys in level into upper or lower levels in
         self with matching quantum numbers."""
         ## store as much information about indices etc in cache
         if len(_cache) == 0:
-            level.assert_unique_qn()
+            level.assert_unique_qn(verbose=verbose)
             ## substitute both upper and lower levels
             all_ilevel = []
             for suffix in ('_u','_l'):
@@ -963,7 +964,7 @@ class Generic(levels.Base):
                     i,c = np.unique(iline,return_counts=True)
                     upper_or_lower = ( "upper" if suffix=="_u" else "lower" )
                     if len(i) < len(self):
-                        if self.verbose:
+                        if verbose or self.verbose:
                             print(f'\nLines with unconstrained {upper_or_lower} level:\n')
                             print(self[[j for j in range(len(self)) if j not in i]])
                             print()
@@ -977,7 +978,7 @@ class Generic(levels.Base):
             if check_for_unused_levels:
                 i,c = np.unique(np.concatenate(all_ilevel),return_counts=True)
                 if len(i) < len(level):
-                    if self.verbose:
+                    if verbose or self.verbose:
                         print('\nLevels with no corresponding lines:\n')
                         print(level[[j for j in range(len(level)) if j not in i]])
                         print()
