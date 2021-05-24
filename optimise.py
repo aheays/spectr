@@ -669,6 +669,7 @@ class Optimiser:
                     # print("Optimisation parameters:")
                     # print('    '+pformat(least_squares_options).replace('\n','\n    '))
                 result = optimize.least_squares(**least_squares_options)
+                self._optimisation_function(result['x'])
                 if verbose or self.verbose:
                     print('optimisation complete')
                     print('    number parameters:    ',len(result['x']))
@@ -682,9 +683,9 @@ class Optimiser:
                 self.calculate_uncertainty()
             except KeyboardInterrupt:
                 pass
-        ## rest to final solution
+        ## recalculate final solution
         residual = self.construct()
-        if self.monitor_frequency != 'never':
+        if self._monitor_frequency != 'never':
             self.monitor() 
         ## describe result
         if verbose or self.verbose:
