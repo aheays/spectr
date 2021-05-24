@@ -64,6 +64,7 @@ class Dataset(optimise.Optimiser):
             self,
             name=None,
             permit_nonprototyped_data = True,
+            permit_indexing = True,
             auto_defaults = False, # if no data or way to infer it, then set to default prototype value if this data is needed
             prototypes = None,  # a dictionary of prototypes
             load_from_file = None,
@@ -78,6 +79,7 @@ class Dataset(optimise.Optimiser):
         self.attributes = {} # applies to all data
         self._last_modify_data_time = timestamp() # when data is changed this is update
         self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self.prototypes
+        self.permit_indexing = permit_indexing # Data can be added to the end of arrays, but not removal or rearranging of data
         self.auto_defaults = auto_defaults # set default values if necessary automatically
         self.verbose = False                             # print extra information at various places
         ## get prototypes from defaults and then input argument
@@ -417,7 +419,7 @@ class Dataset(optimise.Optimiser):
                     or np.any(self.get(key,index=index) != value.value) # data has changed some other way and differs from parameter
                     or (self.is_set((key,'unc'))
                         and not np.isnan(value.unc)
-                        and (np.any(self.get(key,'unc',index=index) != value.unc))) # data has changed some other way and differs from parameter
+                        and (np.any(self.get((key,'unc'),index=index) != value.unc))) # data has changed some other way and differs from parameter
                 ):
                 self.set(key,value.value,index=index)
                 self.set((key,'unc'),value.unc,index=index)
@@ -654,6 +656,8 @@ class Dataset(optimise.Optimiser):
 
     def index(self,index):
         """Index all array data in place."""
+        if not self.permit_indexing:
+            raise Exception('Indexing not permitted')
         original_length = len(self)
         for data in self._data.values():
             data['value'] = data['value'][:original_length][index]
@@ -664,7 +668,6 @@ class Dataset(optimise.Optimiser):
     def remove(self,index):
         """Remove boolean indices."""
         self.index(~index)
-
 
     def copy(
             self,
@@ -1334,13 +1337,44 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
 
-    @optimise_method(add_construct_function=True)
-    def concatenate(self,level,keys='old',_cache=None):
+    def concatenate(self,level,keys='old'):
         """Extend self by level using keys existing in self. New data updated
         on optimisaion if level changes."""
-        if len(_cache) == 0:
-            ## extend with new data
-            level.construct()
+        ## limit to keys
+        if keys == 'old':
+            keys = list(self.explicitly_set_keys())
+        elif keys == 'new':
+            keys = list(level.explicitly_set_keys())
+        elif keys == 'all':
+            keys = {*self.explicitly_set_keys(),*level.explicitly_set_keys()}
+        ## make sure necessary keys are known
+        self.assert_known(*keys)
+        self.unlink_inferences(keys)
+        for key in list(self):
+            if key not in keys:
+                self.unset(key)
+        ## set new data
+        old_length = len(self)
+        new_length = len(level)
+        total_length = len(self) + len(level)
+        self._reallocate(total_length)
+        ## set extending data and associated data known to either
+        ## new or old
+        for key,data in self._data.items():
+            data['value'][old_length:total_length] = data['cast'](level[key])
+            for assoc in {*data['assoc'],*level._data[key]['assoc']}:
+                self.assert_known((key,assoc))
+                cast = self.associated_kinds[assoc]['cast']
+                data['assoc'][assoc][old_length:total_length] = cast(level[key,assoc])
+
+    @optimise_method(add_construct_function= True)
+    def concatenate_and_optimise(self,level,keys='old',_cache=None):
+        """Extend self by level using keys existing in self. New data updated
+        on optimisaion if level changes."""
+        if self._clean_construct and 'total_length' not in _cache:
+            ## concatenate data if it hasn't been dont before
+            self.permit_indexing = False
+            level.permit_indexing = False
             ## limit to keys
             if keys == 'old':
                 keys = list(self.explicitly_set_keys())
@@ -1348,32 +1382,16 @@ class Dataset(optimise.Optimiser):
                 keys = list(level.explicitly_set_keys())
             elif keys == 'all':
                 keys = {*self.explicitly_set_keys(),*level.explicitly_set_keys()}
-            ## make sure necessary keys are known
-            self.assert_known(*keys)
-            self.unlink_inferences(keys)
-            for key in list(self):
-                if key not in keys:
-                    self.unset(key)
-            ## set new data
             old_length = len(self)
             new_length = len(level)
             total_length = len(self) + len(level)
+            self.concatenate(level,keys)
             self._reallocate(total_length)
-            ## set extending data and associated data known to either
-            ## new or old
-            for key,data in self._data.items():
-                data['value'][old_length:total_length] = data['cast'](level[key])
-                for assoc in {*data['assoc'],*level._data[key]['assoc']}:
-                    self.assert_known((key,assoc))
-                    cast = self.associated_kinds[assoc]['cast']
-                    data['assoc'][assoc][old_length:total_length] = cast(level[key,assoc])
             _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
         else:
             ## update data in place
-            keys,old_length,new_length,total_length = _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length']
-            assert len(level) == new_length
-            index = slice(old_length,total_length)
-            for key in keys:
+            index = slice(_cache['old_length'],_cache['total_length'])
+            for key in _cache['keys']:
                 self.set(key,level[key],index)
                 for assoc in self._data[key]['assoc']:
                     self.set((key,assoc),level[key,assoc],index)
@@ -1676,10 +1694,20 @@ def find_common(x,y,keys=None,verbose=False):
     xhash = np.array([hash(t) for t in x.row_data(keys=keys)])
     yhash = np.array([hash(t) for t in y.row_data(keys=keys)])
     ## get sorted hashes, checking for uniqueness
-    xhash,ixhash = np.unique(xhash,return_index=True)
-    assert len(xhash) == len(x), f'Non-unique combinations of keys in x: {repr(keys)}'
+    xhash,ixhash,inv_xhash,count_xhash = np.unique(xhash,return_index=True,return_inverse=True,return_counts=True)
+    if len(xhash) != len(x):
+        if verbose:
+            print("Duplicate key combinations in x:")
+            for i in tools.find(count_xhash>1):
+                print(f'    count = {count_xhash[i]},',repr({key:x[key][i] for key in keys}))
+        raise Exception(f'There is {len(x)-len(xhash)} duplicate key combinations in x: {repr(keys)}. Set verbose=True to list them.')
     yhash,iyhash = np.unique(yhash,return_index=True)
-    assert len(yhash) == len(y), f'Non-unique combinations of keys in y: {repr(keys)}'
+    if len(yhash) != len(y):
+        if verbose:
+            print("Duplicate key combinations in y:")
+            for i in tools.find(count_yhash>1):
+                print(f'    count = {count_yhash[i]},',repr({key:y[key][i] for key in keys}))
+        raise Exception(f'Non-unique combinations of keys in y: {repr(keys)}')
     ## use np.searchsorted to find one set of hashes in the other
     iy = np.arange(len(yhash))
     ix = np.searchsorted(xhash,yhash)

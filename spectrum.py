@@ -143,9 +143,7 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
 
     @optimise_method()
-    def set_soleil_sidebands(self,yscale=0.1,shift=1000,
-                             signum_magnitude=None,
-                             _cache=idict()):
+    def set_soleil_sidebands(self,yscale=0.1,shift=1000,signum_magnitude=None,_cache=None):
         """Adds two copies of spectrum onto itself shifted rightwards and
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
@@ -153,7 +151,6 @@ class Experiment(Optimiser):
             x,y,header = load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
-
         ## get signum convolution kernel
         if signum_magnitude is not None:
             dx = (x[-1]-x[0])/(len(x)-1)
@@ -1313,7 +1310,7 @@ class Model(Optimiser):
     def convolve_with_soleil_instrument_function(
             self,
             sinc_fwhm=None,
-            gaussian_fwhm=None,
+            gaussian_fwhm=0.1,
             lorentzian_fwhm=None,
             signum_magnitude=None,
             sinc_fwhms_to_include=200,
@@ -1328,9 +1325,9 @@ class Model(Optimiser):
         if sinc_fwhm is None:
             sinc_fwhm = self.experiment.experimental_parameters['sinc_FWHM']
         if abs(self.experiment.experimental_parameters['sinc_FWHM']-sinc_fwhm)>(1e-5*sinc_fwhm):
-            warnings.warn('sinc FWHM does not match soleil data file header')
-        if gaussian_fwhm is None:
-            gaussian_fwhm = 0.1
+            warnings.warn(f'sinc FWHM {float(sinc_fwhm)} does not match soleil data file header {float(self.experiment.experimental_parameters["sinc_FWHM"])}')
+        # if gaussian_fwhm is None:
+            # gaussian_fwhm = 0.1
         ## compute instrument function
         dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
         _cache['dx'] = dx
@@ -1611,8 +1608,8 @@ class Model(Optimiser):
         if self._figure is not None:
             ## svg / pdf are the fastest output formats. Significantly
             ## faster if there is not text on the figure
-            # self._figure.savefig(directory+'/figure.png',dpi=300)
-            self._figure.savefig(directory+'/figure.svg')
+            self._figure.savefig(directory+'/figure.png',dpi=300)
+            # self._figure.savefig(directory+'/figure.svg')
         if output_transition_linelists:
             tools.mkdir_if_necessary(directory+'/transitions')
             for transition in self.absorption_transitions:
