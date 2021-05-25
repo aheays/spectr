@@ -97,7 +97,6 @@ class VibLevel(Optimiser):
         else:
             self.H *= 0    
         
-
     def _finalise_construct(self):
         """The actual matrix diagonlisation is done last."""
         ## if first run or model changed then construct Hamiltonian
@@ -162,17 +161,17 @@ class VibLevel(Optimiser):
             residual = []
             if self.experimental_level.is_known('E'):
                 Eresidual = self.level['Eresidual'][imod] = self.experimental_level['E'][iexp] - self.level['E'][imod]
-                if self.experimental_level.is_known('E','unc'):
+                if self.experimental_level.is_known(('E','unc')):
                     self.level['Eresidual','unc'][imod] = self.experimental_level['E','unc'][iexp]
                     i = self.level['Eresidual','unc'][imod] > 0
-                    Eresidual[i] /= self.level['Eresidual','unc'][imod]/[i]
+                    Eresidual[i] /= self.level['Eresidual','unc'][imod][i]
                 residual.append(Eresidual)
             if self.experimental_level.is_known('Γ'):
                 Γresidual = self.level['Γresidual'][imod] = self.experimental_level['Γ'][iexp] - self.level['Γ'][imod]
-                if self.experimental_level.is_known('Γ','unc'):
+                if self.experimental_level.is_known(('Γ','unc')):
                     self.level['Γresidual','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
                     i = self.level['Γresidual','unc'][imod] > 0
-                    Γresidual[i] /= self.level['Γresidual','unc'][imod]/[i]
+                    Γresidual[i] /= self.level['Γresidual','unc'][imod][i]
                 residual.append(Γresidual)
             residual = np.concatenate(residual,dtype=float)
             return residual

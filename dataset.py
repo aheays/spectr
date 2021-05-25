@@ -585,6 +585,8 @@ class Dataset(optimise.Optimiser):
        
     def clear(self):
         """Clear all data"""
+        if not self.permit_indexing:
+            raise Exception('Cannot clear dataset with not permit_indexing.')
         self._last_modify_value_time = timestamp()
         self._length = 0
         self._data.clear()
@@ -602,8 +604,6 @@ class Dataset(optimise.Optimiser):
             else:
                 if assoc in self._data[key]['assoc']:
                     self._data[key]['assoc'].pop(assoc)
-                
-                
 
     def pop(self,key):
         """Return data and unset key."""
@@ -689,7 +689,7 @@ class Dataset(optimise.Optimiser):
         retval.pop_format_input_function()
         return retval
 
-    @optimise_method(add_construct_function=False)
+    # @optimise_method(add_construct_function=False)
     def copy_from(
             self,
             source,             # Dataset to copy
@@ -807,7 +807,9 @@ class Dataset(optimise.Optimiser):
         """Returns a copy reduced to matching values."""
         return self.copy(
             index=self.match(*args,**kwargs),
-            copy_assoc=True,)
+            copy_assoc=True,
+            copy_inferred_data= True,
+        )
 
     def limit_to_match(self,**keys_vals):
         self.index(self.match(**keys_vals))
@@ -1386,7 +1388,6 @@ class Dataset(optimise.Optimiser):
             new_length = len(level)
             total_length = len(self) + len(level)
             self.concatenate(level,keys)
-            self._reallocate(total_length)
             _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
         else:
             ## update data in place
