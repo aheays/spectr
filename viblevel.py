@@ -14,6 +14,7 @@ from . import levels,lines
 from . import quantum_numbers
 from . import tools
 from . import dataset
+from . import plotting
 from .dataset import Dataset
 from .tools import find,cache
 from .optimise import Optimiser,P,optimise_method
@@ -96,28 +97,49 @@ class VibLevel(Optimiser):
             self.H = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
         else:
             self.H *= 0    
-        
+
     def _finalise_construct(self):
         """The actual matrix diagonlisation is done last."""
         ## if first run or model changed then construct Hamiltonian
         ## and blank rotational level, and determine which levels are
         ## actually allowed
         if self._clean_construct:
+            ## levels that exist
+            self.allowed = np.stack([self.vibrational_spin_level['Ω'] <= J for J in self.J])
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
             self.level.clear()
-            self.level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
+            self.level['J'] = np.concatenate([np.full(np.sum(i),J) for J,i in zip(self.J,self.allowed)])
             for key in self.vibrational_spin_level:
-                self.level[key] = np.tile(self.vibrational_spin_level[key],len(self.J))
+                self.level[key] = np.concatenate([self.vibrational_spin_level[key][i] for i in self.allowed])
+            if self.experimental_level is not None:
+                ## get all experimental_levels for defined
+                ## levels, nan for missing
+                self.level['Eref'] = nan
+                self.level['Γref'] = nan
+                iexp,imod = dataset.find_common(self.experimental_level,self.level,keys=self.level.defining_qn)
+                self.level['Eref'][imod] = self.experimental_level['E'][iexp]
+                self.level['Eref','unc'][imod] = self.experimental_level['E','unc'][iexp]
+                self.level['Γref'][imod] = self.experimental_level['Γ'][iexp]
+                self.level['Γref','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
+            self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
+        else:
+            iexp = self._finalise_construct_cache['iexp']
+            imod = self._finalise_construct_cache['imod']
+
         ## nothing to be done
         if len(self.vibrational_spin_level) == 0:
             return
+
         ## compute mixed energies and mixing coefficients
         self.eigvals = {}             # eignvalues
         self.eigvects = {}             # mixing coefficients
         for iJ,J in enumerate(self.J):
             H = self.H[iJ,:,:]
-            H[np.isnan(H)] = 0.0 # better to solve at source
+            iallowed = self.allowed[iJ]
+            iforbidden = ~iallowed
+            H[iforbidden,:] = H[:,iforbidden] = 0
+
             ## diagonalise independent block submatrices separately
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
             eigvects = np.zeros(self.H.shape[1:3],dtype=float)
@@ -128,53 +150,36 @@ class VibLevel(Optimiser):
                     eigvalsi,eigvectsi = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
                 eigvals[i] = eigvalsi
                 eigvects[np.ix_(i,i)] = np.real(eigvectsi)
-            ## ## diagonaliase all at once
-            ## eigvals,eigvects = linalg.eig(H)
+            eigvals = eigvals[iallowed]
+            eigvects = eigvects[np.ix_(iallowed,iallowed)]
+
+            ## reorder to get minimial differencd with reference data
+            ## -- approximately
+            if self.sort_eigvals:
+                for ef in (+1,-1):
+                    i = self.vibrational_spin_level.match(ef=ef)
+                    i = i[self.vibrational_spin_level.match(Ω_max=J)]
+                    j = self.level.match(J=J,ef=ef,Ω_max=J)
+                    # print('DEBUG:', )
+                    # print('DEBUG:', J,ef)
+                    k = _permute_to_minimise_difference(eigvals[i],self.level.get('Eref',j))
+                    # print('DEBUG:', k)
+                    eigvals[i] = eigvals[i][k]
+                    eigvects[np.ix_(i,i)] = eigvects[np.ix_(i,i)][np.ix_(k,k)]
+
+            ## save eigenvalues
             self.eigvals[J] = eigvals
             self.eigvects[J] = eigvects
+
         ## insert energies into level
         t = np.concatenate(list(self.eigvals.values()))
         self.level['E'] = t.real
         self.level['Γ'] = t.imag
-        ## compute residual
-        if self.experimental_level is not None:
-            if (not hasattr(self,'_construct_levels_cache')
-                or self._clean_construct
-                or self.experimental_level._last_construct_time > self._last_construct_time):
-                ## cache common quantum number indices
-                iexp,imod = dataset.find_common(
-                    self.experimental_level,
-                    self.level,
-                    keys=self.level.defining_qn)
-                if np.sum(iexp) == 0:
-                    raise Exception('No matching experimental data')
-                ## initalis residual errors
-                self.level['Eresidual'] = nan
-                self.level['Eresidual','unc'] = nan
-                self.level['Γresidual'] = nan
-                self.level['Γresidual','unc'] = nan
-                self._construct_levels_cache = {'iexp':iexp,'imod':imod}
-            iexp,imod = self._construct_levels_cache['iexp'],self._construct_levels_cache['imod']
-            ## Get residual error of E and Γ and set in
-            ## self.level. Weight by inverse uncertainty of
-            ## experimental if it is known
-            residual = []
-            if self.experimental_level.is_known('E'):
-                Eresidual = self.level['Eresidual'][imod] = self.experimental_level['E'][iexp] - self.level['E'][imod]
-                if self.experimental_level.is_known(('E','unc')):
-                    self.level['Eresidual','unc'][imod] = self.experimental_level['E','unc'][iexp]
-                    i = self.level['Eresidual','unc'][imod] > 0
-                    Eresidual[i] /= self.level['Eresidual','unc'][imod][i]
-                residual.append(Eresidual)
-            if self.experimental_level.is_known('Γ'):
-                Γresidual = self.level['Γresidual'][imod] = self.experimental_level['Γ'][iexp] - self.level['Γ'][imod]
-                if self.experimental_level.is_known(('Γ','unc')):
-                    self.level['Γresidual','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
-                    i = self.level['Γresidual','unc'][imod] > 0
-                    Γresidual[i] /= self.level['Γresidual','unc'][imod][i]
-                residual.append(Γresidual)
-            residual = np.concatenate(residual,dtype=float)
-            return residual
+
+        ## compute residual if possible
+        residual = np.concatenate((self.level['Eres'],self.level['Γres']),dtype=float)
+        residual = residual[~np.isnan(residual)]
+        return residual
 
     @optimise_method()
     def add_level(self,name,Γv=0,_cache=None,**kwargs):
@@ -286,10 +291,36 @@ class VibLevel(Optimiser):
             self.H[:,i+ibeg,j+jbeg] += t
             self.H[:,j+jbeg,i+ibeg] += np.conj(t)
 
-    def plot(self,**kwargs):
-        kwargs.setdefault('xkey','J')
-        kwargs.setdefault('ykeys','E')
-        return self.level.plot(**kwargs)
+    def plot(self,fig=None,**plot_kwargs):
+        if fig is None:
+            fig = plotting.gcf()
+        fig.clf()
+        ax0 = plotting.subplot(0,fig=fig)
+        ax0.set_title('E')
+        legend_data = []
+        for ilevel,(qn,m) in enumerate(self.level.unique_dicts_matches('species','label','v')):
+            for isublevel,(qn2,m2) in enumerate(m.unique_dicts_matches('Σ','ef')):
+                plot_kwargs |= dict(
+                    color=plotting.newcolor(ilevel),
+                    linestyle=plotting.newlinestyle(isublevel),
+                    marker= plotting.newmarker(isublevel),
+                    fillstyle='none',
+                )
+                tkwargs = plot_kwargs | {'label':quantum_numbers.encode_linear_level(**qn,**qn2) ,}
+                legend_data.append(tkwargs)
+                if self.experimental_level is None:
+                    ax0.plot(m2['J'],m2['E'],**tkwargs)
+                else:
+                    ax1 = plotting.subplot(1,fig=fig)
+                    ax1.set_title('Eres')
+                    tkwargs = plot_kwargs | {'marker':'',}
+                    ax0.plot(m2['J'],m2['E'],**tkwargs)
+                    tkwargs = plot_kwargs | {'linestyle':'',}
+                    ax0.errorbar(m2['J'],m2['Eref'],m2['Eref','unc'],**tkwargs)
+                    ax1.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**tkwargs)
+
+        plotting.legend(*legend_data,show_style=True,ax=ax0)
+
         
 class VibLine(Optimiser):
     
@@ -960,6 +991,23 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         eigvals[not_found] = (eigvals[not_found])[best_permutation]
     return eigvals,eigvects
 
+def _permute_to_minimise_difference(x,y):
+    """Get rearrangment of x that approximately minimises its rms
+    different relative to y."""
+    t0,t1 = np.meshgrid(x,y)
+    Δ = np.abs(t0-t1)
+    k = np.arange(len(Δ))
+    while np.any(~np.isnan(Δ)):
+        with np.warnings.catch_warnings(): # this particular nan warning will be silenced for this block, occurs when some rows of Δ are all NaN
+            np.warnings.filterwarnings('ignore', r'All-NaN (slice|axis) encountered')
+            i = np.nanargmin(np.nanmin(Δ,1))
+            j = np.nanargmin(Δ[i,:])
+            if i != j:
+                Δ[i,:],Δ[j,:] = Δ[j,:],Δ[i,:]
+                k[i],k[j] = k[j],k[i]
+            Δ[j,:] = Δ[:,j] = np.nan
+    return k
+
 def calc_viblevel(
         name=None,
         species=None,J=None,
@@ -1008,3 +1056,4 @@ def calc_line(
             v.add_transition_moment(name1,name2,**kwargs)
     v.construct()
     return v.line
+

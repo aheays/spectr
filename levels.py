@@ -72,7 +72,8 @@ def _f0(self,species,label,v,Σ,ef,J):
     
 prototypes['E'] = dict(description="Level energy relative to the least",units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('Ee','ZPE'),lambda self,Ee,ZPE: Ee-ZPE),(('species','label','v','Σ','ef','J'),_f0)],default_step=1e-3)
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','ZPE'),lambda self,E,ZPE: E+ZPE),],default_step=1e-3)
-prototypes['Eresidual'] = dict(description="Residual error of level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],default_step=1e-3)
+prototypes['Eref'] = dict(description="Reference level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[])
+prototypes['Eres'] = dict(description="Residual error of level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eref'),lambda self,E,Eref: Eref-E)])
 prototypes['ZPE'] = dict(description="Zero-point energy of the lowest level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'ZPE')),],default_step=1e-3)
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
 prototypes['ΓD'] = dict(description="Gaussian Doppler width",units="cm-1 FWHM",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν)])
@@ -153,7 +154,8 @@ prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", 
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[(('A',),lambda self,τ: 5.309e-12*A,)])
-prototypes['Γresidual'] = dict(description="Residual error of natural linewidth" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],default_step=1e-3)
+prototypes['Γref'] = dict(description="Reference level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[])
+prototypes['Γres'] = dict(description="Residual error of level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[(('Γ','Γref'),lambda self,Γ,Γref: Γ-Γref)])
 prototypes['τ'] = dict(description="Total decay lifetime",units="s", kind='f', infer=[(('A',), lambda self,A: 1/A,)])       
 prototypes['A'] = dict(description="Total decay rate",units="s-1", kind='f', infer=[(('Γ',),lambda self,Γ: Γ/5.309e-12,)])
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin", kind='f',fmt='>0.1f',infer=[])
@@ -474,8 +476,8 @@ class Generic(Base):
         'species','chemical_species',
         'label',
         'point_group',
-        'E','Ee','ZPE','Ereduced','Eresidual','Ereduced_common',
-        'Γ','Γresidual','ΓD',
+        'E','Ee','ZPE','Ereduced','Ereduced_common','Eref','Eres',
+        'Γ','ΓD','Γref','Γres',
         'J','N','S',
         'g','gnuclear','Inuclear',
         'Teq','Tex','Z','α',
