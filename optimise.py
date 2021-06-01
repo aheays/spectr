@@ -567,7 +567,7 @@ class Optimiser:
                     and rms < self._rms_minimum)
                 ## every time rms decreases by at least self._monitor_frequency_significant_rms_decrease_fraction
                 or (self._monitor_frequency=='significant rms decrease'
-                    and (self._rms_minimum-rms)/rms < self._monitor_frequency_significant_rms_decrease_fraction)
+                    and abs(self._rms_minimum-rms)/rms > self._monitor_frequency_significant_rms_decrease_fraction)
         ):
             self.monitor()
         ## print rms
