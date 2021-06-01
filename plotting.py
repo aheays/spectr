@@ -1700,7 +1700,7 @@ def annotate_line(
     elif ypos in ['center']:
         annotate_kwargs.setdefault('va','center')
         ypos = ydata[i]
-    elif ypos == None or isnumeric(ypos):
+    elif ypos == None or tools.isnumeric(ypos):
         annotate_kwargs.setdefault('va','center')
     else:
         raise Exception('bad ypos: ',repr(ypos))
