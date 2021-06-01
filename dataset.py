@@ -1374,9 +1374,9 @@ class Dataset(optimise.Optimiser):
         """Extend self by level using keys existing in self. New data updated
         on optimisaion if level changes."""
         if self._clean_construct and 'total_length' not in _cache:
-            ## concatenate data if it hasn't been dont before
+            ## concatenate data if it hasn't been done before
             self.permit_indexing = False
-            level.permit_indexing = False
+            # level.permit_indexing = False
             ## limit to keys
             if keys == 'old':
                 keys = list(self.explicitly_set_keys())
