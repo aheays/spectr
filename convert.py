@@ -24,6 +24,8 @@ groups = {
         'solar_radius':6.955e8         ,
         'AU'          :1.496e11        ,  # astronomical units       ,
         'au'          :5.2917721092e-11, #  atomic units (Bohr radius, a0),
+        'Bohr'        :5.2917721092e-11, #  atomic units (Bohr radius, a0),
+        'a0'          :5.2917721092e-11, #  atomic units (Bohr radius, a0),
         'Å'           :1e-10             ,
     },
 
