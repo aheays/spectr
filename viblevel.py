@@ -49,6 +49,7 @@ class VibLevel(Optimiser):
         self.J = J
         self.verbose = False
         self.sort_eigvals = True # try to reorder eigenvalues/eigenvectors after diagonalisation into diabatic levels
+        self.sort_eigvals_to_match_experiment = False
         ## inputs / outputs of diagonalisation
         self.eigvals = None
         self.eigvects = None
@@ -122,15 +123,14 @@ class VibLevel(Optimiser):
                 self.level['Eref','unc'][imod] = self.experimental_level['E','unc'][iexp]
                 self.level['Γref'][imod] = self.experimental_level['Γ'][iexp]
                 self.level['Γref','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
-            self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
+                self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
         else:
-            iexp = self._finalise_construct_cache['iexp']
-            imod = self._finalise_construct_cache['imod']
-
+            if self.experimental_level is not None:
+                iexp = self._finalise_construct_cache['iexp']
+                imod = self._finalise_construct_cache['imod']
         ## nothing to be done
         if len(self.vibrational_spin_level) == 0:
             return
-
         ## compute mixed energies and mixing coefficients
         self.eigvals = {}             # eignvalues
         self.eigvects = {}             # mixing coefficients
@@ -139,7 +139,6 @@ class VibLevel(Optimiser):
             iallowed = self.allowed[iJ]
             iforbidden = ~iallowed
             H[iforbidden,:] = H[:,iforbidden] = 0
-
             ## diagonalise independent block submatrices separately
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
             eigvects = np.zeros(self.H.shape[1:3],dtype=float)
@@ -152,34 +151,28 @@ class VibLevel(Optimiser):
                 eigvects[np.ix_(i,i)] = np.real(eigvectsi)
             eigvals = eigvals[iallowed]
             eigvects = eigvects[np.ix_(iallowed,iallowed)]
-
             ## reorder to get minimial differencd with reference data
             ## -- approximately
-            if self.sort_eigvals:
+            if self.experimental_level is not None and self.sort_eigvals_to_match_experiment:
                 for ef in (+1,-1):
                     i = self.vibrational_spin_level.match(ef=ef)
                     i = i[self.vibrational_spin_level.match(Ω_max=J)]
                     j = self.level.match(J=J,ef=ef,Ω_max=J)
-                    # print('DEBUG:', )
-                    # print('DEBUG:', J,ef)
                     k = _permute_to_minimise_difference(eigvals[i],self.level.get('Eref',j))
-                    # print('DEBUG:', k)
                     eigvals[i] = eigvals[i][k]
                     eigvects[np.ix_(i,i)] = eigvects[np.ix_(i,i)][np.ix_(k,k)]
-
             ## save eigenvalues
             self.eigvals[J] = eigvals
             self.eigvects[J] = eigvects
-
         ## insert energies into level
         t = np.concatenate(list(self.eigvals.values()))
         self.level['E'] = t.real
         self.level['Γ'] = t.imag
-
         ## compute residual if possible
-        residual = np.concatenate((self.level['Eres'],self.level['Γres']),dtype=float)
-        residual = residual[~np.isnan(residual)]
-        return residual
+        if self.experimental_level is not None:
+            residual = np.concatenate((self.level['Eres'],self.level['Γres']),dtype=float)
+            residual = residual[~np.isnan(residual)]
+            return residual
 
     @optimise_method()
     def add_level(self,name,Γv=0,_cache=None,**kwargs):
@@ -292,9 +285,11 @@ class VibLevel(Optimiser):
             self.H[:,j+jbeg,i+ibeg] += np.conj(t)
 
     def plot(self,fig=None,**plot_kwargs):
+        """Plot data and residual error."""
         if fig is None:
             fig = plotting.gcf()
         fig.clf()
+
         ax0 = plotting.subplot(0,fig=fig)
         ax0.set_title('E')
         legend_data = []
@@ -308,7 +303,11 @@ class VibLevel(Optimiser):
                 )
                 tkwargs = plot_kwargs | {'label':quantum_numbers.encode_linear_level(**qn,**qn2) ,}
                 legend_data.append(tkwargs)
+
+
+
                 if self.experimental_level is None:
+                    tkwargs = plot_kwargs
                     ax0.plot(m2['J'],m2['E'],**tkwargs)
                 else:
                     ax1 = plotting.subplot(1,fig=fig)
@@ -318,6 +317,22 @@ class VibLevel(Optimiser):
                     tkwargs = plot_kwargs | {'linestyle':'',}
                     ax0.errorbar(m2['J'],m2['Eref'],m2['Eref','unc'],**tkwargs)
                     ax1.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**tkwargs)
+
+                if np.any(self.level['Γ'] > 0):
+                    ax2 = plotting.subplot(2,fig=fig)
+                    ax2.set_title('Γ')
+                    if self.experimental_level is None:
+                        tkwargs = plot_kwargs
+                        ax2.plot(m2['J'],m2['Γ'],**tkwargs)
+                    else:
+                        ax3 = plotting.subplot(3,fig=fig)
+                        ax3.set_title('Γres')
+                        tkwargs = plot_kwargs | {'marker':'',}
+                        ax2.plot(m2['J'],m2['Γ'],**tkwargs)
+                        tkwargs = plot_kwargs | {'linestyle':'',}
+                        ax2.errorbar(m2['J'],m2['Γref'],m2['Γref','unc'],**tkwargs)
+                        ax3.errorbar(m2['J'],m2['Γres'],m2['Γres','unc'],**tkwargs)
+
 
         plotting.legend(*legend_data,show_style=True,ax=ax0)
 
