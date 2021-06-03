@@ -39,7 +39,7 @@ class Dataset(optimise.Optimiser):
 
         'unc'      : {'description':'Uncertainty'                         , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':0.0   ,},
         'step'     : {'description':'Numerical differentiation step size' , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,},
-        'vary'     : {'description':'Whether to vary during optimisation' , 'kind':'b' , 'valid_kinds':('f',), 'cast':convert_to_bool_vector_array       ,'fmt':'5'     ,'default':False ,},
+        'vary'     : {'description':'Whether to vary during optimisation' , 'kind':'b' , 'valid_kinds':('f',), 'cast':convert_to_bool_vector_array       ,'fmt':''      ,'default':False ,},
         'residual' : {'description':'Residual error'                      , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'8.2e'  ,'default':nan   ,},
         'ref'      : {'description':'Source reference'                    , 'kind':'U' , 'valid_kinds':('f',), 'cast':lambda x:np.asarray(x,dtype='U20') ,'fmt':'s'     ,'default':nan   ,},
 
@@ -133,7 +133,7 @@ class Dataset(optimise.Optimiser):
             elif isinstance(val,optimise.Parameter):
                 ## an optimisable parameter (input function already
                 ## handled)
-                self.set_parameter(key,val)
+                self.set_and_optimise(key,val)
                 self.pop_format_input_function()
             else:
                 self[key] = val
@@ -390,8 +390,8 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
-    @optimise_method(format_single_line=True)
-    def set_parameter(
+    @optimise_method(format_lines='single')
+    def set_and_optimise(
             self,
             key,
             value,          # a scalar or Parameter
@@ -432,7 +432,7 @@ class Dataset(optimise.Optimiser):
                 or np.any(self.get(key,index=index) != value)): # data has changed some other way and differs from parameter
                 self.set(key,value=value,index=index)
 
-    @optimise_method(format_single_line=True)
+    @optimise_method(format_lines='single')
     def set_spline(self,xkey,ykey,knots,order=3,match=None,index=None,_cache=None,**match_kwargs):
         """Set ykey to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
@@ -581,7 +581,7 @@ class Dataset(optimise.Optimiser):
         if key in self.attributes:
             self.attributes[key] = value
         elif isinstance(value,optimise.P):
-            self.set_parameter(key,value,index=index)
+            self.set_and_optimise(key,value,index=index)
         else:
             self.set(key,value,index=index)
        
@@ -1070,8 +1070,10 @@ class Dataset(optimise.Optimiser):
             if len(self) == 0:
                 break
             formatted_key = ( "'"+key+"'" if quote_keys else key )
-            if (unique_values_in_header
-                and len(tval:=self.unique(key)) == 1
+            if (
+                    unique_values_in_header # input parameter switch
+                    and (not include_assoc or len(self._data[key]['assoc'])==0) # neglect if there is associated data (convenience)
+                    and len(tval:=self.unique(key)) == 1 # data is unique
                 ):
                 ## format value for header
                 header_values[key] = tval[0]
@@ -1083,6 +1085,16 @@ class Dataset(optimise.Optimiser):
                     vals = ["'"+val+"'" for val in vals]
                 width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
                 columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
+            ## do everything again for associated data
+            if include_assoc:
+                for assoc,assoc_value in self._data[key]['assoc'].items():
+                    assoc_key = f'({key},{assoc})'
+                    vals = [format(t,self.associated_kinds[assoc]['fmt']) for t in assoc_value]
+                    if quote_strings and self.associated_kinds[assoc]['kind'] == 'U':
+                        vals = ["'"+val+"'" for val in vals]
+                    formatted_assoc_key = ( f"'{assoc_key}'" if quote_keys else assoc_key )
+                    width = str(max(len(formatted_assoc_key),np.max([len(t) for t in vals])))
+                    columns.append([format(formatted_assoc_key,width)]+[format(t,width) for t in vals])
         ## construct header before table
         header = []
         ## add attributes to header
@@ -1261,12 +1273,13 @@ class Dataset(optimise.Optimiser):
                 if np.isscalar(val):
                     ## attribute
                     data[key] = val
+                elif r:=re.match(r'\(([^,]+),([^,]+)\)',key):
+                    ## associated data -- value must already be set
+                    key,suffix = r.groups()
+                    data[key]['assoc'][suffix] = val
                 else:
-                    ## data
+                    ## value data
                     data[key] = {'value':val,'assoc':{}}
-                    for suffix in self.associated_kinds:
-                        if (tkey:=f'{key}_{suffix}') in flat_data:
-                            data[key]['assoc'][suffix] = flat_data.pop(tkey)
         ##
         ## temp hack delete
         for key in list(data.keys()): #  HACK
