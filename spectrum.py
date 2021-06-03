@@ -514,7 +514,7 @@ class Model(Optimiser):
             return
         if self._clean_construct:
             ## first run — initalise local copy of lines data and
-            imatch = tools.find(lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match))
+            imatch = lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
             nmatch = np.sum(imatch)
             lines_copy = lines.copy(index=imatch)
             ## keys that might possibly change

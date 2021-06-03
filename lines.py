@@ -675,10 +675,16 @@ class Generic(levels.Base):
         return data             # return raw HITRAN data
         
     def load_from_nist(self,filename):
-        """Load  NIST csv atomic transition data file."""
+        """Load NIST csv atomic transition data file."""
         ## load into dict
-        # data = tools.file_to_dict(filename)
-        data = dataset.load(filename)
+        # data = dataset.load(filename,txt_to_dict_kwargs={'filter_regexp':(r'"',r'')})
+        data_string = tools.file_to_string(filename)
+        data_string = data_string.replace('\t','|')
+        data_string = data_string.replace('"','')
+        data_string = [t for i,t in enumerate(data_string.split('\n')) if i==0 or len(t)<3 or t[:3]!='obs']
+        data_string = '\n'.join(data_string)
+        data = Dataset()
+        data.load_from_string(data_string,delimiter='|')
         ## manipulate some data
         for key in ('J_i','J_k'):
             if data.get_kind(key) == 'U':
@@ -688,13 +694,18 @@ class Generic(levels.Base):
                         data[key][i] = int(num)/int(den)
                     else:
                         data[key][i] = float(J)
+        for key in ('Ek(cm-1)',):
+            tre = re.compile(r'\[(.*)\]')
+            for i,t in enumerate(data[key]):
+                if re.match(tre,t):
+                    data[key] = t[1:-1]
         re_compiled_1 = re.compile(r' *([0-9]+)([A-Z])(\*?) *')
         re_compiled_2 = re.compile(r' *([0-9]+)(\[[0-9/]+\])(\*?) *')
         L_dict = {'S':0,'P':1,'D':2,'F':3,'G':4,'H':5}
         for key,ul in (('term_i','_l'),('term_k','_u')):
             L,S,gu = [],[],[]
             for i,term in enumerate(data[key]):
-                if term == 'nan':
+                if term in ('nan','*'): 
                     L.append(-1)
                     S.append(nan)
                     gu.append(0)
@@ -1070,14 +1081,14 @@ class Linear(Generic):
         # multiplet transition is borrowing intensity."""
         # self['SJ'] = quantum_numbers.honl_london(Ω_u,Ω_l,self[J_u],self[J_l])
 
-class LinearDiatomic(Linear):
+class Diatomic(Linear):
 
-    _level_class,_level_keys,defining_qn = _collect_level(levels.LinearDiatomic)
+    _level_class,_level_keys,defining_qn = _collect_level(levels.Diatomic)
     default_prototypes = {key:prototypes[key] for key in
                           {*_level_keys, *Linear.default_prototypes,'Δv'}}
     default_xkey = 'J_u'
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
-    default_attributes = Linear.default_attributes 
+    # default_attributes = Linear.default_attributes 
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -1139,7 +1150,6 @@ class LinearDiatomic(Linear):
         else:
             raise Exception(f'intensity_type must be "absorption" or "emission" or "partition"')
         self.extend(**data)
-
 
 class LinearTriatomic(Linear):
     """E.g., CO2, CS2."""

@@ -229,24 +229,27 @@ def dict_to_kwargs(d,keys=None):
         keys = d.keys() # default to all keys
     return(','.join([key+'='+repr(d[key]) for key in keys]))
 
-def dict_expanded_repr(d,indent='',depth=1,_depth=0):
+def dict_expanded_repr(d,indent='',maxdepth=1,separate_with_blanks_depth=-1,_depth=0):
     """pprint dict recursively but repr non-dict elements."""
     indent = '    '
     lines = ['{']
     for i,(key,val) in enumerate(d.items()):
-        prefix = '\n'+indent+'    '
+        if separate_with_blanks_depth >= _depth:
+            prefix = '\n'+indent
+        else:
+            prefix = indent
         if (
                 not isinstance(val,dict) # not a dict
-                or _depth >= depth    # already too deep
+                or _depth >= maxdepth    # already too deep
                 or len(val) == 0         # empty dict
                 or (len(val) == 1 and not any([isinstance(t,dict) for t in val.values()])) # dict contains no other dicts
             ):
             ## put on one line
-            lines.append(f'{indent}{repr(key):20}: {repr(val)},')
+            lines.append(f'{prefix}{repr(key):20}: {repr(val)},')
         else:
             ## expand as subdict
-            subdict = dict_expanded_repr(val,indent+"    ",_depth=_depth+1,depth=depth)
-            lines.append(f'{indent}{repr(key):10}: {subdict},')
+            subdict = dict_expanded_repr(val,indent+"    ",_depth=_depth+1,maxdepth=maxdepth,separate_with_blanks_depth=separate_with_blanks_depth)
+            lines.append(f'{prefix}{repr(key):10}: {subdict},')
     lines.append('}')
     lines = [indent*_depth+t for t in lines]
     retval = '\n'.join(lines)
@@ -462,12 +465,26 @@ def uniquify_strings(strings):
     return retval
 
 def convert_to_bool_vector_array(x):
-    ## use numpy directlry
-    try:
-        return np.asarray(x,dtype=bool,ndmin=1)
-    except:
-        pass
-    return array([bool(t) for t in tools.ensure_iterable(x)],dtype=bool)
+    retval = array(x,ndmin=1)
+    if retval.dtype.kind == 'b':
+        return retval
+    elif retval.dtype.kind == 'U':
+        t = []
+        for xi in retval:
+            if xi=='True':
+                t.append(True)
+            elif xi=='False':
+                t.append(False)
+            else:
+                raise Exception("Valid boolean string values are 'True' or 'False'")
+        retval = array(t,ndmin=1,dtype=bool)
+        return retval
+    else:
+        ## use numpy directly
+        try:
+            return np.asarray(x,dtype=bool,ndmin=1)
+        except:
+            return array([bool(t) for t in tools.ensure_iterable(x)],dtype=bool)
 
 def warnings_off():
     warnings.simplefilter("ignore")
@@ -2633,7 +2650,7 @@ def sortall(x,*others,reverse=False):
 def isin(x,y):
     """Return arrays of booleans same size as x, True for all those
     elements that exist in y."""
-    return np.array([i in y for i in x])
+    return np.array([i in y for i in x],dtype=bool,ndmin=1)
 
 # def find_overlap(x,y):
     # """Return boolean arrays (i,j) indicating (x,y) that cover an

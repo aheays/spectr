@@ -40,11 +40,11 @@ class VibLevel(Optimiser):
         tkwargs = {'auto_defaults':True,'permit_nonprototyped_data':False}
         self.manifolds = {}
         self._shifts = []       # used to shift individual levels after diagonalisation
-        self.level = levels.LinearDiatomic(name=f'{self.name}.level',**tkwargs)
+        self.level = levels.Diatomic(name=f'{self.name}.level',**tkwargs)
         self.level.pop_format_input_function()
         self.level.add_suboptimiser(self)
         self.level.pop_format_input_function()
-        self.vibrational_spin_level = levels.LinearDiatomic(**tkwargs) 
+        self.vibrational_spin_level = levels.Diatomic(**tkwargs) 
         self.interactions = Dataset() 
         self.J = J
         self.verbose = False
@@ -350,7 +350,7 @@ class VibLine(Optimiser):
         self.level_l = level_l
         self.species = self.level_l.species
         tkwargs = {'auto_defaults':True, 'permit_nonprototyped_data':False,}
-        self.line = lines.LinearDiatomic(name=f'{self.name}.line',**tkwargs)
+        self.line = lines.Diatomic(name=f'{self.name}.line',**tkwargs)
         self.line.pop_format_input_function()
         self.line.add_suboptimiser(self)
         self.line.pop_format_input_function()

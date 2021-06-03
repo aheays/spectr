@@ -28,11 +28,11 @@ prototypes['author'] = dict(description="Author of data or printed file" ,kind='
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
 prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' ,infer=[])
+
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
     species_object = kinetics.get_species(species)
     return species_object['chemical_name']
-
 prototypes['chemical_species'] = dict(description="Chemical species without isotope specification" ,kind='U' ,infer=[('species',_f0)])
 
 # prototypes['name'] = dict(description="Quantum numbers encoded into a string" ,kind='U' ,infer=[('species',_f0)])
@@ -61,8 +61,8 @@ prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='
 def _f0(self,species,label,v,Σ,ef,J):
     """Get diatomic molecule level energies from database."""
     level = database.get_level(species)
-    if level['classname'] != 'levels.LinearDiatomic':
-        raise InferException('Not level.LinearDiatomic')
+    if level['classname'] != 'levels.Diatomic':
+        raise InferException('Not level.Diatomic')
     i = tools.find(level.match(species=species,label=label,v=v,Σ=Σ,ef=ef,J=J))
     if len(i) == 0:
         raise InferException('no match found')
@@ -181,9 +181,15 @@ def _f3(self,species,Tex,E,g):
         kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
         retval[i] = np.sum(g[i]*np.exp(-E[i]/kT))
     return retval
+def _f4(self,species,Tex):
+    """Compute partition function from data in self."""
+    if self['Zsource'] != 'database':
+        raise InferException(f'Zsource not "database"')
+    return database.get_partition_function(species,Tex,self['Eref'])
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
-    # (('species','Tex','E','g'),_f3),
+    (('species','Tex','E','g'),_f3),
     (('species','Tex'),_f5),
+    (('species','Tex'),_f4),
 ])
 prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer=[(('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,)])
 prototypes['Nself'] = dict(description="Column density",units="cm2",kind='f',fmt='<11.3e', infer=[])
@@ -194,7 +200,7 @@ prototypes['ν2'] = dict(description="Vibrational quantum number for mode 2", ki
 prototypes['ν3'] = dict(description="Vibrational quantum number for mode 3", kind='i',infer=[])
 prototypes['ν4'] = dict(description="Vibrational quantum number for mode 4", kind='i',infer=[])
 prototypes['l2'] = dict(description="Vibrational angular momentum 2", kind='i',infer=[])
-prototypes['Λ'] = dict(description="Total orbital angular momentum aligned with internuclear axis", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'Λ'))])
+prototypes['Λ'] = dict(description="Total orbital angular momentum aligned with internuclear axis", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'Λ'))]) # 
 prototypes['L'] = dict(description="Total orbital angular momentum", kind='i',infer=[])
 prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',infer=[])
 prototypes['s'] = dict(description="s=1 for Σ- states and 0 for all other states", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'s'))])
@@ -209,7 +215,8 @@ def _f0(self,ef,J):
     return σv
 prototypes['i'] = dict(description="Total parity.", kind='i',infer=[])
 prototypes['σv'] = dict(description="Symmetry with respect to σv reflection.", kind='i',infer=[(('ef','J'),_f0,)])
-prototypes['gu'] = dict(description="Symmetry with respect to reflection through a plane perpendicular to the internuclear axis.", kind='i',infer=[])
+
+prototypes['gu'] = dict(description="Symmetry with respect to reflection through a plane perpendicular to the internuclear axis.", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'gu'))])
 prototypes['sa'] = dict(description="Symmetry with respect to nuclear exchange, s=symmetric, a=antisymmetric.", kind='i',infer=[(('σv','gu'),lambda self,σv,gu: σv*gu,)])
 
 def _f0(self,S,Λ,s):
@@ -390,7 +397,7 @@ def _collect_prototypes(*keys):
 class Base(Dataset):
     """Common stuff for for lines and levels."""
     default_prototypes = _collect_prototypes()
-    default_attributes = Dataset.default_attributes | {'Zsource':None,}
+    default_attributes = Dataset.default_attributes | {'Zsource':None,'Eref':0.0,}
 
     def __init__(self,*args,**kwargs):
         kwargs.setdefault('permit_nonprototyped_data',False)
@@ -519,7 +526,7 @@ class LinearTriatomic(Linear):
     defining_qn = ('species','label','ef','ν1','ν2','ν3','l2','J')
     defining_zkeys = ('species','label','ef','ν1','ν2','ν3','l2')
 
-class LinearDiatomic(Linear):
+class Diatomic(Linear):
     default_prototypes = _collect_prototypes(
         *Linear.default_prototypes,
         'v',
@@ -592,4 +599,3 @@ class LinearDiatomic(Linear):
             data.pop(key)
         self.extend(**data)
 
-Diatomic = LinearDiatomic

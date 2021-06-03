@@ -432,8 +432,8 @@ class Dataset(optimise.Optimiser):
                 or np.any(self.get(key,index=index) != value)): # data has changed some other way and differs from parameter
                 self.set(key,value=value,index=index)
 
-    @optimise_method()
-    def set_spline(self,xkey,ykey,knots,order=3,match=None,index=None,_cache=None):
+    @optimise_method(format_single_line=True)
+    def set_spline(self,xkey,ykey,knots,order=3,match=None,index=None,_cache=None,**match_kwargs):
         """Set ykey to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
         given, then only set these."""
@@ -443,10 +443,12 @@ class Dataset(optimise.Optimiser):
             xspline,yspline = zip(*knots)
             if index is not None:
                 i = index
-            elif match is not None:
-                i = self.match(**match)
             else:
                 i = np.full(len(self),True)
+            if match is not None:
+                i &= self.match(match)
+            if len(match_kwargs) > 0:
+                i &= self.match(match_kwargs)
             ## limit to defined xkey range
             i &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
             _cache['i'] = i
@@ -1170,12 +1172,13 @@ class Dataset(optimise.Optimiser):
             filename,
             comment='',
             keys=None,          # load only this data
-            delimiter=None,
             table_name=None,
             translate_keys=None, # from key in file to key in self, None for skip
             return_classname_only=False, # do not load the file -- just try and load the classname and return it
             labels_commented=False,
+            delimiter=None,
             load_assoc=True,
+            txt_to_dict_kwargs=None,
             **set_keys_vals   # set this data after loading is done
     ):
         '''Load data from a file.'''
@@ -1204,14 +1207,19 @@ class Dataset(optimise.Optimiser):
             data_is_flat = True
         else:
             ## text table to dict with header
-            if re.match(r'.*\.csv',filename):
-                delimiter = ','
-            elif re.match(r'.*\.rs',filename):
-                delimiter = '␞'
-            elif re.match(r'.*\.psv',filename):
-                delimiter = '|'
-            elif re.match(r'.*\.tsv',filename):
-                delimiter = '\t'
+            if txt_to_dict_kwargs is None:
+                txt_to_dict_kwargs = {}
+            txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':labels_commented}
+            if txt_to_dict_kwargs['delimiter'] is None:
+                if re.match(r'.*\.csv',filename):
+                    txt_to_dict_kwargs['delimiter'] = ','
+                elif re.match(r'.*\.rs',filename):
+                    txt_to_dict_kwargs['delimiter'] = '␞'
+                elif re.match(r'.*\.psv',filename):
+                    txt_to_dict_kwargs['delimiter'] = '|'
+                elif re.match(r'.*\.tsv',filename):
+                    txt_to_dict_kwargs['delimiter'] = '\t'
+            
             # assert comment not in ['',' '], "Not implemented"
             filename = tools.expand_path(filename)
             data = {}
@@ -1241,11 +1249,7 @@ class Dataset(optimise.Optimiser):
                         ## end of header
                         break
             ## load array data
-            data.update(tools.txt_to_dict(
-                filename,
-                delimiter=delimiter,
-                labels_commented=labels_commented,
-                skiprows=iline))
+            data.update(tools.txt_to_dict(filename,skiprows=iline,**txt_to_dict_kwargs))
             data_is_flat = True
         ## build structured data from flat data by associated keys
         if data_is_flat:

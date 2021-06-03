@@ -447,7 +447,7 @@ def decode_linear_line(name,return_separately=False):
     ## look for rotational name as e.g., ..._P11fe23, if found
     ## decode and remove from name
     rot_qn_upper = rot_qn_lower = rot_qn_Δ = None
-    r = re.match(r'^(.*)_([^_—]+)$',name)
+    r = re.match(r'^(.*)_([^_–]+)$',name)
     if r:
         try:
             rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
@@ -456,10 +456,10 @@ def decode_linear_line(name,return_separately=False):
             pass
     ## split upper and lower level
     name = name.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
-    if r:=re.match(r'^([^—]+)—([^—]+)$',name):
+    if r:=re.match(r'^([^–]+)–([^–]+)$',name):
         upper,lower = r.groups()
     else:
-        raise Exception('Incorrectly encoded linear line name: No "—" present dividing upper and lowe levels.')
+        raise Exception('Incorrectly encoded linear line name: No "–" present dividing upper and lowe levels.')
     upper,lower = decode_linear_level(upper),decode_linear_level(lower)
     ## add rotational qn if found above
     if rot_qn_lower is not None:
@@ -499,7 +499,7 @@ def encode_linear_line(qn=None,qnl=None,qnu=None,):
                     qnl.setdefault(key[:-2],val)
     if 'species' in qnl and 'species' in qnu and qnu['species']==qnl['species']:
         qnl.pop('species')
-    retval = encode_linear_level(qnu)+'—'+encode_linear_level(qnl)
+    retval = encode_linear_level(qnu)+'–'+encode_linear_level(qnl)
     if 'ΔJ' in qn:
         retval += '_'+encode_rotational_transition(qn)
     return retval
