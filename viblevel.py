@@ -493,9 +493,14 @@ class VibLine(Optimiser):
             for iΔJ,ΔJ in enumerate(self.ΔJ):
                 self.μ0[:,iΔJ,i+kwu['ibeg'],j+kwl['ibeg']] += fμ[i,j](self.J_l,ΔJ)*μv
 
-    def plot(self,**kwargs):
+    def plot(self,T=None,**kwargs):
         kwargs.setdefault('xkey','ν')
-        kwargs.setdefault('ykey','Sij')
+        if T is None:
+            kwargs.setdefault('ykey','Sij')
+        else:
+            kwargs.setdefault('ykey','σ')
+            self.line['Teq'] = T
+            self.line['Zsource'] = 'self'
         return self.line.plot_stick_spectrum(**kwargs)
 
 @lru_cache
