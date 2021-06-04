@@ -1569,7 +1569,8 @@ class Model(Optimiser):
             and hasattr(self.experiment,'experimental_parameters')
             and 'filename' in self.experiment.experimental_parameters):
             if title == 'auto':
-                title = tools.basename(self.experiment.experimental_parameters['filename'])
+                # title = tools.basename(self.experiment.experimental_parameters['filename'])
+                title = self.name
             t = ax.set_title(title,fontsize='x-small')
             t.set_in_layout(False)
         if plot_legend:
