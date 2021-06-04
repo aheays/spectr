@@ -57,7 +57,7 @@ def _f1(self,species):
 prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species',), _f0),])
 prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
 
-@vectorise(vargs=(1,2,3,4,5,6),cache= True)
+@vectorise(vargs=(1,2,3,4,5,6),cache=True)
 def _f0(self,species,label,v,Σ,ef,J):
     """Get diatomic molecule level energies from database."""
     level = database.get_level(species)
@@ -69,7 +69,7 @@ def _f0(self,species,label,v,Σ,ef,J):
     if len(i) > 1:
         raise InferException('multiple matches found')
     return level['E'][i][0]
-    
+
 prototypes['E'] = dict(description="Level energy relative to the least",units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('Ee','ZPE'),lambda self,Ee,ZPE: Ee-ZPE),(('species','label','v','Σ','ef','J'),_f0)],default_step=1e-3)
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','ZPE'),lambda self,E,ZPE: E+ZPE),],default_step=1e-3)
 prototypes['Eref'] = dict(description="Reference level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[])
@@ -177,7 +177,7 @@ def _f3(self,species,Tex,E,g):
     if self['Zsource'] != 'self':
         raise InferException(f'Zsource not "self".')
     retval = np.full(species.shape,nan)
-    for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
+    for (speciesi,Texi),i in tools.unique_combinations_masks(species,Tex):
         kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
         retval[i] = np.sum(g[i]*np.exp(-E[i]/kT))
     return retval
@@ -403,7 +403,7 @@ class Base(Dataset):
         kwargs.setdefault('permit_nonprototyped_data',False)
         Dataset.__init__(self,*args,**kwargs)
 
-    # @optimise_method(format_single_line=True)
+    # @optimise_method(format_lines='single')
     # def set_by_name(self,name,_cache=None,**parameters):
         # """Set parameters to all data matching the quantum numbers
         # encoded in name."""
@@ -413,7 +413,7 @@ class Base(Dataset):
         # for key,val in parameters.items():
             # self.set(key,val,index=i)
 
-    @optimise_method(format_single_line=True)
+    @optimise_method(format_lines='single')
     def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
         """Set parameters to all data matching quantum numbers."""
         if self._clean_construct:
@@ -431,7 +431,7 @@ class Base(Dataset):
         for key,val in p.items():
             self.set(key,val,index=i)
 
-    # @optimise_method(add_construct_function=False,add_format_input_function=True,format_single_line=True,execute_now=True)
+    # @optimise_method(add_construct_function=False,add_format_input_function=True,format_lines='single',execute_now=True)
     # def set_by_qn(self,**kwargs):
         # """Set some data to fixed values or optimised parameters, limiting
         # setting to matching defining quantum numbers, all given as key word
