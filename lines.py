@@ -229,8 +229,15 @@ def _f5(self,species,Tex):
         raise InferException(f'Zsource not "HITRAN".')
     from . import hitran
     return hitran.get_partition_function(species,Tex)
+def _f4(self,species,Tex):
+    """Compute partition function from data in self."""
+    if self['Zsource'] != 'database':
+        raise InferException(f'Zsource not "database"')
+    return database.get_partition_function(species,Tex,self['Eref'])
+
 prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[
     (('species','Tex'),_f5),
+    (('species','Tex'),_f4),
     (('species','Tex','E_u','E_l','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3,),
 ])
 
@@ -390,7 +397,7 @@ class Generic(levels.Base):
         lines accordings."""
         ## deal with default args
         if ax is None:
-            ax = plotting.qax()
+            ax = plotting.gca()
         if plot_kwargs is None:
             plot_kwargs = {}
         ## calculate spectrum
@@ -398,7 +405,11 @@ class Generic(levels.Base):
         if zkeys is not None:
             ## multiple zkeys -- plot and legend
             for qn,x,y in spectrum:
-                ax.plot(x,y,label=tools.dict_to_kwargs(qn),**plot_kwargs)
+                ax.plot(
+                    x,y,
+                    label=tools.dict_to_kwargs(qn),
+                    # label=self.encode_qn(qn),
+                    **plot_kwargs)
             plotting.legend(loc='upper left')
         else:
             ## single spectrum only
@@ -450,7 +461,7 @@ class Generic(levels.Base):
         for iz,(qn,t) in enumerate(self.unique_dicts_matches(*tools.ensure_iterable(zkeys))):
             t_plot_kwargs = plot_kwargs | {
                 'color':plotting.newcolor(iz),
-                'label':repr(qn),
+                'label':self.encode_qn(qn),
             }
             plotting.plot_sticks(t[xkey],t[ykey],**t_plot_kwargs)
         plotting.legend(ax=ax,fontsize='x-small')
@@ -492,9 +503,6 @@ class Generic(levels.Base):
                 lineshape = 'gaussian'
             else:
                 raise Exception(f"Cannot determine lineshape because both Γ and ΓD are unknown")
-        ## set some data
-        # for key,val in set_keys_vals.items():
-            # self[key] = val
         ## no lines to add to cross section -- return quickly
         if len(self)==0:
             if x is None:
@@ -695,10 +703,11 @@ class Generic(levels.Base):
                     else:
                         data[key][i] = float(J)
         for key in ('Ek(cm-1)',):
-            tre = re.compile(r'\[(.*)\]')
-            for i,t in enumerate(data[key]):
-                if re.match(tre,t):
-                    data[key] = t[1:-1]
+            if data.get_kind(key) == 'U':
+                tre = re.compile(r'\[(.*)\]')
+                for i,t in enumerate(data[key]):
+                    if re.match(tre,t):
+                        data[key] = t[1:-1]
         re_compiled_1 = re.compile(r' *([0-9]+)([A-Z])(\*?) *')
         re_compiled_2 = re.compile(r' *([0-9]+)(\[[0-9/]+\])(\*?) *')
         L_dict = {'S':0,'P':1,'D':2,'F':3,'G':4,'H':5}
