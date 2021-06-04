@@ -17,10 +17,9 @@ tests = {
         'lower':{'levels':{'X.1Σ+(v=0)':{'Tv':0,'Bv':1}}}, 
         'upper':{'levels':{'B.1Π(v=0)':{'Tv':50000, 'Bv':1.1}, 'C.1Σ+(v=0)':{'Tv':49950, 'Bv':1.4}}, 'couplings':{('B.1Π(v=0)','C.1Σ+(v=0)'):{'ξv':1}}},
         'transition_moments':{('B.1Π(v=0)','X.1Σ+(v=0)'):{'μv':1}, ('C.1Σ+(v=0)','X.1Σ+(v=0)'):{'μv':0.5}}},
-        
+
     '2Σ+_2Π_transition': {
          'species':'[14N][16O]',
-         'J_l':np.arange(0.5,31),
          'lower':{'levels':{'X.2Π(v=0)':{'Tv':100,'Bv':+1.6,'Av':+120,'γv':-0.01},},}, 
          'upper':{'levels':{'A.2Σ+(v=3)':{'Tv':50000,'Bv':1.1,'Dv':6e-6,'γv':10,'γDv':-1e-4}}},
          'transition_moments':{('A.2Σ+(v=3)','X.2Π(v=0)'):{'μv':1}}},
@@ -128,14 +127,15 @@ for itest,(name,params) in enumerate(tests.items()):
     print( name)
 
     params.setdefault('species','[32S][16O]')
-    params.setdefault('J_l',range(21))
+    # # params.setdefault('J_l',range(21))
+    # params.setdefault('J_l',arange(1.5,2.5))
     params.setdefault('ΔJ',(-1,0,1))
 
     ## load model
     line_mod = viblevel.calc_line(**params)
 
     ## load pgopher
-    line_pgo = lines.LinearDiatomic(species=params['species'])
+    line_pgo = lines.Diatomic(species=params['species'])
     line_pgo.load_from_pgopher(f"data/{name}.csv",)
 
     ## limit to common levels
