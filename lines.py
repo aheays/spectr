@@ -307,7 +307,7 @@ def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
 prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
 
 # prototypes['τ'] = dict(description="Integrated optical depth",units="cm-1", kind='f',  fmt='<10.5e', infer={('σ','column_densitypp'):lambda self,σ,column_densitypp: σ*column_densitypp,},)
-prototypes['I'] = dict(description="Integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",kind='f',fmt='<10.5e',infer=[(('Ae','α_u','ν'),lambda self,Ae,α_u,ν: Ae*α_u*ν,)],)
+prototypes['I'] = dict(description="Spectrally-integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",kind='f',fmt='<10.5e',infer=[(('Ae','α_u','ν'),lambda self,Ae,α_u,ν: Ae*α_u*ν,)],)
 # prototypes['Ip'] = dict(description="Integrated emission photon intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp'):lambda self,Ae,populationp,column_densityp: Ae*populationp*column_densityp,},)
 # prototypes['σd'] = dict(description="Integrated photodissociation cross section.",units="cm2.cm-1", kind='f',  fmt='<10.5e', infer={('σ','ηdp'):lambda self,σ,ηdp: σ*ηdp,})
 # prototypes['Sabs'] = dict(description="Absorption intensity).",units="cm-1/(molecule.cm-1", kind='f',  fmt='<10.5e', infer=[])
@@ -401,7 +401,8 @@ class Generic(levels.Base):
             *calculate_spectrum_args,
             ax=None,
             plot_kwargs=None,
-            zkeys=None,
+            plot_labels=False,
+            zkeys=(),
             **calculate_spectrum_kwargs
     ):
         """Plot a nice cross section. If zkeys given then divide into multiple
@@ -426,6 +427,22 @@ class Generic(levels.Base):
             ## single spectrum only
             x,y = spectrum
             ax.plot(x,y,**plot_kwargs)
+        ## plot labels
+        if plot_labels:
+            ymin,ymax = ax.get_ylim()
+            ystep = (ymax-ymin)/10
+            branch_annotations = plotting.annotate_spectrum_by_branch(
+                self,
+                ybeg=ymax,
+                ystep=ystep,
+                zkeys=zkeys,  
+                length=-0.02,
+                labelsize='xx-small',namesize='x-small', namepos='float',)
+            ax.set_ylim(ymin,ymax+ystep*(len(branch_annotations)+1))
+        if not plot_labels:
+            plotting.legend(ax=ax,fontsize='x-small')
+
+
         return ax
 
     def plot_transmission_spectrum(

@@ -2351,7 +2351,6 @@ def annotate_spectrum_by_branch(
         label_frequency=False,
         match_qn=None,        # only annotate matching qn
         qn_not_to_label=(), # e.g., [{'Σ':-1,'Jpp':[0,2],}] would not label these, requries label_translate_function is None
-        color_by = 'zkeys', # or one or a list of quantum numbers, e.g., 'ΔJ'
         name_function = None, # a function to modify automatically generated branch names
         label_function = None, # a function to modify automatically generated rotational level labels
         **kwargs_annotate_spectrum # pass directly to annotate_spectrum
@@ -2360,13 +2359,11 @@ def annotate_spectrum_by_branch(
     Lines object."""
     zkeys = tools.ensure_iterable(zkeys)
     retval = []
-    ## prepare color key
-    if color_by=='zkeys':
-        color_by = zkeys
-    color_dict = {tqn:newcolor(it) for it,tqn in enumerate(lines.unique_combinations(*zkeys))}
+    # color_dict = {tqn:newcolor(it) for it,tqn in enumerate(lines.unique_combinations(*zkeys))}
     # lines = deepcopy(lines)
     iz = 0
-    for qn,zlines in lines.unique_dicts_matches(*zkeys):
+    
+    for iz,(qn,zlines) in enumerate(lines.unique_dicts_matches(*zkeys)):
         if match_qn is not None:
             zlines.limit_to_matches(**match_qn)
         if len(zlines)==0: continue
@@ -2378,7 +2375,8 @@ def annotate_spectrum_by_branch(
         ## update kwargs for this annotation
         kwargs = copy(kwargs_annotate_spectrum)
         kwargs.setdefault('name',name)
-        kwargs.setdefault('color',color_dict[tuple(qn.values())])
+        # # kwargs.setdefault('color',color_dict[tuple(qn.values())])
+        kwargs.setdefault('color',newcolor(iz))
         if label_function is not None:
             labels = [label_function(t) for t in zlines.iter_dict(*tools.ensure_iterable(label_key))]
         elif label_key is None:
@@ -2399,7 +2397,6 @@ def annotate_spectrum_by_branch(
             labels = [f'{label}({x:0.4f})' for label,x in zip(labels,ztransition[xkey])]
         ## make annotation
         retval.append(annotate_spectrum(zlines[xkey],labels=labels,ylevel=ybeg+iz*ystep,**kwargs))
-        iz += 1
     return retval
 
 def plot_stick_spectrum(x,y,ax=None,**plot_kwargs):

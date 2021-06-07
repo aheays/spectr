@@ -20,6 +20,7 @@ from .exceptions import MissingDataException
 ## species ##
 #############
 
+
 @tools.vectorise()
 def decode_species(name,encoding):
     """Decode into standard name format from a foreign format."""
@@ -219,17 +220,96 @@ class Species:
         # else:
             # self.species = name
             # self.isotopologue = database.get_species_property(self.species,'iso_main')
-        self._name = name
-        self._charge = None     # net charge
-        self._nelectrons = None # number of electrnos
+        
+        self.decode_name(name)
+        self.encode_name(self._isotopes,self._charge)
 
-    def _get_charge(self):
-        if self._charge is None:
-            if r:=re.match('^(.*[^+-])([+]+|-+)$',self.species): # ddd+ / ddd++
-                self._charge = r.group(2).count('+') - r.group(2).count('-')
+    # def _get_charge(self):
+        # if self._charge is None:
+            # if r:=re.match('^(.*[^+-])([+]+|-+)$',self.species): # ddd+ / ddd++
+                # self._charge = r.group(2).count('+') - r.group(2).count('-')
+            # else:
+                # self._charge = 0
+        # return self._charge
+
+    def decode_name(self,name):
+        """Turn standard name string into ordered isotope list and charge."""
+        isotopes = []                   # (element,mass_number,multiplicity)
+        ## e.g., CO2
+        if r:=re.match(r'^((?:[A-Z][a-z]?[0-9]*)+)([-+]*)$',name):
+            name_no_charge = r.group(1)
+            charge = r.group(2).count('+') - r.group(2).count('-')
+            for part in re.split(r'([A-Z][a-z]?[0-9]*)',name_no_charge):
+                if part=='':
+                    continue
+                elif r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
+                    isotopes.append((
+                        r.group(1),
+                        database.get_isotopes(r.group(1))[0][0],
+                        int(r.group(2) if r.group(2) != '' else 1)))
+                else:
+                    raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+        ## e.g., [12C][16O]2
+        elif r:=re.match(r'^((?:\[[0-9]+[A-Z][a-z]?\][0-9]*)+)([-+]*)$',name):
+            name_no_charge = r.group(1)
+            charge = r.group(2).count('+') - r.group(2).count('-')
+            for part in re.split(r'(\[[0-9]+[A-Z][a-z]?\][0-9]*)',name_no_charge):
+                if part=='':
+                    continue
+                elif r:= re.match(r'\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
+                    isotopes.append((
+                        r.group(2),
+                        int(r.group(1)),
+                        int(r.group(3) if r.group(3) != '' else 1)))
+                else:
+                    raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+        ## e.g., ¹²C¹⁶O₂²⁺
+        elif r:=re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name):
+            name_no_charge = r.group(1)
+            if r.group(2) == '':
+                charge = 0
+            elif r.group(2) == '⁺':
+                charge = +1
+            elif r.group(2) == '⁻':
+                charge = -1
+            elif '⁺' in r.group(2):
+                charge = int(tools.regularise_unicode(r.group(2)[:-1]))
             else:
-                self._charge = 0
-        return self._charge
+                charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
+            for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
+                if part=='':
+                    continue
+                elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
+                    isotopes.append((
+                        r.group(2),
+                        (database.get_isotopes(r.group(2))[0][0]
+                                 if r.group(1) == '' else int(tools.regularise_unicode(r.group(1)))),
+                        int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)))
+                else:
+                    raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+        else:
+            raise Exception(f'Could not decode species named: {repr(name)}')
+        self._isotopes = tuple(isotopes)
+        self._charge = charge
+
+    def encode_name(self,isotopes,charge):
+        """Turn ordered isotope list and charge into a name string."""
+        retval = []
+        for element,mass_number,multiplicity in isotopes:
+            retval.append(tools.superscript_numerals(str(int(mass_number))))
+            retval.append(element)
+            if multiplicity > 1:
+                retval.append(tools.subscript_numerals(str(int(multiplicity))))
+        if charge == 1:
+            retval.append('⁺')
+        elif charge > 1:
+            retval.append(tools.superscript_numerals(str(int(charge)))+'⁺')
+        elif charge == -1:
+            retval.append('⁻')
+        elif charge < -1:
+            retval.append(tools.superscript_numerals(str(int(-charge))+'⁻'))
+        retval = ''.join(retval)
+        self._name = retval
 
     def _get_elements(self):
         if self._elements is not None:
@@ -245,15 +325,15 @@ class Species:
             self._elements.sort()
         return self._elements
 
-
     def _get_nelectrons(self):
-        if self._nelectrons is None:
-            if self.species in ('e-','photon'):
-                raise NotImplementedError()
-            self._nelectrons = 0
-            for element in self['elements']:
-                self._nelectrons += getattr(periodictable,element).number # add electrons attributable to each nucleus
-            self._nelectrons -= self['charge'] # account for ionisation
+        if self.species in ('e-','photon'):
+            raise NotImplementedError()
+        self._nelectrons = 0
+        ## add electrons attributable to each nucleus
+        for element in self['elements']:
+            self._nelectrons += getattr(periodictable,element).number
+        ## account for ionisation
+        self._nelectrons -= self['charge']
         return self._nelectrons
 
     def __str__(self):
@@ -269,53 +349,50 @@ class Species:
     def __gt__(self,other):
         return self.name > other
 
-    @lru_cache
     def __getitem__(self,key):
         """Access these properties by index rather than attributes in order
         for simple caching.  -- move other get_ methods to here someday"""
         if key == 'name':
             return self._name
         elif key == 'charge':
-            return self._get_charge()
+            return self._charge
         elif key == 'elements':
-            elements = tuple(t[0] for t in self['isotopes'])
-            return elements
+            if not hasattr(self,'_elements'):
+                t = []
+                for element,mass_number,multiplicity in self._isotopes:
+                    for i in range(multiplicity):
+                        t.append(element)
+                self._elements = tuple(sorted(t))
+            return self._elements
         elif key == 'isotopes':
-            ## match elemental or isotopolgue components with multiplicity,
-            ## e.g., H2 → H2, OH → O + H, [12C][16O]2 → [12C] + [16O]2
-            isotopes = []
-            for part in re.split(r'([A-Z][a-z]?[0-9]*|\[[0-9]+[A-Z][a-z]?\][0-9]*)',self['name']):
-                if part=='':
-                    continue
-                if r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
-                    ## an element
-                    element = r.group(1)
-                    multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
-                    mass_number = database.get_isotopes(element)[0][0]
-                elif r:= re.match(r'^\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
-                    ## an isotope
-                    mass_number,element,multiplicity = r.groups()
-                else:
-                    raise Exception(f'Could not determine isotope from part {repr(part)} of name {repr(self.name)}')
-                for i in range(1 if multiplicity=='' else int(multiplicity)):
-                    isotopes.append((element,int(mass_number)))
-            isotopes = tuple(sorted(isotopes))
-            return isotopes
+            return self._isotopes
         elif key == 'nelectrons':
-            return self._get_nelectrons()
+            if not hasattr(self,'_nelectrons'):
+                self._get_nelectrons()
+            return self._nelectrons
         elif key == 'mass':
-            return sum([database.get_atomic_mass(element,mass_number)
-                        for element,mass_number in self['isotopes']])
+            if not hasattr(self,'_mass'):
+                self._mass =  sum([database.get_atomic_mass(element,mass_number)*multiplicity
+                                   for element,mass_number,multiplicity in self['isotopes']])
+            return self._mass
         elif key == 'reduced_mass':
-            if len(self['isotopes']) != 2:
-                raise Exception("Can only compute reduced mass for diatomic species.")
-            m1 = database.get_atomic_mass(*self['isotopes'][0])
-            m2 = database.get_atomic_mass(*self['isotopes'][1])
-            return m1*m2/(m1+m2)
+            if not hasattr(self,'_reduced_mass'):
+                if len(self['isotopes']) != 2:
+                    raise Exception("Can only compute reduced mass for diatomic species.")
+                m1 = database.get_atomic_mass(*self['isotopes'][0])
+                m2 = database.get_atomic_mass(*self['isotopes'][1])
+                self._reduced_mass = m1*m2/(m1+m2)
+            return self._reduced_mass
         elif key == 'chemical_name':
-            return ''.join(self['elements'])
-        elif key == 'isotopologue':
-            return ''.join([f'[{t[1]}{t[0]}]' for t in self['isotopes']])
+            if not hasattr(self,'_chemical_name'):
+                t = []
+                for element,mass_number,multiplicity in self._isotopes:
+                    t.append(element)
+                    t.append(tools.subscript_numerals(multiplicity))
+                self._chemical_name = ''.join(t)
+            return self._chemical_name
+        # elif key == 'isotopologue':
+            # return ''.join([f'[{t[1]}{t[0]}]' for t in self['isotopes']])
         elif key == 'point_group':
             if len(self.isotopes) != 2:
                 raise Exception("Can only compute reduced mass for diatomic species.")

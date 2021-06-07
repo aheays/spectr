@@ -191,7 +191,10 @@ prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e'
     (('species','Tex'),_f5),
     (('species','Tex'),_f4),
 ])
-prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer=[(('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,)])
+prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', 
+                       infer=[
+                           (('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,),
+                       ])
 prototypes['Nself'] = dict(description="Column density",units="cm2",kind='f',fmt='<11.3e', infer=[])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])

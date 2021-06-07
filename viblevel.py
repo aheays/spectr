@@ -28,7 +28,7 @@ class VibLevel(Optimiser):
     def __init__(
             self,
             name='viblevel',
-            species='[14N][14N]',
+            species=None,
             J=None,                       # compute on this, or default added
             # ef=None,                      # compute for these e/f parities , default ('e','f')
             experimental_level=None,      # a Level object for optimising relative to 
@@ -188,7 +188,7 @@ class VibLevel(Optimiser):
         if self._clean_construct:
             ## all quantum numbers and molecular parameters
             kw = quantum_numbers.decode_linear_level(name) | kwargs
-            kw['species'] = self.species.isotopologue
+            kw['species'] = self.species.name
             if 'S' not in kw or 's' not in kw or 'Λ' not in kw:
                 raise Exception('Quantum numbers S, s, and Λ are required.')
             ## check kwargs contains necessary quantum numbers

@@ -610,6 +610,37 @@ def make_valid_python_symbol_name(string):
     string = re.sub(r'[-<!^.+|&/%]','_',string)
     return string
 
+def regularise_unicode(s):
+    """Turn unicode symbols into something more ascii"""
+    ## superscripts / subscripts 
+    for x,y in ( ('⁰','0'), ('¹','1'), ('²','2'), ('³','3'),
+                 ('⁴','4'), ('⁵','5'), ('⁶','6'), ('⁷','7'), ('⁸','8'),
+                 ('⁹','9'), ('⁺','+'), ('⁻','-'), ('₀','0'), ('₁','1'),
+                 ('₂','2'), ('₃','3'), ('₄','4'), ('₅','5'), ('₆','6'),
+                 ('₇','7'), ('₈','8'), ('₉','9'), ):
+        if x in s:
+            s = s.replace(x,y)
+    return s
+
+def superscript_numerals(s):
+    """Turn unicode symbols into something more ascii"""
+    ## superscripts / subscripts 
+    for x,y in ( ('⁰','0'), ('¹','1'), ('²','2'), ('³','3'),
+                 ('⁴','4'), ('⁵','5'), ('⁶','6'), ('⁷','7'), ('⁸','8'),
+                 ('⁹','9'), ('⁺','+'), ('⁻','-'), ):
+        if y in s:
+            s = s.replace(y,x)
+    return s
+
+def subscript_numerals(s):
+    """Turn unicode symbols into something more ascii"""
+    ## superscripts / subscripts 
+    for x,y in (('₀','0'), ('₁','1'),
+                 ('₂','2'), ('₃','3'), ('₄','4'), ('₅','5'), ('₆','6'),
+                 ('₇','7'), ('₈','8'), ('₉','9'), ):
+        if y in s:
+            s = s.replace(y,x)
+    return s
 
 # def decode_format_string(s):
     # """Get the different arts of a format string, return as dictionary."""
