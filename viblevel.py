@@ -382,22 +382,26 @@ class VibLine(Optimiser):
 
     def _set_J_l_ΔJ(self,J_l,ΔJ):
         """Set J_l and ΔJ in self and upper and lower levels."""
-        ## set in self
+        ## get needed upper and lower J levels
         if J_l is not None: 
             self._J_l = np.array(J_l,ndmin=1)
         else:
             self._J_l = self.level_l.J
+        J_l = self._J_l
         if ΔJ is None:  
             self._ΔJ = (-1,0,+1)
         else:
             self._ΔJ = np.array(ΔJ,ndmin=1)
-        ## set in level
-        if not np.all(self._J_l == self.level_l.J):
-            self.level_l.J = self._J_l
         J_u = np.unique(
-            np.concatenate([self._J_l+ΔJ for ΔJ in self._ΔJ]))
+            np.concatenate([J_l+ΔJ for ΔJ in self._ΔJ]))
         J_u = J_u[J_u>0]
-        if not np.all(J_u == self.level_u.J):
+        ## set in levels
+        if self.level_u == self.level_l:
+            ## if upper and lower are the same object then set all J
+            self.level_u.J = np.unique(np.concatenate((J_l,J_u)))
+        else:
+            ## else set upper and lower J separately
+            self.level_l.J = J_l
             self.level_u.J = J_u
 
     J_l = property(lambda self:self._J_l,lambda self,J_l:self._set_J_l_ΔJ(J_l,self._ΔJ))
@@ -495,13 +499,16 @@ class VibLine(Optimiser):
 
     def plot(self,T=None,**kwargs):
         kwargs.setdefault('xkey','ν')
+        kwargs.setdefault('zkeys',None)
         if T is None:
             kwargs.setdefault('ykey','Sij')
         else:
             kwargs.setdefault('ykey','σ')
             self.line['Teq'] = T
             self.line['Zsource'] = 'self'
-        return self.line.plot_stick_spectrum(**kwargs)
+        tline = self.line[self.line['Sij'] > 0]
+        fig = tline.plot_stick_spectrum(**kwargs)
+        return fig
 
 @lru_cache
 def _get_linear_H(S,Λ,s):

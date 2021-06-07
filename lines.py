@@ -55,7 +55,18 @@ for key,val in levels.prototypes.items():
 
 
 ## add lines things
-prototypes['branch'] = dict(description="Rotational branch ΔJ.Fu.Fl.efu.efl", kind='U', cast=str, fmt='<10s')
+_ΔJ_translate = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
+_ef_translate = {-1:'f',+1:'e'}
+@vectorise(vargs=(1,2,3,4,5))
+def _f0(self,ΔJ,Fi_u,Fi_l,ef_u,ef_l):
+    ΔJ = _ΔJ_translate[int(ΔJ)]
+    Fi_u = int(Fi_u)
+    Fi_l = int(Fi_l)
+    ef_u = _ef_translate[int(ef_u)]
+    ef_l = _ef_translate[int(ef_l)]
+    retval = f'{ΔJ}{Fi_u}{Fi_l}{ef_u}{ef_l}'
+    return retval
+prototypes['branch'] = dict(description="Rotational branch ΔJ.Fiu.Fil.efu.efl", kind='U', fmt='<10s',infer=[(('ΔJ','Fi_u','Fi_l','ef_u','ef_l'),_f0)])
 
 def _f1(self,fv,SJ,J_l,Λ_u,Λ_l):
     """Get band fvalues from line strength"""
@@ -451,6 +462,7 @@ class Generic(levels.Base):
             ykey='σ',
             zkeys=None,         # None or list of keys to plot as separate lines
             ax=None,
+            plot_labels=True,
             **plot_kwargs # can be calculate_spectrum or plot kwargs
     ):
         """No  lineshapes, just plot as sticks."""
@@ -458,13 +470,25 @@ class Generic(levels.Base):
             ax = plotting.plt.gca()
         if zkeys is None:
             zkeys = self.default_zkeys
-        for iz,(qn,t) in enumerate(self.unique_dicts_matches(*tools.ensure_iterable(zkeys))):
+        for iz,(qn,tline) in enumerate(self.unique_dicts_matches(*tools.ensure_iterable(zkeys))):
             t_plot_kwargs = plot_kwargs | {
                 'color':plotting.newcolor(iz),
                 'label':self.encode_qn(qn),
             }
-            plotting.plot_sticks(t[xkey],t[ykey],**t_plot_kwargs)
-        plotting.legend(ax=ax,fontsize='x-small')
+            plotting.plot_sticks(tline[xkey],tline[ykey],**t_plot_kwargs)
+        if plot_labels:
+            ymin,ymax = ax.get_ylim()
+            ystep = (ymax-ymin)/10
+            branch_annotations = plotting.annotate_spectrum_by_branch(
+                self,
+                ybeg=ymax,
+                ystep=ystep,
+                zkeys=zkeys,  
+                length=-0.02,
+                labelsize='xx-small',namesize='x-small', namepos='float',)
+            ax.set_ylim(ymin,ymax+ystep*(len(branch_annotations)+1))
+        if not plot_labels:
+            plotting.legend(ax=ax,fontsize='x-small')
         ax.set_xlabel(xkey)
         ax.set_ylabel(ykey)
         return ax

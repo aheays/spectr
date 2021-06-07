@@ -229,15 +229,16 @@ def _f0(self,S,Λ,s):
 prototypes['ef'] = dict(description="e/f symmetry", kind='i',infer=[(('S','Λ','s'),_f0,)],fmt='+1d')
 
 def _f0(S,SR,Λ):
-    F = np.full(S.shape,np.nan)
+    Fi = np.full(S.shape,np.nan)
     ## sort according to SR
     i = Λ>0
-    F[i] = S[i]-SR[i]+1.
+    Fi[i] = S[i]-SR[i]+1.
     ## special case Σ± states -- reverse order
     i = ~i
-    F[i] = S[i]+SR[i]+1.
-    if np.any(np.isnan(F)): raise InferException('Failed to computed F')
-    return(F)
+    Fi[i] = S[i]+SR[i]+1.
+    if np.any(np.isnan(Fi)):
+        raise InferException('Failed to computed Fi')
+    return(Fi)
 prototypes['Fi'] = dict(description="Spin multiplet index", kind='i',infer=[
     ('sublevel',lambda self,sublevel: [int(t[:-1]) for t in sublevel]),
     (('S','SR'),lambda self,S,SR: S-SR+1,)])
@@ -313,7 +314,7 @@ def _f5(self,S):
 prototypes['SR'] = dict(description="Signed projection of spin angular momentum onto the molecule-fixed z axis", kind='f',infer=[
     (('S',), _f5), # trivial case, S=0
     (('J','N'),lambda self,J,N: J-N),
-    (('S','F'),lambda self,S,F: S-F+1),                   # Fi ordering follows decreasing SR
+    (('S','Fi'),lambda self,S,Fi: S-Fi+1),                   # Fi ordering follows decreasing SR
     (('Λ','S','Σ','s','ef','LSsign'), _f6), # most general case
 ])
 
@@ -335,6 +336,7 @@ prototypes['Bv']  = dict(description='Rotational constant' ,units='cm-1',kind='f
 prototypes['Dv']  = dict(description='Centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',infer=[])
 prototypes['Hv']  = dict(description='Third order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',infer=[])
 prototypes['Lv']  = dict(description='Fourth order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',infer=[])
+prototypes['Mv']  = dict(description='Fifth order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',infer=[])
 prototypes['Av']  = dict(description='Spin-orbit energy' ,units='cm-1',kind='f',fmt='0.6g',infer=[])
 prototypes['ADv'] = dict(description='Spin-orbit centrifugal distortion',units='cm-1',kind='f',fmt='0.6g',infer=[])
 prototypes['AHv'] = dict(description='Higher-order spin-orbit centrifugal distortion',units='cm-1',kind='f',fmt='0.6g',infer=[])
@@ -508,7 +510,7 @@ class Atomic(Generic):
 class Linear(Generic):
     default_prototypes = _collect_prototypes(
         *Generic.default_prototypes,
-        'Λ','s','Σ','SR','Ω','Fi',
+        'Λ','s','Σ','SR','Ω','Fi','LSsign',
         'i','gu','σv','sa','ef',
     )
     defining_qn = ('species','label','ef','J')
@@ -532,7 +534,7 @@ class Diatomic(Linear):
         'v',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
-        'Tv','Bv','Dv','Hv','Lv',
+        'Tv','Bv','Dv','Hv','Lv','Mv',
         'Av','ADv','AHv',
         'λv','λDv','λHv',
         'γv','γDv','γHv',

@@ -1088,7 +1088,7 @@ class Dataset(optimise.Optimiser):
             ## do everything again for associated data
             if include_assoc:
                 for assoc,assoc_value in self._data[key]['assoc'].items():
-                    assoc_key = f'({key},{assoc})'
+                    assoc_key = f'{key},{assoc}'
                     vals = [format(t,self.associated_kinds[assoc]['fmt']) for t in assoc_value]
                     if quote_strings and self.associated_kinds[assoc]['kind'] == 'U':
                         vals = ["'"+val+"'" for val in vals]
@@ -1273,7 +1273,7 @@ class Dataset(optimise.Optimiser):
                 if np.isscalar(val):
                     ## attribute
                     data[key] = val
-                elif r:=re.match(r'\(([^,]+),([^,]+)\)',key):
+                elif r:=re.match(r'([^,]+),([^,]+)',key):
                     ## associated data -- value must already be set
                     key,suffix = r.groups()
                     data[key]['assoc'][suffix] = val
