@@ -184,14 +184,7 @@ class Experiment(Optimiser):
     def __len__(self):
         return len(self.x)
 
-    def fit_noise(
-            self,
-            xbeg=None,
-            xend=None,
-            n=1,
-            make_plot=False,
-            figure_number=None,
-    ):
+    def fit_noise(self,xbeg=None,xend=None,n=1,make_plot=False,figure_number=None):
         """Estimate the noise level by fitting a polynomial of order n
         between xbeg and xend to the experimental data. Also rescale
         if the experimental data has been interpolated."""
@@ -505,8 +498,6 @@ class Model(Optimiser):
             ncpus=1,
             match=idict(),
             _cache=None,
-            _parameters=None,
-            _suboptimiser=None,
             **set_keys_vals
     ):
         ## nothing to be done
@@ -594,6 +585,101 @@ class Model(Optimiser):
         _cache['transmittance'] = transmittance
 
     @optimise_method()
+    def add_emission_lines(
+            self,
+            lines=None,
+            nfwhmL=20,
+            nfwhmG=10,
+            Imin=None,
+            lineshape=None,
+            ncpus=1,
+            match=idict(),
+            _cache=None,
+            **set_keys_vals
+    ):
+        ## nothing to be done
+        if len(self.x) == 0 or len(lines) == 0:
+            return
+        if self._clean_construct:
+            ## first run — initalise local copy of lines data and
+            imatch = lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
+            nmatch = np.sum(imatch)
+            lines_copy = lines.copy(index=imatch)
+            ## keys that might possibly change
+            variable_keys = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
+            ## set parameter data
+            for key,val in set_keys_vals.items():
+                lines_copy[key] = float(val)
+            ## cache
+            (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['lines_copy']) = (
+                variable_keys,imatch,nmatch,lines_copy)
+            ## calculate spectrum
+            x,I = lines_copy.calculate_spectrum(
+                x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                ymin=Imin,ncpus=ncpus,lineshape=lineshape)
+        else:
+            ## subsequent runs -- maybe only recompute a few lines
+            (variable_keys,imatch,nmatch,lines_copy,I) = (
+                _cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
+                _cache['lines_copy'],_cache['I'])
+            full_recalculation = False
+            lines_changed = False
+            ## nothing to be done
+            if nmatch == 0:
+                return
+            ## x grid has changed
+            if self._xchanged:
+                full_recalculation = True
+            ## set_keys_vals has modified parameters
+            for key,val in set_keys_vals.items():
+                if (isinstance(val,Parameter) and
+                    self._last_construct_time < val._last_modify_value_time):
+                    lines_copy.set(key,val)
+                    full_recalculation = True
+            ## line spectrum has changed -- find changed lines
+            if self._last_construct_time < lines._last_construct_time:
+                ichanged = np.full(len(lines_copy),False)
+                changed_keys = []
+                for key in variable_keys:
+                    i = lines[key][imatch] != lines_copy[key]
+                    if np.any(i):
+                        changed_keys.append(key)
+                        ichanged |= i
+                nchanged = np.sum(ichanged)
+                if nchanged > (len(lines_copy)/2):
+                    ## most lines change — just recompute everything
+                    full_recalculation = True
+                lines_changed = True
+            ## recalculate
+            if full_recalculation:
+                if lines_changed:
+                    for key in changed_keys:
+                        lines_copy.set(key,lines[key][imatch])
+                x,I = lines_copy.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=Imin,ncpus=ncpus,lineshape=lineshape,)
+            elif lines_changed:
+                ## recompute old version of lines that have changed
+                xold,Iold = lines_copy.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=Imin,ncpus=ncpus,lineshape=lineshape,index=ichanged)
+                ## update data in lines_copy and compute new version
+                ## of changed lines
+                for key in changed_keys:
+                    lines_copy.set(key,lines[key][imatch])
+                xnew,Inew = lines_copy.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=Imin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
+                ## update transmittance
+                I = I - Iold + Inew
+            else:
+                ## re-use previous transmittance
+                pass
+        ## set absorbance in self
+        self.y += I
+        _cache['I'] = I
+
+    @optimise_method()
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
         ## x not set yet
         if self.x is None:
@@ -633,73 +719,73 @@ class Model(Optimiser):
         """Add normally distributed noise with given rms."""
         self.y += rms*tools.randn(len(self.y))
 
-    def add_emission_lines(
-            self,
-            lines,
-            nfwhmL=None,
-            nfwhmG=None,
-            Imin=None,
-            gaussian_method=None,
-            voigt_method=None,
-            use_multiprocessing=None,
-            use_cache=None,
-            **optimise_keys_vals):
-        self.add_suboptimiser(lines) # to model rebuilt when transition changed
-        # self.transitions.append(transition)   
-        name = f'add_emission_lines {lines.name} to {self.name}'
-        # assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
-        # self.emission_intensities[name] = None
-        p = self.add_parameter_set(**optimise_keys_vals,note=name)
-        cache = {}
-        def construct_function():
-            ## first call -- no good, x not set yet
-            if self.experiment is None:
-                # self.emission_intensities[name] = None
-                return
-            ## recompute spectrum
-            if (cache =={}
-                # or self.emission_intensities[name] is None # currently no spectrum computed
-                or self.timestamp<lines.timestamp # transition has changed
-                or self.timestamp<p.timestamp     # optimise_keys_vals has changed
-                or self._xchanged
-                ):
-                ## update optimise_keys_vals that have changed
-                for key,val in p.items():
-                    if (not lines.is_set(key)
-                        or np.any(lines[key]!=val)):
-                        lines[key] = val
-                ## that actual computation
-                x,y = lines.calculate_spectrum(
-                    x=self.x,
-                    ykey='I',
-                    nfwhmG=(nfwhmG if nfwhmG is not None else 10),
-                    nfwhmL=(nfwhmL if nfwhmL is not None else 100),
-                    ymin=Imin,
-                    ΓG='ΓD',
-                    ΓL='Γ',
-                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
-                    gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
-                    voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
-                    use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    use_cache=(use_cache if use_cache is not None else True),
-                )
-                cache['intensity'] = y
-            ## add emission intensity to the overall model
-            self.y += cache['intensity']
-        self.add_construct_function(construct_function)
-        ## new input line
-        def f():
-            retval = f'{self.name}.add_emission_lines({lines.name}'
-            if nfwhmL is not None: retval += f',nfwhmL={repr(nfwhmL)}'
-            if nfwhmG is not None: retval += f',nfwhmG={repr(nfwhmG)}'
-            if Imin is not None: retval += f',Imin={repr(Imin)}'
-            if use_multiprocessing is not None: retval += f',use_multiprocessing={repr(use_multiprocessing)}'
-            if use_cache is not None: retval += f',use_cache={repr(use_cache)}'
-            if voigt_method is not None: retval += f',voigt_method={repr(voigt_method)}'
-            if gaussian_method is not None: retval += f',gaussian_method={repr(gaussian_method)}'
-            if len(p)>0: retval += f',{p.format_input()}'
-            return(retval+')')
-        self.add_format_input_function(f)
+    # def add_emission_lines(
+            # self,
+            # lines,
+            # nfwhmL=None,
+            # nfwhmG=None,
+            # Imin=None,
+            # gaussian_method=None,
+            # voigt_method=None,
+            # use_multiprocessing=None,
+            # use_cache=None,
+            # **optimise_keys_vals):
+        # self.add_suboptimiser(lines) # to model rebuilt when transition changed
+        # # self.transitions.append(transition)   
+        # name = f'add_emission_lines {lines.name} to {self.name}'
+        # # assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
+        # # self.emission_intensities[name] = None
+        # p = self.add_parameter_set(**optimise_keys_vals,note=name)
+        # cache = {}
+        # def construct_function():
+            # ## first call -- no good, x not set yet
+            # if self.experiment is None:
+                # # self.emission_intensities[name] = None
+                # return
+            # ## recompute spectrum
+            # if (cache =={}
+                # # or self.emission_intensities[name] is None # currently no spectrum computed
+                # or self.timestamp<lines.timestamp # transition has changed
+                # or self.timestamp<p.timestamp     # optimise_keys_vals has changed
+                # or self._xchanged
+                # ):
+                # ## update optimise_keys_vals that have changed
+                # for key,val in p.items():
+                    # if (not lines.is_set(key)
+                        # or np.any(lines[key]!=val)):
+                        # lines[key] = val
+                # ## that actual computation
+                # x,y = lines.calculate_spectrum(
+                    # x=self.x,
+                    # ykey='I',
+                    # nfwhmG=(nfwhmG if nfwhmG is not None else 10),
+                    # nfwhmL=(nfwhmL if nfwhmL is not None else 100),
+                    # ymin=Imin,
+                    # ΓG='ΓD',
+                    # ΓL='Γ',
+                    # # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
+                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
+                    # voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
+                    # use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
+                    # use_cache=(use_cache if use_cache is not None else True),
+                # )
+                # cache['intensity'] = y
+            # ## add emission intensity to the overall model
+            # self.y += cache['intensity']
+        # self.add_construct_function(construct_function)
+        # ## new input line
+        # def f():
+            # retval = f'{self.name}.add_emission_lines({lines.name}'
+            # if nfwhmL is not None: retval += f',nfwhmL={repr(nfwhmL)}'
+            # if nfwhmG is not None: retval += f',nfwhmG={repr(nfwhmG)}'
+            # if Imin is not None: retval += f',Imin={repr(Imin)}'
+            # if use_multiprocessing is not None: retval += f',use_multiprocessing={repr(use_multiprocessing)}'
+            # if use_cache is not None: retval += f',use_cache={repr(use_cache)}'
+            # if voigt_method is not None: retval += f',voigt_method={repr(voigt_method)}'
+            # if gaussian_method is not None: retval += f',gaussian_method={repr(gaussian_method)}'
+            # if len(p)>0: retval += f',{p.format_input()}'
+            # return(retval+')')
+        # self.add_format_input_function(f)
         
 
     def set_residual_weighting(self,weighting,xbeg=None,xend=None):
@@ -1001,7 +1087,6 @@ class Model(Optimiser):
         ## generate gaussian to convolve with
         xconv_beg = -fwhms_to_include*abswidth
         xconv_end =  fwhms_to_include*abswidth
-        # if ((xconv_end-xconv_beg)/dx) > 1e6:
             # warnings.warn('Convolution domain length very long.')
         xconv = np.arange(xconv_beg,xconv_end,dx)
         if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
@@ -1009,6 +1094,33 @@ class Model(Optimiser):
         yconv = yconv/yconv.sum() # sum normalised
         ## convolve and return, discarding padding
         self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+
+    @optimise_method()
+    def convolve_with_gaussian_sum(self,widths_areas,fwhms_to_include=10):
+        """Convolve with a sum of Gaussians of different widths and (positive)
+        areas in a list [[width1,area1],...] but together normalised to 1."""
+        ## maximum width
+        width = sum([width for width,area in widths_areas])
+        ## get padded spectrum to minimise edge effects
+        dx = (self.x[-1]-self.x[0])/(len(self.x)-1)
+        padding = np.arange(dx,fwhms_to_include*width+dx,dx)
+        xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
+        ypad = np.concatenate((self.y[0]*np.ones(padding.shape,dtype=float),self.y,self.y[-1]*np.ones(padding.shape,dtype=float)))
+        ## generate x grid to convolve with, ensure there is a centre
+        ## zero
+        xconv_beg = -fwhms_to_include*width
+        xconv_end =  fwhms_to_include*width
+        xconv = np.arange(xconv_beg,xconv_end,dx)
+        if len(xconv)%2==0:
+            xconv = xconv[0:-1]
+        xconv = xconv-xconv.mean()
+        ## normalised sum of gaussians
+        yconv = np.full(xconv.shape,0.0)
+        for width,area in widths_areas:
+            yconv += lineshapes.gaussian(xconv,0,abs(area),abs(width))
+        yconv /= yconv.sum() 
+        ## convolve padded y and substitute into self
+        self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(self.x)]
 
     def convolve_with_lorentzian(self,width,fwhms_to_include=100):
         """Convolve with lorentzian."""
@@ -1545,7 +1657,7 @@ class Model(Optimiser):
                     ystep,
                     zkeys=zkeys,  
                     length=-0.02, # fraction of axes coords
-                    color_by=('branch' if 'branch' in zkeys else zkeys),
+                    # color_by=('branch' if 'branch' in zkeys else zkeys),
                     labelsize='xx-small',namesize='x-small', namepos='float',    
                     label_key=(label_key if label_key is not None else line.default_xkey),
                 )

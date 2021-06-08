@@ -433,7 +433,7 @@ class Dataset(optimise.Optimiser):
                 self.set(key,value=value,index=index)
 
     @optimise_method(format_lines='single')
-    def set_spline(self,xkey,ykey,knots,order=3,match=None,index=None,_cache=None,**match_kwargs):
+    def set_spline(self,xkey,ykey,knots,order=3,default=None,match=None,index=None,_cache=None,**match_kwargs):
         """Set ykey to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
         given, then only set these."""
@@ -455,6 +455,13 @@ class Dataset(optimise.Optimiser):
             _cache['xspline'],_cache['yspline'] = xspline,yspline
         ## get cached data
         i,xspline,yspline = _cache['i'],_cache['xspline'],_cache['yspline']
+        ## set data
+        if not self.is_known(ykey):
+            if default is None:
+                raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
+            else:
+                self[ykey] = default
+            
         self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=i),order=order),index=i)
         ## set previously-set uncertainties to NaN
         if self.is_set((ykey,'unc')):
@@ -1062,6 +1069,8 @@ class Dataset(optimise.Optimiser):
             keys = self.keys()
             if not include_keys_with_leading_underscore:
                 keys = [key for key in keys if key[0]!='_']
+        ##
+        self.assert_known(*keys)
         ## data to store in header
         ## collect columns of data -- maybe reducing to unique values
         columns = []

@@ -271,7 +271,20 @@ prototypes['ν4'] = dict(description="Vibrational quantum number for mode 4", ki
 prototypes['l2'] = dict(description="Vibrational angular momentum 2", kind='i',infer=[])
 prototypes['Λ'] = dict(description="Total orbital angular momentum aligned with internuclear axis", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'Λ'))]) # 
 prototypes['L'] = dict(description="Total orbital angular momentum", kind='i',infer=[])
-prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',infer=[])
+
+def _f0(self,Av):
+    """Determine LSsign from sign of spin-orbit constant. Always right?"""
+    if np.any(np.isnan(Av)|(Av==0)):
+        raise InferException("Cannot determine LSsign from NaN or zero Av.")
+    LSsign = np.sign(Av)
+    return LSsign
+def _f1(self,λv,Bv):
+    """Determine LSsign from sign of spin-orbit constant. Always right?"""
+    LSsign = np.sign(λv-Bv)
+    return LSsign
+prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',
+                            infer=[('Av',_f0), (('λv','Bv',),_f1),])
+
 prototypes['s'] = dict(description="s=1 for Σ- states and 0 for all other states", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'s'))])
 @vectorise(cache=True,vargs=(1,2))
 def _f0(self,ef,J):
@@ -297,20 +310,30 @@ def _f0(self,S,Λ,s):
     return ef
 prototypes['ef'] = dict(description="e/f symmetry", kind='i',infer=[(('S','Λ','s'),_f0,)],fmt='+1d')
 
-def _f0(S,SR,Λ):
-    Fi = np.full(S.shape,np.nan)
-    ## sort according to SR
-    i = Λ>0
-    Fi[i] = S[i]-SR[i]+1.
-    ## special case Σ± states -- reverse order
-    i = ~i
-    Fi[i] = S[i]+SR[i]+1.
-    if np.any(np.isnan(Fi)):
-        raise InferException('Failed to computed Fi')
-    return(Fi)
+# def _f0(self,S,SR,Λ,s,ef):
+    # Fi = np.full(S.shape,np.nan)
+    # ## Π-state and above order Fi according to SR
+    # i = Λ>0
+    # Fi[i] = S[i]-SR[i]+1.
+    # # ## special case Σ± states -- odd-man-out parity state in the middle
+    # ## special case even-electron Σ states -- odd-man-out parity state in the middle
+    # i = (Λ==0)&(S%1==0)
+    # ef0 = 
+    # i = ~i
+    # Fi[i] = S[i]+SR[i]+1.
+    # print('DEBUG:', S)
+    # print('DEBUG:', SR)
+    # print('DEBUG:', ef)
+    # print('DEBUG:', Fi)
+    # import pdb; pdb.set_trace(); # DEBUG
+    # if np.any(np.isnan(Fi)):
+        # raise InferException('Failed to computed Fi')
+    # return Fi
 prototypes['Fi'] = dict(description="Spin multiplet index", kind='i',infer=[
     ('sublevel',lambda self,sublevel: [int(t[:-1]) for t in sublevel]),
-    (('S','SR'),lambda self,S,SR: S-SR+1,)])
+    (('S','SR'),lambda self,S,SR: S-SR+1,)
+    # (('S','SR','Λ','s','ef'),_f0),
+])
 
 prototypes['Ω'] = dict(description="Absolute value of total angular momentum aligned with internuclear axis", kind='f',fmt='g',infer=[(('Λ','Σ'),lambda self,Λ,S: Λ+S,)])
 
@@ -363,20 +386,20 @@ def _f6(self,Λ,S,Σ,s,ef,LSsign):
     SR = np.full(Λ.shape,np.nan)
     SR[S==0] = 0                # trivial case
     ## special cases Σ states since sign of Σ is not well defined
-    SR[(Λ==0)&(S==1/2)&(s==0)&(ef=='e')] = 1/2
-    SR[(Λ==0)&(S==1/2)&(s==1)&(ef=='f')] = 1/2
-    SR[(Λ==0)&(S==1/2)&(s==0)&(ef=='f')] = -1/2
-    SR[(Λ==0)&(S==1/2)&(s==1)&(ef=='e')] = -1/2
-    i = (Λ==0)&(S==1)&(s==0)&(Σ==0)&(ef=='f'); SR[i] = +1*LSsign[i] # 3Σ+(Σ=0,f)
-    i = (Λ==0)&(S==1)&(s==0)&(Σ==1)&(ef=='e'); SR[i] = 0 # 3Σ+(Σ=1,e)
-    i = (Λ==0)&(S==1)&(s==0)&(Σ==1)&(ef=='f'); SR[i] = -1*LSsign[i] # 3Σ+(Σ=1,f)
-    i = (Λ==0)&(S==1)&(s==1)&(Σ==0)&(ef=='e'); SR[i] = +1*LSsign[i] # 3Σ+(Σ=0,f)
-    i = (Λ==0)&(S==1)&(s==1)&(Σ==1)&(ef=='f'); SR[i] = 0 # 3Σ-(Σ=1,f)
-    i = (Λ==0)&(S==1)&(s==1)&(Σ==1)&(ef=='e'); SR[i] = -1*LSsign[i] # 3Σ+(Σ=1,f)
+    SR[(Λ==0)&(S==1/2)&(s==0)&(ef==+1)] = +1/2
+    SR[(Λ==0)&(S==1/2)&(s==1)&(ef==-1)] = +1/2
+    SR[(Λ==0)&(S==1/2)&(s==0)&(ef==-1)] = -1/2
+    SR[(Λ==0)&(S==1/2)&(s==1)&(ef==+1)] = -1/2
+    i = (Λ==0)&(S==1)&(s==0)&(Σ==0)&(ef==-1); SR[i] = +1*LSsign[i] # 3Σ+(Σ=0,f)
+    i = (Λ==0)&(S==1)&(s==0)&(Σ==1)&(ef==+1); SR[i] = 0 # 3Σ+(Σ=1,e)
+    i = (Λ==0)&(S==1)&(s==0)&(Σ==1)&(ef==-1); SR[i] = -1*LSsign[i] # 3Σ+(Σ=1,f)
+    i = (Λ==0)&(S==1)&(s==1)&(Σ==0)&(ef==+1); SR[i] = +1*LSsign[i] # 3Σ+(Σ=0,f)
+    i = (Λ==0)&(S==1)&(s==1)&(Σ==1)&(ef==-1); SR[i] = 0 # 3Σ-(Σ=1,f)
+    i = (Λ==0)&(S==1)&(s==1)&(Σ==1)&(ef==+1); SR[i] = -1*LSsign[i] # 3Σ+(Σ=1,f)
     ## general case
     i = np.isnan(SR)
     SR[i] = -Σ[i]*LSsign[i]
-    return(SR)
+    return SR
 def _f5(self,S):
     if not np.all(S==0): raise InferException()
     return(np.zeros(S.shape))

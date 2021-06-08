@@ -107,6 +107,7 @@ prototypes['τa'] = dict(description="Integrated optical depth from absorption o
 prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
 prototypes['ΔJ'] = dict(description="Jupper-vlower", kind='f', fmt='>+4g', infer=[(('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l,)],)
+prototypes['ΔN'] = dict(description="Nupper-vlower", kind='f', fmt='>+4g', infer=[(('N_u','N_l'),lambda self,N_u,N_l: N_u-N_l,)],)
 prototypes['ΔS'] = dict(description="Supper-vlower", kind='f', fmt='>+4g', infer=[(('S_u','S_l'),lambda self,S_u,S_l: S_u-S_l,)],)
 prototypes['ΔΛ'] = dict(description="Λupper-Λlower", kind='f', fmt='>+4g', infer=[(('Λ_u','Λ_l'),lambda self,Λ_u,Λ_l: Λ_u-Λ_l,)],)
 prototypes['ΔΩ'] = dict(description="Ωupper-Ωlower", kind='f', fmt='>+4g', infer=[(('Ω_u','Ω_l'),lambda self,Ω_u,Ω_l: Ω_u-Ω_l,)],)
@@ -331,11 +332,9 @@ def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
     return SJ
 prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
 
-# prototypes['τ'] = dict(description="Integrated optical depth",units="cm-1", kind='f',  fmt='<10.5e', infer={('σ','column_densitypp'):lambda self,σ,column_densitypp: σ*column_densitypp,},)
-prototypes['I'] = dict(description="Spectrally-integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",kind='f',fmt='<10.5e',infer=[(('Ae','α_u','ν'),lambda self,Ae,α_u,ν: Ae*α_u*ν,)],)
-# prototypes['Ip'] = dict(description="Integrated emission photon intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED", kind='f',  fmt='<10.5e', infer={('Ae','populationp','column_densityp'):lambda self,Ae,populationp,column_densityp: Ae*populationp*column_densityp,},)
-# prototypes['σd'] = dict(description="Integrated photodissociation cross section.",units="cm2.cm-1", kind='f',  fmt='<10.5e', infer={('σ','ηdp'):lambda self,σ,ηdp: σ*ηdp,})
-# prototypes['Sabs'] = dict(description="Absorption intensity).",units="cm-1/(molecule.cm-1", kind='f',  fmt='<10.5e', infer=[])
+## photoemission 
+prototypes['Finstr'] = dict(description="Instrument photoemission detection efficiency",units='dimensionless',kind='f',fmt='<7.3e',infer=[((),lambda self: 1.)])
+prototypes['I'] = dict(description="Spectrally-integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",units='not_well_defined',kind='f',fmt='<10.5e',infer=[(('Finstr','Ae','α_u','ν'),lambda self,Finstr,Ae,α_u,ν: Finstr*Ae*α_u*ν,)],)
 
 ## vibrational interaction energies
 prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
@@ -408,7 +407,7 @@ class Generic(levels.Base):
         'ν','ν0', # 'λ',
         'ΔJ', 'branch',
         'ΔJ',
-        'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ','I',
+        'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr',
         'Nself',
         'Teq','Tex','Ttr',
         'Γ','ΓD',
@@ -570,14 +569,14 @@ class Generic(levels.Base):
                 raise Exception("Could not find a default ykey")
         ## guess a default lineshape
         if lineshape is None:
-            if self.is_known('Γ','ΓD'):
+            if self.is_known('Γ','ΓD') and np.any(self['Γ']!=0) and np.any(self['D']!=0):
                 lineshape = 'voigt'
-            elif self.is_known('Γ'):
+            elif self.is_known('Γ') and np.any(self['Γ']!=0):
                 lineshape = 'lorentzian'
-            elif self.is_known('ΓD'):
+            elif self.is_known('ΓD') and np.any(self['ΓD']!=0):
                 lineshape = 'gaussian'
             else:
-                raise Exception(f"Cannot determine lineshape because both Γ and ΓD are unknown")
+                raise Exception(f"Cannot determine lineshape because both Γ and ΓD are unknown or zero")
         ## no lines to add to cross section -- return quickly
         if len(self)==0:
             if x is None:
@@ -1150,7 +1149,7 @@ class Linear(Generic):
         *_level_keys,
         *Generic.default_prototypes,
         'fv', 'νv', 'μv',
-        'SJ','ΔΣ','ΔΩ','ΔΛ',
+        'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
     }}
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']

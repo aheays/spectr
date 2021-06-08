@@ -373,7 +373,6 @@ class VibLine(Optimiser):
         # self.vibrational_spin_line = lines.Diatomic(**tkwargs)
         # self.vibrational_spin_line.add_suboptimiser(self)
         # self.μ = None
-        self._transition_moment_functions = []
         self._set_J_l_ΔJ(J_l,ΔJ)
         ## transitions
                 ## construct optimiser -- inheriting from states
@@ -386,8 +385,8 @@ class VibLine(Optimiser):
         def f(directory): 
             self.line.save(directory+'/line.h5')
         self.add_save_to_directory_function(f)
-        self.add_post_construct_function(self.construct_lines)
-        self.initialise_construct()
+        self.add_post_construct_function(self._finalise_construct)
+        self._initialise_construct()
 
     def _set_J_l_ΔJ(self,J_l,ΔJ):
         """Set J_l and ΔJ in self and upper and lower levels."""
@@ -417,7 +416,7 @@ class VibLine(Optimiser):
     ΔJ = property(lambda self:self._ΔJ,lambda self,ΔJ:self._set_J_l_ΔJ(self._J_l,ΔJ))
 
     @optimise_method(add_format_input_function=False)
-    def initialise_construct(self,_cache=None):
+    def _initialise_construct(self,_cache=None):
         if self._clean_construct:
             ## initialise μ0
             self.μ0 = np.full(
@@ -453,13 +452,11 @@ class VibLine(Optimiser):
             ## set some more things
             self.line['Zsource'] = self.Zsource
             self.line['Eref'] = self.Eref
+        else:
+            self.μ0 *= 0.
 
-    def construct_lines(self):
+    def _finalise_construct(self):
         """Finalise construct."""
-        ## build μ0
-        for iu,jl,fμ in self._transition_moment_functions:
-            for iΔJ,ΔJ in enumerate(self.ΔJ):
-                self.μ0[:,iΔJ,iu,jl] = fμ(self.J_l,ΔJ)
         ## could vectorise linalg with np.dot
         μs,E_us,E_ls,Γ_us,Γ_ls = [],[],[],[],[]
         for iJ_l,J_l in enumerate(self.J_l):
@@ -485,7 +482,7 @@ class VibLine(Optimiser):
         self.line['Γ_u'] = np.ravel(Γ_us)[self._iallowed]
         self.line['Γ_l'] = np.ravel(Γ_ls)[self._iallowed]
         
-    @optimise_method()
+    @optimise_method(format_lines='single')
     def add_transition_moment(self,name_u,name_l,μv=1,_cache=None):
         """Add constant transition moment. μv can be optimised."""
         """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed
@@ -507,7 +504,7 @@ class VibLine(Optimiser):
             if fμ[i,j] is None:
                 continue
             for iΔJ,ΔJ in enumerate(self.ΔJ):
-                self.μ0[:,iΔJ,i+kwu['ibeg'],j+kwl['ibeg']] += fμ[i,j](self.J_l,ΔJ)*μv
+                self.μ0[:,iΔJ,i+kwu['ibeg'],j+kwl['ibeg']] += fμ[i,j](self.J_l,ΔJ)*float(μv)
 
     def plot(self,T=None,**kwargs):
         kwargs.setdefault('xkey','ν')
