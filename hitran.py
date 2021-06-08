@@ -15,7 +15,6 @@ def get_partition_function(species_or_isotopologue,temperature):
     """Use hapi to get a partition function.  Uses main isotopologue if
     not given."""
     from hapi import hapi
-    print('DEBUG:', species_or_isotopologue,temperature)
     Mol,Iso = translate_species_to_codes(species_or_isotopologue)
     return hapi.partitionSum(Mol,Iso,temperature)
 
