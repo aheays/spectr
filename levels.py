@@ -165,6 +165,7 @@ prototypes['conf'] = dict(description="Electronic configuration", kind='U', fmt=
 
 # @vectorise(cache=True,vargs=(1,2))
 
+## partition function
 def _f5(self,species,Tex,Eref):
     """Get HITRAN partition function."""
     if self['Zsource'] != 'HITRAN':
@@ -181,7 +182,6 @@ def _f4(self,species,Tex,Eref):
         raise InferException(f'Zsource not "database"')
     Z = database.get_partition_function(species,Tex,Eref)
     return Z
-
 def _f3(self,species,Tex,E,Eref,g,_qnhash):
     """Compute partition function from data in self. For unique
     combinations of T/species sum over unique level energies. Always
@@ -196,49 +196,71 @@ def _f3(self,species,Tex,E,Eref,g,_qnhash):
         t,j = np.unique(_qnhash[i],return_index=True)
         retval[i] = np.sum(g[i][j]*np.exp(-(E[i][j]-Eref[i][j])/(kB*Tex[0])))
     return retval
-
-def _f6(self,species,Tvib,Trot,E,Eref,g,Tv,_qnhash):
-    """Compute partition function from data in self with separate
-    rotational and vibrational temperatures. Compute separately for
-    different species and sum over unique levels only."""
-    if self['Zsource'] != 'self':
-        raise InferException(f'Zsource not "self".')
-    retval = np.full(species.shape,nan)
-    if len(np.unique(Tvib)) > 1:
-        raise InferException("Non-unique Tvib")
-    if len(np.unique(Trot)) > 1:
-        raise InferException("Non-unique Trot")
-    kB = convert.units(constants.Boltzmann,'J','cm-1')
-    for speciesi,i in tools.unique_combinations_masks(species):
-        t,j = np.unique(_qnhash[i],return_index=True)
-        retval[i] = np.sum(g[i][j]
-                           *np.exp(-(Tv[i][j]-Eref[i][j])/(kB*Tvib[0]))
-                           *np.exp(-(E[i][j]-Tv[i][j]-Eref[i][j])/(kB*Trot[0])))
-    return retval
-
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
     (('species','Tex','E','Eref','g','_qnhash'),_f3),
-    (('species','Tvib','Trot','E','Eref','g','Tv','_qnhash'),_f6),
     (('species','Tex','Eref'),_f5),
     (('species','Tex','Eref'),_f4),
 ])
+def _f6(self,species,Tvib,Eref,Tv,v,_qnhash):
+    """Compute partition function from data in self with separate
+     vibrational temperature. Compute separately for
+    different species and sum over unique levels only."""
+    if self['Zsource'] != 'self':
+        raise InferException(f'Zsource not "self".')
+    Zvib = np.full(species.shape,nan)
+    if len(np.unique(Tvib)) > 1:
+        raise InferException("Non-unique Tvib")
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    for speciesi,i in tools.unique_combinations_masks(species):
+        t,j = np.unique(_qnhash[i],return_index=True)
+        t,k = np.unique(v[i][j],return_index=True)
+        Zvib[i] = np.sum(np.exp(-(Tv[i][j][k]-Eref[i][j][k])/(kB*Tvib[0])))
+    return Zvib
+prototypes['Zvib'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
+    (('species','Tvib','Eref','Tv','v','_qnhash'),_f6),
+])
+def _f6(self,species,Trot,E,Tv,g,v,_qnhash):
+    """Compute partition function from data in self with separate
+     vibrational temperature. Compute separately for
+    different species and sum over unique levels only."""
+    if self['Zsource'] != 'self':
+        raise InferException(f'Zsource not "self".')
+    if len(np.unique(Trot)) > 1:
+        raise InferException("Non-unique Trot")
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    Zrot = np.full(species.shape,nan)
+    for (speciesi,vi),i in tools.unique_combinations_masks(species,v):
+        t,j = np.unique(_qnhash[i],return_index=True)
+        Zrot[i] = np.sum(np.exp(-(E[i][j]-Tv[i][j])/(kB*Trot[0])))
+    return Zrot
+prototypes['Zrot'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
+    (('species','Trot','E','Tv','g','v','_qnhash'),_f6),
+])
 
+## level populations
 def _f0(self,Z,E,Eref,g,Tex):
     """Compute level population from equilibrium excitation temperature."""
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     α = g*np.exp(-(E-Eref)/(kB*Tex))/Z
     return α
-def _f1(self,Z,E,Eref,g,Tv,Tvib,Trot):
-    """Compute level population from separate vibrational and rotational
-    temperatures."""
+prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer=[
+    (('Z','E','Eref','g','Tex',), _f0), 
+    (('αvib','αrot'),lambda self,αvib,αrot: αvib*αrot),])
+def _f0(self,Zvib,Tv,Eref,Tvib):
+    """Compute vibrational level population from vibrational
+    temperature."""
     kB = convert.units(constants.Boltzmann,'J','cm-1')
-    α = g*(np.exp(-(Tv-Eref)/(kB*Tvib))*np.exp(-(E-Tv-Eref)/(kB*Trot)))/Z
-    return α
-prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', 
-                       infer=[
-                           # (('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,),
-                           (('Z','E','Eref','g','Tex',), _f0),
-                           (('Z','E','Eref','g','Tv','Tvib','Trot'), _f1,),])
+    αvib = np.exp(-(Tv-Eref)/(kB*Tvib))/Zvib
+    return αvib
+prototypes['αvib'] = dict(description="Vibrational state population", kind='f', fmt='<11.4e', infer=[(('Zvib','Tv','Eref','Tvib',), _f0),])
+def _f0(self,Zrot,Tv,E,g,Trot):
+    """Compute rotational level population from rotational
+    temperature."""
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    αrot = g*np.exp(-(E-Tv)/(kB*Trot))/Zrot
+    return αrot
+prototypes['αrot'] = dict(description="Rotational state population", kind='f', fmt='<11.4e', infer=[(('Zrot','Tv','E','g','Trot',), _f0),])
+
 prototypes['Nself'] = dict(description="Column density",units="cm2",kind='f',fmt='<11.3e', infer=[])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
@@ -582,7 +604,7 @@ class Diatomic(Linear):
         'v',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
-        'Tvib','Trot',
+        'Tvib','Trot','αvib','αrot','Zvib','Zrot',
         'Tv','Bv','Dv','Hv','Lv','Mv',
         'Av','ADv','AHv',
         'λv','λDv','λHv',

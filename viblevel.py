@@ -450,7 +450,9 @@ class VibLine(Optimiser):
                 & ((       ((self.line['J_u']-self.line['J_l']) == 0) & (self.line['ef_u'] != self.line['ef_l']))
                    |((np.abs(self.line['J_u']-self.line['J_l']) == 1) & (self.line['ef_u'] == self.line['ef_l']))))
             self.line.index(self._iallowed)
+            ## set some more things
             self.line['Zsource'] = self.Zsource
+            self.line['Eref'] = self.Eref
 
     def construct_lines(self):
         """Finalise construct."""

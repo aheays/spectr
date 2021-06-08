@@ -106,8 +106,12 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
-prototypes['ΔJ'] = dict(description="Jupper - vlower", kind='f', fmt='>+4g', infer=[(('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l,)],)
-prototypes['Δv'] = dict(description="vupper - vlower", kind='f', fmt='>+4g', infer=[(('v_u','v_l'),lambda self,v_u,v_l: v_u-v_l,)],)
+prototypes['ΔJ'] = dict(description="Jupper-vlower", kind='f', fmt='>+4g', infer=[(('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l,)],)
+prototypes['ΔS'] = dict(description="Supper-vlower", kind='f', fmt='>+4g', infer=[(('S_u','S_l'),lambda self,S_u,S_l: S_u-S_l,)],)
+prototypes['ΔΛ'] = dict(description="Λupper-Λlower", kind='f', fmt='>+4g', infer=[(('Λ_u','Λ_l'),lambda self,Λ_u,Λ_l: Λ_u-Λ_l,)],)
+prototypes['ΔΩ'] = dict(description="Ωupper-Ωlower", kind='f', fmt='>+4g', infer=[(('Ω_u','Ω_l'),lambda self,Ω_u,Ω_l: Ω_u-Ω_l,)],)
+prototypes['ΔΣ'] = dict(description="Σupper-Σlower", kind='f', fmt='>+4g', infer=[(('Σ_u','Σ_l'),lambda self,Σ_u,Σ_l: Σ_u-Σ_l,)],)
+prototypes['Δv'] = dict(description="vupper-vlower", kind='f', fmt='>+4g', infer=[(('v_u','v_l'),lambda self,v_u,v_l: v_u-v_l,)],)
 
 
 ## column 
@@ -355,10 +359,10 @@ prototypes['Teq_l']['infer'].append((('Teq'),lambda self,Teq: Teq))
 prototypes['Tex_u']['infer'].append((('Tex'),lambda self,Tex: Tex))
 prototypes['Tex_l']['infer'].append((('Tex'),lambda self,Tex: Tex))
 prototypes['Tex']['infer'].append((('Teq'),lambda self,Teq: Teq))
-prototypes['Tvib_u']['infer'].append((('Trot'),lambda self,T: T))
-prototypes['Tvib_l']['infer'].append((('Trot'),lambda self,T: T))
-prototypes['Trot_u']['infer'].append((('Tvib'),lambda self,T: T))
-prototypes['Trot_l']['infer'].append((('Tvib'),lambda self,T: T))
+prototypes['Tvib_u']['infer'].append((('Tvib'),lambda self,T: T))
+prototypes['Tvib_l']['infer'].append((('Tvib'),lambda self,T: T))
+prototypes['Trot_u']['infer'].append((('Trot'),lambda self,T: T))
+prototypes['Trot_l']['infer'].append((('Trot'),lambda self,T: T))
 
 prototypes['Nself_u']['infer'].append((('Nself'),lambda self,Nself: Nself))
 prototypes['Nself_l']['infer'].append((('Nself'),lambda self,Nself: Nself))
@@ -515,6 +519,8 @@ class Generic(levels.Base):
             ax = plotting.plt.gca()
         if zkeys is None:
             zkeys = self.default_zkeys
+        ## compute keys before dividing into z matches
+        self.assert_known(xkey,ykey)
         for iz,(qn,tline) in enumerate(self.unique_dicts_matches(*tools.ensure_iterable(zkeys))):
             t_plot_kwargs = plot_kwargs | {
                 'color':plotting.newcolor(iz),
@@ -1136,7 +1142,7 @@ class Atomic(Generic):
         *Generic.default_prototypes,
     }}
     default_xkey = 'J_l'
-    default_zkeys = ['species_u','conf_u','species_l','conf_l','ΔJ']
+    default_zkeys = ['species_u','conf_u','species_l','conf_l','ΔJ','ΔS',]
 
 class Linear(Generic):
     _level_class,_level_keys,defining_qn = _collect_level(levels.Linear)
@@ -1144,7 +1150,7 @@ class Linear(Generic):
         *_level_keys,
         *Generic.default_prototypes,
         'fv', 'νv', 'μv',
-        'SJ',
+        'SJ','ΔΣ','ΔΩ','ΔΛ',
     }}
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
