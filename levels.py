@@ -18,7 +18,7 @@ from . import tools
 from . import database
 from . import kinetics
 from . import quantum_numbers
-from .exceptions import InferException,MissingDataException
+from .exceptions import InferException,DatabaseException
 from .optimise import optimise_method,Parameter
 
 prototypes = {}
@@ -27,7 +27,11 @@ prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,i
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
-prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' ,infer=[])
+
+prototypes['species'] = dict(
+    description="Chemical species with isotope specification" ,kind='U' ,
+    cast=lambda species: np.array(database.normalise_species(species),dtype=str),
+    infer=[])
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
@@ -39,10 +43,11 @@ prototypes['chemical_species'] = dict(description="Chemical species without isot
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
-    try:
-        return kinetics.get_species(species).point_group
-    except:
-        raise InferException
+    return kinetics.get_species(species).point_group
+    # try:
+        # return kinetics.get_species(species).point_group
+    # except:
+        # raise InferException
 prototypes['point_group']  = dict(description="Symmetry point group of species.", kind='U',fmt='s', infer=[(('species',),_f0)])
 
 @vectorise(vargs=(1,),cache=True)
@@ -52,29 +57,19 @@ def _f0(self,species):
 def _f1(self,species):
     try:
         return database.get_species_property(species,'mass')
-    except MissingDataException as err:
+    except DatabaseException as err:
         raise InferException(str(err))
 prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species',), _f0),])
 prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
 
-@vectorise(vargs=(1,2,3,4,5,6),cache=True)
-def _f0(self,species,label,v,Σ,ef,J):
-    """Get diatomic molecule level energies from database."""
-    level = database.get_level(species)
-    if level['classname'] != 'levels.Diatomic':
-        raise InferException('Not level.Diatomic')
-    i = tools.find(level.match(species=species,label=label,v=v,Σ=Σ,ef=ef,J=J))
-    if len(i) == 0:
-        raise InferException('no match found')
-    if len(i) > 1:
-        raise InferException('multiple matches found')
-    return level['E'][i][0]
+## level energies
+prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','_qnhash','Eref'),lambda self,species,_qnhash,Eref: database.get_level_energy(species,Eref,_qnhash=_qnhash)),]) 
+prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','E0'),lambda self,E,E0: E+E0),],default_step=1e-3)
+prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[])
+prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eres'),lambda self,E,Eres: E+Eres)])
+prototypes['Eres'] = dict(description="Residual difference between level energy and experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eexp'),lambda self,E,Eexp: Eexp-E)])
+prototypes['E0'] = dict(description="Energy of the lowest physical energy level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'E0')),],default_step=1e-3)
 
-prototypes['E'] = dict(description="Level energy relative to the least",units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('Ee','ZPE'),lambda self,Ee,ZPE: Ee-ZPE),(('species','label','v','Σ','ef','J'),_f0)],default_step=1e-3)
-prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','ZPE'),lambda self,E,ZPE: E+ZPE),],default_step=1e-3)
-prototypes['Eref'] = dict(description="Reference level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[])
-prototypes['Eres'] = dict(description="Residual error of level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eref'),lambda self,E,Eref: Eref-E)])
-prototypes['ZPE'] = dict(description="Zero-point energy of the lowest level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'ZPE')),],default_step=1e-3)
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
 prototypes['ΓD'] = dict(description="Gaussian Doppler width",units="cm-1 FWHM",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν)])
 
@@ -162,39 +157,88 @@ prototypes['J'] = dict(description="Total angular momentum quantum number exclud
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind='f', infer=[(('J','SR'),lambda self,J,SR: J-SR,)])
 prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'S'),)])
 # prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum.",units='cm-1', kind='f',infer=[((),lambda self,: 0.,)])
-prototypes['Teq'] = dict(description="Equilibriated temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array)
-prototypes['Tex'] = dict(description="Excitation temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq)],cast=cast_abs_float_array)
+prototypes['Teq'] = dict(description="Equilibriated temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array,default_step=0.1)
+prototypes['Tex'] = dict(description="Excitation temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq)],cast=cast_abs_float_array,default_step=0.1)
+prototypes['Tvib'] = dict(description="Vibrational excitation temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array,default_step=0.1)
+prototypes['Trot'] = dict(description="Rotational excitation temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array,default_step=0.1)
 prototypes['conf'] = dict(description="Electronic configuration", kind='U', fmt='10s', infer=[])
 
 # @vectorise(cache=True,vargs=(1,2))
-def _f5(self,species,Tex):
+
+def _f5(self,species,Tex,Eref):
+    """Get HITRAN partition function."""
     if self['Zsource'] != 'HITRAN':
         raise InferException(f'Zsource not "HITRAN".')
+    if np.any(self['Eref'] != 0):
+        raise InferException(f'Cannot get Zsource from "HITRAN" when Eref!=0.')
     from . import hitran
-    return hitran.get_partition_function(species,Tex)
-def _f3(self,species,Tex,E,g):
-    """Compute partition function from data in self."""
+    Z = hitran.get_partition_function(species,Tex)
+    return Z
+
+def _f4(self,species,Tex,Eref):
+    """Get partition function from internal database."""
+    if self['Zsource'] != 'database':
+        raise InferException(f'Zsource not "database"')
+    Z = database.get_partition_function(species,Tex,Eref)
+    return Z
+
+def _f3(self,species,Tex,E,Eref,g,_qnhash):
+    """Compute partition function from data in self. For unique
+    combinations of T/species sum over unique level energies. Always
+    referenced to E0."""
+    if self['Zsource'] != 'self':
+        raise InferException(f'Zsource not "self".')
+    if len(np.unique(Tex)) > 1:
+        raise InferException("Non-unique Tex")
+    retval = np.full(species.shape,nan)
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    for speciesi,i in tools.unique_combinations_masks(species):
+        t,j = np.unique(_qnhash[i],return_index=True)
+        retval[i] = np.sum(g[i][j]*np.exp(-(E[i][j]-Eref[i][j])/(kB*Tex[0])))
+    return retval
+
+def _f6(self,species,Tvib,Trot,E,Eref,g,Tv,_qnhash):
+    """Compute partition function from data in self with separate
+    rotational and vibrational temperatures. Compute separately for
+    different species and sum over unique levels only."""
     if self['Zsource'] != 'self':
         raise InferException(f'Zsource not "self".')
     retval = np.full(species.shape,nan)
-    for (speciesi,Texi),i in tools.unique_combinations_masks(species,Tex):
-        kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
-        retval[i] = np.sum(g[i]*np.exp(-E[i]/kT))
+    if len(np.unique(Tvib)) > 1:
+        raise InferException("Non-unique Tvib")
+    if len(np.unique(Trot)) > 1:
+        raise InferException("Non-unique Trot")
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    for speciesi,i in tools.unique_combinations_masks(species):
+        t,j = np.unique(_qnhash[i],return_index=True)
+        retval[i] = np.sum(g[i][j]
+                           *np.exp(-(Tv[i][j]-Eref[i][j])/(kB*Tvib[0]))
+                           *np.exp(-(E[i][j]-Tv[i][j]-Eref[i][j])/(kB*Trot[0])))
     return retval
-def _f4(self,species,Tex):
-    """Compute partition function from data in self."""
-    if self['Zsource'] != 'database':
-        raise InferException(f'Zsource not "database"')
-    return database.get_partition_function(species,Tex,self['Eref'])
+
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tex','E','g'),_f3),
-    (('species','Tex'),_f5),
-    (('species','Tex'),_f4),
+    (('species','Tex','E','Eref','g','_qnhash'),_f3),
+    (('species','Tvib','Trot','E','Eref','g','Tv','_qnhash'),_f6),
+    (('species','Tex','Eref'),_f5),
+    (('species','Tex','Eref'),_f4),
 ])
+
+def _f0(self,Z,E,Eref,g,Tex):
+    """Compute level population from equilibrium excitation temperature."""
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    α = g*np.exp(-(E-Eref)/(kB*Tex))/Z
+    return α
+def _f1(self,Z,E,Eref,g,Tv,Tvib,Trot):
+    """Compute level population from separate vibrational and rotational
+    temperatures."""
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    α = g*(np.exp(-(Tv-Eref)/(kB*Tvib))*np.exp(-(E-Tv-Eref)/(kB*Trot)))/Z
+    return α
 prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', 
                        infer=[
-                           (('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,),
-                       ])
+                           # (('Z','E','g','Tex'), lambda self,Z,E,g,Tex : g*np.exp(-E/(convert.units(constants.Boltzmann,'J','cm-1')*Tex))/Z,),
+                           (('Z','E','Eref','g','Tex',), _f0),
+                           (('Z','E','Eref','g','Tv','Tvib','Trot'), _f1,),])
 prototypes['Nself'] = dict(description="Column density",units="cm2",kind='f',fmt='<11.3e', infer=[])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
@@ -335,6 +379,7 @@ prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kin
 
 ## Effective Hamiltonian parameters
 prototypes['Tv']  = dict(description='Term origin' ,units='cm-1',kind='f',fmt='0.6f',infer=[])
+prototypes['Tv']  = dict(description='Electronic-vibrational energy.' ,units='cm-1',kind='f',fmt='0.6f',infer=[])
 prototypes['Bv']  = dict(description='Rotational constant' ,units='cm-1',kind='f',fmt='0.8f',infer=[])
 prototypes['Dv']  = dict(description='Centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',infer=[])
 prototypes['Hv']  = dict(description='Third order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',infer=[])
@@ -402,7 +447,7 @@ def _collect_prototypes(*keys):
 class Base(Dataset):
     """Common stuff for for lines and levels."""
     default_prototypes = _collect_prototypes()
-    default_attributes = Dataset.default_attributes | {'Zsource':None,'Eref':0.0,}
+    default_attributes = Dataset.default_attributes | {'Zsource':None,}
 
     def __init__(self,*args,**kwargs):
         kwargs.setdefault('permit_nonprototyped_data',False)
@@ -488,7 +533,7 @@ class Generic(Base):
         'species','chemical_species',
         'label',
         'point_group',
-        'E','Ee','ZPE','Ereduced','Ereduced_common','Eref','Eres',
+        'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres',
         'Γ','ΓD','Γref','Γres',
         'J','N','S',
         'g','gnuclear','Inuclear',
@@ -537,6 +582,7 @@ class Diatomic(Linear):
         'v',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
+        'Tvib','Trot',
         'Tv','Bv','Dv','Hv','Lv','Mv',
         'Av','ADv','AHv',
         'λv','λDv','λHv',
@@ -586,7 +632,7 @@ class Diatomic(Linear):
         ## keys to translate
         for key_old,key_new in (
                 ('T','E'),
-                ('Tref','ZPE'),
+                ('Tref','E0'),
                 ):
             if key_old in data:
                 assert key_new not in data

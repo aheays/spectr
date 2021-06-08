@@ -38,8 +38,9 @@ for key in (
         'reference','_qnhash',
         'species','point_group',
         'mass','reduced_mass',
-        'Z',
+        # 'Z',
         'ΓD',
+        'Teq','Tex','Tvib','Trot',
 ):
     prototypes[key] = copy(levels.prototypes[key])
 
@@ -104,8 +105,6 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
                        ],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
-prototypes['Teq'] = dict(description="Equilibriated temperature",units="K", kind='f', fmt='0.2f', infer=[],default_step=0.1)
-prototypes['Tex'] = dict(description="Excitation temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,)],default_step=0.1)
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
 prototypes['ΔJ'] = dict(description="Jupper - vlower", kind='f', fmt='>+4g', infer=[(('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l,)],)
 prototypes['Δv'] = dict(description="vupper - vlower", kind='f', fmt='>+4g', infer=[(('v_u','v_l'),lambda self,v_u,v_l: v_u-v_l,)],)
@@ -249,7 +248,8 @@ def _f4(self,species,Tex):
 prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[
     (('species','Tex'),_f5),
     (('species','Tex'),_f4),
-    (('species','Tex','E_u','E_l','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3,),
+    (('species','Tex','E_u','E_l','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
+    (('species','Tvib','Trot','E_u','E_l','Tv_l','Gv_u','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
 ])
 
 ## vibrational transition frequencies
@@ -334,6 +334,11 @@ prototypes['Teq_l']['infer'].append((('Teq'),lambda self,Teq: Teq))
 prototypes['Tex_u']['infer'].append((('Tex'),lambda self,Tex: Tex))
 prototypes['Tex_l']['infer'].append((('Tex'),lambda self,Tex: Tex))
 prototypes['Tex']['infer'].append((('Teq'),lambda self,Teq: Teq))
+prototypes['Tvib_u']['infer'].append((('Trot'),lambda self,T: T))
+prototypes['Tvib_l']['infer'].append((('Trot'),lambda self,T: T))
+prototypes['Trot_u']['infer'].append((('Tvib'),lambda self,T: T))
+prototypes['Trot_l']['infer'].append((('Tvib'),lambda self,T: T))
+
 prototypes['Nself_u']['infer'].append((('Nself'),lambda self,Nself: Nself))
 prototypes['Nself_l']['infer'].append((('Nself'),lambda self,Nself: Nself))
 prototypes['species_l']['infer'].append((('species'),lambda self,species: species))
@@ -345,8 +350,10 @@ prototypes['J_u']['infer'].append((('J_l','ΔJ'),lambda self,J_l,ΔJ: J_l+ΔJ))
 prototypes['J_l']['infer'].append((('J_u','ΔJ'),lambda self,J_u,ΔJ: J_u-ΔJ))
 prototypes['v_u']['infer'].append((('v_l','Δv'),lambda self,v_l,Δv: v_l+Δv))
 prototypes['v_l']['infer'].append((('v_u','Δv'),lambda self,v_u,Δv: v_u-Δv))
+
 prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
 prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
+# prototypes['Z']['infer'].append((('Z_l','Z_u'),lambda self,Z_l,Z_u:Z_u+Z_l))
 
 ## parity transition selection rules
 def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
@@ -1135,7 +1142,9 @@ class Diatomic(Linear):
 
     _level_class,_level_keys,defining_qn = _collect_level(levels.Diatomic)
     default_prototypes = {key:prototypes[key] for key in
-                          {*_level_keys, *Linear.default_prototypes,'Δv'}}
+                          {*_level_keys, *Linear.default_prototypes,
+                           'Tvib', 'Trot', 'Δv',
+                           }}
     default_xkey = 'J_u'
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
     # default_attributes = Linear.default_attributes 

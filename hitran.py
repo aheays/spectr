@@ -6,14 +6,16 @@ import numpy as np
 from . import lines
 from . import tools
 from .tools import *
+from . import kinetics
 from .dataset import Dataset
-
+from. exceptions import DatabaseException
 
 @tools.vectorise(cache=True)
 def get_partition_function(species_or_isotopologue,temperature):
     """Use hapi to get a partition function.  Uses main isotopologue if
     not given."""
     from hapi import hapi
+    print('DEBUG:', species_or_isotopologue,temperature)
     Mol,Iso = translate_species_to_codes(species_or_isotopologue)
     return hapi.partitionSum(Mol,Iso,temperature)
 
@@ -46,13 +48,14 @@ def translate_codes_to_species(
 def translate_species_to_codes(species_or_isotopologue):
     """Get hitran species and isotopologue codes from species name.
     Assumes primary isotopologue if not indicated."""
+    print( kinetics.get_species(species_or_isotopologue))
     if len(i:=find(molparam.match(isotopologue=species_or_isotopologue))) > 0:
         assert len(i) == 1
         i = i[0]
     elif len(i:=find(molparam.match(chemical_species=species_or_isotopologue))) > 0:
         i = i[np.argmax(molparam['natural_abundance'][i])]
     else:
-        raise Exception(f"Cannot find {species_or_isotopologue=}")
+        raise DatabaseException(f"Cannot find {species_or_isotopologue=}")
     return (int(molparam['species_ID'][i]),
             int(molparam['local_isotopologue_ID'][i]))
 
@@ -170,7 +173,7 @@ def get_lines(species_or_isotopologue):
     elif species_or_isotopologue in molparam['isotopologue']:
         filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/lines.h5'
     else:
-        raise Exception(f"could not determine HITRAN linelist filename for {repr(species_or_isotopologue)}")
+        raise DatabaseException(f"could not determine HITRAN linelist filename for {repr(species_or_isotopologue)}")
     l.load(filename)
     l['Zsource'] = 'HITRAN'
     return l
@@ -263,7 +266,7 @@ species_ID| global_isotopologue_ID| local_isotopologue_ID| chemical_species| iso
 20        | 66                    | 3                    | H2CO   | [1H]2[12C][18O]        | 128      | 0.001978         | 32.014811    | 2986.44 | 1     | lines.Generic
 21        | 67                    | 1                    | HOCl   | [1H][16O][35Cl]        | 165      | 0.755790         | 51.971593    | 19274.79| 8     | lines.Generic
 21        | 68                    | 2                    | HOCl   | [1H][16O][37Cl]        | 167      | 0.241683         | 53.968644    | 19616.20| 8     | lines.Generic
-22        | 69                    | 1                    | N2     | [14N]2                 | 44       | 0.992687         | 28.006148    | 467.10  | 1     | lines.Generic
+22        | 69                    | 1                    | N2     | ¹⁴N₂                   | 44       | 0.992687         | 28.006148    | 467.10  | 1     | lines.Generic
 22        | 118                   | 2                    | N2     | [14N][15N]             | 45       | 0.007478         | 29.003182    | 644.10  | 6     | lines.Generic
 23        | 70                    | 1                    | HCN    | [1H][12C][14N]         | 124      | 0.985114         | 27.010899    | 892.20  | 6     | lines.Generic
 23        | 71                    | 2                    | HCN    | [1H][13C][14N]         | 134      | 0.011068         | 28.014254    | 1830.97 | 12    | lines.Generic

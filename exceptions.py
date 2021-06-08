@@ -2,10 +2,10 @@ class InferException(Exception):
     """For failed inferences in Dataset."""
     pass
 
-class MissingDataException(InferException):
-    """Data not found in database."""
+class DatabaseException(InferException):
+    """Data not found in database or some other problem."""
     pass             
 
 class InvalidEncodingException(InferException):
-    """Invalid encoding of level or tranistion name."""
+    """Invalid encoding of level or transition name."""
     pass

@@ -14,10 +14,10 @@ from .tools import cache,vectorise
 from . import dataset
 from . import kinetics
 from . import convert
-from .exceptions import MissingDataException
+from .exceptions import DatabaseException
 
 ## module data and caches
-from .kinetics import get_species
+from . import kinetics
 
 
 
@@ -54,19 +54,27 @@ data_directory = tools.expand_path('~/src/python/spectr/data/')
         # ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
         # if ((np.isreal(retval) and np.isnan(retval))
             # or retval=='nan'): 
-            # raise MissingDataException(f"Property is unknown: {repr(species)}, {repr(label)}, {repr(prop)}")
+            # raise DatabaseException(f"Property is unknown: {repr(species)}, {repr(label)}, {repr(prop)}")
         # return(retval)
     # elif len(retval)==0:
-        # raise MissingDataException('No match found for species and label: '+repr(species)+' '+repr(label))
+        # raise DatabaseException('No match found for species and label: '+repr(species)+' '+repr(label))
     # elif len(retval)>1:
         # raise Exception('Non-unique matches found for species and label: '+repr(species)+' '+repr(label))
 
+
+@tools.vectorise(cache=True)
 def normalise_species(species):
     """Try to normalise a species name."""
-    if species in species_synonyms:
-        species = species_synonyms[species]
-    return species
+    # if species in species_synonyms:
+        # species = species_synonyms[species]
+    # return species
+    return kinetics.get_species(species).name
 
+@tools.vectorise(cache=True)
+def normalise_chemical_species(species):
+    """Normalise species without masses."""
+    return kinetics.get_species(species).chemical_name
+    
 def normalise_electronic_state_label(label):
     """Try to normalise."""
     if len(label) == 2 and label[1] in ('p',"'"):
@@ -81,27 +89,28 @@ def normalise_electronic_state_label(label):
 def get_electronic_state_property(species,label,prop):
     """Get a quantum number defining a particular electronic state by label."""
     ## normalise names
-    species = normalise_species(species)
+    species = normalise_chemical_species(species)
     label = normalise_electronic_state_label(label)
     ## look for data
     if (species,label) in electronic_states:
         data = electronic_states[(species,label)]
     else:
-        raise MissingDataException(f'Cannot find electronic state: {repr((species,label))}')    
+        raise DatabaseException(f'Cannot find electronic state: {repr((species,label))}')    
     if len(data) == 0:
-        raise MissingDataException(f"Cannot find data for electronic state with {species=} {label=}")
+        raise DatabaseException(f"Cannot find data for electronic state with {species=} {label=}")
     if prop not in data:
-        raise MissingDataException(f"Cannot find property {prop=} for electronic state with {species=} {label=}")
+        raise DatabaseException(f"Cannot find property {prop=} for electronic state with {species=} {label=}")
     return data[prop]
 
 # @cachetools.cached(cache=cachetools.LRUCache(1e3))
 @functools.lru_cache(maxsize=1024)
 def get_species_data(species):
     """Get a dictionary of data for this species."""
+    species = normalise_species(species)
     data = tools.file_to_recarray(data_directory+'/species.csv',table_name='data')
     if species not in data['species']:
-        raise MissingDataException(f"Species unknown: {repr(species)}")
-    return(data[data['species']==species])
+        raise DatabaseException(f"Species unknown: {repr(species)}")
+    return data[data['species']==species] 
 
 # species_property_dtypes = {'species':'U50','iso_indep':float,'mass':float,
                            # 'reduced_mass':float,'group':'U5','Ihomo':float,'latex':'U50',
@@ -118,7 +127,7 @@ def get_species_property(species,prop):
     ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
     if ((np.isreal(retval) and np.isnan(retval))
         or retval=='nan'): 
-        raise MissingDataException(f"Property is unknown: {repr(species)}, {repr(prop)}")
+        raise DatabaseException(f"Property is unknown: {repr(species)}, {repr(prop)}")
     return retval
 
 @cache
@@ -126,7 +135,24 @@ def get_level(species):
     """Load a Level object containing data about a species (all
     isotopologues)."""
     species = normalise_species(species)
-    return dataset.load(f'{data_directory}/levels/{species}.h5')
+    try:
+        return dataset.load(f'{data_directory}/levels/{species}.h5')
+    except FileNotFoundError as err:
+        raise DatabaseException(str(err))
+
+@tools.vectorise(cache=True)
+def get_level_energy(species,Eref=0,**match_qn):
+    """Get uniquely matching level energies."""
+    level = get_level(species)
+    i = tools.find(level.match(match_qn,species=species))
+    if len(i) == 0:
+        raise InferException('No match found')
+    if len(i) > 1:
+        raise InferException('Multiple matches found')
+    E = level['E'][i][0] + level['Eref'][i][0] - Eref
+    return E
+
+    
 
 @tools.vectorise(cache=True)
 def get_partition_function(
@@ -136,10 +162,8 @@ def get_partition_function(
 ):             
     """Get partition function."""
     level = get_level(species)
-    Z = np.sum(
-        level['g']*np.exp(
-            -(level['E']+level['Eref']-Eref)/
-            (convert.units(constants.Boltzmann,'J','cm-1')*Tex)))
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    Z = np.sum(level['g']*np.exp(-(level['E']+level['Eref']-Eref)/(kB*Tex)))
     return Z
 
 # def get_term_values(
@@ -174,7 +198,7 @@ def get_partition_function(
     # # try:
     # #     T = T[tools.findin(val,level[key])]
     # # # except Exception as err:
-    # #     # raise MissingDataException(str(err))
+    # #     # raise DatabaseException(str(err))
     # # # ## set requested Tref
     # # # if Tref is None:
     # #     # pass
@@ -193,7 +217,7 @@ def get_partition_function(
     # # try:
         # # T = T[tools.findin(val,level[key])]
     # # # except Exception as err:
-        # # # raise MissingDataException(str(err))
+        # # # raise DatabaseException(str(err))
     # # # ## set requested Tref
     # if Tref is None:
         # pass
@@ -222,7 +246,7 @@ def get_partition_function(
     # partition_function = get_partition_function(species,temperature)
     # level = get_level(species,J=J,**quantum_numbers)
     # population = level['g']*np.exp(-1.4387751297850826/temperature*level['T'])/partition_function
-        # # raise MissingDataException(str(err))
+        # # raise DatabaseException(str(err))
     # # if np.isscalar(J):  return(float(population[i][j]))
     # # else:               return(population[i][j])
     # return(population)
@@ -358,47 +382,47 @@ electronic_states={
     ("NO","D")  :{"Λ":0,"S":0.5,"s":0,"LSsign":1},
     ("NO","B′") :{"Λ":2,"S":0.5,"s":0,"LSsign":1},
     ("NO","F")  :{"Λ":2,"S":0.5,"s":0,"LSsign":1},
-    ("N2","X")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
-    ("N2","A")  :{"Λ":0,"S":1,"s"  :0,"gu"    :-1,"LSsign":-1},
-    ("N2","B")  :{"Λ":1,"S":1,"s"  :0,"gu"    :1,"LSsign" :1},
-    ("N2","W")  :{"Λ":2,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","B′") :{"Λ":1,"S":1,"s"  :1,"gu"    :-1,"LSsign":1},
-    ("N2","b")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c3") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c4") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c5") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c6") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e3") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e4") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e5") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e6") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","o")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","o3") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","o4") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","o5") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","o6") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","b′") :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c′") :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c′4"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c′5"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c′6"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c′7"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c′8"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","c′9"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e′") :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e′4"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e′5"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e′6"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e′7"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e′8"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","e′9"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","C")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","F")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","G")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":-1},
-    ("N2","C′") :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("N2","D")  :{"Λ":0,"S":1,"s"  :0,"gu"    :-1,"LSsign":-1,"comment":"correctLSsign?"},
+    ("N₂","X")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
+    ("N₂","A")  :{"Λ":0,"S":1,"s"  :0,"gu"    :-1,"LSsign":-1},
+    ("N₂","B")  :{"Λ":1,"S":1,"s"  :0,"gu"    :1,"LSsign" :1},
+    ("N₂","W")  :{"Λ":2,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","B′") :{"Λ":1,"S":1,"s"  :1,"gu"    :-1,"LSsign":1},
+    ("N₂","b")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c3") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c4") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c5") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c6") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e3") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e4") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e5") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e6") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","o")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","o3") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","o4") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","o5") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","o6") :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","b′") :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c′") :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c′4"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c′5"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c′6"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c′7"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c′8"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","c′9"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e′") :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e′4"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e′5"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e′6"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e′7"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e′8"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","e′9"):{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","C")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","F")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","G")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":-1},
+    ("N₂","C′") :{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("N₂","D")  :{"Λ":0,"S":1,"s"  :0,"gu"    :-1,"LSsign":-1,"comment":"correctLSsign?"},
     ("SO","X")  :{"Λ":0,"S":1,"s"  :1,"LSsign":1},
     ("SO","A")  :{"Λ":1,"S":1,"s"  :0,"LSsign":1},
     ("SO","B")  :{"Λ":0,"S":1,"s"  :1,"LSsign":1},

@@ -34,9 +34,12 @@ class VibLevel(Optimiser):
             experimental_level=None,      # a Level object for optimising relative to 
             # eigenvalue_ordering='maximise coefficients', # for deciding on the quantum number assignments of mixed level, options are 'minimise residual', 'maximise coefficients', 'preserve energy ordering' or None
             Eref=0.,       # energy reference relative to equilibrium energy, defaults to 0. -- not well defined
+            Zsource='self',
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
+        self.Zsource = Zsource
+        self.Eref = Eref
         tkwargs = {'auto_defaults':True,'permit_nonprototyped_data':False}
         self.manifolds = {}
         self._shifts = []       # used to shift individual levels after diagonalisation
@@ -58,7 +61,7 @@ class VibLevel(Optimiser):
         self.pop_format_input_function()
         self.automatic_format_input_function(
             multiline=False,
-            limit_to_args=('name', 'species', 'J', 'Eref',))
+            limit_to_args=('name', 'species', 'J', 'Eref','Zsource'))
         self.add_save_to_directory_function(
             lambda directory: self.level.save(f'{directory}/level.h5'))
         ## set J
@@ -116,6 +119,8 @@ class VibLevel(Optimiser):
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
             self.level.clear()
+            self.level['Eref'] = self.Eref
+            self.level['Zsource'] = self.Zsource
             self.level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
             for key in self.vibrational_spin_level:
                 self.level[key] = np.tile(self.vibrational_spin_level[key],len(self.J))
@@ -225,7 +230,8 @@ class VibLevel(Optimiser):
             self.manifolds[name] = dict(ibeg=ibeg,iend=iend,ef=ef,Σ=Σ,n=len(ef),**kw) 
             self.vibrational_spin_level.extend(
                 keys='new',ef=ef,Σ=Σ,
-                **{key:kw[key] for key in ('species','label','S','Λ','s','v','gu') if key in kw},)
+                # **{key:kw[key] for key in ('species','label','S','Λ','s','v','gu') if key in kw},)
+                **{key:kw[key] for key in kw},)
             ## make H bigger
             tH = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
             tH[:,:ibeg,:ibeg] = self.H

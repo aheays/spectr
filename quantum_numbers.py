@@ -17,7 +17,7 @@ from .tools import vectorise
 # from immutabledict import immutabledict
 
 ## form here
-from .exceptions import MissingDataException,InvalidEncodingException
+from .exceptions import DatabaseException,InvalidEncodingException
 
 # def allowed_level(**qn):
     # """Return bool or array of bools if quantum number are an acceptable
@@ -582,7 +582,7 @@ def decode_level(name):
             # for key in ('Λ','S','s'):
                 # try:
                     # data.setdefault(key,database.get_electronic_state_quantum_number(data['species'],data['label'],key))
-                # except MissingDataException:
+                # except DatabaseException:
                     # pass
         ## cast
         for key,val in data.items():

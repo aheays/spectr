@@ -1168,7 +1168,8 @@ def hdf5_to_numpy(value):
         ## some reason sometimes (always?) loads as object
         ## type
         if value.dtype.kind in ('S','O'):
-            value = np.asarray(value,dtype=str)
+            # value = np.asarray(value,dtype=str)
+            value = np.asarray([t.decode() for t in value],dtype=str)
     return value
 
 def numpy_to_hdf5(value):

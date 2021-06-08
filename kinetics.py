@@ -13,7 +13,7 @@ from . import tools
 from .tools import cache
 from . import database
 from . import plotting
-from .exceptions import MissingDataException
+from .exceptions import DatabaseException
 
 
 #############
@@ -215,7 +215,7 @@ class Species:
             # self.isotopologue = name
             # try:
                 # self.species = database.get_species_property(self.isotopologue,'iso_indep')
-            # except MissingDataException:
+            # except DatabaseException:
                 # self.species = re.sub(r'\[[0-9]*([A-Z-az])\]',r'\1',name)
         # else:
             # self.species = name
@@ -337,10 +337,7 @@ class Species:
         return self._nelectrons
 
     def __str__(self):
-        if self.isotopologue is None:
-            return self.species
-        else:
-            return self.isotopologue
+        return self.species
 
     ## for sorting a list of Species objects
     def __lt__(self,other):
@@ -357,6 +354,7 @@ class Species:
         elif key == 'charge':
             return self._charge
         elif key == 'elements':
+            """Sorted list of (element,mass number)."""
             if not hasattr(self,'_elements'):
                 t = []
                 for element,mass_number,multiplicity in self._isotopes:
@@ -388,19 +386,23 @@ class Species:
                 t = []
                 for element,mass_number,multiplicity in self._isotopes:
                     t.append(element)
-                    t.append(tools.subscript_numerals(multiplicity))
+                    t.append(tools.subscript_numerals(str(multiplicity)))
                 self._chemical_name = ''.join(t)
             return self._chemical_name
         # elif key == 'isotopologue':
             # return ''.join([f'[{t[1]}{t[0]}]' for t in self['isotopes']])
         elif key == 'point_group':
-            if len(self.isotopes) != 2:
-                raise Exception("Can only compute reduced mass for diatomic species.")
-            ## Homonumclear or heteronuclear diatomic
-            if self.isotopes[0] == self.isotopes[1]:
-                return 'D∞h'
+            if len(self.elements) == 1:
+                ## atoms
+                raise ImplementationError()
+            elif len(self.elements) == 2:
+                ## Homonumclear or heteronuclear diatomic
+                if self.elements[0] == self.elements[1]:
+                    return 'D∞h'
+                else:
+                    return 'C∞v'
             else:
-                return 'C∞v'
+                raise ImplementationError("Can only compute reduced mass for atoms and diatomic species.")
         else:
                 raise Exception(f"Unknown species property: {key}")
     
