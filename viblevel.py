@@ -236,6 +236,7 @@ class VibLevel(Optimiser):
             tH = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
             tH[:,:ibeg,:ibeg] = self.H
             self.H = tH
+            _cache['fH'] = fH
         n,ef,Σ,fH,ibeg,iend = _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend']
         ## update H
         for i,j in np.ndindex((n,n)):
@@ -355,12 +356,14 @@ class VibLine(Optimiser):
     two states defined by LocalDeperturbation objects. Currently only
     for single-photon transitions. """
 
-    def __init__(self,name,level_u,level_l,J_l=None,ΔJ=None):
+    def __init__(self,name,level_u,level_l,J_l=None,ΔJ=None,Eref=0,Zsource='self'):
         ## add upper and lower levels
         self.name = name
         self.level_u = level_u
         self.level_l = level_l
         self.species = self.level_l.species
+        self.Zsource = Zsource
+        self.level_u.Eref = self.level_l.Eref = self.Eref = Eref
         tkwargs = {'auto_defaults':True, 'permit_nonprototyped_data':False,}
         self.line = lines.Diatomic(name=f'{self.name}.line',**tkwargs)
         self.line.pop_format_input_function()
@@ -378,7 +381,7 @@ class VibLine(Optimiser):
         self.pop_format_input_function()
         self.automatic_format_input_function(
             multiline=False,
-            limit_to_args=('name', 'level_u', 'level_l', 'J_l', 'ΔJ',))
+            limit_to_args=('name', 'level_u', 'level_l', 'J_l', 'ΔJ','Zsource','Eref'))
         self.add_suboptimiser(self.level_u,self.level_l,add_format_function=False)
         def f(directory): 
             self.line.save(directory+'/line.h5')
@@ -447,6 +450,7 @@ class VibLine(Optimiser):
                 & ((       ((self.line['J_u']-self.line['J_l']) == 0) & (self.line['ef_u'] != self.line['ef_l']))
                    |((np.abs(self.line['J_u']-self.line['J_l']) == 1) & (self.line['ef_u'] == self.line['ef_l']))))
             self.line.index(self._iallowed)
+            self.line['Zsource'] = self.Zsource
 
     def construct_lines(self):
         """Finalise construct."""

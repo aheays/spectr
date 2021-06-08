@@ -38,8 +38,8 @@ for key in (
         'reference','_qnhash',
         'species','point_group',
         'mass','reduced_mass',
-        # 'Z',
         'ΓD',
+        'Eref',
         'Teq','Tex','Tvib','Trot',
 ):
     prototypes[key] = copy(levels.prototypes[key])
@@ -93,7 +93,7 @@ def _f0(self,S296K,species,Z,E_l,Tex,ν):
     return (S296K
             *((np.exp(-E_l/(c*Tex))/Z)*(1-np.exp(-c*ν/Tex)))
             /((np.exp(-E_l/(c*296))/Z296K)*(1-np.exp(-c*ν/296))))
-prototypes['S'] = dict(description="Spectral line intensity ",units="cm or cm-1/(molecular.cm-2", kind='f', fmt='<10.5e', infer=[(('S296K','species','Z','E_l','Tex_l','ν'),_f0,)])
+prototypes['S'] = dict(description="Spectral line intensity ",units="cm or cm-1/(molecular.cm-2", kind='f', fmt='<10.5e', infer=[(('S296K','species','Z_l','E_l','Tex_l','ν'),_f0,)])
 prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",units=" cm-1/(molecular.cm-2", kind='f', fmt='<10.5e', infer=[],cast=tools.cast_abs_float_array)
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
@@ -113,6 +113,24 @@ prototypes['Δv'] = dict(description="vupper - vlower", kind='f', fmt='>+4g', in
 ## column 
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
 prototypes['Nself'] = dict(description="Column density",units="cm-2",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
+
+## _qnhash of line is copied ok from levels, but _qnhash_l and
+## _qnhash_u must have suffices added to defining_qn
+def _f0(self,suffix):
+    defining_qn = []
+    for key in self.defining_qn:
+        if len(key)>len(suffix) and key[-2:]==suffix:
+            if not self.is_known(key):
+                raise InferException(f'Cannot infer _qnhash_l because {key} not known')
+            defining_qn.append(key)
+    _qnhash = np.empty(len(self),dtype=int)
+    for i,qn in enumerate(zip(*[self[key] for key in defining_qn])):
+        _qnhash[i] = hash(qn)
+    self._set_value(f'_qnhash{suffix}',_qnhash,dependencies=defining_qn)
+    return None
+prototypes['_qnhash_l'] = dict(description="Hash of quantum numbers defining the lower level", kind='i',infer=[((),lambda self,f=_f0:f(self,'_l')),])
+prototypes['_qnhash_u'] = dict(description="Hash of quantum numbers defining the upper level", kind='i',infer=[((),lambda self,f=_f0:f(self,'_u')),])
+
 
 ####################################
 ## pressure broadening and shifts ##
@@ -210,47 +228,50 @@ prototypes['ν'] = dict(description="Transition wavenumber",units="cm-1", kind='
     (('ν0',),lambda self,ν0: ν0),
 ])
 
-## partition functions
-def _f3(self,species,Tex,E_u,E_l,g_u,g_l,Σ_l,Σ_u,ef_l,ef_u):
-    """Compute partition function from data in self."""
-    if self['Zsource'] != 'self':
-        raise InferException(f'Zsource not "self".')
-    Z = np.full(len(species),0.)
-    ## calculate separately for all (species,Tex) combinations
-    for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
-        i = tools.find(i)
-        kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
-        ## sum for all unique upper levels
-        k = []
-        for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_u'][i] for key in self._level_class.defining_qn]
-        ):
-            k.append((i[j])[0])
-        Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
-        ## sum for all unique lower levels
-        k = []
-        for qn,j in tools.unique_combinations_mask(
-                *[self[key+'_l'][i] for key in self._level_class.defining_qn]):
-            k.append((i[j])[0])
-        Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
-    return Z
-def _f5(self,species,Tex):
-    if self.attributes['Zsource'] != 'HITRAN':
-        raise InferException(f'Zsource not "HITRAN".')
-    from . import hitran
-    return hitran.get_partition_function(species,Tex)
-def _f4(self,species,Tex):
-    """Compute partition function from data in self."""
-    if self['Zsource'] != 'database':
-        raise InferException(f'Zsource not "database"')
-    return database.get_partition_function(species,Tex,self['Eref'])
-
-prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tex'),_f5),
-    (('species','Tex'),_f4),
-    (('species','Tex','E_u','E_l','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
-    (('species','Tvib','Trot','E_u','E_l','Tv_l','Gv_u','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
-])
+# ## partition functions
+# def _f3(self,species,Tex,E_u,E_l,g_u,g_l,Σ_l,Σ_u,ef_l,ef_u):
+    # """Compute partition function from data in self."""
+    # if self['Zsource'] != 'self':
+        # raise InferException(f'Zsource not "self".')
+    # Z = np.full(len(species),0.)
+    # ## calculate separately for all (species,Tex) combinations
+    # for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
+        # i = tools.find(i)
+        # kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
+        # ## sum for all unique upper levels
+        # k = []
+        # for qn,j in tools.unique_combinations_mask(
+                # *[self[key+'_u'][i] for key in self._level_class.defining_qn]
+        # ):
+            # k.append((i[j])[0])
+        # Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
+        # ## sum for all unique lower levels
+        # k = []
+        # for qn,j in tools.unique_combinations_mask(
+                # *[self[key+'_l'][i] for key in self._level_class.defining_qn]):
+            # k.append((i[j])[0])
+        # Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
+    # return Z
+# def _f5(self,species,Tex):
+    # if self.attributes['Zsource'] != 'HITRAN':
+        # raise InferException(f'Zsource not "HITRAN".')
+    # from . import hitran
+    # return hitran.get_partition_function(species,Tex)
+# def _f4(self,species,Tex):
+    # """Compute partition function from data in self."""
+    # if self['Zsource'] != 'database':
+        # raise InferException(f'Zsource not "database"')
+    # return database.get_partition_function(species,Tex,self['Eref'])
+# prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[
+    # (('species','Tex'),_f5),
+    # (('species','Tex'),_f4),
+    # (('species','Tex','E_u','E_l','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
+    # (('species','Tvib','Trot','E_u','E_l','Tv_l','Gv_u','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
+# ])
+# prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e',infer=[])
+# prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
+# prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
+# prototypes['Z']['infer'].append((('Z_l','Z_u'),lambda self,Z_l,Z_u:Z_u+Z_l))
 
 ## vibrational transition frequencies
 prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
@@ -351,9 +372,8 @@ prototypes['J_l']['infer'].append((('J_u','ΔJ'),lambda self,J_u,ΔJ: J_u-ΔJ))
 prototypes['v_u']['infer'].append((('v_l','Δv'),lambda self,v_l,Δv: v_l+Δv))
 prototypes['v_l']['infer'].append((('v_u','Δv'),lambda self,v_u,Δv: v_u-Δv))
 
-prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
-prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
-# prototypes['Z']['infer'].append((('Z_l','Z_u'),lambda self,Z_l,Z_u:Z_u+Z_l))
+prototypes['Eref_l']['infer'].append((('Eref'),lambda self,Eref:Eref))
+prototypes['Eref_u']['infer'].append((('Eref'),lambda self,Eref:Eref))
 
 ## parity transition selection rules
 def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
@@ -380,12 +400,13 @@ class Generic(levels.Base):
     _line_keys = (
         'reference','_qnhash',
         'species', 'point_group','mass',
+        'Eref',
         'ν','ν0', # 'λ',
         'ΔJ', 'branch',
         'ΔJ',
         'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ','I',
         'Nself',
-        'Teq','Tex','Ttr','Z',
+        'Teq','Tex','Ttr',
         'Γ','ΓD',
         ## pressure broadening stuff
         'mJ_l',
