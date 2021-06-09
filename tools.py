@@ -1055,17 +1055,20 @@ def printcols(*columns):
 ## save / load /convert array data ##
 #####################################
 
-# def repeat(x,repeats,axis=None):
-    # """Just like numpy repeat, but will extend the dimension of the
-    # array first if necessary."""
-    # x = np.asarray(x)
-    # if axis!=None and axis>=len(x.shape):
-        # number_of_axes_to_add = axis-len(x.shape)+1
-        # x = x.reshape(list(x.shape)+[1 for t in range(number_of_axes_to_add)])
-    # return np.repeat(x,repeats,axis)
+def find_inverse(index_array,total_shape):
+    """Convert an integer index array into a boolean mask."""
+    retval = np.full(total_shape,False)
+    retval[index_array] = True
+    return retval
 
 def cast_abs_float_array(x):
+    """Return as 1D array of absolute floating point values."""
     return np.abs(np.asarray(x,dtype=float))
+
+# def cast_normalise_species_string_array(x):
+    # """Return as 1D array of strings of normalised species names."""
+    # from . import database
+    # return np.array(database.normalise_species(x),dtype=str)
 
 def repmat_vector(x,repeats=(),axis=-1):
     """x must be 1D. Expand to as many other dimension as length of

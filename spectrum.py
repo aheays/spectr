@@ -587,7 +587,7 @@ class Model(Optimiser):
     @optimise_method()
     def add_emission_lines(
             self,
-            lines=None,
+            line=None,
             nfwhmL=20,
             nfwhmG=10,
             Imin=None,
@@ -598,32 +598,32 @@ class Model(Optimiser):
             **set_keys_vals
     ):
         ## nothing to be done
-        if len(self.x) == 0 or len(lines) == 0:
+        if len(self.x) == 0 or len(line) == 0:
             return
         if self._clean_construct:
-            ## first run — initalise local copy of lines data and
-            imatch = lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
+            ## first run — initalise local copy of line data and
+            imatch = line.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
             nmatch = np.sum(imatch)
-            lines_copy = lines.copy(index=imatch)
+            line_copy = line.copy(index=imatch)
             ## keys that might possibly change
-            variable_keys = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
+            variable_keys = [key for key in line_copy.keys() if line_copy.get_kind(key)=='f']
             ## set parameter data
             for key,val in set_keys_vals.items():
-                lines_copy[key] = float(val)
+                line_copy[key] = float(val)
             ## cache
-            (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['lines_copy']) = (
-                variable_keys,imatch,nmatch,lines_copy)
+            (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['line_copy']) = (
+                variable_keys,imatch,nmatch,line_copy)
             ## calculate spectrum
-            x,I = lines_copy.calculate_spectrum(
+            x,I = line_copy.calculate_spectrum(
                 x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                 ymin=Imin,ncpus=ncpus,lineshape=lineshape)
         else:
             ## subsequent runs -- maybe only recompute a few lines
-            (variable_keys,imatch,nmatch,lines_copy,I) = (
+            (variable_keys,imatch,nmatch,line_copy,I) = (
                 _cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
-                _cache['lines_copy'],_cache['I'])
+                _cache['line_copy'],_cache['I'])
             full_recalculation = False
-            lines_changed = False
+            line_changed = False
             ## nothing to be done
             if nmatch == 0:
                 return
@@ -634,40 +634,40 @@ class Model(Optimiser):
             for key,val in set_keys_vals.items():
                 if (isinstance(val,Parameter) and
                     self._last_construct_time < val._last_modify_value_time):
-                    lines_copy.set(key,val)
+                    line_copy.set(key,val)
                     full_recalculation = True
             ## line spectrum has changed -- find changed lines
-            if self._last_construct_time < lines._last_construct_time:
-                ichanged = np.full(len(lines_copy),False)
+            if self._last_construct_time < line._last_construct_time:
+                ichanged = np.full(len(line_copy),False)
                 changed_keys = []
                 for key in variable_keys:
-                    i = lines[key][imatch] != lines_copy[key]
+                    i = line[key][imatch] != line_copy[key]
                     if np.any(i):
                         changed_keys.append(key)
                         ichanged |= i
                 nchanged = np.sum(ichanged)
-                if nchanged > (len(lines_copy)/2):
+                if nchanged > (len(line_copy)/2):
                     ## most lines change — just recompute everything
                     full_recalculation = True
-                lines_changed = True
+                line_changed = True
             ## recalculate
             if full_recalculation:
-                if lines_changed:
+                if line_changed:
                     for key in changed_keys:
-                        lines_copy.set(key,lines[key][imatch])
-                x,I = lines_copy.calculate_spectrum(
+                        line_copy.set(key,line[key][imatch])
+                x,I = line_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=Imin,ncpus=ncpus,lineshape=lineshape,)
-            elif lines_changed:
+            elif line_changed:
                 ## recompute old version of lines that have changed
-                xold,Iold = lines_copy.calculate_spectrum(
+                xold,Iold = line_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=Imin,ncpus=ncpus,lineshape=lineshape,index=ichanged)
                 ## update data in lines_copy and compute new version
                 ## of changed lines
                 for key in changed_keys:
-                    lines_copy.set(key,lines[key][imatch])
-                xnew,Inew = lines_copy.calculate_spectrum(
+                    line_copy.set(key,line[key][imatch])
+                xnew,Inew = line_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=Imin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
                 ## update transmittance
@@ -1096,11 +1096,11 @@ class Model(Optimiser):
         self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
     @optimise_method()
-    def convolve_with_gaussian_sum(self,widths_areas,fwhms_to_include=10):
+    def convolve_with_gaussian_sum(self,widths_areas_offsets,fwhms_to_include=10):
         """Convolve with a sum of Gaussians of different widths and (positive)
         areas in a list [[width1,area1],...] but together normalised to 1."""
         ## maximum width
-        width = sum([width for width,area in widths_areas])
+        width = sum([width for width,area,offset in widths_areas_offsets])
         ## get padded spectrum to minimise edge effects
         dx = (self.x[-1]-self.x[0])/(len(self.x)-1)
         padding = np.arange(dx,fwhms_to_include*width+dx,dx)
@@ -1116,8 +1116,8 @@ class Model(Optimiser):
         xconv = xconv-xconv.mean()
         ## normalised sum of gaussians
         yconv = np.full(xconv.shape,0.0)
-        for width,area in widths_areas:
-            yconv += lineshapes.gaussian(xconv,0,abs(area),abs(width))
+        for width,area,offset in widths_areas_offsets:
+            yconv += lineshapes.gaussian(xconv,offset,abs(area),abs(width))
         yconv /= yconv.sum() 
         ## convolve padded y and substitute into self
         self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(self.x)]

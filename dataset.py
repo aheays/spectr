@@ -175,8 +175,11 @@ class Dataset(optimise.Optimiser):
         ## if an index is provided then data must already exist, set
         ## new indeed data and return
         if index is not None:
-            if key not in self and 'default' in prototype_kwargs:
-                self.set(key,value=prototype_kwargs['default'])
+            if key not in self:
+                if 'default' in prototype_kwargs:
+                    self.set(key,value=prototype_kwargs['default'])
+                else:
+                    raise Exception(f'Setting {repr(key)} for (possible) partial indices but it is not already set')
             data = self._data[key]
             if key not in self:
                 raise Exception(f'Cannot set data by index for unset key: {key}')
@@ -390,6 +393,25 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
+    def _get_combined_index(self,index,match,**match_kwargs):
+        """Combined specified index with match arguments as boolean mask. If
+        no data given the return None"""
+        if index is None and match is None and len(match_kwargs)==0:
+            index = None
+        else:
+            if index is None:
+                index = np.full(len(self),True)
+            elif np.isscalar(index):
+                index = np.full(len(self),bool(index))
+            else:
+                index = np.asarray(index)
+                if index.dtype == bool:
+                    pass
+                elif index.dtype == int:
+                    index = tools.find_inverse(index)
+            index &= self.match(match,**match_kwargs)
+        return index
+
     @optimise_method(format_lines='single')
     def set_and_optimise(
             self,
@@ -402,13 +424,7 @@ class Dataset(optimise.Optimiser):
     ):
         """Set a value and it will be updated every construction and possible
         optimised."""
-        ## determining indicies to set
-        match = ({} if match is None else match) | match_kwargs
-        if len(match) > 0:
-            if index is None:
-                index = self.match(**match)
-            else:
-                index &= self.match(**match)
+        index = self._get_combined_index(index,match,**match_kwargs)
         ## if not a parameter then treat as a float -- could use set(
         ## instead and branch there, requiring a Parameter here
         if isinstance(value,Parameter):
@@ -433,7 +449,8 @@ class Dataset(optimise.Optimiser):
                 self.set(key,value=value,index=index)
 
     @optimise_method(format_lines='single')
-    def set_spline(self,xkey,ykey,knots,order=3,default=None,match=None,index=None,_cache=None,**match_kwargs):
+    def set_spline_and_optimise(self,xkey,ykey,knots,order=3,default=None,
+                   match=None,index=None,_cache=None,**match_kwargs):
         """Set ykey to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
         given, then only set these."""
@@ -441,31 +458,27 @@ class Dataset(optimise.Optimiser):
         ## knots or match values have changed
         if len(_cache) == 0: 
             xspline,yspline = zip(*knots)
-            if index is not None:
-                i = index
+            ## get index limit to defined xkey range
+            index = self._get_combined_index(index,match,**match_kwargs)
+            if index is None:
+                index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
             else:
-                i = np.full(len(self),True)
-            if match is not None:
-                i &= self.match(match)
-            if len(match_kwargs) > 0:
-                i &= self.match(match_kwargs)
-            ## limit to defined xkey range
-            i &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
-            _cache['i'] = i
+                index &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
+            _cache['index'] = index
             _cache['xspline'],_cache['yspline'] = xspline,yspline
         ## get cached data
-        i,xspline,yspline = _cache['i'],_cache['xspline'],_cache['yspline']
+        index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
         ## set data
         if not self.is_known(ykey):
             if default is None:
                 raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
             else:
-                self[ykey] = default
+                self[ykey] = default                                                                                   
             
-        self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=i),order=order),index=i)
+        self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=index),order=order),index=index)
         ## set previously-set uncertainties to NaN
         if self.is_set((ykey,'unc')):
-            self.set((ykey,'unc'),nan,index=i)
+            self.set((ykey,'unc'),nan,index=index)
 
     def keys(self):
         return list(self._data.keys())
@@ -668,7 +681,8 @@ class Dataset(optimise.Optimiser):
         if not self.permit_indexing:
             raise Exception('Indexing not permitted')
         original_length = len(self)
-        for data in self._data.values():
+        # for data in self._data.values():
+        for key,data in self._data.items():
             data['value'] = data['value'][:original_length][index]
             for key,value in data['assoc'].items():
                 data['assoc'][key] = value[:original_length][index]
@@ -683,8 +697,10 @@ class Dataset(optimise.Optimiser):
             keys=None,
             index=None,
             name=None,
+            match=None,
             copy_assoc=False,
             copy_inferred_data=False,
+            **match_kwargs
     ):
         """Get a copy of self with possible restriction to indices and
         keys."""
@@ -694,19 +710,21 @@ class Dataset(optimise.Optimiser):
         retval.copy_from(
             self,keys,index,
             copy_assoc=copy_assoc,
-            copy_inferred_data=copy_inferred_data)
+            copy_inferred_data=copy_inferred_data,
+            match=match,
+            **match_kwargs)
         retval.pop_format_input_function()
         return retval
 
-    # @optimise_method(add_construct_function=False)
     def copy_from(
             self,
-            source,             # Dataset to copy
-            keys=None,          # keys to copy
-            index=None,         # indices to copy
-            match=None,         # copy matching {key:val,...} 
+            source,
+            keys=None,
+            index=None,
+            match=None,
             copy_assoc=False,
             copy_inferred_data=False,
+            **match_kwargs
     ):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
@@ -718,14 +736,7 @@ class Dataset(optimise.Optimiser):
                 keys = source.explicitly_set_keys()
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         ## get matching indices
-        if match is not None:
-            if index is None:
-                index = source.match(**match)
-            else:
-                ## requires index be a boolean mask array -- will fail
-                ## on index array or slice, could add logic for those
-                ## cases
-                index &= source.match(**match)
+        index = source._get_combined_index(index,match,**match_kwargs)
         ## copy data
         for key in keys:
             self[key] = source[key][index]
@@ -736,6 +747,47 @@ class Dataset(optimise.Optimiser):
         ## copy all attributes
         for key in source.attributes:
             self[key] = source[key]
+
+    @optimise_method()
+    def copy_from_and_optimise(
+            self,
+            source,
+            keys=None,
+            skip_keys=(),
+            index=None,
+            match=None,
+            copy_assoc=False,
+            copy_inferred_data=False,
+            _cache=None,
+            **match_kwargs
+    ):
+        """Copy all values and uncertainties from source Dataset and update if
+        source changes during optimisation."""
+        ## get keys and indices to copy
+        if self._clean_construct:
+            # self.clear()            # total data reset
+            if keys is None:
+                if copy_inferred_data:
+                    keys = source.keys()
+                else:
+                    keys = source.explicitly_set_keys()
+            keys = [key for key in keys if key not in skip_keys]
+            index = source._get_combined_index(index,match,**match_kwargs)
+            _cache['keys'],_cache['index'] = keys,index
+        else:
+            keys,index = _cache['keys'],_cache['index']
+        ## copy data
+        self.permit_nonprototyped_data = source.permit_nonprototyped_data
+        for key in keys:
+            self[key] = source[key][index]
+            if copy_assoc:
+                ## copy associated data
+                for assoc in source._data[key]['assoc']:
+                    self[key,assoc] = source[key,assoc][index]
+        ## copy all attributes
+        for key in source.attributes:
+            self[key] = source[key]
+            
 
     def find(self,**keys_vals):
         """Return an array of indices matching key_vals."""
@@ -759,10 +811,12 @@ class Dataset(optimise.Optimiser):
             retval[j] = i
         return retval
 
-    def match(self,keys_vals=idict(),**kwarg_keys_vals):
+    def match(self,keys_vals=None,**kwarg_keys_vals):
         """Return boolean array of data matching all key==val.\n\nIf key has
         suffix '_min' or '_max' then match anything greater/lesser
         or equal to this value"""
+        if keys_vals is None:
+            keys_vals = {}
         keys_vals = keys_vals | kwarg_keys_vals
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
@@ -1566,6 +1620,7 @@ class Dataset(optimise.Optimiser):
             ncolumns=None,       # number of columsn of subplot -- None to automatically select
             show=False,          # show figure after issuing plot commands
             ylim=None,
+            title=None,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
         """Plot data."""
@@ -1605,23 +1660,25 @@ class Dataset(optimise.Optimiser):
                     ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = None
-                    title = ylabel+' '+zlabel
+                    if title is None:
+                        title = ylabel+' '+zlabel
                 elif ynewaxes and not znewaxes:
                     ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = (zlabel if len(zkeys)>0 else None) 
-                    title = ylabel
+                    if title is None:
+                        title = ylabel
                 elif not ynewaxes and znewaxes:
                     ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = ylabel
-                    title = zlabel
+                    if title is None:
+                        title = zlabel
                 elif not ynewaxes and not znewaxes:
                     ax = fig.gca()
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = ylabel+' '+zlabel
-                    title = None
                 ## plotting kwargs
                 kwargs = copy(plot_kwargs)
                 kwargs.setdefault('marker',marker)
