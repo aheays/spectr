@@ -7,6 +7,7 @@ from copy import copy
 from pprint import pprint
 import itertools
 import io
+import inspect
 
 from scipy import interpolate,constants,integrate,linalg,stats
 import csv
@@ -66,7 +67,7 @@ class AutoDict:
 
 cache = lru_cache
 
-def vectorise(vargs=None,dtype=None,cache=False):
+def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
     """Vectorise a scalar-argument scalar-return value function.  If all
     arguments are scalar return a scalar result. If args is None
     vectorise all arguments. If a list of indices vectorise only those
@@ -96,31 +97,39 @@ def vectorise(vargs=None,dtype=None,cache=False):
 
         else:
             function_maybe_cached = function
-
         @wraps(function)
-        def vectorised_function(*args):
-            args = list(args)
-            ## get list of arg indices that should be vectorised
-            if vargs is None:
-                vector_arg_indices = list(range(len(args)))
-            else:
-                vector_arg_indices = list(vargs)
-            ## check for scalar args and consistent length for vector
-            ## args
+        def vectorised_function(*args,**kwargs):
+            ## this block subtitutes into kwargs with keys taken from
+            ## the function signature.  get signature arguments -- skip
+            ## first "self"
+            # signature_keys = list(inspect.signature(function).parameters)[1:]
+            signature_keys = list(inspect.signature(function).parameters.keys())
+            for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
+                if signature_key in kwargs:
+                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function.__name__)}.')
+                kwargs[signature_key] = arg
+            ## get list of arg keys that should be vectorised and those not, and the common length of vector data
+            vector_kwargs = {}
+            scalar_kwargs = {}
             length = None
-            vector_args = []
-            for i in copy(vector_arg_indices):
-                if isiterable(args[i]):
-                    vector_args.append(args[i])
+            for i,(key,val) in enumerate(kwargs.items()):
+                if (isiterable(val)
+                     and ((vkeys is not None and key in vkeys)
+                          or (vargs is not None and i in vargs)
+                          or (vkeys is None and vargs is None))):
+                    ## vector data
                     if length is None:
-                        length = len(args[i])
-                    else:
-                        assert len(args[i])==length,'Nonconstant length of vector arguments.'
+                        length = len(val)
+                    elif len(val) != length:
+                        raise Exception(f'Nonconstant length of vector arguments in arg {repr(key)}')
+                    vector_kwargs[key] = val
                 else:
-                    vector_arg_indices.remove(i)
-            if length is None:
+                    ## scalar data
+                    scalar_kwargs[key] = val
+            ## calculate scalar results and combine
+            if len(vector_kwargs) == 0:
                 ## all scalar, do scalar calc
-                return function_maybe_cached(*args)
+                return function_maybe_cached(**scalar_kwargs)
             else:
                 ## compute for each vectorised arg combination
                 if dtype is None:
@@ -128,9 +137,8 @@ def vectorise(vargs=None,dtype=None,cache=False):
                 else:
                     retval = np.empty(length,dtype=dtype)
                 for i in range(length):
-                    for j,k in enumerate(vector_arg_indices):
-                        args[k] = vector_args[j][i]
-                    iretval = function_maybe_cached(*args)
+                    vector_kwargs_i = {key:val[i] for key,val in vector_kwargs.items()}
+                    iretval = function_maybe_cached(**scalar_kwargs,**vector_kwargs_i)
                     if dtype is None:
                         retval.append(iretval)
                     else:

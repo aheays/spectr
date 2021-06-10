@@ -394,7 +394,7 @@ class Species:
         elif key == 'point_group':
             if len(self.elements) == 1:
                 ## atoms
-                raise ImplementationError()
+                return "K"
             elif len(self.elements) == 2:
                 ## Homonumclear or heteronuclear diatomic
                 if self.elements[0] == self.elements[1]:

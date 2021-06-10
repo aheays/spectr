@@ -65,13 +65,12 @@ prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='
 ## level energies
 prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','_qnhash','Eref'),lambda self,species,_qnhash,Eref: database.get_level_energy(species,Eref,_qnhash=_qnhash)),]) 
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','E0'),lambda self,E,E0: E+E0),],default_step=1e-3)
-prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[])
+prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[((),lambda self:0)])
 prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eres'),lambda self,E,Eres: E+Eres)])
 prototypes['Eres'] = dict(description="Residual difference between level energy and experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eexp'),lambda self,E,Eexp: Eexp-E)])
 prototypes['E0'] = dict(description="Energy of the lowest physical energy level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'E0')),],default_step=1e-3)
 
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
-prototypes['ΓD'] = dict(description="Gaussian Doppler width",units="cm-1 FWHM",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν)])
 
 def _f0(self,species,label,v,Σ,ef,J,E):
     """Compute separate best-fit reduced energy levels for each
@@ -166,28 +165,37 @@ prototypes['conf'] = dict(description="Electronic configuration", kind='U', fmt=
 # @vectorise(cache=True,vargs=(1,2))
 
 ## partition function
-def _f5(self,species,Tex,Eref):
+_valid_Zsource = ("self", "HITRAN", "database")
+def _f0(Zsource):
+    """Check for valid Zsource."""
+    Zsource = np.array(Zsource,dtype=str,ndmin=1)
+    i = np.any([Zsource!=key for key in _valid_Zsource],0)
+    if np.sum(i) > 0:
+        raise Exception(f'Invalid Zsource: {repr(np.unique(Zsource[i]))}. Valid values: {_valid_Zsource}')
+prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', kind='U', fmt='8s', infer=[])
+
+def _f5(self,species,Tex,Eref,Zsource):
     """Get HITRAN partition function."""
-    if self['Zsource'] != 'HITRAN':
-        raise InferException(f'Zsource not "HITRAN".')
-    if np.any(self['Eref'] != 0):
-        raise InferException(f'Cannot get Zsource from "HITRAN" when Eref!=0.')
+    if np.any(Zsource != 'HITRAN'):
+        raise InferException(f'Zsource not all "HITRAN"')
+    if np.any(Eref != 0):
+        raise InferException(f'Cannot use "HITRAN" Zsource when Eref is not 0.')
     from . import hitran
     Z = hitran.get_partition_function(species,Tex)
     return Z
 
-def _f4(self,species,Tex,Eref):
+def _f4(self,species,Tex,Eref,Zsource):
     """Get partition function from internal database."""
-    if self['Zsource'] != 'database':
-        raise InferException(f'Zsource not "database"')
+    if np.any(Zsource != 'database'):
+        raise InferException(f'Zsource not all "database"')
     Z = database.get_partition_function(species,Tex,Eref)
     return Z
-def _f3(self,species,Tex,E,Eref,g,_qnhash):
+def _f3(self,species,Tex,E,Eref,g,_qnhash,Zsource):
     """Compute partition function from data in self. For unique
     combinations of T/species sum over unique level energies. Always
     referenced to E0."""
-    if self['Zsource'] != 'self':
-        raise InferException(f'Zsource not "self".')
+    if np.any(Zsource != 'self'):
+        raise InferException(f'Zsource not all "self"')
     if len(np.unique(Tex)) > 1:
         raise InferException("Non-unique Tex")
     retval = np.full(species.shape,nan)
@@ -197,16 +205,16 @@ def _f3(self,species,Tex,E,Eref,g,_qnhash):
         retval[i] = np.sum(g[i][j]*np.exp(-(E[i][j]-Eref[i][j])/(kB*Tex[0])))
     return retval
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tex','E','Eref','g','_qnhash'),_f3),
-    (('species','Tex','Eref'),_f5),
-    (('species','Tex','Eref'),_f4),
+    (('species','Tex','E','Eref','g','_qnhash','Zsource'),_f3),
+    (('species','Tex','Eref','Zsource'),_f5),
+    (('species','Tex','Eref','Zsource'),_f4),
 ])
-def _f6(self,species,Tvib,Eref,Tv,v,_qnhash):
+def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
     """Compute partition function from data in self with separate
      vibrational temperature. Compute separately for
     different species and sum over unique levels only."""
-    if self['Zsource'] != 'self':
-        raise InferException(f'Zsource not "self".')
+    if np.any(Zsource != 'self'):
+        raise InferException(f'Zsource not all "self"')
     Zvib = np.full(species.shape,nan)
     if len(np.unique(Tvib)) > 1:
         raise InferException("Non-unique Tvib")
@@ -217,14 +225,14 @@ def _f6(self,species,Tvib,Eref,Tv,v,_qnhash):
         Zvib[i] = np.sum(np.exp(-(Tv[i][j][k]-Eref[i][j][k])/(kB*Tvib[0])))
     return Zvib
 prototypes['Zvib'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tvib','Eref','Tv','v','_qnhash'),_f6),
+    (('species','Tvib','Eref','Tv','v','_qnhash','Zsource'),_f6),
 ])
-def _f6(self,species,Trot,E,Tv,g,v,_qnhash):
+def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
     """Compute partition function from data in self with separate
      vibrational temperature. Compute separately for
     different species and sum over unique levels only."""
-    if self['Zsource'] != 'self':
-        raise InferException(f'Zsource not "self".')
+    if np.any(Zsource != 'self'):
+        raise InferException(f'Zsource not all "self"')
     if len(np.unique(Trot)) > 1:
         raise InferException("Non-unique Trot")
     kB = convert.units(constants.Boltzmann,'J','cm-1')
@@ -234,7 +242,7 @@ def _f6(self,species,Trot,E,Tv,g,v,_qnhash):
         Zrot[i] = np.sum(np.exp(-(E[i][j]-Tv[i][j])/(kB*Trot[0])))
     return Zrot
 prototypes['Zrot'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Trot','E','Tv','g','v','_qnhash'),_f6),
+    (('species','Trot','E','Tv','g','v','_qnhash','Zsource'),_f6),
 ])
 
 ## level populations
@@ -492,7 +500,7 @@ def _collect_prototypes(*keys):
 class Base(Dataset):
     """Common stuff for for lines and levels."""
     default_prototypes = _collect_prototypes()
-    default_attributes = Dataset.default_attributes | {'Zsource':None,}
+    default_attributes = Dataset.default_attributes 
 
     def __init__(self,*args,**kwargs):
         kwargs.setdefault('permit_nonprototyped_data',False)
@@ -579,10 +587,11 @@ class Generic(Base):
         'label',
         'point_group',
         'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres',
-        'Γ','ΓD','Γref','Γres',
+        'Γ','Γref','Γres',
         'J','N','S',
         'g','gnuclear','Inuclear',
-        'Teq','Tex','Z','α',
+        'Teq','Tex',
+        'Zsource','Z','α',
         'Nself',
     )
     defining_qn = ('species','label','ef','J')

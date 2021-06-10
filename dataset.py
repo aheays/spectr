@@ -397,20 +397,23 @@ class Dataset(optimise.Optimiser):
         """Combined specified index with match arguments as boolean mask. If
         no data given the return None"""
         if index is None and match is None and len(match_kwargs)==0:
-            index = None
+            retval = None
         else:
             if index is None:
-                index = np.full(len(self),True)
+                retval = np.full(len(self),True)
             elif np.isscalar(index):
-                index = np.full(len(self),bool(index))
+                retval = np.full(len(self),bool(index))
+            elif isinstance(index,slice):
+                retval = np.full(len(self),False)
+                retval[index] = True
             else:
-                index = np.asarray(index)
-                if index.dtype == bool:
+                retval = np.asarray(index)
+                if retval.dtype == bool:
                     pass
-                elif index.dtype == int:
-                    index = tools.find_inverse(index)
-            index &= self.match(match,**match_kwargs)
-        return index
+                elif retval.dtype == int:
+                    retval = tools.find_inverse(retval)
+            retval &= self.match(match,**match_kwargs)
+        return retval
 
     @optimise_method(format_lines='single')
     def set_and_optimise(
@@ -449,7 +452,7 @@ class Dataset(optimise.Optimiser):
                 self.set(key,value=value,index=index)
 
     @optimise_method(format_lines='single')
-    def set_spline_and_optimise(self,xkey,ykey,knots,order=3,default=None,
+    def set_spline(self,xkey,ykey,knots,order=3,default=None,
                    match=None,index=None,_cache=None,**match_kwargs):
         """Set ykey to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
@@ -1551,13 +1554,14 @@ class Dataset(optimise.Optimiser):
         ## add new data to old
         for key in keys:
             ## the object in self to extend
-            data = self._data[key] 
+            data = self._data[key]
+            new_val = new_data[key]
             ## increase unicode dtype length if new strings are
             ## longer than the current
             if self.get_kind(key) == 'U':
                 ## this is a really hacky way to get the length of string in a numpy array!!!
                 old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
-                new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(val).dtype)))
+                new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(new_val).dtype)))
                 if new_str_len > old_str_len:
                     ## reallocate array with new dtype with overallocation
                     t = np.empty(
@@ -1566,7 +1570,7 @@ class Dataset(optimise.Optimiser):
                     t[:len(self)] = self.get(key)
                     data['value'] = t
             ## set extending data and associated data
-            data['value'][original_length:total_length] = data['cast'](new_data[key])
+            data['value'][original_length:total_length] = data['cast'](new_val)
         ## finalise new length
 
     def _reallocate(self,new_length):

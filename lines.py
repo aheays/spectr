@@ -33,18 +33,18 @@ from .optimise import Parameter,P,optimise_method
 
 prototypes = {}
 
-## copy some direct from levels
+## copy prototypes directly from levels
 for key in (
         'reference','_qnhash',
         'species','point_group',
+        'Zsource',
         'mass','reduced_mass',
-        'ΓD',
         'Eref',
         'Teq','Tex','Tvib','Trot',
 ):
     prototypes[key] = copy(levels.prototypes[key])
 
-## import all from levels with suffices added
+## import all levels prototypes with _u/_l suffices added
 for key,val in levels.prototypes.items():
     tval = deepcopy(val)
     tval['infer'] = [(tuple(key+'_u' for key in tools.ensure_iterable(dependencies)),function)
@@ -54,6 +54,14 @@ for key,val in levels.prototypes.items():
                      for dependencies,function in val['infer']]
     prototypes[key+'_l'] = copy(tval)
 
+## trivial inferences implying the same properties for upper and lower levels if provided in line
+for key in ('species','Zsource','Eref','mass','reduced_mass','Teq','Tex','Tvib','Trot','Nself',):
+    prototypes[f'{key}_l']['infer'].append(((key),lambda self,species: species))
+    prototypes[f'{key}_u']['infer'].append(((key),lambda self,species: species))
+
+## and some reversed inferences
+prototypes['species']['infer'].append((('species_l'),lambda self,species_l: species_l))
+prototypes['species']['infer'].append((('species_u'),lambda self,species_u: species_u))
 
 ## add lines things
 _ΔJ_translate = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
@@ -106,13 +114,12 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
-prototypes['ΔJ'] = dict(description="Jupper-vlower", kind='f', fmt='>+4g', infer=[(('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l,)],)
-prototypes['ΔN'] = dict(description="Nupper-vlower", kind='f', fmt='>+4g', infer=[(('N_u','N_l'),lambda self,N_u,N_l: N_u-N_l,)],)
-prototypes['ΔS'] = dict(description="Supper-vlower", kind='f', fmt='>+4g', infer=[(('S_u','S_l'),lambda self,S_u,S_l: S_u-S_l,)],)
-prototypes['ΔΛ'] = dict(description="Λupper-Λlower", kind='f', fmt='>+4g', infer=[(('Λ_u','Λ_l'),lambda self,Λ_u,Λ_l: Λ_u-Λ_l,)],)
-prototypes['ΔΩ'] = dict(description="Ωupper-Ωlower", kind='f', fmt='>+4g', infer=[(('Ω_u','Ω_l'),lambda self,Ω_u,Ω_l: Ω_u-Ω_l,)],)
-prototypes['ΔΣ'] = dict(description="Σupper-Σlower", kind='f', fmt='>+4g', infer=[(('Σ_u','Σ_l'),lambda self,Σ_u,Σ_l: Σ_u-Σ_l,)],)
-prototypes['Δv'] = dict(description="vupper-vlower", kind='f', fmt='>+4g', infer=[(('v_u','v_l'),lambda self,v_u,v_l: v_u-v_l,)],)
+
+## Δ quantum numbers
+for key in ('J','N','S','Λ','Ω','Σ','v'):
+    prototypes[f'Δ{key}'] = dict(description=f"{key}upper - {key}lower", kind='i', fmt='>+4g', infer=[((f'{key}_u',f'{key}_l'),lambda self,u,l: u-l,)],)
+    prototypes[f'{key}_u']['infer'].append(((f'{key}_l',f'Δ{key}'),lambda self,l,Δ: l+Δ))
+    prototypes[f'{key}_l']['infer'].append(((f'{key}_u',f'Δ{key}'),lambda self,l,Δ: l-Δ))
 
 
 ## column 
@@ -215,6 +222,9 @@ prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or tran
     ('Γair' ,lambda self,Γ0: Γ0),
     ('ΓX',lambda self,Γ0: Γ0),
 ])
+prototypes['Γ']['infer'].append((('Γ_u','Γ_l'),lambda self,Γu,Γl: Γu+Γl))
+prototypes['Γ_l']['infer'].append((('Γ','Γ_u'),lambda self,Γ,Γu: Γ-Γu))
+prototypes['Γ_u']['infer'].append((('Γ','Γ_l'),lambda self,Γ,Γl: Γ-Γl))
 prototypes['ΓD'] = dict(description="Gaussian Doppler width",units="cm-1.FWHM",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,)])
 
 ## line frequencies
@@ -232,6 +242,15 @@ prototypes['ν'] = dict(description="Transition wavenumber",units="cm-1", kind='
     (('ν0','ΔνX'),lambda self,ν0,Δν0: ν0+Δν0),
     (('ν0',),lambda self,ν0: ν0),
 ])
+
+## further infer fucntion connecting energy and frequency
+prototypes['ν']['infer'].extend([(('E_u','E_l'),lambda self,Eu,El: Eu-El),(('Ee_u','Ee_l'),lambda self,Eu,El: Eu-El)])
+prototypes['E_l']['infer'].append((('E_u','ν'),lambda self,Eu,ν: Eu-ν))
+prototypes['E_u']['infer'].append((('E_l','ν'),lambda self,El,ν: El+ν))
+prototypes['Ee_l']['infer'].append((('Ee_u','ν'),lambda self,Eu,ν: Eu-ν))
+prototypes['Ee_u']['infer'].append((('Ee_l','ν'),lambda self,El,ν: El+ν))
+
+
 
 # ## partition functions
 # def _f3(self,species,Tex,E_u,E_l,g_u,g_l,Σ_l,Σ_u,ef_l,ef_u):
@@ -345,38 +364,7 @@ prototypes['ξDv'] = dict(description="Higher-roder reduced rotational interacti
 
 
 
-## add infer functions -- could add some of these to above
-prototypes['ν']['infer'].append((('E_u','E_l'),lambda self,Eu,El: Eu-El))
-prototypes['E_l']['infer'].append((('E_u','ν'),lambda self,Eu,ν: Eu-ν))
-prototypes['E_u']['infer'].append((('E_l','ν'),lambda self,El,ν: El+ν))
-prototypes['Γ']['infer'].append((('Γ_u','Γ_l'),lambda self,Γu,Γl: Γu+Γl))
-prototypes['Γ_l']['infer'].append((('Γ','Γ_u'),lambda self,Γ,Γu: Γ-Γu))
-prototypes['Γ_u']['infer'].append((('Γ','Γ_l'),lambda self,Γ,Γl: Γ-Γl))
-prototypes['J_u']['infer'].append((('J_l','ΔJ'),lambda self,J_l,ΔJ: J_l+ΔJ))
-prototypes['Teq_u']['infer'].append((('Teq'),lambda self,Teq: Teq))
-prototypes['Teq_l']['infer'].append((('Teq'),lambda self,Teq: Teq))
-prototypes['Tex_u']['infer'].append((('Tex'),lambda self,Tex: Tex))
-prototypes['Tex_l']['infer'].append((('Tex'),lambda self,Tex: Tex))
-prototypes['Tex']['infer'].append((('Teq'),lambda self,Teq: Teq))
-prototypes['Tvib_u']['infer'].append((('Tvib'),lambda self,T: T))
-prototypes['Tvib_l']['infer'].append((('Tvib'),lambda self,T: T))
-prototypes['Trot_u']['infer'].append((('Trot'),lambda self,T: T))
-prototypes['Trot_l']['infer'].append((('Trot'),lambda self,T: T))
 
-prototypes['Nself_u']['infer'].append((('Nself'),lambda self,Nself: Nself))
-prototypes['Nself_l']['infer'].append((('Nself'),lambda self,Nself: Nself))
-prototypes['species_l']['infer'].append((('species'),lambda self,species: species))
-prototypes['species_u']['infer'].append((('species'),lambda self,species: species))
-prototypes['species']['infer'].append((('species_l'),lambda self,species_l: species_l))
-prototypes['species']['infer'].append((('species_u'),lambda self,species_u: species_u))
-prototypes['ΔJ']['infer'].append((('J_u','J_l'),lambda self,J_u,J_l: J_u-J_l))
-prototypes['J_u']['infer'].append((('J_l','ΔJ'),lambda self,J_l,ΔJ: J_l+ΔJ))
-prototypes['J_l']['infer'].append((('J_u','ΔJ'),lambda self,J_u,ΔJ: J_u-ΔJ))
-prototypes['v_u']['infer'].append((('v_l','Δv'),lambda self,v_l,Δv: v_l+Δv))
-prototypes['v_l']['infer'].append((('v_u','Δv'),lambda self,v_u,Δv: v_u-Δv))
-
-prototypes['Eref_l']['infer'].append((('Eref'),lambda self,Eref:Eref))
-prototypes['Eref_u']['infer'].append((('Eref'),lambda self,Eref:Eref))
 
 ## parity transition selection rules
 def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
@@ -402,7 +390,7 @@ class Generic(levels.Base):
     _level_class,_level_keys,defining_qn = _collect_level(levels.Generic)
     _line_keys = (
         'reference','_qnhash',
-        'species', 'point_group','mass',
+        'species', 'point_group','mass','Zsource',
         'Eref',
         'ν','ν0', # 'λ',
         'ΔJ', 'branch',
@@ -567,6 +555,12 @@ class Generic(levels.Base):
                     break
             else:
                 raise Exception("Could not find a default ykey")
+        ## no lines to add to cross section -- return quickly
+        if len(self)==0:
+            if x is None:
+                return np.array([]),np.array([])
+            else:
+                return x,np.zeros(x.shape)
         ## guess a default lineshape
         if lineshape is None:
             if self.is_known('Γ','ΓD') and np.any(self['Γ']!=0) and np.any(self['D']!=0):
@@ -577,12 +571,6 @@ class Generic(levels.Base):
                 lineshape = 'gaussian'
             else:
                 raise Exception(f"Cannot determine lineshape because both Γ and ΓD are unknown or zero")
-        ## no lines to add to cross section -- return quickly
-        if len(self)==0:
-            if x is None:
-                return np.array([]),np.array([])
-            else:
-                return x,np.zeros(x.shape)
         ## get x and ykeys
         for t in (xkey,ykey):
             self.assert_known(t)

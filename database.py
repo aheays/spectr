@@ -143,13 +143,17 @@ def get_level(species):
 @tools.vectorise(cache=True)
 def get_level_energy(species,Eref=0,**match_qn):
     """Get uniquely matching level energies."""
+    species = normalise_species(species)
     level = get_level(species)
     i = tools.find(level.match(match_qn,species=species))
     if len(i) == 0:
-        raise InferException('No match found')
+        raise DatabaseException(f'No match found: species={repr(species)}, match_qn={repr(match_qn)}')
     if len(i) > 1:
-        raise InferException('Multiple matches found')
-    E = level['E'][i][0] + level['Eref'][i][0] - Eref
+        raise DatabaseException(f'Multiple matches found: species={repr(species)}, match_qn={repr(match_qn)}')
+    if Eref == 'E0':
+        E = level['E'][i][0] + level['Eref'][i][0] + level['E0'][i][0]
+    else:
+        E = level['E'][i][0] + level['Eref'][i][0] - Eref
     return E
 
     
@@ -327,23 +331,23 @@ def load_lines(species):
     return data
 
 electronic_states={
-    ("C2","X")  :{"Λ":0,"S":0,"s"  :1,"gu"    :1},
-    ("C2","a")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1},
-    ("C2","b")  :{"Λ":0,"S":1,"s"  :1,"gu"    :1},
-    ("C2","A")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1},
-    ("C2","c")  :{"Λ":0,"S":1,"s"  :0,"gu"    :-1},
-    ("C2","B")  :{"Λ":2,"S":0,"s"  :0,"gu"    :1},
-    ("C2","d")  :{"Λ":1,"S":1,"s"  :0,"gu"    :1},
-    ("C2","C")  :{"Λ":1,"S":0,"s"  :0,"gu"    :1},
-    ("C2","e")  :{"Λ":1,"S":1,"s"  :0,"gu"    :1},
-    ("C2","D")  :{"Λ":0,"S":0,"s"  :0,"gu"    :-1},
-    ("C2","E")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1},
-    ("C2","f")  :{"Λ":0,"S":1,"s"  :1,"gu"    :1},
-    ("C2","g")  :{"Λ":2,"S":1,"s"  :0,"gu"    :1},
-    ("C2","F")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1},
-    ("C2","A′") :{"Λ":0,"S":1,"s"  :1,"gu"    :1},
-    ("C2","B′") :{"Λ":0,"S":0,"s"  :0,"gu"    :1},
-    ("C2","C′") :{"Λ":1,"S":0,"s"  :0,"gu"    :1},
+    ("C₂","X")  :{"Λ":0,"S":0,"s"  :1,"gu"    :1},
+    ("C₂","a")  :{"Λ":1,"S":1,"s"  :0,"gu"    :-1},
+    ("C₂","b")  :{"Λ":0,"S":1,"s"  :1,"gu"    :1},
+    ("C₂","A")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1},
+    ("C₂","c")  :{"Λ":0,"S":1,"s"  :0,"gu"    :-1},
+    ("C₂","B")  :{"Λ":2,"S":0,"s"  :0,"gu"    :1},
+    ("C₂","d")  :{"Λ":1,"S":1,"s"  :0,"gu"    :1},
+    ("C₂","C")  :{"Λ":1,"S":0,"s"  :0,"gu"    :1},
+    ("C₂","e")  :{"Λ":1,"S":1,"s"  :0,"gu"    :1},
+    ("C₂","D")  :{"Λ":0,"S":0,"s"  :0,"gu"    :-1},
+    ("C₂","E")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1},
+    ("C₂","f")  :{"Λ":0,"S":1,"s"  :1,"gu"    :1},
+    ("C₂","g")  :{"Λ":2,"S":1,"s"  :0,"gu"    :1},
+    ("C₂","F")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1},
+    ("C₂","A′") :{"Λ":0,"S":1,"s"  :1,"gu"    :1},
+    ("C₂","B′") :{"Λ":0,"S":0,"s"  :0,"gu"    :1},
+    ("C₂","C′") :{"Λ":1,"S":0,"s"  :0,"gu"    :1},
     ("CN","X")  :{"Λ":0,"S":1,"s"  :0,"LSsign":1},
     ("CN","A")  :{"Λ":1,"S":1,"s"  :0,"LSsign":1},
     ("CN","B")  :{"Λ":0,"S":1,"s"  :0,"LSsign":1},
@@ -367,9 +371,9 @@ electronic_states={
     ("CO","d")  :{"Λ":2,"S":1,"s"  :0,"LSsign":-1},
     ("CO","e")  :{"Λ":0,"S":1,"s"  :1,"LSsign":1},
     ("CO","k")  :{"Λ":1,"S":1,"s"  :0,"LSsign":1},
-    ("H2","X")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
-    ("H2","B")  :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("H2","C")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("H₂","X")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
+    ("H₂","B")  :{"Λ":0,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("H₂","C")  :{"Λ":1,"S":0,"s"  :0,"gu"    :-1,"LSsign":1},
     ("OH","X")  :{"Λ":1,"S":0.5,"s":0,"LSsign":-1},
     ("OH","A")  :{"Λ":0,"S":0.5,"s":0,"LSsign":1},
     ("OH","B")  :{"Λ":0,"S":0.5,"s":0,"LSsign":1},
@@ -431,12 +435,12 @@ electronic_states={
     ("SO","A″"):{"Λ":0,"S":1,"s"  :1,"LSsign":-1},
     ("SO","a")  :{"Λ":2,"S":0,"s"  :0,"LSsign":1},
     ("SO","f")  :{"Λ":2,"S":0,"s"  :0,"LSsign":1},
-    ("S2","X")  :{"Λ":0,"S":1,"s"  :1,"gu"    :1,"LSsign" :1},
-    ("S2","a")  :{"Λ":2,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
-    ("S2","b")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
-    ("S2","B")  :{"Λ":0,"S":1,"s"  :1,"gu"    :-1,"LSsign":1},
-    ("S2","B″"):{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
-    ("S2","f")  :{"Λ":2,"S":0,"s"  :0,"gu"    :-1,"LSsign":1}
+    ("S₂","X")  :{"Λ":0,"S":1,"s"  :1,"gu"    :1,"LSsign" :1},
+    ("S₂","a")  :{"Λ":2,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
+    ("S₂","b")  :{"Λ":0,"S":0,"s"  :0,"gu"    :1,"LSsign" :1},
+    ("S₂","B")  :{"Λ":0,"S":1,"s"  :1,"gu"    :-1,"LSsign":1},
+    ("S₂","B″"):{"Λ":1,"S":1,"s"  :0,"gu"    :-1,"LSsign":1},
+    ("S₂","f")  :{"Λ":2,"S":0,"s"  :0,"gu"    :-1,"LSsign":1}
 }
 
 

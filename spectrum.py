@@ -490,7 +490,7 @@ class Model(Optimiser):
     @optimise_method()
     def add_absorption_lines(
             self,
-            lines=None,
+            line=None,
             nfwhmL=20,
             nfwhmG=10,
             τmin=None,
@@ -501,31 +501,31 @@ class Model(Optimiser):
             **set_keys_vals
     ):
         ## nothing to be done
-        if len(self.x) == 0 or len(lines) == 0:
+        if len(self.x) == 0 or len(line) == 0:
             return
         if self._clean_construct:
             ## first run — initalise local copy of lines data and
-            imatch = lines.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
+            imatch = line.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
             nmatch = np.sum(imatch)
-            lines_copy = lines.copy(index=imatch)
+            line_copy = line.copy(index=imatch)
             ## keys that might possibly change
-            variable_keys = [key for key in lines_copy.keys() if lines_copy.get_kind(key)=='f']
+            variable_keys = [key for key in line_copy.keys() if line_copy.get_kind(key)=='f']
             ## set parameter data
             for key,val in set_keys_vals.items():
-                lines_copy[key] = float(val)
+                line_copy[key] = float(val)
             ## cache
-            (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['lines_copy']) = (
-                variable_keys,imatch,nmatch,lines_copy)
+            (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['line_copy']) = (
+                variable_keys,imatch,nmatch,line_copy)
             ## calculate spectrum
-            x,τ = lines_copy.calculate_spectrum(
+            x,τ = line_copy.calculate_spectrum(
                 x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                 ymin=τmin,ncpus=ncpus,lineshape=lineshape)
             transmittance = np.exp(-τ)
         else:
-            ## subsequent runs -- maybe only recompute a few lines
-            (variable_keys,imatch,nmatch,lines_copy,transmittance) = (
+            ## subsequent runs -- maybe only recompute a few line
+            (variable_keys,imatch,nmatch,line_copy,transmittance) = (
                 _cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
-                _cache['lines_copy'],_cache['transmittance'])
+                _cache['line_copy'],_cache['transmittance'])
             full_recalculation = False
             lines_changed = False
             ## nothing to be done
@@ -538,19 +538,19 @@ class Model(Optimiser):
             for key,val in set_keys_vals.items():
                 if (isinstance(val,Parameter) and
                     self._last_construct_time < val._last_modify_value_time):
-                    lines_copy.set(key,val)
+                    line_copy.set(key,val)
                     full_recalculation = True
             ## line spectrum has changed -- find changed lines
-            if self._last_construct_time < lines._last_construct_time:
-                ichanged = np.full(len(lines_copy),False)
+            if self._last_construct_time < line._last_construct_time:
+                ichanged = np.full(len(line_copy),False)
                 changed_keys = []
                 for key in variable_keys:
-                    i = lines[key][imatch] != lines_copy[key]
+                    i = line[key][imatch] != line_copy[key]
                     if np.any(i):
                         changed_keys.append(key)
                         ichanged |= i
                 nchanged = np.sum(ichanged)
-                if nchanged > (len(lines_copy)/2):
+                if nchanged > (len(line_copy)/2):
                     ## most lines change — just recompute everything
                     full_recalculation = True
                 lines_changed = True
@@ -558,21 +558,21 @@ class Model(Optimiser):
             if full_recalculation:
                 if lines_changed:
                     for key in changed_keys:
-                        lines_copy.set(key,lines[key][imatch])
-                x,τ = lines_copy.calculate_spectrum(
+                        line_copy.set(key,line[key][imatch])
+                x,τ = line_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin,ncpus=ncpus,lineshape=lineshape,)
                 transmittance = np.exp(-τ)
             elif lines_changed:
                 ## recompute old version of lines that have changed
-                xold,τold = lines_copy.calculate_spectrum(
+                xold,τold = line_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin,ncpus=ncpus,lineshape=lineshape,index=ichanged)
-                ## update data in lines_copy and compute new version
-                ## of changed lines
+                ## update data in line_copy and compute new version
+                ## of changed line
                 for key in changed_keys:
-                    lines_copy.set(key,lines[key][imatch])
-                xnew,τnew = lines_copy.calculate_spectrum(
+                    line_copy.set(key,line[key][imatch])
+                xnew,τnew = line_copy.calculate_spectrum(
                     x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
                 ## update transmittance
