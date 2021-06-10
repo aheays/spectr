@@ -483,8 +483,10 @@ def convert_to_bool_vector_array(x):
                 t.append(True)
             elif xi=='False':
                 t.append(False)
+            elif xi=='Fixed':
+                t.append(False)
             else:
-                raise Exception("Valid boolean string values are 'True' or 'False'")
+                raise Exception("Valid boolean string values are 'True', 'False', and 'Fixed'")
         retval = array(t,ndmin=1,dtype=bool)
         return retval
     else:
@@ -632,6 +634,8 @@ def regularise_unicode(s):
 
 def superscript_numerals(s):
     """Turn unicode symbols into something more ascii"""
+    if len(s)>1:
+        s = ''.join([superscript_numerals(t) for t in s])
     ## superscripts / subscripts 
     for x,y in ( ('⁰','0'), ('¹','1'), ('²','2'), ('³','3'),
                  ('⁴','4'), ('⁵','5'), ('⁶','6'), ('⁷','7'), ('⁸','8'),

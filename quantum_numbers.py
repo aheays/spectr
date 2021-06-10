@@ -240,6 +240,12 @@ def join_upper_lower_quantum_numbers(qn_u,qn_l):
         # retval += ef
     # return(retval)
 
+def normalise_term_symbol(term):
+    """Convert atomic and molecular term symbols into a standard
+    form."""
+    ## not implemented
+    return term
+
 _translate_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
 def encode_rotational_transition(qn):
     """ONLY JUST BEGUN"""

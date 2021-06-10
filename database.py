@@ -322,7 +322,12 @@ def get_isotopes(element_name):
 @lru_cache
 def get_atomic_mass(element_name,mass_number):
     """Return the atomic mass of a particular elemental isotope."""
-    return getattr(periodictable,element_name)[mass_number].mass
+    if mass_number is None:
+        ## average mass natural abundance
+        return getattr(periodictable,element_name).mass
+    else:
+        ## mass of isotope
+        return getattr(periodictable,element_name)[mass_number].mass
 
 def load_lines(species):
     """Load spectral lines from reference data."""

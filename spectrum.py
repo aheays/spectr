@@ -1558,7 +1558,8 @@ class Model(Optimiser):
             title='auto',
             plot_legend= True,
             # contaminants_to_plot=('default',), # what contaminant to label
-            contaminants_to_plot=None, # what contaminant to label
+            plot_contaminants=False,
+            contaminants=None,
             shift_residual=0.,
             xlabel=None,ylabel=None,
             invert_model=False,
@@ -1666,16 +1667,28 @@ class Model(Optimiser):
         if plot_branch_heads:
             for transition in self.transitions:
                 annotate_branch_heads(transition,qn_defining_branch,match_branch_re=label_match_name_re)
-        ## plot contaminant indicators
-        if contaminants_to_plot is not None:
-            contaminant_linelist = database.get_spectral_contaminant_linelist(
-                *contaminants_to_plot,
-                νbeg=ax.get_xlim()[0],
-                νend=ax.get_xlim()[1],)
-            for line in contaminant_linelist:
-                x,y = line['ν'],ax.get_ylim()[0]/2.
-                ax.plot(x,y,ls='',marker='o',color='red',markersize=6)
-                ax.annotate(line['name'],(x,1.1*y),ha='center',va='top',color='gray',fontsize='x-small',rotation=90,zorder=-5)
+        ## plot contaminants
+        if plot_contaminants:
+            if contaminants is None:
+                ## set default list of contaminants
+                contaminants = (
+                    ('¹H₂',{'v_l':0}),
+                    ('Xe',{}),
+                    ('Ar',{}),
+                    # ('H',{}),
+                    ('O',{}),
+                    ('N',{}),
+                )
+            icontaminant = 0
+            for tspecies,tmatch in contaminants:
+                l = database.load_lines(tspecies)
+                tmatch |= {'ν_min':self.x.min(),'ν_max':self.x.max()}
+                l = l.matches(**tmatch)
+                if len(l) > 0:
+                    ax.plot(l['ν'],np.full(len(l),ax.get_ylim()[0]/2),
+                            label=tspecies,color=plotting.newcolor(icontaminant+3),
+                            ls='',marker='o',markersize=6,mfc='none')
+                    icontaminant += 1
         ## finalise plot
         if (plot_title
             and hasattr(self.experiment,'experimental_parameters')

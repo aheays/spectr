@@ -521,7 +521,7 @@ class Dataset(optimise.Optimiser):
             if len(key_assoc) != 2:
                 raise Exception
             if key_assoc[1] not in self.associated_kinds:
-                raise Exception('Unknown associated kind: {repr(key_assoc[1])}')
+                raise Exception(f'Unknown associated kind: {repr(key_assoc[1])}')
             return key_assoc
 
     def is_set(self,key_assoc):
@@ -1210,6 +1210,20 @@ class Dataset(optimise.Optimiser):
         retval += ']'
         return retval
 
+    def print_data(self,delimiter=' | '):
+        """Print flat data"""
+        print(self.format(
+            delimiter=delimiter,
+            unique_values_in_header=False,
+            include_description=False,
+            include_attributes=False,
+            include_assoc=True,
+            include_keys_with_leading_underscore=False,
+            quote_strings=False,
+            quote_keys=False,
+        ))
+
+
     def __str__(self):
         return self.format(
             delimiter=' | ',
@@ -1333,6 +1347,7 @@ class Dataset(optimise.Optimiser):
         if data_is_flat:
             flat_data = data
             data = {}
+            assoc_data = []
             while len(flat_data)>0:
                 key = list(flat_data.keys())[0]
                 val = flat_data.pop(key)
@@ -1340,12 +1355,15 @@ class Dataset(optimise.Optimiser):
                     ## attribute
                     data[key] = val
                 elif r:=re.match(r'([^,]+),([^,]+)',key):
-                    ## associated data -- value must already be set
+                    ## save associated data and set after all values
                     key,suffix = r.groups()
-                    data[key]['assoc'][suffix] = val
+                    assoc_data.append((key,suffix,val))
                 else:
                     ## value data
                     data[key] = {'value':val,'assoc':{}}
+            ## set associated data
+            for (key,suffix,val) in assoc_data:
+                data[key]['assoc'][suffix] = val
         ##
         ## temp hack delete
         for key in list(data.keys()): #  HACK

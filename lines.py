@@ -395,7 +395,7 @@ class Generic(levels.Base):
         'ν','ν0', # 'λ',
         'ΔJ', 'branch',
         'ΔJ',
-        'f','σ','S','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr',
+        'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr',
         'Nself',
         'Teq','Tex','Ttr',
         'Γ','ΓD',
@@ -563,7 +563,7 @@ class Generic(levels.Base):
                 return x,np.zeros(x.shape)
         ## guess a default lineshape
         if lineshape is None:
-            if self.is_known('Γ','ΓD') and np.any(self['Γ']!=0) and np.any(self['D']!=0):
+            if self.is_known('Γ','ΓD') and np.any(self['Γ']!=0) and np.any(self['ΓD']!=0):
                 lineshape = 'voigt'
             elif self.is_known('Γ') and np.any(self['Γ']!=0):
                 lineshape = 'lorentzian'
@@ -745,7 +745,7 @@ class Generic(levels.Base):
         return data             # return raw HITRAN data
         
     def load_from_nist(self,filename):
-        """Load NIST csv atomic transition data file."""
+        """Load NIST tab-separated atomic transition data file."""
         ## load into dict
         # data = dataset.load(filename,txt_to_dict_kwargs={'filter_regexp':(r'"',r'')})
         data_string = tools.file_to_string(filename)
@@ -769,7 +769,7 @@ class Generic(levels.Base):
                 tre = re.compile(r'\[(.*)\]')
                 for i,t in enumerate(data[key]):
                     if re.match(tre,t):
-                        data[key] = t[1:-1]
+                        data[key][i] = t[1:-1]
         re_compiled_1 = re.compile(r' *([0-9]+)([A-Z])(\*?) *')
         re_compiled_2 = re.compile(r' *([0-9]+)(\[[0-9/]+\])(\*?) *')
         L_dict = {'S':0,'P':1,'D':2,'F':3,'G':4,'H':5}
@@ -1129,7 +1129,7 @@ class Atomic(Generic):
         *Generic.default_prototypes,
     }}
     default_xkey = 'J_l'
-    default_zkeys = ['species_u','conf_u','species_l','conf_l','ΔJ','ΔS',]
+    default_zkeys = ['species_u','conf_u','species_l','conf_l','S_l','S_u','J_l','J_u',]
 
 class Linear(Generic):
     _level_class,_level_keys,defining_qn = _collect_level(levels.Linear)

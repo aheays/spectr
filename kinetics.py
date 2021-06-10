@@ -245,7 +245,7 @@ class Species:
                 elif r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
                     isotopes.append((
                         r.group(1),
-                        database.get_isotopes(r.group(1))[0][0],
+                        None,
                         int(r.group(2) if r.group(2) != '' else 1)))
                 else:
                     raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
@@ -276,14 +276,13 @@ class Species:
                 charge = int(tools.regularise_unicode(r.group(2)[:-1]))
             else:
                 charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
-            for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
+            for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
                 if part=='':
                     continue
-                elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
+                elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
                     isotopes.append((
                         r.group(2),
-                        (database.get_isotopes(r.group(2))[0][0]
-                                 if r.group(1) == '' else int(tools.regularise_unicode(r.group(1)))),
+                        (int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None),
                         int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)))
                 else:
                     raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
@@ -296,7 +295,8 @@ class Species:
         """Turn ordered isotope list and charge into a name string."""
         retval = []
         for element,mass_number,multiplicity in isotopes:
-            retval.append(tools.superscript_numerals(str(int(mass_number))))
+            if mass_number is not None:
+                retval.append(tools.superscript_numerals(str(mass_number)))
             retval.append(element)
             if multiplicity > 1:
                 retval.append(tools.subscript_numerals(str(int(multiplicity))))

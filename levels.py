@@ -28,10 +28,7 @@ prototypes['author'] = dict(description="Author of data or printed file" ,kind='
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
 
-prototypes['species'] = dict(
-    description="Chemical species with isotope specification" ,kind='U' ,
-    cast=lambda species: np.array(database.normalise_species(species),dtype=str),
-    infer=[])
+prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' , cast=lambda species: np.array(database.normalise_species(species),dtype=str), infer=[])
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
@@ -70,6 +67,9 @@ prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',
 prototypes['Eres'] = dict(description="Residual difference between level energy and experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eexp'),lambda self,E,Eexp: Eexp-E)])
 prototypes['E0'] = dict(description="Energy of the lowest physical energy level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'E0')),],default_step=1e-3)
 
+
+prototypes['term'] = dict(description="Spectroscopic term symbol",kind='U',cast=lambda term: np.array(quantum_numbers.normalise_term_symbol(term),dtype=str),infer=[])
+prototypes['lande_g'] = dict(description="Lande g factor",units='dimensionless',kind='f' ,fmt='6.5f',infer=[]) 
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',infer=[])
 
 def _f0(self,species,label,v,Σ,ef,J,E):
@@ -119,7 +119,6 @@ def _f0(self,point_group):
         return 1.
     else:
         raise InferException
-
 @vectorise(cache=True,vargs=(1,2,3))
 def _f1(self,point_group,Inuclear,sa):
     """Calculate homonuclear diatomic molecule level degeneracy."""
@@ -604,10 +603,53 @@ class Generic(Base):
 class Atomic(Generic):
     default_prototypes = _collect_prototypes(
         *Generic.default_prototypes,
-        'conf','L','gu',
+        'conf','L','gu','lande_g','term'
     )
     defining_qn = ('species','conf','J','S',)
     default_zkeys = ('species',)
+
+    def load_from_nist(self,filename):
+        """Load NIST tab-separated atomic levels data file."""
+        ## load into dict
+        data_string = tools.file_to_string(filename)
+        data_string = data_string.replace('\t','|')
+        data_string = data_string.replace('"','')
+        data_string = [t for i,t in enumerate(data_string.split('\n')) if i==0 or len(t)<3 or t[:3]!='obs']
+        data_string = '\n'.join(data_string)
+        data = Dataset()
+        data.load_from_string(data_string,delimiter='|')
+        ## manipulate some data
+        for key in ('Level (cm-1)',):
+            if data.get_kind(key) == 'U':
+                tre = re.compile(r'\[(.*)\]')
+                for i,t in enumerate(data[key]):
+                    if re.match(tre,t):
+                        data[key][i] = t[1:-1]
+        ## add to self
+        for key0,key1 in (
+                ('Configuration','conf'),
+                ('Term',None),
+                ('J','J'),
+                ('Level (cm-1)','E'),
+                ('Uncertainty (cm-1)',None), # could add
+                ('Lande','lande_g'),
+                ('Reference',None)
+        ):
+            if key1 is not None:
+                self[key1] = data[key0]
+        self['reference'] = 'NIST'
+        ## decode NIST terms -- incomplete
+        S = []
+        for t in data['Term']:
+            if r:=re.match(r'^([0-9]+)([SPDFG])(\*?)$',t): 
+                ## e.e., 1S
+                S.append((float(r.group(1))-1)/2)
+            elif r:=re.match(r'^([0-9]+)\[([0-9/]+)\](\*?)$',t): 
+                ## e.e., 2[3/2]*
+                S.append((float(r.group(1))-1)/2)
+            else:
+                raise Exception(f"Could not decode NIST atomic term: {repr(t)}")
+        self['S'] = S
 
 class Linear(Generic):
     default_prototypes = _collect_prototypes(
