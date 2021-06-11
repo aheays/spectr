@@ -386,7 +386,8 @@ class Species:
                 t = []
                 for element,mass_number,multiplicity in self._isotopes:
                     t.append(element)
-                    t.append(tools.subscript_numerals(str(multiplicity)))
+                    if multiplicity > 1:
+                        t.append(tools.subscript_numerals(str(multiplicity)))
                 self._chemical_name = ''.join(t)
             return self._chemical_name
         # elif key == 'isotopologue':
