@@ -40,6 +40,7 @@ for key in (
         'Zsource',
         'mass','reduced_mass',
         'Eref',
+        'qn',
         'Teq','Tex','Tvib','Trot',
 ):
     prototypes[key] = copy(levels.prototypes[key])
@@ -347,7 +348,7 @@ def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
     """Compute singlet state rotational linestrength factors."""
     if not (np.all(S_u==0) and np.all(S_l==0)):
         warnings.warn('Honl-London factors used for rotational linestrengths of multiplet states')
-    SJ = quantum_numbers.honl_london_factor(Ω_u,Ω_l,J_u,J_l)
+    SJ = quantum_numbers.honl_london_factor(Ω_u,Ω_l,J_u,J_l,return_zero_on_fail=True)
     return SJ
 prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
 
@@ -375,46 +376,63 @@ def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
 prototypes['ef_u']['infer'].append((('ΔJ','ef_l'),_parity_selection_rule_upper_or_lower))
 prototypes['ef_l']['infer'].append((('ΔJ','ef_u'),_parity_selection_rule_upper_or_lower))
 
-def _collect_level(level_class):
-    """Get prototype keys and defining qn from a level class."""
-    keys = []
+def _collect_prototypes(level_class,base_class,new_keys):
+    ## collect all prototypes
+    default_prototypes = {}
     for key in level_class.default_prototypes:
-        keys.append(key+'_l')
-        keys.append(key+'_u')
+        default_prototypes[key+'_l'] = prototypes[key+'_l']
+        default_prototypes[key+'_u'] = prototypes[key+'_u']
+    if base_class is not None:
+        for key in base_class.default_prototypes:
+            default_prototypes[key] = prototypes[key]
+    for key in new_keys:
+        default_prototypes[key] = prototypes[key]
+    ## get defining qn from levels
     defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
                         +[key+'_l' for key in level_class.defining_qn])
-    return level_class,keys,defining_qn
+    ## add infer functions from encoded qn for defining qn
+    for key in defining_qn:
+        default_prototypes[key]['infer'].append(
+            ('qn',
+             lambda self,qn,key=key: levels._get_key_from_qn(self,qn,key)))
+    return level_class,defining_qn,default_prototypes
 
 class Generic(levels.Base):
 
-    _level_class,_level_keys,defining_qn = _collect_level(levels.Generic)
-    _line_keys = (
-        'reference','_qnhash',
-        'species', 'point_group','mass','Zsource',
-        'Eref',
-        'ν','ν0', # 'λ',
-        'ΔJ', 'branch',
-        'ΔJ',
-        'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr',
-        'Nself',
-        'Teq','Tex','Ttr',
-        'Γ','ΓD',
-        ## pressure broadening stuff
-        'mJ_l',
-        'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
-        'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
-        'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
-        ## test HITRAN Hartmann-Tran
-        'HITRAN_HT_X','HITRAN_HT_pX', 'HITRAN_HT_Tref', 'HITRAN_HT_γ0', 'HITRAN_HT_n', 'HITRAN_HT_γ2', 'HITRAN_HT_δ0', 'HITRAN_HT_δp', 'HITRAN_HT_δ2', 'HITRAN_HT_νVC', 'HITRAN_HT_κ', 'HITRAN_HT_η', 'HITRAN_HT_Y',
-        'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
-    )
-    default_prototypes = {key:prototypes[key] for key in {*_level_keys,*_line_keys}}
-    default_xkey = 'J_l'
-    default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
-    decode_qn = lambda self,name: quantum_numbers.decode_linear_line(name)
-    encode_qn = lambda self,qn: quantum_numbers.encode_linear_line(qn)
-    default_zlabel_format_function = encode_qn
+    _level_class,defining_qn,default_prototypes = _collect_prototypes(
+        level_class=levels.Generic,
+        base_class=levels.Base,
+        new_keys=(
+            'reference','_qnhash','qn',
+            'species', 'point_group','mass','Zsource',
+            'Eref',
+            'ν','ν0', # 'λ',
+            'ΔJ', 'branch',
+            'ΔJ',
+            'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr',
+            'Nself',
+            'Teq','Tex','Ttr',
+            'Γ','ΓD',
+            ## pressure broadening stuff
+            'mJ_l',
+            'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
+            'pself','γ0self','nγ0self','δ0self','nδ0self','Γself','Δνself',
+            'pX','γ0X','nγ0X','δ0X','nδ0X','ΓX','ΔνX',
+            ## test HITRAN Hartmann-Tran
+            'HITRAN_HT_X','HITRAN_HT_pX', 'HITRAN_HT_Tref', 'HITRAN_HT_γ0', 'HITRAN_HT_n', 'HITRAN_HT_γ2', 'HITRAN_HT_δ0', 'HITRAN_HT_δp', 'HITRAN_HT_δ2', 'HITRAN_HT_νVC', 'HITRAN_HT_κ', 'HITRAN_HT_η', 'HITRAN_HT_Y',
+            'HT_Γ0', 'HT_Γ2', 'HT_Δ0', 'HT_Δ2', 'HT_νVC', 'HT_η',
+        ))
+    default_xkey = 'J_u'
+    default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
+      
+    def encode_qn(self,qn):
+        """Encode qn into a string"""
+        return quantum_numbers.encode_linear_line(qn)
 
+    def decode_qn(self,encoded_qn):
+        """Decode string into quantum numbers"""
+        return quantum_numbers.decode_linear_line(encoded_qn)
+    
     def plot_spectrum(
             self,
             *calculate_spectrum_args,
@@ -439,7 +457,7 @@ class Generic(levels.Base):
                 ax.plot(
                     x,y,
                     label=tools.dict_to_kwargs(qn),
-                    # label=self.encode_qn(qn),
+                    # label=self._encode_qn(qn),
                     **plot_kwargs)
             plotting.legend(loc='upper left')
         else:
@@ -1123,28 +1141,33 @@ class Generic(levels.Base):
                 self[f'{key}_u'][i],self[f'{key}_l'][i] = self[f'{key}_l'][i],self[f'{key}_u'][i]
 
 class Atomic(Generic):
-    _level_class,_level_keys,defining_qn = _collect_level(levels.Atomic)
-    default_prototypes = {key:prototypes[key] for key in {
-        *_level_keys,
-        *Generic.default_prototypes,
-    }}
+
+    _level_class,defining_qn,default_prototypes = _collect_prototypes(
+        levels.Atomic,
+        Generic,())
     default_xkey = 'J_l'
     default_zkeys = ['species_u','conf_u','species_l','conf_l','S_l','S_u','J_l','J_u',]
 
 class Linear(Generic):
-    _level_class,_level_keys,defining_qn = _collect_level(levels.Linear)
-    default_prototypes = {key:prototypes[key] for key in {
-        *_level_keys,
-        *Generic.default_prototypes,
+
+    _level_class,defining_qn,default_prototypes = _collect_prototypes(
+        level_class=levels.Diatomic,
+        base_class=Generic,
+        new_keys=(
         'fv', 'νv', 'μv',
         'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
-    }}
+        ))
+    
     default_xkey = 'J_l'
     default_zkeys = ['species_u','label_u','species_l','label_l','ΔJ']
-    decode_qn = lambda self,name: quantum_numbers.decode_linear_line(name)
-    encode_qn = lambda self,qn: quantum_numbers.encode_linear_line(qn)
-    default_zlabel_format_function = encode_qn
 
+    def encode_qn(self,qn):
+        """Encode qn into a string"""
+        return quantum_numbers.encode_linear_line(qn)
+
+    def decode_qn(self,encoded_qn):
+        """Decode string into quantum numbers"""
+        return quantum_numbers.decode_linear_line(encoded_qn)
 
     # def set_effective_rotational_linestrengths(self,Ω_u,Ω_l):
         # """Set SJ to Honl-London factors appropriate for Ω_u and Ω_l,
@@ -1152,16 +1175,17 @@ class Linear(Generic):
         # multiplet transition is borrowing intensity."""
         # self['SJ'] = quantum_numbers.honl_london(Ω_u,Ω_l,self[J_u],self[J_l])
 
+
 class Diatomic(Linear):
 
-    _level_class,_level_keys,defining_qn = _collect_level(levels.Diatomic)
-    default_prototypes = {key:prototypes[key] for key in
-                          {*_level_keys, *Linear.default_prototypes,
-                           'Tvib', 'Trot', 'Δv',
-                           }}
+    _level_class,defining_qn,default_prototypes = _collect_prototypes(
+        level_class=levels.Diatomic,
+        base_class=Linear,
+        new_keys=(
+            'Tvib', 'Trot', 'Δv',
+        ))
     default_xkey = 'J_u'
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
-    # default_attributes = Linear.default_attributes 
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -1224,11 +1248,16 @@ class Diatomic(Linear):
             raise Exception(f'intensity_type must be "absorption" or "emission" or "partition"')
         self.extend(**data)
 
-class LinearTriatomic(Linear):
+class Triatomic(Linear):
     """E.g., CO2, CS2."""
 
-    _level_class,_level_keys,defining_qn = _collect_level(levels.LinearTriatomic)
-    default_prototypes = {key:prototypes[key] for key in {*_level_keys, *Linear.default_prototypes,}}
+    _level_class,defining_qn,default_prototypes = _collect_prototypes(
+        level_class=levels.Triatomic,
+        base_class=Linear,
+        new_keys=(
+        'fv', 'νv', 'μv',
+        'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
+        ))
     default_xkey = 'J_l'
     default_zkeys = ['species_u', 'ν1_u', 'ν2_u', 'ν3_u', 'l2_u', 'species_l', 'ν1_l', 'ν2_l', 'ν3_l', 'l2_l', 'ΔJ']
 

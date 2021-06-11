@@ -1166,11 +1166,11 @@ def get_case_a_basis(S,Λ,s,verbose=False,**kwargs):
         # return(dict(e={+1:+invsqrt2,-1:+invsqrt2,},f={+1:+invsqrt2,-1:-invsqrt2,}))
 
 @tools.vectorise(dtype=float,cache=True)
-def honl_london_factor(Ωp,Ωpp,Jp,Jpp):
+def honl_london_factor(Ωp,Ωpp,Jp,Jpp,return_zero_on_fail=False):
     """Calculate Honl London factor for an arbitrary one-photon
     transition. Returns an float, or a array of floats as
     required. Selection rule violating transitions return nan. """
-    return 3*M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,)**2
+    return 3*M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,return_zero_on_fail)**2
 
 def M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,return_zero_on_fail=False):
     """Calculate using formulae of lefebvre-brion_field2004 Tab 6.1"""

@@ -171,7 +171,7 @@ def _f0(Zsource):
     i = np.any([Zsource!=key for key in _valid_Zsource],0)
     if np.sum(i) > 0:
         raise Exception(f'Invalid Zsource: {repr(np.unique(Zsource[i]))}. Valid values: {_valid_Zsource}')
-prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', kind='U', fmt='8s', infer=[])
+prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', kind='U', fmt='8s',infer=[((),lambda self:'self')])
 
 def _f5(self,species,Tex,Eref,Zsource):
     """Get HITRAN partition function."""
@@ -428,6 +428,17 @@ def _f0(self):
     return None
 prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[((),_f0),])
 
+def _f0(self):
+    """Encoded defining quantum numbers into a string."""
+    for key in self.defining_qn:
+        if not self.is_known(key):
+            raise InferException(f'Cannot infer qn because {key} not known')
+    encoded_qn = [self.encode_qn({key:self[key][i] for key in self.defining_qn}) for i in range(len(self))]
+    self._set_value('qn',encoded_qn,dependencies=self.defining_qn)
+    return None
+prototypes['qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[((),_f0)])
+
+
 
 ## Effective Hamiltonian parameters
 prototypes['Tv']  = dict(description='Term origin' ,units='cm-1',kind='f',fmt='0.6f',infer=[])
@@ -492,28 +503,59 @@ prototypes['Tvreduced_common'] = dict(description="Term values reduced by a comm
 prototypes['Tvreduced_common_polynomial'] = dict(description="Polynomial in terms of v+1/2 to reduce all term values commonly",units='cm-1', kind='o', infer=[])
 prototypes['Bv_μscaled']  = dict(description='Rotational constant scaled by reduced mass to an isotopologue-independent value' ,units='cm-1', kind='f',fmt='0.8f', infer=[(('Bv','reduced_mass'),lambda self,Bv,reduced_mass: Bv*reduced_mass,)])
 
-def _collect_prototypes(*keys):
-    retval = {key:prototypes[key] for key in keys}
-    return retval
+def _get_key_from_qn(self,qn,key):
+    try:
+        return [self.decode_qn(t)[key] for t in qn]
+    except KeyError as err:
+        raise InferException('Could not determine from qn: {str(err)}')
+
+def _collect_prototypes(*keys,defining_qn=()):
+    default_prototypes = {key:prototypes[key] for key in keys}
+    ## add infer functions from encoded qn for defining qn
+    for key in defining_qn:
+        default_prototypes[key]['infer'].append(
+            ('qn',
+             lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
+    return default_prototypes
 
 class Base(Dataset):
     """Common stuff for for lines and levels."""
-    default_prototypes = _collect_prototypes()
+    defining_qn = ()
+    default_xkey = None
+    default_zkeys = ()
+    default_prototypes = {}
     default_attributes = Dataset.default_attributes 
 
-    def __init__(self,*args,**kwargs):
+    def __init__(self,*args,encoded_qn=None,**kwargs):
         kwargs.setdefault('permit_nonprototyped_data',False)
+        ## decode encoded_qn
+        if encoded_qn is not None:
+            if isinstance(encoded_qn,str):
+                kwargs = self._decode_qn(encoded_qn) | kwargs
+            else:
+                t = {}
+                for i,encoded_qni in enumerate(encoded_qn):
+                    qni = self.decode_qn(encoded_qni)
+                    if i == 0:
+                        for key in qni:
+                            t[key] = [qni[key]]
+                    else:
+                        if length(qni) != length(t):
+                            raise Exception
+                        for key in qni:
+                            t[key].append(qni[key])
         Dataset.__init__(self,*args,**kwargs)
 
-    # @optimise_method(format_lines='single')
-    # def set_by_name(self,name,_cache=None,**parameters):
-        # """Set parameters to all data matching the quantum numbers
-        # encoded in name."""
-        # if len(_cache) == 0:
-            # _cache['i'] = self.match(self.decode_qn(name))
-        # i = _cache['i']
-        # for key,val in parameters.items():
-            # self.set(key,val,index=i)
+    def decode_qn(self,encoded_qn):
+        """Decode string into quantum numbers"""
+        raise Exception("not implemented")
+
+    def encode_qn(self,qn):
+        """Encode dictionary of quantum numbers into a string"""
+        return repr(qn)
+
+    def default_zlabel_format_function(self,*args,**kwargs):
+        return self.encode_qn(*args,**kwargs)
 
     @optimise_method(format_lines='single')
     def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
@@ -551,6 +593,7 @@ class Base(Dataset):
             # self.pop_format_input_function()
 
     def assert_unique_qn(self,verbose=False):
+        """Assert no two levels/lines are the same"""
         t,i,c = np.unique(self['_qnhash'],return_index=True,return_counts=True)
         if len(i) < len(self):
             j = [ti for ti,tc in zip(i,c) if tc > 1]
@@ -559,8 +602,6 @@ class Base(Dataset):
                 print(self[j])
                 print()
             raise Exception(f"There are {len(j)} sets of quantum numbers that are repeated (set verbose=True to print).")
-
-        
 
     def sort(self,*sort_keys,reverse_order=False):
         """Overload sort to include automatic keys."""
@@ -580,25 +621,31 @@ class Base(Dataset):
 
 class Generic(Base):
     """A generic level."""
+    defining_qn = ('species','label','ef','J')
+    default_xkey = 'J'
+    default_zkeys = ('species','label','ef')
     default_prototypes = _collect_prototypes(
+        'species','label','ef','J',
         'reference','_qnhash',
-        'species','chemical_species',
-        'label',
+        'chemical_species',
         'point_group',
         'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres',
         'Γ','Γref','Γres',
-        'J','N','S',
+        'N','S',
         'g','gnuclear','Inuclear',
         'Teq','Tex',
         'Zsource','Z','α',
         'Nself',
+        defining_qn=defining_qn
     )
-    defining_qn = ('species','label','ef','J')
-    default_xkey = 'J'
-    default_zkeys = ('species','label','ef')
-    encode_qn = lambda self,qn: quantum_numbers.decode_linear_level(qn)
-    decode_qn = lambda self,name: quantum_numbers.encode_linear_level(name)
-    default_zlabel_format_function = encode_qn
+
+    def encode_qn(self,qn):
+        """Encode qn into a string"""
+        return quantum_numbers.encode_linear_level(qn)
+
+    def decode_qn(self,encoded_qn):
+        """Decode string into quantum numbers"""
+        return quantum_numbers.decode_linear_level(encoded_qn)
     
 class Atomic(Generic):
     default_prototypes = _collect_prototypes(
@@ -659,11 +706,16 @@ class Linear(Generic):
     )
     defining_qn = ('species','label','ef','J')
     default_zkeys = ('species','label','ef','Σ')
-    encode_qn = lambda self,qn: quantum_numbers.encode_linear_level(qn)
-    decode_qn = lambda self,name: quantum_numbers.decode_linear_level(name)
-    default_zlabel_format_function = encode_qn
 
-class LinearTriatomic(Linear):
+    def encode_qn(self,qn_dict):
+        """Encode qn into a string"""
+        return quantum_numbers.encode_linear_level(qn_dict)
+
+    def decode_qn(self,encoded_qn):
+        """Decode string into quantum numbers"""
+        return quantum_numbers.decode_linear_level(encoded_qn)
+
+class Triatomic(Linear):
     """A generic level."""
     default_prototypes = _collect_prototypes(
         *Linear.default_prototypes,

@@ -326,10 +326,8 @@ class Dataset(optimise.Optimiser):
                     ## attempt to infer
                     self._infer(key)
                 except InferException as err:
-                    if (self.auto_defaults
-                        and key in self.prototypes
-                        and 'default' in self.prototypes[key]):
-                            self[key] = self.prototypes[key]['default']
+                    if key in self.prototypes and 'default' in self.prototypes[key]:
+                        self[key] = self.prototypes[key]['default']
                     else:
                         raise err
             if index is None:
@@ -420,7 +418,7 @@ class Dataset(optimise.Optimiser):
                 if retval.dtype == bool:
                     pass
                 elif retval.dtype == int:
-                    retval = tools.find_inverse(retval)
+                    retval = tools.find_inverse(retval,len(self))
             retval &= self.match(match,**match_kwargs)
         return retval
 
@@ -1019,8 +1017,15 @@ class Dataset(optimise.Optimiser):
                           ''.join(['    ' for t in range(depth)])
                           +'    InferException: '+str(err))
                 continue     
-        ## complete failure to infer
         else:
+            # if key in self.prototypes and 'default' in self.prototypes[key]:
+                # ## cannot infer use default value if it is provided, still set
+                # ## dependencies to blank (not None) so this is not treated as
+                # ## explicitly set data
+                # print('DEBUG:', key,self.prototypes[key]['default'])
+                # self[key] = self._set_value(key,self.prototypes[key]['default'],dependencies=())
+            # else:
+            ## complete failure to infer
             raise InferException(f"Could not infer key: {repr(key)}")
 
     def as_flat_dict(self,keys=None,index=None):
@@ -1236,8 +1241,9 @@ class Dataset(optimise.Optimiser):
     def __str__(self):
         return self.format(
             delimiter=' | ',
-            include_assoc=True,
-            unique_values_in_header=True,
+            include_assoc=False,
+            unique_values_in_header=False,
+            include_attributes=False,
             include_description=False,
         )
 
@@ -1485,7 +1491,7 @@ class Dataset(optimise.Optimiser):
             data['value'][old_length:total_length] = data['cast'](new_val)
             for assoc in data['assoc'] | new_assocs:
                 self.assert_known((key,assoc))
-                if new_dataset.is_known(key,assoc):
+                if new_dataset.is_known(key):
                     new_val = new_dataset[key,assoc]
                 else:
                     new_val = self.associated_kinds[assoc]['default']
