@@ -255,28 +255,24 @@ def encode_rotational_transition(qn):
     name = _translate_ΔJ[qn['ΔJ']]
     return name
 
+translate_Λ = {'O':-2,'P':-1,'Q':0,'R':1,'S':2}
+
 def decode_rotational_transition(name,return_separately=False):
     """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
     upper,lower,Δ = {},{},{}
-    # data = {}
     t = name
-    if len(t)==0: return(data)
+    if len(t)==0:
+        return data
     ## get Δ['J']
-    if   t[0]=='O': Δ['J'] = -2
-    elif t[0]=='P': Δ['J'] = -1
-    elif t[0]=='Q': Δ['J'] =  0
-    elif t[0]=='R': Δ['J'] = +1
-    elif t[0]=='S': Δ['J'] = +2
-    else:
-        raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
+    Δ['J'] = translate_Λ[t[0]]
     t = t[1:]
     if len(t)>0:
         ## look for FpFppefpefpp
         if re.match(r'([0-9]{2}[ef]{2}).*',t):
-            upper['F'] =      int(t[0])
-            upper['ef'] =     t[2]
-            lower['F'] =     int(t[1])
-            lower['ef'] =    t[3]
+            upper['Fi'] = int(t[0])
+            upper['ef'] = t[2]
+            lower['Fi'] = int(t[1])
+            lower['ef'] = t[3]
             t = t[4:]
     ## look for ΔJ
     if len(t)>0:
@@ -427,21 +423,12 @@ def encode_linear_level(qn=None,**more_qn):
     ## append all other quantum numbers in parenthese
     if len(qn)>0:
         t = []
-        for key in qn:
-            if key in ('v','F'): # ints
-                t.append(key+'='+str(int(qn[key])))
-            elif key in ('Ω','Σ','SR'): 
-                t.append(key+'='+format(qn[key],'g'))
-            else:
-                t.append(key+'='+str(qn[key]))
+        for key,val in qn.items():
+            if not isinstance(val,str):
+                val = format(val,'g')
+            t.append(f'{key}={val}')
         retval = retval + '('+','.join(t)+')'
     return retval
-
-
-
-
-
-
     
 def decode_linear_line(name,return_separately=False):
     """Name must be in the form
@@ -452,7 +439,7 @@ def decode_linear_line(name,return_separately=False):
     qn = dict()                 # determined quantum numbers
     ## look for rotational name as e.g., ..._P11fe23, if found
     ## decode and remove from name
-    rot_qn_upper = rot_qn_lower = rot_qn_Δ = None
+    rot_qn_upper = rot_qn_lower = rot_qn_Δ = {}
     r = re.match(r'^(.*)_([^_–]+)$',name)
     if r:
         try:
@@ -468,20 +455,23 @@ def decode_linear_line(name,return_separately=False):
         raise Exception('Incorrectly encoded linear line name: No "–" present dividing upper and lowe levels.')
     upper,lower = decode_linear_level(upper),decode_linear_level(lower)
     ## add rotational qn if found above
-    if rot_qn_lower is not None:
-        lower.update(rot_qn_lower)
-    if rot_qn_upper is not None:
-        upper.update(rot_qn_upper)
+    lower.update(rot_qn_lower)
+    upper.update(rot_qn_upper)
+    ## convert ensure upper/lower J is calculated from ΔJ if possible
+    if 'J' in rot_qn_Δ:
+        if 'J' in lower and 'J' not in upper:
+            upper['J'] = lower['J'] + rot_qn_Δ['J']
+        elif 'J' not in lower and 'J' in upper:
+            lower['J'] = upper['J'] - rot_qn_Δ['J']
     ## assume common species if only given once
     if 'species' in upper and 'species' not in lower:
         lower['species'] = upper['species'] 
     if return_separately:
-        return(upper,lower)
+        return upper,lower
     else:
         retval = join_upper_lower_quantum_numbers(upper,lower)
-        if rot_qn_Δ is not None:
-            for key,val in rot_qn_Δ.items():
-                retval['Δ'+key] = val
+        for key,val in rot_qn_Δ.items():
+            retval['Δ'+key] = val
         return retval
 
 def encode_linear_line(qn=None,qnl=None,qnu=None,):

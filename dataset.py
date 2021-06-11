@@ -1520,8 +1520,10 @@ class Dataset(optimise.Optimiser):
                 for assoc in self._data[key]['assoc']:
                     self.set((key,assoc),new_dataset[key,assoc],index)
 
-    def append(self,keys_vals_as_dict=idict(),keys='all',**keys_vals_as_kwargs):
+    def append(self,keys_vals_as_dict=None,keys='all',**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
+        if keys_vals_as_dict is None:
+            keys_vals_as_dict = {}
         keys_vals = dict(**keys_vals_as_dict,**keys_vals_as_kwargs)
         for key in keys_vals:
             keys_vals[key] = [keys_vals[key]]
