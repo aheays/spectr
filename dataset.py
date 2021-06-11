@@ -135,7 +135,11 @@ class Dataset(optimise.Optimiser):
                 ## handled)
                 self.set_and_optimise(key,val)
                 self.pop_format_input_function()
+            elif np.isscalar(val):
+                ## set default value
+                self.set_default(key,val)
             else:
+                ## set data
                 self[key] = val
         ## limit to matching data somehow loaded above
         if limit_to_match is not None:
@@ -191,7 +195,7 @@ class Dataset(optimise.Optimiser):
             if not self.permit_nonprototyped_data and key not in self.prototypes:
                 raise Exception(f'New data is not in prototypes: {repr(key)}')
             ## new data
-            data = {'assoc':{},'default':None,'units':None,
+            data = {'assoc':{},##'default':None,'units':None,
                     'infer':[],'inferred_from':[],'inferred_to':[]}
             self._data[key] = data
             data['assoc'] = {}
@@ -224,10 +228,10 @@ class Dataset(optimise.Optimiser):
                     data[tkey] = self.kinds[data['kind']][tkey]
             if data['kind']=='f' and 'default_step' not in data:
                 data['default_step'] = 1e-8
-            ## if a scalar expand to length of self and also set as
+            ## if a scalar expand to length of self
             ## default
             if not tools.isiterable(value):
-                data['default'] = value
+                ## data['default'] = value
                 value = np.full(len(self),value)
             ## If this is the nonzero-length data set then increase
             ## length of self and set any other keys with defaults to
@@ -364,10 +368,15 @@ class Dataset(optimise.Optimiser):
             retval = convert.units(retval,self._data[key]['units'],units)
         return retval
 
-    def set_default(self,key,value):
-        self._data[key]['default'] = value
-        if key not in self:
-            self[key] = value
+    def set_default(self,key=None,value=None,**keys_values):
+        """Set default value for key, and set existing data to this value if
+        not already set."""
+        if key is not None:
+            keys_values[key] = value
+        for key,value in keys_values.items():
+            if key not in self:
+                self[key] = value
+            self._data[key]['default'] = value
 
     def cast(self,key,value):
         """Returns value cast appropriately for key."""
@@ -1440,16 +1449,16 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
 
-    def concatenate(self,level,keys='old'):
-        """Extend self by level using keys existing in self. New data updated
-        on optimisaion if level changes."""
+    def concatenate(self,new_dataset,keys='old'):
+        """Extend self by new_dataset using keys existing in self. New data updated
+        on optimisaion if new_dataset changes."""
         ## limit to keys
         if keys == 'old':
             keys = list(self.explicitly_set_keys())
         elif keys == 'new':
-            keys = list(level.explicitly_set_keys())
+            keys = list(new_dataset.explicitly_set_keys())
         elif keys == 'all':
-            keys = {*self.explicitly_set_keys(),*level.explicitly_set_keys()}
+            keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
         ## make sure necessary keys are known
         self.assert_known(*keys)
         self.unlink_inferences(keys)
@@ -1458,45 +1467,58 @@ class Dataset(optimise.Optimiser):
                 self.unset(key)
         ## set new data
         old_length = len(self)
-        new_length = len(level)
-        total_length = len(self) + len(level)
+        new_length = len(new_dataset)
+        total_length = len(self) + len(new_dataset)
         self._reallocate(total_length)
         ## set extending data and associated data known to either
         ## new or old
         for key,data in self._data.items():
-            data['value'][old_length:total_length] = data['cast'](level[key])
-            for assoc in {*data['assoc'],*level._data[key]['assoc']}:
+            if new_dataset.is_known(key):
+                new_val = new_dataset[key]
+                new_assocs = new_dataset._data[key]['assoc']
+            else:
+                if 'default' in self._data[key]:
+                    new_val = self._data[key]['default']
+                    new_assocs = {}
+                else:
+                    raise Exception(f'Key {repr(key)} not known to concatenated data.')
+            data['value'][old_length:total_length] = data['cast'](new_val)
+            for assoc in data['assoc'] | new_assocs:
                 self.assert_known((key,assoc))
+                if new_dataset.is_known(key,assoc):
+                    new_val = new_dataset[key,assoc]
+                else:
+                    new_val = self.associated_kinds[assoc]['default']
                 cast = self.associated_kinds[assoc]['cast']
-                data['assoc'][assoc][old_length:total_length] = cast(level[key,assoc])
+                data['assoc'][assoc][old_length:total_length] = cast(new_val)
 
     @optimise_method(add_construct_function= True)
-    def concatenate_and_optimise(self,level,keys='old',_cache=None):
-        """Extend self by level using keys existing in self. New data updated
-        on optimisaion if level changes."""
+    def concatenate_and_optimise(self,new_dataset,keys='old',_cache=None):
+        """Extend self by new_dataset using keys existing in self. New data updated
+        on optimisaion if new_dataset changes."""
         if self._clean_construct and 'total_length' not in _cache:
             ## concatenate data if it hasn't been done before
             self.permit_indexing = False
-            # level.permit_indexing = False
+            # new_dataset.permit_indexing = False
             ## limit to keys
             if keys == 'old':
                 keys = list(self.explicitly_set_keys())
             elif keys == 'new':
-                keys = list(level.explicitly_set_keys())
+                keys = list(new_dataset.explicitly_set_keys())
             elif keys == 'all':
-                keys = {*self.explicitly_set_keys(),*level.explicitly_set_keys()}
+                keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
             old_length = len(self)
-            new_length = len(level)
-            total_length = len(self) + len(level)
-            self.concatenate(level,keys)
+            new_length = len(new_dataset)
+            total_length = len(self) + len(new_dataset)
+            self.concatenate(new_dataset,keys)
             _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
         else:
             ## update data in place
             index = slice(_cache['old_length'],_cache['total_length'])
             for key in _cache['keys']:
-                self.set(key,level[key],index)
+                self.set(key,new_dataset[key],index)
                 for assoc in self._data[key]['assoc']:
-                    self.set((key,assoc),level[key,assoc],index)
+                    self.set((key,assoc),new_dataset[key,assoc],index)
 
     def append(self,keys_vals_as_dict=idict(),keys='all',**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
