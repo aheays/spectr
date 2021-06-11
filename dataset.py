@@ -36,21 +36,19 @@ class Dataset(optimise.Optimiser):
 
     ## associated data
     associated_kinds = {
-
         'unc'      : {'description':'Uncertainty'                         , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':0.0   ,},
         'step'     : {'description':'Numerical differentiation step size' , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,},
         'vary'     : {'description':'Whether to vary during optimisation' , 'kind':'b' , 'valid_kinds':('f',), 'cast':convert_to_bool_vector_array       ,'fmt':''      ,'default':False ,},
         'residual' : {'description':'Residual error'                      , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'8.2e'  ,'default':nan   ,},
         'ref'      : {'description':'Source reference'                    , 'kind':'U' , 'valid_kinds':('f',), 'cast':lambda x:np.asarray(x,dtype='U20') ,'fmt':'s'     ,'default':nan   ,},
-
     }
 
     ## always available
-    default_attributes = {
-        'classname':None,
-        'description':None,
-        'default_step':1e-8,
-    }
+    # default_attributes = {
+        # 'classname':None,
+        # 'description':None,
+        # 'default_step':1e-8,
+    # }
 
     ## prototypes on instantiation
     default_prototypes = {}
@@ -71,12 +69,14 @@ class Dataset(optimise.Optimiser):
             load_from_string = None,
             copy_from = None,
             limit_to_match=None, # dict of things to match
+            description=None,
             **kwargs):
         ## basic internal variables
         self._data = {} # table data and its properties stored here
         self._length = 0    # length of data
         self._over_allocate_factor = 2 # to speed up appending to data
-        self.attributes = {} # applies to all data
+        # self.attributes = {} # applies to all data
+        self.description = description
         self._last_modify_data_time = timestamp() # when data is changed this is update
         self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self.prototypes
         self.permit_indexing = permit_indexing # Data can be added to the end of arrays, but not removal or rearranging of data
@@ -86,25 +86,22 @@ class Dataset(optimise.Optimiser):
         self.prototypes = copy(self.default_prototypes)
         if prototypes is not None:
             self.prototypes |= prototypes
-        ## initialise default attributes
-        for key,val in self.default_attributes.items():
-            self.attributes[key] = val
         ## classname to identify type of Dataset
-        self.attributes['classname'] = re.sub(
+        self.classname = re.sub(
             r"<class 'spectr.(.+)'>",
             r'\1',
             str(self.__class__))
         ## default name is a valid symbol
         if name is None:
             name = tools.make_valid_python_symbol_name(
-                self.attributes['classname'].lower())
+                self.classname.lower())
         ## init as optimiser, make a custom form_input_function, save
         ## some extra stuff if output to directory
         optimise.Optimiser.__init__(self,name=name)
         self.pop_format_input_function()
         ## new format input function
         def format_input_function():
-            retval = f'{self.name} = {self.attributes["classname"]}({repr(self.name)},'
+            retval = f'{self.name} = {self.classname}({repr(self.name)},'
             if load_from_file is not None:
                 retval += f'load_from_file={repr(load_from_file)},'
             if len(kwargs)>0:
@@ -127,10 +124,7 @@ class Dataset(optimise.Optimiser):
             self.load_from_string(load_from_string)
         ## kwargs set data somehow
         for key,val in kwargs.items():
-            if key in self.attributes:
-                ## set attribute
-                self.attributes[key] = val
-            elif isinstance(val,optimise.Parameter):
+            if isinstance(val,optimise.Parameter):
                 ## an optimisable parameter (input function already
                 ## handled)
                 self.set_and_optimise(key,val)
@@ -316,25 +310,21 @@ class Dataset(optimise.Optimiser):
 
     def _get_data(self,key,index=None,units=None):
         """Get value for key."""
-        if key in self.attributes:
-            ## return if an attribute
-            retval = self.attributes[key]
-        else:
-            ## return vector data
-            if key not in self._data:
-                try:
-                    ## attempt to infer
-                    self._infer(key)
-                except InferException as err:
-                    if key in self.prototypes and 'default' in self.prototypes[key]:
-                        self[key] = self.prototypes[key]['default']
-                    else:
-                        raise err
-            if index is None:
-                ## get default entire index
-                index = slice(0,len(self))
-            data = self._data[key]
-            retval = data['value'][:self._length][index]
+        ## return vector data
+        if key not in self._data:
+            try:
+                ## attempt to infer
+                self._infer(key)
+            except InferException as err:
+                if key in self.prototypes and 'default' in self.prototypes[key]:
+                    self[key] = self.prototypes[key]['default']
+                else:
+                    raise err
+        if index is None:
+            ## get default entire index
+            index = slice(0,len(self))
+        data = self._data[key]
+        retval = data['value'][:self._length][index]
         if units is not None:
             ## convert units before setting
             retval = convert.units(retval,self._data[key]['units'],units)
@@ -450,8 +440,6 @@ class Dataset(optimise.Optimiser):
                 self.set(key,value.value,index=index)
                 self.set((key,'unc'),value.unc,index=index)
                 self.set((key,'step'),value.step,index=index)
-        elif key in self.attributes:
-            self.attributes[key] = value
         else:
             ## only reconstruct for the following reasons
             if (key not in self.keys() # key is unknown -- first run
@@ -608,9 +596,7 @@ class Dataset(optimise.Optimiser):
                 elif len(key) == 2:
                     key = key[0]
         ## set
-        if key in self.attributes:
-            self.attributes[key] = value
-        elif isinstance(value,optimise.P):
+        if isinstance(value,optimise.P):
             self.set_and_optimise(key,value,index=index)
         else:
             self.set(key,value,index=index)
@@ -754,9 +740,6 @@ class Dataset(optimise.Optimiser):
                 ## copy associated data
                 for assoc in source._data[key]['assoc']:
                     self[key,assoc] = source[key,assoc][index]
-        ## copy all attributes
-        for key in source.attributes:
-            self[key] = source[key]
 
     @optimise_method()
     def copy_from_and_optimise(
@@ -794,10 +777,6 @@ class Dataset(optimise.Optimiser):
                 ## copy associated data
                 for assoc in source._data[key]['assoc']:
                     self[key,assoc] = source[key,assoc][index]
-        ## copy all attributes
-        for key in source.attributes:
-            self[key] = source[key]
-            
 
     def find(self,**keys_vals):
         """Return an array of indices matching key_vals."""
@@ -1044,30 +1023,26 @@ class Dataset(optimise.Optimiser):
         ## default to all data
         if keys is None: 
             keys = list(self.keys())
-            keys += [key for key in self.attributes if self.attributes[key] is not None]
-        ## add data and attributes
+        ## add data
         retval = {}
         for key in keys:
-            if key in self.attributes:
-                retval[key] = self.attributes[key]
-            else:
-                data = self._data[key]
-                retval[key] = {}
-                for tkey,tval in data.items():
-                    if tkey == 'value':
-                        ## data
-                        retval[key]['value'] = self.get(key,index)
-                    elif tkey == 'assoc':
-                        ## associated data
-                        retval[key]['assoc'] = {}
-                        for assoc in tval:
-                            retval[key]['assoc'][assoc] = self.get((key,assoc),index)
-                    elif tkey in ('kind','units','description','fmt'):
-                        ## attributes
-                        retval[key][tkey] = tval
-                    else:
-                        ## do not save anything else
-                        pass
+            data = self._data[key]
+            retval[key] = {}
+            for tkey,tval in data.items():
+                if tkey == 'value':
+                    ## data
+                    retval[key]['value'] = self.get(key,index)
+                elif tkey == 'assoc':
+                    ## associated data
+                    retval[key]['assoc'] = {}
+                    for assoc in tval:
+                        retval[key]['assoc'][assoc] = self.get((key,assoc),index)
+                elif tkey in ('kind','units','description','fmt'):
+                    ## attributes
+                    retval[key][tkey] = tval
+                else:
+                    ## do not save anything else
+                    pass
         return retval
         
     def rows(self,keys=None):
@@ -1127,7 +1102,6 @@ class Dataset(optimise.Optimiser):
             delimiter=' | ',
             unique_values_in_header=True,
             include_description=True,
-            include_attributes=True,
             include_assoc=True,
             include_keys_with_leading_underscore=False,
             quote_strings=False,
@@ -1178,10 +1152,6 @@ class Dataset(optimise.Optimiser):
         ## construct header before table
         header = []
         ## add attributes to header
-        if include_attributes:
-            for key,val in self.attributes.items():
-                if val is not None:
-                    header.append(f'{key:12} = {repr(val)}')
         if include_description:
             ## include description of keys
             for key in self:
@@ -1213,7 +1183,6 @@ class Dataset(optimise.Optimiser):
             format_assoc=True,
             unique_values_in_header=False,
             include_description=False,
-            include_attributes=False,
             quote_strings=True,
             quote_keys=True,
         )
@@ -1230,7 +1199,6 @@ class Dataset(optimise.Optimiser):
             delimiter=delimiter,
             unique_values_in_header=False,
             include_description=False,
-            include_attributes=False,
             include_assoc=True,
             include_keys_with_leading_underscore=False,
             quote_strings=False,
@@ -1243,7 +1211,6 @@ class Dataset(optimise.Optimiser):
             delimiter=' | ',
             include_assoc=False,
             unique_values_in_header=False,
-            include_attributes=False,
             include_description=False,
         )
 
@@ -1326,7 +1293,6 @@ class Dataset(optimise.Optimiser):
                     txt_to_dict_kwargs['delimiter'] = '|'
                 elif re.match(r'.*\.tsv',filename):
                     txt_to_dict_kwargs['delimiter'] = '\t'
-            
             # assert comment not in ['',' '], "Not implemented"
             filename = tools.expand_path(filename)
             data = {}
@@ -1401,18 +1367,23 @@ class Dataset(optimise.Optimiser):
                 return data['classname']
             else:
                 return None
-        if 'classname' in data and data['classname'] != self.attributes['classname']:
-            warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self["classname"])}, and it will be ignored.')
+        if 'classname' in data:
+            if data['classname'] != self.classname:
+                warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self["classname"])}, and it will be ignored.')
             data.pop('classname')
+        ## 2021-06-11 HACK TO ACCOUNT FOR DEPRECATED ATTRIBUTES DELETE ONE DAY
+        if 'default_step' in data: # HACK
+            data.pop('default_step') # HACK
+        ## END OF HACK
+        ## description is saved in data
+        if 'description' in data:
+            self.description = str(data.pop('description'))
         ## Set data in self and selected attributes
         scalar_data = {}
         for key,val in data.items():
             ## only load requested keys
             if keys is not None and key not in keys:
                 continue
-            ## attribute
-            if key in self.attributes:
-                self.attributes[key] = val
             ## vector data but given as a scalar -- defer loading until after vector data so the length of data is known
             elif np.isscalar(val):
                 scalar_data[key] = val
@@ -1423,7 +1394,7 @@ class Dataset(optimise.Optimiser):
                     self[(key,tkey)] = tval
             ## load scalar data
             for key,val in scalar_data.items():
-                self[key] = val
+                self[key] = val 
 
     def load_from_string(
             self,

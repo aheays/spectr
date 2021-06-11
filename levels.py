@@ -524,7 +524,6 @@ class Base(Dataset):
     default_xkey = None
     default_zkeys = ()
     default_prototypes = {}
-    default_attributes = Dataset.default_attributes 
 
     def __init__(self,*args,encoded_qn=None,**kwargs):
         kwargs.setdefault('permit_nonprototyped_data',False)
