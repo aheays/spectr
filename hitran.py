@@ -19,7 +19,7 @@ def get_partition_function(species_or_isotopologue,temperature):
     return hapi.partitionSum(Mol,Iso,temperature)
 
 def get_molparam(**match_keys_vals):
-    retval = molparam.matches(**match_keys_vals)
+    retval = get_molparam().matches(**match_keys_vals)
     assert len(retval)>0,f'No molparams: {match_keys_vals=}'
     return retval
 
@@ -27,12 +27,12 @@ def get_molparam(**match_keys_vals):
 def get_molparam_from_isotopologue(species_or_isotopologue):
     """Get HITEAN params data form a species in standard encoding. If
     species given returns main isotopologue."""
-    if sum(i:=molparam.match(isotopologue=species_or_isotopologue)) > 0:
+    if sum(i:=get_molparam().match(isotopologue=species_or_isotopologue)) > 0:
         assert sum(i) == 1
-        return molparam.as_dict(i)
-    if sum(i:=molparam.match(species=species)) > 0:
-        j = np.argmax(molparam['natural_abundance'][i])
-        return molparam.as_dict(tools.find(i)[j])
+        return get_molparam().as_dict(i)
+    if sum(i:=get_molparam().match(species=species)) > 0:
+        j = np.argmax(get_molparam()['natural_abundance'][i])
+        return get_molparam().as_dict(tools.find(i)[j])
 
 def translate_codes_to_species(
         species_ID,
@@ -40,22 +40,22 @@ def translate_codes_to_species(
 ):
     """Turn HITRAN species and local isotoplogue codes into a standard
     species string. If no isotopologue_ID assumes the main one."""
-    i = molparam.find(species_ID=species_ID,
+    i = get_molparam().find(species_ID=species_ID,
                       local_isotopologue_ID=local_isotopologue_ID)
-    return molparam['chemical_species'][i],molparam['isotopologue'][i]
+    return get_molparam()['chemical_species'][i],get_molparam()['isotopologue'][i]
 
 def translate_species_to_codes(species_or_isotopologue):
     """Get hitran species and isotopologue codes from species name.
     Assumes primary isotopologue if not indicated."""
-    if len(i:=find(molparam.match(isotopologue=species_or_isotopologue))) > 0:
+    if len(i:=find(get_molparam().match(isotopologue=species_or_isotopologue))) > 0:
         assert len(i) == 1
         i = i[0]
-    elif len(i:=find(molparam.match(chemical_species=species_or_isotopologue))) > 0:
-        i = i[np.argmax(molparam['natural_abundance'][i])]
+    elif len(i:=find(get_molparam().match(chemical_species=species_or_isotopologue))) > 0:
+        i = i[np.argmax(get_molparam()['natural_abundance'][i])]
     else:
         raise DatabaseException(f"Cannot find {species_or_isotopologue=}")
-    return (int(molparam['species_ID'][i]),
-            int(molparam['local_isotopologue_ID'][i]))
+    return (int(get_molparam()['species_ID'][i]),
+            int(get_molparam()['local_isotopologue_ID'][i]))
 
 def download_linelist(
         species, 
@@ -166,9 +166,9 @@ def get_lines(species_or_isotopologue):
     """Load a preconstructed linelists.  If species_or_isotopologue is not
     an isotopologue return natural abundance."""
     l = lines.Generic(f'species_or_isotopologue')
-    if species_or_isotopologue in molparam['chemical_species']:
+    if species_or_isotopologue in get_molparam()['chemical_species']:
         filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/natural_abundance/lines.h5'
-    elif species_or_isotopologue in molparam['isotopologue']:
+    elif species_or_isotopologue in get_molparam()['isotopologue']:
         filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/lines.h5'
     else:
         raise DatabaseException(f"could not determine HITRAN linelist filename for {repr(species_or_isotopologue)}")
@@ -179,8 +179,11 @@ def get_lines(species_or_isotopologue):
 
 ## downloaded from https://hitran.org/docs/iso-meta/ 2020-10-15
 ## I also added my own classname row -- which lines class should be used
-molparam = Dataset()
-molparam.load_from_string('''
+_molparam = None
+def get_molparam(self):
+    global _molparam
+    if _molparam is None:
+        _molparam = Dataset(load_from_string='''
 
 species_ID | global_isotopologue_ID | local_isotopologue_ID | chemical_species | isotopologue   | AFGL_code | natural_abundance | molar_mass    | Q_296K   | gi | dataset_classname
 1          | 1                      | 1                     | H₂O              | ¹H₂¹⁶O         | 161       | 0.997317          | 18.010565     | 174.58   | 1  | lines.Generic
@@ -317,5 +320,6 @@ species_ID | global_isotopologue_ID | local_isotopologue_ID | chemical_species |
 53         | 134                    | 4                     | CS₂              | ¹³C³²S₂        | 232       | 0.010310          | 76.947495     | 2739.70  | 2  | lines.LinearTriatomic
 
 
-''')
+        ''')
+    return _molparam
 

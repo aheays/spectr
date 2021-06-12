@@ -69,7 +69,7 @@ class Dataset(optimise.Optimiser):
             load_from_string = None,
             copy_from = None,
             limit_to_match=None, # dict of things to match
-            description=None,
+            description='',
             **kwargs):
         ## basic internal variables
         self._data = {} # table data and its properties stored here
@@ -945,7 +945,8 @@ class Dataset(optimise.Optimiser):
                       +f'Attempting to infer {repr(key)} from {repr(dependencies)}')
             try:
                 for dependency in dependencies:
-                    self._infer(dependency,copy(already_attempted),depth=depth+1) # copy of already_attempted so it will not feed back here
+                    ## use a  copy of already_attempted so it will not feed back here
+                    self._infer(dependency,copy(already_attempted),depth=depth+1)
                 ## compute value if dependencies successfully
                 ## inferred.  If value is None then the data and
                 ## dependencies are set internally in the infer
@@ -997,15 +998,14 @@ class Dataset(optimise.Optimiser):
                           +'    InferException: '+str(err))
                 continue     
         else:
-            # if key in self.prototypes and 'default' in self.prototypes[key]:
-                # ## cannot infer use default value if it is provided, still set
-                # ## dependencies to blank (not None) so this is not treated as
-                # ## explicitly set data
-                # print('DEBUG:', key,self.prototypes[key]['default'])
-                # self[key] = self._set_value(key,self.prototypes[key]['default'],dependencies=())
-            # else:
-            ## complete failure to infer
-            raise InferException(f"Could not infer key: {repr(key)}")
+            ## not set and cannot infer
+            if key in self.prototypes and 'default' in self.prototypes[key]:
+                ## use default value. Include empty dependencies so
+                ## this is not treated as explicitly set data
+                self._set_value(key,self.prototypes[key]['default'],dependencies=())
+            else:
+                ## complete failure to infer
+                raise InferException(f"Could not infer key: {repr(key)}")
 
     def as_flat_dict(self,keys=None,index=None):
         """Return as a dict of arrays, including uncertainties."""
@@ -1025,10 +1025,11 @@ class Dataset(optimise.Optimiser):
             keys = list(self.keys())
         ## add data
         retval = {}
+        retval['classname'] = self.classname
+        retval['dataset_description'] = self.description
         for key in keys:
-            data = self._data[key]
             retval[key] = {}
-            for tkey,tval in data.items():
+            for tkey,tval in self._data[key].items():
                 if tkey == 'value':
                     ## data
                     retval[key]['value'] = self.get(key,index)
@@ -1102,14 +1103,14 @@ class Dataset(optimise.Optimiser):
             delimiter=' | ',
             unique_values_in_header=True,
             include_description=True,
+            include_classname=True,
+            include_key_description=True,
             include_assoc=True,
             include_keys_with_leading_underscore=False,
             quote_strings=False,
             quote_keys=False,
     ):
         """Format data into a string representation."""
-        # if len(self)==0:
-            # return ''
         if keys is None:
             keys = self.keys()
             if not include_keys_with_leading_underscore:
@@ -1152,7 +1153,7 @@ class Dataset(optimise.Optimiser):
         ## construct header before table
         header = []
         ## add attributes to header
-        if include_description:
+        if include_key_description:
             ## include description of keys
             for key in self:
                 line = f'{key:12}'
@@ -1161,7 +1162,8 @@ class Dataset(optimise.Optimiser):
                 else:
                     line += f'{"":23}'    
                 line += f' # '+self._data[key]['description']
-                if (units:=self._data[key]['units']) is not None:
+                if ('units' in self._data[key]
+                    and (units:=self._data[key]['units']) is not None):
                     line += f' [{units}]'
                 header.append(line)
         else:
@@ -1169,9 +1171,15 @@ class Dataset(optimise.Optimiser):
                 header.append(f'{key:12} = {repr(val)}')
         ## make full formatted string
         retval = ''
+        if include_classname:
+            retval += f'[classname]\n{self.classname}\n'
+        if include_description:
+            retval += f'[description]\n{self.description}\n'
         if header != []:
-            retval = 'header\n'+'\n'.join(header)+'\ndata\n'
+            retval += '[keys]\n'+'\n'.join(header)
         if columns != []:
+            if len(retval) > 0:
+                retval += '\n[data]\n'
             retval += '\n'.join([delimiter.join(t) for t in zip(*columns)])+'\n'
         return retval
 
@@ -1211,15 +1219,9 @@ class Dataset(optimise.Optimiser):
             delimiter=' | ',
             include_assoc=False,
             unique_values_in_header=False,
-            include_description=False,
-        )
+            include_description=False,)
 
-    def save(
-            self,
-            filename,
-            keys=None,
-            **format_kwargs,
-    ):
+    def save(self,filename,keys=None,**format_kwargs):
         """Save some or all data to a file."""
         if keys is None:
             keys = self.keys()
@@ -1280,49 +1282,13 @@ class Dataset(optimise.Optimiser):
             data = tools.org_table_to_dict(filename,table_name)
             data_is_flat = True
         else:
-            ## text table to dict with header
-            if txt_to_dict_kwargs is None:
-                txt_to_dict_kwargs = {}
-            txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':labels_commented}
-            if txt_to_dict_kwargs['delimiter'] is None:
-                if re.match(r'.*\.csv',filename):
-                    txt_to_dict_kwargs['delimiter'] = ','
-                elif re.match(r'.*\.rs',filename):
-                    txt_to_dict_kwargs['delimiter'] = '␞'
-                elif re.match(r'.*\.psv',filename):
-                    txt_to_dict_kwargs['delimiter'] = '|'
-                elif re.match(r'.*\.tsv',filename):
-                    txt_to_dict_kwargs['delimiter'] = '\t'
-            # assert comment not in ['',' '], "Not implemented"
-            filename = tools.expand_path(filename)
-            data = {}
-            ## load header
-            escaped_comment = re.escape(comment)
-            blank_line_re = re.compile(r'^ *$')
-            description_line_re = re.compile(f'^ *{escaped_comment} *([^# ]+) *# *(.+) *') # no value in line
-            unique_value_line_re = re.compile(f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #\\n])') # may also contain description
-            beginning_of_header_re = re.compile(f'^ *{escaped_comment} *header *\\n$') 
-            beginning_of_data_re = re.compile(f'^ *{escaped_comment} *data *\\n$') 
-            with open(filename,'r') as fid:
-                for iline,line in enumerate(fid):
-                    if re.match(blank_line_re,line):
-                        continue
-                    elif r:=re.match(description_line_re,line):
-                        continue
-                    elif r:=re.match(beginning_of_header_re,line):
-                        continue
-                    elif r:=re.match(unique_value_line_re,line):
-                        key,val = r.groups()
-                        data[key] = ast.literal_eval(val)
-                    elif r:=re.match(beginning_of_data_re,line):
-                        ## end of header
-                        iline += 1 
-                        break
-                    else:
-                        ## end of header
-                        break
-            ## load array data
-            data.update(tools.txt_to_dict(filename,skiprows=iline,**txt_to_dict_kwargs))
+            data = self.load_from_text(
+                filename=filename,
+                comment=comment,
+                labels_commented=labels_commented,
+                delimiter=delimiter,
+                txt_to_dict_kwargs=txt_to_dict_kwargs,
+            )
             data_is_flat = True
         ## build structured data from flat data by associated keys
         if data_is_flat:
@@ -1345,13 +1311,11 @@ class Dataset(optimise.Optimiser):
             ## set associated data
             for (key,suffix,val) in assoc_data:
                 data[key]['assoc'][suffix] = val
-        ##
-        ## temp hack delete
+        ## TEMP HACK DELETE 
         for key in list(data.keys()): #  HACK
             if 'HT_HITRAN' in key:    #  HACK
                 data[key.replace('HT_HITRAN','HITRAN_HT')] = data.pop(key) #  HACK
-        ## end of temp hack delete
-        ##
+        ## END OF TEMP HACK DELETE
         ## translate keys
         if translate_keys is not None:
             for from_key,to_key in translate_keys.items():
@@ -1376,8 +1340,8 @@ class Dataset(optimise.Optimiser):
             data.pop('default_step') # HACK
         ## END OF HACK
         ## description is saved in data
-        if 'description' in data:
-            self.description = str(data.pop('description'))
+        if 'dataset_description' in data:
+            self.description = str(data.pop('dataset_description'))
         ## Set data in self and selected attributes
         scalar_data = {}
         for key,val in data.items():
@@ -1392,9 +1356,84 @@ class Dataset(optimise.Optimiser):
                 self[key] = val['value']
                 for tkey,tval in val['assoc'].items():
                     self[(key,tkey)] = tval
-            ## load scalar data
-            for key,val in scalar_data.items():
-                self[key] = val 
+        ## load scalar data
+        for key,val in scalar_data.items():
+            self[key] = val 
+
+    def load_from_text(
+            self,
+            filename,
+            comment='',
+            labels_commented=False,
+            delimiter=None,
+            txt_to_dict_kwargs=None,
+    ):
+        """Load data from a text-formatted file."""
+        ## text table to dict with header
+        if txt_to_dict_kwargs is None:
+            txt_to_dict_kwargs = {}
+        txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':labels_commented}
+        if txt_to_dict_kwargs['delimiter'] is None:
+            if re.match(r'.*\.csv',filename):
+                txt_to_dict_kwargs['delimiter'] = ','
+            elif re.match(r'.*\.rs',filename):
+                txt_to_dict_kwargs['delimiter'] = '␞'
+            elif re.match(r'.*\.psv',filename):
+                txt_to_dict_kwargs['delimiter'] = '|'
+            elif re.match(r'.*\.tsv',filename):
+                txt_to_dict_kwargs['delimiter'] = '\t'
+        # assert comment not in ['',' '], "Not implemented"
+        filename = tools.expand_path(filename)
+        data = {}
+        ## load header
+        escaped_comment = re.escape(comment)
+        blank_line_re = re.compile(r'^ *$')
+        beginning_of_classname_re = re.compile(f'^ *{escaped_comment} *\\[classname\\] *\\n$') 
+        beginning_of_dataset_description_re = re.compile(f'^ *{escaped_comment} *\\[description\\] *\\n$') 
+        beginning_of_keys_re = re.compile(f'^ *{escaped_comment} *\\[keys\\] *\\n$') 
+        beginning_of_data_re = re.compile(f'^ *{escaped_comment} *\\[data\\] *\\n$')
+        key_line_re = re.compile(f'^ *{escaped_comment} *([^# ]+) *# *(.+) *') # no value in line
+        key_line_with_value_re = re.compile(f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #\\n])') # may also contain description
+        current_section = 'none'
+        with open(filename,'r') as fid:
+            for iline,line in enumerate(fid):
+                ## identify which section of the file this is
+                if r:=re.match(beginning_of_classname_re,line):
+                    current_section = 'classname'
+                    continue
+                elif r:=re.match(beginning_of_dataset_description_re,line):
+                    current_section = 'description'
+                    data['dataset_description'] = ""
+                    continue
+                elif re.match(beginning_of_keys_re,line):
+                    current_section = 'keys'
+                    continue
+                elif r:=re.match(beginning_of_data_re,line):
+                    current_section = 'data'
+                    iline += 1 
+                    break
+                ## process data depending on section
+                elif current_section == 'none':
+                    if re.match(blank_line_re,line):
+                        continue
+                elif current_section == 'classname':
+                    data['classname'] = line[:-1]
+                elif current_section == 'description':
+                    data['dataset_description'] += line
+                elif current_section == 'keys':
+                    if re.match(blank_line_re,line):
+                        continue
+                    elif re.match(key_line_re,line):
+                        continue
+                    elif r:=re.match(key_line_with_value_re,line):
+                        key,val = r.groups()
+                        data[key] = ast.literal_eval(val)
+        ## remove trailing newline from dataset_description
+        if 'dataset_description' in data and len(data['dataset_description'])>0:
+            data['dataset_description'] = data['dataset_description'][:-1]
+        ## load array data
+        data.update(tools.txt_to_dict(filename,skiprows=iline,**txt_to_dict_kwargs))
+        return data
 
     def load_from_string(
             self,
