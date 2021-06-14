@@ -68,7 +68,6 @@ class Dataset(optimise.Optimiser):
         self._data = {} # table data and its properties stored here
         self._length = 0    # length of data
         self._over_allocate_factor = 2 # to speed up appending to data
-        # self.attributes = {} # applies to all data
         self.description = description
         self._last_modify_data_time = timestamp() # when data is changed this is update
         self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self.prototypes
@@ -142,6 +141,37 @@ class Dataset(optimise.Optimiser):
         else:
             return self._set_associated_data(key,assoc,value,index,match)
         
+    @optimise_method(format_lines='single')
+    def set_spline(self,xkey,ykey,knots,order=3,default=None,
+                   match=None,index=None,_cache=None,**match_kwargs):
+        """Set ykey to spline function of xkey defined by knots at
+        [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
+        given, then only set these."""
+        ## To do: cache values or match results so only update if
+        ## knots or match values have changed
+        if len(_cache) == 0: 
+            xspline,yspline = zip(*knots)
+            ## get index limit to defined xkey range
+            index = self._get_combined_index(index,match,**match_kwargs)
+            if index is None:
+                index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
+            else:
+                index &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
+            _cache['index'] = index
+            _cache['xspline'],_cache['yspline'] = xspline,yspline
+        ## get cached data
+        index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
+        ## set data
+        if not self.is_known(ykey):
+            if default is None:
+                raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
+            else:
+                self[ykey] = default                                                                                   
+        self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=index),order=order),index=index)
+        ## set previously-set uncertainties to NaN
+        if self.is_set((ykey,'unc')):
+            self.set((ykey,'unc'),nan,index=index)
+
     def _set_value(self,key,value,index=None,match=None,dependencies=None,**prototype_kwargs):
         """Set a value"""
         ## determine index
@@ -356,12 +386,12 @@ class Dataset(optimise.Optimiser):
                 self[key] = value
             self._data[key]['default'] = value
 
-    def cast(self,key,value):
-        """Returns value cast appropriately for key."""
-        if 'cast' not in self._data[key]:
-            return np.asarray(value)
-        else:
-            return self._data[key]['cast'](value)
+    # def cast(self,key,value):
+        # """Returns value cast appropriately for key."""
+        # if 'cast' not in self._data[key]:
+            # return np.asarray(value)
+        # else:
+            # return self._data[key]['cast'](value)
 
     def set_prototype(self,key,kind,infer=None,**kwargs):
         """Set prototype data."""
@@ -410,7 +440,6 @@ class Dataset(optimise.Optimiser):
             index=None,         # only apply to these indices
             match=None,
             **match_kwargs
-            # **prototype_kwargs,
     ):
         """Set a value and it will be updated every construction and possible
         optimised."""
@@ -436,37 +465,6 @@ class Dataset(optimise.Optimiser):
                 or np.any(self.get(key,index=index) != value)): # data has changed some other way and differs from parameter
                 self.set(key,value=value,index=index)
 
-    @optimise_method(format_lines='single')
-    def set_spline(self,xkey,ykey,knots,order=3,default=None,
-                   match=None,index=None,_cache=None,**match_kwargs):
-        """Set ykey to spline function of xkey defined by knots at
-        [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
-        given, then only set these."""
-        ## To do: cache values or match results so only update if
-        ## knots or match values have changed
-        if len(_cache) == 0: 
-            xspline,yspline = zip(*knots)
-            ## get index limit to defined xkey range
-            index = self._get_combined_index(index,match,**match_kwargs)
-            if index is None:
-                index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
-            else:
-                index &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
-            _cache['index'] = index
-            _cache['xspline'],_cache['yspline'] = xspline,yspline
-        ## get cached data
-        index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
-        ## set data
-        if not self.is_known(ykey):
-            if default is None:
-                raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
-            else:
-                self[ykey] = default                                                                                   
-            
-        self.set(ykey,value=tools.spline(xspline,yspline,self.get(xkey,index=index),order=order),index=index)
-        ## set previously-set uncertainties to NaN
-        if self.is_set((ykey,'unc')):
-            self.set((ykey,'unc'),nan,index=index)
 
     def keys(self):
         return list(self._data.keys())
@@ -667,7 +665,6 @@ class Dataset(optimise.Optimiser):
         if not self.permit_indexing:
             raise Exception('Indexing not permitted')
         original_length = len(self)
-        # for data in self._data.values():
         for key,data in self._data.items():
             data['value'] = data['value'][:original_length][index]
             for key,value in data['assoc'].items():
@@ -748,7 +745,6 @@ class Dataset(optimise.Optimiser):
         source changes during optimisation."""
         ## get keys and indices to copy
         if self._clean_construct:
-            # self.clear()            # total data reset
             if keys is None:
                 if copy_inferred_data:
                     keys = source.keys()
@@ -768,27 +764,27 @@ class Dataset(optimise.Optimiser):
                 for assoc in source._data[key]['assoc']:
                     self[key,assoc] = source[key,assoc][index]
 
-    def find(self,**keys_vals):
-        """Return an array of indices matching key_vals."""
-        length = 0
-        for val in keys_vals.values():
-            if not np.isscalar(val):
-                if length == 0:
-                    length = len(val)
-                else:
-                    assert len(val) == length
-        retval = np.empty(length,dtype=int)
-        for j in range(length):
-            i = tools.find(
-                self.match(
-                    **{key:(val if np.isscalar(val) else val[j])
-                       for key,val in keys_vals.items()}))
-            if len(i)==0:
-                raise Exception(f'No matching row found: {keys_vals=}')
-            if len(i)>1:
-                raise Exception(f'Multiple matching rows found: {keys_vals=}')
-            retval[j] = i
-        return retval
+    # def find(self,**keys_vals):
+        # """Return an array of indices matching key_vals."""
+        # length = 0
+        # for val in keys_vals.values():
+            # if not np.isscalar(val):
+                # if length == 0:
+                    # length = len(val)
+                # else:
+                    # assert len(val) == length
+        # retval = np.empty(length,dtype=int)
+        # for j in range(length):
+            # i = tools.find(
+                # self.match(
+                    # **{key:(val if np.isscalar(val) else val[j])
+                       # for key,val in keys_vals.items()}))
+            # if len(i)==0:
+                # raise Exception(f'No matching row found: {keys_vals=}')
+            # if len(i)>1:
+                # raise Exception(f'Multiple matching rows found: {keys_vals=}')
+            # retval[j] = i
+        # return retval
 
     def match(self,keys_vals=None,**kwarg_keys_vals):
         """Return boolean array of data matching all key==val.\n\nIf key has
@@ -814,36 +810,36 @@ class Dataset(optimise.Optimiser):
                             for vali in val],axis=0)
         return i
 
-    def find(self,**keys_vals):
-        """Find unique indices matching keys_vals which contains one or more
-        vector matches or the same length."""
-        ## SLOW IMPLEMENTATION -- REPLACE WITH HASH MATCHING?
-        ## separate vector and scalar match data
-        vector_keysvals = {}
-        scalar_keysvals = {}
-        vector_length = None
-        for key,val in keys_vals.items():
-            if np.isscalar(val):
-                scalar_keysvals[key] = val
-            else:
-                vector_keysvals[key] = val
-                if vector_length == None:
-                    vector_length = len(val)
-                elif vector_length != len(val):
-                    raise Exception('All vector matching data must be the same length')
-        ## get data matching scalar keys_vals
-        iscalar = tools.find(self.match(**scalar_keysvals))
-        ## find vector_key matches one by one
-        i = np.empty(vector_length,dtype=int)
-        for ii in range(vector_length):
-            ti = np.all([self[key][iscalar]==val[ii] for key,val in vector_keysvals.items()],0)
-            ti = tools.find(ti)
-            if len(ti) == 0:
-                raise Exception("No match: {vector_key}={repr(vector_vali)} and {repr(keys_vals)}")
-            if len(ti) > 1:
-                raise Exception("Non-unique match: {vector_key}={repr(vector_vali)} and {repr(keys_vals)}")
-            i[ii] = iscalar[ti]
-        return i
+    # def find(self,**keys_vals):
+        # """Find unique indices matching keys_vals which contains one or more
+        # vector matches or the same length."""
+        # ## SLOW IMPLEMENTATION -- REPLACE WITH HASH MATCHING?
+        # ## separate vector and scalar match data
+        # vector_keysvals = {}
+        # scalar_keysvals = {}
+        # vector_length = None
+        # for key,val in keys_vals.items():
+            # if np.isscalar(val):
+                # scalar_keysvals[key] = val
+            # else:
+                # vector_keysvals[key] = val
+                # if vector_length == None:
+                    # vector_length = len(val)
+                # elif vector_length != len(val):
+                    # raise Exception('All vector matching data must be the same length')
+        # ## get data matching scalar keys_vals
+        # iscalar = tools.find(self.match(**scalar_keysvals))
+        # ## find vector_key matches one by one
+        # i = np.empty(vector_length,dtype=int)
+        # for ii in range(vector_length):
+            # ti = np.all([self[key][iscalar]==val[ii] for key,val in vector_keysvals.items()],0)
+            # ti = tools.find(ti)
+            # if len(ti) == 0:
+                # raise Exception("No match: {vector_key}={repr(vector_vali)} and {repr(keys_vals)}")
+            # if len(ti) > 1:
+                # raise Exception("Non-unique match: {vector_key}={repr(vector_vali)} and {repr(keys_vals)}")
+            # i[ii] = iscalar[ti]
+        # return i
 
     def matches(self,*args,**kwargs):
         """Returns a copy reduced to matching values."""
@@ -1379,7 +1375,6 @@ class Dataset(optimise.Optimiser):
                 txt_to_dict_kwargs['delimiter'] = '|'
             elif re.match(r'.*\.tsv',filename):
                 txt_to_dict_kwargs['delimiter'] = '\t'
-        # assert comment not in ['',' '], "Not implemented"
         filename = tools.expand_path(filename)
         data = {}
         ## load header
@@ -1540,7 +1535,6 @@ class Dataset(optimise.Optimiser):
         if self._clean_construct and 'total_length' not in _cache:
             ## concatenate data if it hasn't been done before
             self.permit_indexing = False
-            # new_dataset.permit_indexing = False
             ## limit to keys
             if keys == 'old':
                 keys = list(self.explicitly_set_keys())
@@ -1723,11 +1717,6 @@ class Dataset(optimise.Optimiser):
             fig = plt.gcf()
             fig.clf()
         ## xkey, ykeys, zkeys
-        # if xkey == 'index':
-            # if 'index'  in self.keys():
-                # raise Exception("Index already exists")
-            # self['index'] = np.arange(len(self),dtype=int)
-            # xkey = 'index'
         if zkeys is None:
             zkeys = self.default_zkeys
         zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
@@ -1764,7 +1753,6 @@ class Dataset(optimise.Optimiser):
                 elif not ynewaxes and not znewaxes:
                     ax = fig.gca()
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
-                    # color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = ylabel+' '+zlabel
                 ## plotting kwargs
                 kwargs = copy(plot_kwargs)
@@ -1848,14 +1836,6 @@ def find_common(x,y,keys=None,verbose=False):
             keys = list(getattr(x,'defining_qn'))
         else:
             raise Exception("No keys provided and defining_qn unavailable x.")
-    # ## Make a list of default keys if not provided as inputs. If a
-    # ## Level or Transition object (through a hack) then use
-    # ## defining_qn, else use all set keys known to both.
-    # if len(keys)==0:
-        # if hasattr(x,'defining_qn'):
-            # keys = [t for t in x.defining_qn if x.is_known(t) and y.is_known(t)]
-        # else:
-            # keys = [t for t in x.keys() if x.is_known(t) and y.is_known(t)]
     if verbose:
         print('find_commmon keys:',keys)
     for key in keys:
