@@ -43,13 +43,6 @@ class Dataset(optimise.Optimiser):
         'ref'      : {'description':'Source reference'                    , 'kind':'U' , 'valid_kinds':('f',), 'cast':lambda x:np.asarray(x,dtype='U20') ,'fmt':'s'     ,'default':nan   ,},
     }
 
-    ## always available
-    # default_attributes = {
-        # 'classname':None,
-        # 'description':None,
-        # 'default_step':1e-8,
-    # }
-
     ## prototypes on instantiation
     default_prototypes = {}
 
@@ -129,9 +122,6 @@ class Dataset(optimise.Optimiser):
                 ## handled)
                 self.set_and_optimise(key,val)
                 self.pop_format_input_function()
-            elif np.isscalar(val):
-                ## set default value
-                self.set_default(key,val)
             else:
                 ## set data
                 self[key] = val
@@ -189,7 +179,7 @@ class Dataset(optimise.Optimiser):
             if not self.permit_nonprototyped_data and key not in self.prototypes:
                 raise Exception(f'New data is not in prototypes: {repr(key)}')
             ## new data
-            data = {'assoc':{},##'default':None,'units':None,
+            data = {'assoc':{},
                     'infer':[],'inferred_from':[],'inferred_to':[]}
             self._data[key] = data
             data['assoc'] = {}
@@ -223,9 +213,9 @@ class Dataset(optimise.Optimiser):
             if data['kind']=='f' and 'default_step' not in data:
                 data['default_step'] = 1e-8
             ## if a scalar expand to length of self
-            ## default
+            ## and set as default value
             if not tools.isiterable(value):
-                ## data['default'] = value
+                data['default'] = value
                 value = np.full(len(self),value)
             ## If this is the nonzero-length data set then increase
             ## length of self and set any other keys with defaults to
@@ -356,12 +346,12 @@ class Dataset(optimise.Optimiser):
             retval = convert.units(retval,self._data[key]['units'],units)
         return retval
 
-    def set_default(self,key=None,value=None,**keys_values):
+    def set_default(self,key=None,value=None,**more_keys_values):
         """Set default value for key, and set existing data to this value if
         not already set."""
         if key is not None:
-            keys_values[key] = value
-        for key,value in keys_values.items():
+            more_keys_values[key] = value
+        for key,value in more_keys_values.items():
             if key not in self:
                 self[key] = value
             self._data[key]['default'] = value
@@ -1026,7 +1016,7 @@ class Dataset(optimise.Optimiser):
         ## add data
         retval = {}
         retval['classname'] = self.classname
-        retval['dataset_description'] = self.description
+        retval['description'] = self.description
         for key in keys:
             retval[key] = {}
             for tkey,tval in self._data[key].items():
@@ -1295,11 +1285,17 @@ class Dataset(optimise.Optimiser):
             flat_data = data
             data = {}
             assoc_data = []
-            while len(flat_data)>0:
+            while len(flat_data) > 0:
                 key = list(flat_data.keys())[0]
                 val = flat_data.pop(key)
-                if np.isscalar(val):
-                    ## attribute
+                if key == 'classname':
+                    ## classname attribute
+                    self.classname = val
+                elif key == 'description':
+                    ## description attribute
+                    self.description = val
+                elif np.isscalar(val):
+                    ## scalar data
                     data[key] = val
                 elif r:=re.match(r'([^,]+),([^,]+)',key):
                     ## save associated data and set after all values
@@ -1333,29 +1329,30 @@ class Dataset(optimise.Optimiser):
                 return None
         if 'classname' in data:
             if data['classname'] != self.classname:
-                warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self["classname"])}, and it will be ignored.')
+                warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
             data.pop('classname')
         ## 2021-06-11 HACK TO ACCOUNT FOR DEPRECATED ATTRIBUTES DELETE ONE DAY
         if 'default_step' in data: # HACK
             data.pop('default_step') # HACK
         ## END OF HACK
         ## description is saved in data
-        if 'dataset_description' in data:
-            self.description = str(data.pop('dataset_description'))
+        if 'description' in data:
+            self.description = str(data.pop('description'))
         ## Set data in self and selected attributes
         scalar_data = {}
         for key,val in data.items():
             ## only load requested keys
             if keys is not None and key not in keys:
                 continue
-            ## vector data but given as a scalar -- defer loading until after vector data so the length of data is known
+            ## vector data but given as a scalar -- defer loading
+            ## until after vector data so the length of data is known
             elif np.isscalar(val):
                 scalar_data[key] = val
             ## vector data
             else:
                 self[key] = val['value']
                 for tkey,tval in val['assoc'].items():
-                    self[(key,tkey)] = tval
+                    self[key,tkey] = tval
         ## load scalar data
         for key,val in scalar_data.items():
             self[key] = val 
@@ -1388,51 +1385,79 @@ class Dataset(optimise.Optimiser):
         ## load header
         escaped_comment = re.escape(comment)
         blank_line_re = re.compile(r'^ *$')
-        beginning_of_classname_re = re.compile(f'^ *{escaped_comment} *\\[classname\\] *\\n$') 
-        beginning_of_dataset_description_re = re.compile(f'^ *{escaped_comment} *\\[description\\] *\\n$') 
-        beginning_of_keys_re = re.compile(f'^ *{escaped_comment} *\\[keys\\] *\\n$') 
-        beginning_of_data_re = re.compile(f'^ *{escaped_comment} *\\[data\\] *\\n$')
-        key_line_re = re.compile(f'^ *{escaped_comment} *([^# ]+) *# *(.+) *') # no value in line
-        key_line_with_value_re = re.compile(f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #\\n])') # may also contain description
-        current_section = 'none'
+        commented_line_re = re.compile(f'^ *{escaped_comment} */(.*)$')
+        beginning_of_section_re = re.compile(f'^ *{escaped_comment} *\\[([^]]+)\\] *$') 
+        key_line_without_value_re = re.compile(f'^ *{escaped_comment} *([^# ]+) *# *(.+) *') # no value in line
+        key_line_with_value_re = re.compile(f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #])') # may also contain description
+        current_section = 'data'
+        valid_sections = ('classname','description','keys','data')
+        section_iline = 0       # how many lines read in this section
+        classname = None
+        description = None
         with open(filename,'r') as fid:
             for iline,line in enumerate(fid):
-                ## identify which section of the file this is
-                if r:=re.match(beginning_of_classname_re,line):
-                    current_section = 'classname'
-                    continue
-                elif r:=re.match(beginning_of_dataset_description_re,line):
-                    current_section = 'description'
-                    data['dataset_description'] = ""
-                    continue
-                elif re.match(beginning_of_keys_re,line):
-                    current_section = 'keys'
-                    continue
-                elif r:=re.match(beginning_of_data_re,line):
-                    current_section = 'data'
-                    iline += 1 
-                    break
-                ## process data depending on section
-                elif current_section == 'none':
-                    if re.match(blank_line_re,line):
+                
+                ## remove newline
+                line = line[:-1]
+                ## check for bad section title
+                if current_section not in valid_sections:
+                    raise Exception(f'Invalid data section: {repr(current_section)}. Valid sections: {repr(valid_sections)}')
+
+                ## remove comment character unless in data section —
+                ## then skip the line, or description then keep it in
+                ## plac
+                if r:=re.match(commented_line_re,line):
+                    if current_section == 'data':
                         continue
+                    elif current_section == 'description':
+                        pass
+                    else:
+                        line = r.match(1)
+                    
+                ## skip blank lines unless in the description
+                elif re.match(blank_line_re,line) and current_section != 'description':
+                    continue
+
+                ## moving forward in this section
+                section_iline += 1
+
+                ## process data from this line
+                if r:=re.match(beginning_of_section_re,line):
+                    ## new section header line
+                    current_section = r.group(1)
+                    section_iline = 0
+                    if current_section == 'description':
+                        description = ''
+                    continue
+
                 elif current_section == 'classname':
-                    data['classname'] = line[:-1]
+                    ## save classname 
+                    if section_iline > 1:
+                        raise Exception("Invalid classname section")
+                    classname = line
+
                 elif current_section == 'description':
-                    data['dataset_description'] += line
+                    ## add to description
+                    description += '\n'+line
+
                 elif current_section == 'keys':
-                    if re.match(blank_line_re,line):
-                        continue
-                    elif re.match(key_line_re,line):
+                    ## add value of key if value given
+                    if r:=re.match(key_line_without_value_re,line):
                         continue
                     elif r:=re.match(key_line_with_value_re,line):
-                        key,val = r.groups()
-                        data[key] = ast.literal_eval(val)
-        ## remove trailing newline from dataset_description
-        if 'dataset_description' in data and len(data['dataset_description'])>0:
-            data['dataset_description'] = data['dataset_description'][:-1]
+                        data[r.group(1)] = ast.literal_eval(r.group(2))
+
+                elif current_section == 'data':
+                    ## remainder of data is data, no more header to
+                    ## process
+                    break
+
         ## load array data
         data.update(tools.txt_to_dict(filename,skiprows=iline,**txt_to_dict_kwargs))
+        if classname is not None:
+            data['classname'] = classname
+        if description is not None:
+            data['description'] = description
         return data
 
     def load_from_string(
@@ -1585,8 +1610,8 @@ class Dataset(optimise.Optimiser):
             elif (isinstance(keys_vals_as_dict_or_dataset,Dataset)
                   and keys_vals_as_dict_or_dataset.is_known(key)):
                 new_data[key] = keys_vals_as_dict_or_dataset[key]
-            elif (default:=self._data[key]['default']) is not None:
-                new_data[key] = default
+            elif 'default' in self._data[key]:
+                new_data[key] = self._data[key]['default']
             ## could add logic for auto defaults based on kind as below
             else:
                 raise Exception(f'Extending key missing in new data: {repr(key)}')

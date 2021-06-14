@@ -119,7 +119,8 @@ class VibLevel(Optimiser):
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
             self.level.clear()
-            self.level.set_default(Eref=self.Eref,Zsource=self.Zsource)
+            self.level['Eref'] = self.Eref
+            self.level['Zsource'] =self.Zsource
             self.level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
             for key in self.vibrational_spin_level:
                 self.level[key] = np.tile(self.vibrational_spin_level[key],len(self.J))

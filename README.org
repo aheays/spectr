@@ -8,8 +8,3 @@ libraries lapack and openmp.
  - Many python libraries are used, and are available from linux
    distributions of pip.
 
-* To do
-** Gv → Tv 
-** Tref into α calc
-** α in level only
-** 

@@ -4107,7 +4107,9 @@ def txt_to_dict(
             assert len(line)==number_of_columns,f'Wrong number of column on line {i}'
         lines.append(line)      # store this line, it contains data
     filename.close()
-    if number_of_columns is None: return({}) # no data
+    if number_of_columns is None:
+        ## no data
+        return({}) 
     ## get data labels
     if labels is None:          # look for labels if not given
         if labels_commented:    # expect last line of initial unbroken comment block
@@ -4117,9 +4119,13 @@ def txt_to_dict(
                 labels = [t.strip() for t in last_line_in_first_block_of_commented_lines] # get labels from commented line
         else:
             labels = [t.strip() for t in lines.pop(0)] # get from first line of data
-    assert len(set(labels))==len(labels),'Non-unique data labels: '+repr(labels)
-    assert len(labels)==number_of_columns,f'Number of labels ({len(labels)}) does not match number of columns ({number_of_columns})'
-    if len(lines)==0: return({t:[] for t in key}) #  no data
+    if len(set(labels))!=len(labels):
+        raise Exception(f'Non-unique data labels: {repr(labels)}')
+    if len(labels)!=number_of_columns:
+        raise Exception(f'Number of labels ({len(labels)}) does not match number of columns ({number_of_columns})')
+    if len(lines)==0:
+        ## no data
+        return({t:[] for t in key}) 
     ## get data from rest of file, and convert to arrays
     data = dict()
     for key,column in zip(labels,zip(*lines)):
