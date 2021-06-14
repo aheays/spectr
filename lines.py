@@ -1169,6 +1169,70 @@ class Linear(Generic):
         """Decode string into quantum numbers"""
         return quantum_numbers.decode_linear_line(encoded_qn)
 
+    @optimise_method()
+    def set_spline_fv_PQR(
+            self,
+            xkey='J_u',
+            ykey='fv',
+            Qknots=None,
+            Δknots=None,
+            order=3,
+            default=None,
+            match=None,
+            index=None,
+            _cache=None,
+            **match_kwargs):
+        """Set ykey to spline function of xkey defined by knots at
+        [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
+        given, then only set these."""
+        ## To do: cache values or match results so only update if
+        ## knots or match values have changed
+        if len(_cache) == 0: 
+            xQspline,yQspline = zip(*Qknots)
+            xΔspline,yΔspline = zip(*Δknots)
+            ## get index limit to defined xkey range
+            index = self._get_combined_index(index,match,**match_kwargs)
+            irange = (self[xkey]>=max(np.min(xQspline),np.min(xΔspline))) & (self[xkey]<=min(np.max(xQspline),np.max(xΔspline)))
+            if index is None:
+                index = irange
+            else:
+                index &= irange
+            Qindex = index & self.match(ΔJ=0)
+            Pindex = index & self.match(ΔJ=-1)
+            Rindex = index & self.match(ΔJ=+1)
+            _cache['Qindex'] = Qindex
+            _cache['Pindex'] = Pindex
+            _cache['Rindex'] = Rindex
+            _cache['xQspline'],_cache['yQspline'] = xQspline,yQspline
+            _cache['xΔspline'],_cache['yΔspline'] = xΔspline,yΔspline
+        ## get cached data
+        Qindex = _cache['Qindex']
+        Pindex = _cache['Pindex']
+        Rindex = _cache['Rindex']
+        
+        xQspline,yQspline = _cache['xQspline'],_cache['yQspline']
+        xΔspline,yΔspline = _cache['xΔspline'],_cache['yΔspline']
+        ## set data
+        if not self.is_known(ykey):
+            if default is None:
+                raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
+            else:
+                self[ykey] = default
+        Qy = tools.spline(xQspline,yQspline,self.get(xkey,index=Qindex),order=order)
+        Py = (tools.spline(xQspline,yQspline,self.get(xkey,index=Pindex),order=order)
+              + tools.spline(xΔspline,yΔspline,self.get(xkey,index=Pindex),order=order))
+        Ry = (tools.spline(xQspline,yQspline,self.get(xkey,index=Rindex),order=order)
+              - tools.spline(xΔspline,yΔspline,self.get(xkey,index=Rindex),order=order))
+        self.set(ykey,value=Qy,index=Qindex,ΔJ=0)
+        self.set(ykey,value=Py,index=Pindex,ΔJ=-1)
+        self.set(ykey,value=Ry,index=Rindex,ΔJ=+1)
+        ## set previously-set uncertainties to NaN
+        if self.is_set((ykey,'unc')):
+            self.set((ykey,'unc'),nan,index=Qindex)
+            self.set((ykey,'unc'),nan,index=Pindex)
+            self.set((ykey,'unc'),nan,index=Rindex)
+
+
     # def set_effective_rotational_linestrengths(self,Ω_u,Ω_l):
         # """Set SJ to Honl-London factors appropriate for Ω_u and Ω_l,
         # regardless of the actual Ω/Λ/Σ quantum numbers. Useful if a
