@@ -1786,7 +1786,7 @@ class Model(Optimiser):
                 )
             icontaminant = 0
             for tspecies,tmatch in contaminants:
-                l = database.load_lines(tspecies)
+                l = database.get_lines(tspecies)
                 tmatch |= {'ν_min':self.x.min(),'ν_max':self.x.max()}
                 l = l.matches(**tmatch)
                 if len(l) > 0:

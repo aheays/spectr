@@ -329,7 +329,7 @@ def get_atomic_mass(element_name,mass_number):
         ## mass of isotope
         return getattr(periodictable,element_name)[mass_number].mass
 
-def load_lines(species):
+def get_lines(species):
     """Load spectral lines from reference data."""
     data = dataset.load(f'{data_directory}/lines/{species}.h5')
     data.name = tools.make_valid_python_symbol_name(f'lines_{species}')

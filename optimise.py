@@ -530,7 +530,7 @@ class Optimiser:
                         if np.isscalar(t):
                             t = [t]
                         if len(t)==0:
-                            continue 
+                            continue
                         o.residual.append(t) # add residual to overall residual
                     ## combine construct function residuals into one
                     if o.residual is not None and len(o.residual)>0:

@@ -1203,9 +1203,15 @@ class Dataset(optimise.Optimiser):
     def __str__(self):
         return self.format(
             delimiter=' | ',
-            include_assoc=False,
-            unique_values_in_header=False,
-            include_description=False,)
+            unique_values_in_header= True,
+            include_description=False,
+            include_classname=False,
+            include_key_description=False,
+            include_assoc=True,
+            include_keys_with_leading_underscore=False,
+            quote_strings=False,
+            quote_keys=False,
+        )
 
     def save(self,filename,keys=None,**format_kwargs):
         """Save some or all data to a file."""
