@@ -193,6 +193,11 @@ class Dataset(optimise.Optimiser):
         ## set previously-set uncertainties to NaN
         if self.is_set((ykey,'unc')):
             self.set((ykey,'unc'),nan,index=index)
+        ## set vary to False if set, but only on the first execution
+        if 'not_first_execution' not in _cache:
+            if 'vary' in self._data[ykey]['assoc']:
+                self._data[ykey]['assoc']['vary'][index] = False
+            _cache['not_first_execution'] = True
 
     def _set_value(self,key,value,index=None,dependencies=None,**prototype_kwargs):
         """Set a value"""
@@ -486,33 +491,19 @@ class Dataset(optimise.Optimiser):
         """Set a value and it will be updated every construction and possible
         optimised."""
         if self._clean_construct:
+            ## cache matching indices
             _cache['index'],sort_order = self._get_combined_index(index,match,**match_kwargs)
             assert sort_order is None
         index = _cache['index']
-        ## if not a parameter then treat as a float -- could use set(
-        ## instead and branch there, requiring a Parameter here
-        # if isinstance(value,Parameter):
-        #     ## only reconstruct for the following reasons
-        #     if (
-        #             key not in self.keys() # key is unknown -- first run
-        #             or value._last_modify_value_time > self._last_construct_time # parameter has been set
-        #             or np.any(self.get(key,index=index) != value.value) # data has changed some other way and differs from parameter
-        #             or (self.is_set((key,'unc'))
-        #                 and not np.isnan(value.unc)
-        #                 and (np.any(self.get((key,'unc'),index=index) != value.unc))) # data has changed some other way and differs from parameter
-        #         ):
-        #         self.set(key,value.value,index=index)
-        #         self.set((key,'unc'),value.unc,index=index)
-        #         self.set((key,'step'),value.step,index=index)
-        # else:
-        #     ## only reconstruct for the following reasons
-        #     # if (key not in self.keys() # key is unknown -- first run
-        #         # or np.any(self.get(key,index=index) != value)): # data has changed some other way and differs from parameter
-        #         # self.set(key,value=value,index=index)
         self.set(key,value=value,index=index,set_changed_only=True)
         if self._clean_construct and isinstance(value,Parameter):
             self.set((key,'unc'),value.unc,index=index)
             self.set((key,'step'),value.step,index=index)
+        ## set vary to False if set, but only on the first execution
+        if 'not_first_execution' not in _cache:
+            if 'vary' in self._data[key]['assoc']:
+                self._data[key]['assoc']['vary'][index] = False
+            _cache['not_first_execution'] = True
 
     def keys(self):
         return list(self._data.keys())
@@ -691,7 +682,8 @@ class Dataset(optimise.Optimiser):
                 continue
             if self.is_inferred(key):
                 for tkey in self._data[key]['inferred_from']:
-                    self._data[tkey]['inferred_to'].remove(key)
+                    if key in self._data[tkey]['inferred_to']:
+                        self._data[tkey]['inferred_to'].remove(key)
             ## recursively delete everything inferred to
             for tkey in self._data[key]['inferred_to']:
                 if tkey not in keys and tkey in self:
@@ -1277,7 +1269,7 @@ class Dataset(optimise.Optimiser):
         retval = ''
         if include_classname:
             retval += f'[classname]\n{self.classname}\n'
-        if include_description:
+        if include_description and self.description is not None:
             retval += f'[description]\n{self.description}\n'
         if header != []:
             retval += '[keys]\n'+'\n'.join(header)
@@ -1322,7 +1314,7 @@ class Dataset(optimise.Optimiser):
         return self.format(
             delimiter=' | ',
             unique_values_in_header= True,
-            include_description=False,
+            include_description= True,
             include_classname=False,
             include_key_description=False,
             include_assoc=True,

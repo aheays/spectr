@@ -563,6 +563,9 @@ class Model(Optimiser):
                 y = _calculate_spectrum(line_copy,None)
             ## else find all changed lines and update those only
             elif line_copy.global_modify_time > self._last_construct_time:
+                ## get indices of local lines that has been changed
+                ichanged = line_copy.row_modify_time > self._last_construct_time
+                nchanged = np.sum(ichanged)
                 if (
                         False and # HACK deactivate
                         ## all lines have changed

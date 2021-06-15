@@ -590,8 +590,7 @@ class Generic(levels.Base):
             else:
                 raise Exception(f"Cannot determine lineshape because both Γ and ΓD are unknown or zero")
         ## get x and ykeys
-        for t in (xkey,ykey):
-            self.assert_known(t)
+        self.assert_known(xkey,ykey)
         ## get a default frequency scale if none provided
         if x is None:
             if dx is not None:
@@ -1091,7 +1090,7 @@ class Generic(levels.Base):
             keys_to_copy = _cache[suffix]['keys_to_copy']
             ## copy all data only if it has changed
             for key_self,key_level in keys_to_copy:
-                self.set(key_self,level[key_level,ilevel],index=iline,set_changed_only=True)
+                self.set(key_self,level[key_level,ilevel],index=iline,set_changed_only= True)
                  
     def set_levels(self,match=None,**keys_vals):
         """Set level data from keys_vals into self."""

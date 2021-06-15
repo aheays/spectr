@@ -779,7 +779,7 @@ _reaction_coefficient_formulae = {
     'NIST'                   :lambda c,p: c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/(constants.R*p['T'])),
     'NIST_3rd_body_hack'     :lambda c,p: 1e19*c['A']*(p['T']/298.)**c['n']*np.exp(-c['Ea']/(constants.R*p['T'])),
     'photoreaction'          :lambda c,p: scipy.integrate.trapz(c['σ'](p['T'])*p['I'],c['λ']),
-    'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']), # α[cm-3], T[K], β[], γ[K]
+    'kooij'                  :lambda c,p: c['α']*(p['T']/300.)**c['β']*np.exp(-c['γ']/p['T']), # α[(cm3)^(n-1).s-1], T[K], β[], γ[K]
     'impact_test_2020-12-07' :lambda c,p: p['T']*0 ,
     'rimmer2016_3_body'      :_rimmer2016_3_body,
     'test'      :_test,
