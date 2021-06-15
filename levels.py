@@ -62,7 +62,7 @@ prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='
 ## level energies
 prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','_qnhash','Eref'),lambda self,species,_qnhash,Eref: database.get_level_energy(species,Eref,_qnhash=_qnhash)),]) 
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','E0'),lambda self,E,E0: E+E0),],default_step=1e-3)
-prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[((),lambda self:0)])
+prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f',default=0,infer=[])
 prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eres'),lambda self,E,Eres: E+Eres)])
 prototypes['Eres'] = dict(description="Residual difference between level energy and experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eexp'),lambda self,E,Eexp: Eexp-E)])
 prototypes['E0'] = dict(description="Energy of the lowest physical energy level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'E0')),],default_step=1e-3)
@@ -556,23 +556,28 @@ class Base(Dataset):
     def default_zlabel_format_function(self,*args,**kwargs):
         return self.encode_qn(*args,**kwargs)
 
-    @optimise_method(format_lines='single')
-    def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
-        """Set parameters to all data matching quantum numbers."""
-        if self._clean_construct:
-            qn,p = {},{}
-            for key,val in defining_qn_and_parameters.items():
-                if key in self.defining_qn:
-                    qn[key] = val
-                else:
-                    p[key] = val
-            if encoded_qn is not None:
-                qn = qn | self.decode_qn(encoded_qn)
-            i = self.match(qn)
-            _cache['p'],_cache['i'] = p,i
-        p,i = _cache['p'],_cache['i']
-        for key,val in p.items():
-            self.set(key,val,index=i)
+    # @optimise_method(format_lines='single')
+    # def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
+        # """Set parameters to all data matching quantum numbers."""
+        # if self._clean_construct:
+            # qn,p = {},{}
+            # for key,val in defining_qn_and_parameters.items():
+                # if key in self.defining_qn:
+                    # qn[key] = val
+                # else:
+                    # p[key] = val
+            # if encoded_qn is not None:
+                # qn = qn | self.decode_qn(encoded_qn)
+            # i = self.match(qn)
+            # _cache['p'],_cache['i'] = p,i
+        # p,i = _cache['p'],_cache['i']
+        # for key,val in p.items():
+            # ## only set changed values
+            # j = self[key,i] != val
+            # ikey = copy(i)
+            # ikey[i] = j
+            # self.set(key,val,index=ikey)
+            # ## self.set(key,val,index=i)
 
     # @optimise_method(add_construct_function=False,add_format_input_function=True,format_lines='single',execute_now=True)
     # def set_by_qn(self,**kwargs):

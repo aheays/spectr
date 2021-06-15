@@ -3,7 +3,7 @@
 Run "make". The options in Makefile are for the gfortran compiler and
 libraries lapack and openmp.
 
-** Python dependencies   
+** Python dependencies
  - python 3 (probably >3.9) required
  - Many python libraries are used, and are available from linux
    distributions of pip.

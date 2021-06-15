@@ -69,7 +69,8 @@ class Dataset(optimise.Optimiser):
         self._length = 0    # length of data
         self._over_allocate_factor = 2 # to speed up appending to data
         self.description = description
-        self._last_modify_data_time = timestamp() # when data is changed this is update
+        self._row_modify_time = np.array([],dtype=float,ndmin=1) # record modification time of each explicitly set row
+        self._global_modify_time = timestamp() # record modification time of any explicit change
         self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self.prototypes
         self.permit_indexing = permit_indexing # Data can be added to the end of arrays, but not removal or rearranging of data
         self.auto_defaults = auto_defaults # set default values if necessary automatically
@@ -131,15 +132,35 @@ class Dataset(optimise.Optimiser):
     def __len__(self):
         return self._length
 
-    def set(self,key_assoc,value,index=None,match=None,**match_kwargs):
+    def set(
+            self,
+            key_assoc,
+            value,
+            index=None,         # set these indices only
+            match=None,         # set these matches only
+            set_changed_only=False, # only set data if it differs from value
+            **match_kwargs
+    ):
         """Set value of key or (key,assoc)"""
         key,assoc = self._separate_key_assoc(key_assoc)
-        match = {**({} if match is None else match),**match_kwargs}
+        ## combine indices -- might need to sort value if an index array is given
+        index,sort_order = self._get_combined_index(index,match,**match_kwargs)
+        if sort_order is not None and tools.isiterable(value):
+            value = np.array(value)[sort_order]
+        ## reduce index and value to changed data only
+        if set_changed_only:
+            index_changed = self[key_assoc,index] != value
+            if index is None:
+                index = index_changed
+            else:
+                index[index] = index_changed
+            if tools.isiterable(value):
+                value = np.array(value)[index_changed]
         ## set value or associated data
         if assoc is None:
-            return self._set_value(key,value,index,match)
+            self._set_value(key,value,index)
         else:
-            return self._set_associated_data(key,assoc,value,index,match)
+            self._set_associated_data(key,assoc,value,index)
         
     @optimise_method(format_lines='single')
     def set_spline(self,xkey,ykey,knots,order=3,default=None,
@@ -152,7 +173,8 @@ class Dataset(optimise.Optimiser):
         if len(_cache) == 0: 
             xspline,yspline = zip(*knots)
             ## get index limit to defined xkey range
-            index = self._get_combined_index(index,match,**match_kwargs)
+            index,sort_order = self._get_combined_index(index,match,**match_kwargs)
+            assert sort_order is None,'Not implemented'
             if index is None:
                 index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
             else:
@@ -172,24 +194,15 @@ class Dataset(optimise.Optimiser):
         if self.is_set((ykey,'unc')):
             self.set((ykey,'unc'),nan,index=index)
 
-    def _set_value(self,key,value,index=None,match=None,dependencies=None,**prototype_kwargs):
+    def _set_value(self,key,value,index=None,dependencies=None,**prototype_kwargs):
         """Set a value"""
-        ## determine index
-        if match is not None and len(match) > 0:
-            if index is None:
-                index = self.match(match)
-            else:
-                index &= self.match(match)
         ## update modification if externally set, not if it is inferred
         if self.verbose:
             print(f'{self.name}: setting {key}')
-        ## explicitly set data
-        if dependencies is None:
-            ## self has changed explicitly
-            self._last_modify_data_time = timestamp()
-            ## if data already existed delete anything inferred from it
-            if key in self:
-                self.unlink_inferences(key)
+        ## if key is already set then delete anything previously
+        ## inferred from it, and previous things it is inferred 
+        if key in self:
+            self.unlink_inferences(key)
         ## if an index is provided then data must already exist, set
         ## new indeed data and return
         if index is not None:
@@ -202,16 +215,15 @@ class Dataset(optimise.Optimiser):
             if key not in self:
                 raise Exception(f'Cannot set data by index for unset key: {key}')
             data['value'][:self._length][index] = data['cast'](value)
-        ## set full array -- does not hvae to exist in in advance
         else:
+            ## set full array -- does not hvae to exist in in advance
+            ##
             ## create entire data dict
             ## decide whether to permit if non-prototyped
             if not self.permit_nonprototyped_data and key not in self.prototypes:
                 raise Exception(f'New data is not in prototypes: {repr(key)}')
             ## new data
-            data = {'assoc':{},
-                    'infer':[],'inferred_from':[],'inferred_to':[]}
-            self._data[key] = data
+            data = {'assoc':{},'infer':[],'inferred_to':[]}
             data['assoc'] = {}
             ## get any prototype data
             if key in self.prototypes:
@@ -247,11 +259,14 @@ class Dataset(optimise.Optimiser):
             if not tools.isiterable(value):
                 data['default'] = value
                 value = np.full(len(self),value)
+            ## if this is the first data then allocate an initial
+            ## length to match
+            if len(self) == 0:
+                self._reallocate(len(value))
             ## If this is the nonzero-length data set then increase
             ## length of self and set any other keys with defaults to
             ## their default values
             if len(self) == 0 and len(value) > 0:
-                self._length = len(value)
                 for tkey,tdata in self._data.items():
                     if tkey == key:
                         continue
@@ -263,11 +278,27 @@ class Dataset(optimise.Optimiser):
                 raise Exception(f'Length of new data {repr(key)} is {len(value)} and does not match the length of existing data: {len(self)}.')
             ## cast and set data
             data['value'] = data['cast'](value)
+            ## add to self
+            self._data[key] = data
         ## If this is inferred data then record dependencies
         if dependencies is not None:
             self._set_dependency(key,dependencies)
+        ## Record key, global, row modify times if this is an explicit change.
+        tstamp = timestamp()
+        if dependencies is None or len(dependencies) == 0:
+            self._global_modify_time = tstamp
+            if index is None:
+                self._row_modify_time[:self._length] = tstamp
+            else:
+                self._row_modify_time[:self._length][index] = tstamp
+            self._data[key]['modify_time'] = tstamp
+        else:
+            ## If inferred data record modification time of the most
+            ## recently modified dependency
+            self._data[key]['modify_time'] = max(
+                [self.get_key_modify_time(tkey) for tkey in dependencies])
 
-    def _set_associated_data(self,key,assoc,value,index=None,match=None):
+    def _set_associated_data(self,key,assoc,value,index=None):
         """Set associated data for key to value."""
         ## basic error checks
         if assoc not in self.associated_kinds:
@@ -280,12 +311,6 @@ class Dataset(optimise.Optimiser):
             raise ImplementationError()
         if self.verbose:
             print(f'{self.name}: setting ({key},{assoc})')
-        ## determine index
-        if match is not None and len(match) > 0:
-            if index is None:
-                index = self.match(match)
-            else:
-                index &= self.match(match)
         ## set data
         if index is None:
             ## set entire array
@@ -310,9 +335,17 @@ class Dataset(optimise.Optimiser):
         dependencies."""
         if self.verbose:
             print(f'{self.name}: Setting dependencies for {repr(key)}: {repr(list(dependencies))}')
-        self._data[key]['inferred_from'].extend(dependencies)
+        self._data[key]['inferred_from'] = list(dependencies)
         for dependency in dependencies:
             self._data[dependency]['inferred_to'].append(key)
+
+    def get_key_modify_time(self,key):
+        """Get the time when some data of this key was modifed explicitly or inferred."""
+        self.assert_known(key)
+        return self._data[key]['modify_time']
+
+    row_modify_time = property(lambda self:self._row_modify_time[:self._length])
+    global_modify_time = property(lambda self:self._global_modify_time)
 
     def get(self,key,index=None,units=None,match=None,**match_kwargs):
         """Get value for key or (key,assoc)."""
@@ -413,24 +446,32 @@ class Dataset(optimise.Optimiser):
     def _get_combined_index(self,index,match,**match_kwargs):
         """Combined specified index with match arguments as boolean mask. If
         no data given the return None"""
+        sort_order = None
         if index is None and match is None and len(match_kwargs)==0:
             retval = None
         else:
             if index is None:
                 retval = np.full(len(self),True)
-            elif np.isscalar(index):
-                retval = np.full(len(self),bool(index))
+            # elif np.isscalar(index):
+                # retval = np.full(len(self),bool(index))
             elif isinstance(index,slice):
+                ## slice
                 retval = np.full(len(self),False)
                 retval[index] = True
             else:
-                retval = np.asarray(index)
+                retval = np.array(index)
                 if retval.dtype == bool:
+                    ## already bool array
                     pass
                 elif retval.dtype == int:
-                    retval = tools.find_inverse(retval,len(self))
-            retval &= self.match(match,**match_kwargs)
-        return retval
+                    ## index array
+                    retval,sort_order = tools.find_inverse(retval,len(self))
+            ## match data
+            imatch = self.match(match,**match_kwargs)
+            retval &= imatch
+            if sort_order is not None:
+                sort_order = sort_order[imatch[retval]]
+        return retval,sort_order
 
     @optimise_method(format_lines='single')
     def set_and_optimise(
@@ -439,32 +480,39 @@ class Dataset(optimise.Optimiser):
             value,          # a scalar or Parameter
             index=None,         # only apply to these indices
             match=None,
+            _cache=None,
             **match_kwargs
     ):
         """Set a value and it will be updated every construction and possible
         optimised."""
-        index = self._get_combined_index(index,match,**match_kwargs)
+        if self._clean_construct:
+            _cache['index'],sort_order = self._get_combined_index(index,match,**match_kwargs)
+            assert sort_order is None
+        index = _cache['index']
         ## if not a parameter then treat as a float -- could use set(
         ## instead and branch there, requiring a Parameter here
-        if isinstance(value,Parameter):
-            ## only reconstruct for the following reasons
-            if (
-                    key not in self.keys() # key is unknown -- first run
-                    or value._last_modify_value_time > self._last_construct_time # parameter has been set
-                    or np.any(self.get(key,index=index) != value.value) # data has changed some other way and differs from parameter
-                    or (self.is_set((key,'unc'))
-                        and not np.isnan(value.unc)
-                        and (np.any(self.get((key,'unc'),index=index) != value.unc))) # data has changed some other way and differs from parameter
-                ):
-                self.set(key,value.value,index=index)
-                self.set((key,'unc'),value.unc,index=index)
-                self.set((key,'step'),value.step,index=index)
-        else:
-            ## only reconstruct for the following reasons
-            if (key not in self.keys() # key is unknown -- first run
-                or np.any(self.get(key,index=index) != value)): # data has changed some other way and differs from parameter
-                self.set(key,value=value,index=index)
-
+        # if isinstance(value,Parameter):
+        #     ## only reconstruct for the following reasons
+        #     if (
+        #             key not in self.keys() # key is unknown -- first run
+        #             or value._last_modify_value_time > self._last_construct_time # parameter has been set
+        #             or np.any(self.get(key,index=index) != value.value) # data has changed some other way and differs from parameter
+        #             or (self.is_set((key,'unc'))
+        #                 and not np.isnan(value.unc)
+        #                 and (np.any(self.get((key,'unc'),index=index) != value.unc))) # data has changed some other way and differs from parameter
+        #         ):
+        #         self.set(key,value.value,index=index)
+        #         self.set((key,'unc'),value.unc,index=index)
+        #         self.set((key,'step'),value.step,index=index)
+        # else:
+        #     ## only reconstruct for the following reasons
+        #     # if (key not in self.keys() # key is unknown -- first run
+        #         # or np.any(self.get(key,index=index) != value)): # data has changed some other way and differs from parameter
+        #         # self.set(key,value=value,index=index)
+        self.set(key,value=value,index=index,set_changed_only=True)
+        if self._clean_construct and isinstance(value,Parameter):
+            self.set((key,'unc'),value.unc,index=index)
+            self.set((key,'step'),value.step,index=index)
 
     def keys(self):
         return list(self._data.keys())
@@ -616,8 +664,10 @@ class Dataset(optimise.Optimiser):
         retval = self[key]
         self.unset(key)
         return retval
+
     def is_inferred(self,key):
-        if len(self._data[key]['inferred_from']) > 0:
+        """Test whether this key is inferred (or explicitly set)."""
+        if 'inferred_from' in self._data[key]:
             return True
         else:
             return False
@@ -629,32 +679,98 @@ class Dataset(optimise.Optimiser):
                 self.unlink_inferences(key)
                 self.unset(key)
    
-    def unlink_inferences(self,keys,unset_inferred=True):
-        """Delete any record of inferences to or from the given keys and
-        delete anything inferred from these keys (but not if it is  among
-        keys itself)."""
+    def unlink_inferences(self,keys):
+        """Delete any record these keys begin inferred. Also recursively unset
+        any key inferred from these that is not among keys itself."""
         keys = tools.ensure_iterable(keys)
-        for t in keys:
-            self.assert_known(t)
         for key in keys:
-            if key in self:     # test this since key might have been unset earlier in this loop
-                for inferred_from in list(self._data[key]['inferred_from']):
-                    ## delete record of having been inferred from
-                    ## something else
-                    self._data[inferred_from]['inferred_to'].remove(key)
-                    self._data[key]['inferred_from'].remove(inferred_from)
-                for inferred_to in list(self._data[key]['inferred_to']): #
-                    if inferred_to not in self._data:
-                        ## this inferred_to has already been taking
-                        ## care of in a previous loop somewhere
-                        continue
-                    ## delete record of having led to seomthing else
-                    ## begin inferred
-                    self._data[inferred_to]['inferred_from'].remove(key)
-                    self._data[key]['inferred_to'].remove(inferred_to)
-                    ## delete inferred data if not an argument key
-                    if inferred_to not in keys:
-                        self.unset(inferred_to)
+            self.assert_known(key)
+        ## no longer marked as inferred from something else
+        for key in keys:
+            if key not in self:
+                continue
+            if self.is_inferred(key):
+                for tkey in self._data[key]['inferred_from']:
+                    self._data[tkey]['inferred_to'].remove(key)
+            ## recursively delete everything inferred to
+            for tkey in self._data[key]['inferred_to']:
+                if tkey not in keys and tkey in self:
+                    self.unset(tkey)
+
+    # def unlink_inferences(self,keys):
+        # """Delete any record of inferences to or from the given keys and
+        # delete anything inferred from these keys (but not if it is
+        # among keys itself). If keys were previously inferred they are
+        # not treated as explicitly set."""
+        # keys = tools.ensure_iterable(keys)
+        # for key in keys:
+            # self.assert_known(key)
+        # ## if any keys orginally inferred then this a global modification
+        # if any([not self.is_inferred(key) for t in self._data[key]]):
+            # tstamp = timestamp()
+            # self._global_modify_time = tstamp
+            # self._row_modify_time[:self._length] = tstamp
+        # ## unlink inferences to/from these keys
+        # for key in keys:
+            # if key not in self:
+                # ## this key might have been unset earlier in main loop
+                # continue
+            # if self.is_inferred(key):
+                # ## delete record of having been inferred from
+                # ## something else and set modification time to now
+                # for inferred_from in list(self._data[key]['inferred_from']):
+                    # self._data[key]['inferred_from'].remove(inferred_from)
+                    # if (inferred_from in self._data
+                        # and key in self._data[inferred_from]['inferred_to']):
+                        # self._data[inferred_from]['inferred_to'].remove(key)
+            # ## delete record of having being used to infer something else
+            # for inferred_to in list(self._data[key]['inferred_to']): 
+                # self._data[key]['inferred_to'].remove(inferred_to)
+                # if inferred_to in self._data:
+                    # ## this inferred_to might have already been taking
+                    # ## care of in a previous loop somewhere
+                    # continue
+                # self._data[inferred_to]['inferred_from'].remove(key)
+                # ## delete inferred data if not an argument key
+                # if inferred_to not in keys:
+                    # self.unset(inferred_to)
+# keys):
+        # """Delete any record of inferences to or from the given keys and
+        # delete anything inferred from these keys (but not if it is
+        # among keys itself). If keys were previously inferred they are
+        # not treated as explicitly set."""
+        # keys = tools.ensure_iterable(keys)
+        # for key in keys:
+            # self.assert_known(key)
+        # ## if any keys orginally inferred then this a global modification
+        # if any([not self.is_inferred(key) for t in self._data[key]]):
+            # tstamp = timestamp()
+            # self._global_modify_time = tstamp
+            # self._row_modify_time[:self._length] = tstamp
+        # ## unlink inferences to/from these keys
+        # for key in keys:
+            # if key not in self:
+                # ## this key might have been unset earlier in main loop
+                # continue
+            # if self.is_inferred(key):
+                # ## delete record of having been inferred from
+                # ## something else and set modification time to now
+                # for inferred_from in list(self._data[key]['inferred_from']):
+                    # self._data[key]['inferred_from'].remove(inferred_from)
+                    # if (inferred_from in self._data
+                        # and key in self._data[inferred_from]['inferred_to']):
+                        # self._data[inferred_from]['inferred_to'].remove(key)
+            # ## delete record of having being used to infer something else
+            # for inferred_to in list(self._data[key]['inferred_to']): 
+                # self._data[key]['inferred_to'].remove(inferred_to)
+                # if inferred_to in self._data:
+                    # ## this inferred_to might have already been taking
+                    # ## care of in a previous loop somewhere
+                    # continue
+                # self._data[inferred_to]['inferred_from'].remove(key)
+                # ## delete inferred data if not an argument key
+                # if inferred_to not in keys:
+                    # self.unset(inferred_to)
 
     def add_infer_function(self,key,dependencies,function):
         """Add a new method of data inference."""
@@ -719,7 +835,8 @@ class Dataset(optimise.Optimiser):
                 keys = source.explicitly_set_keys()
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         ## get matching indices
-        index = source._get_combined_index(index,match,**match_kwargs)
+        index,sort_order = source._get_combined_index(index,match,**match_kwargs)
+        assert sort_order is None,'Not implemented'
         ## copy data
         for key in keys:
             self[key] = source[key][index]
@@ -751,7 +868,8 @@ class Dataset(optimise.Optimiser):
                 else:
                     keys = source.explicitly_set_keys()
             keys = [key for key in keys if key not in skip_keys]
-            index = source._get_combined_index(index,match,**match_kwargs)
+            index,sort_order = source._get_combined_index(index,match,**match_kwargs)
+            assert sort_order is None,'Not implemented'
             _cache['keys'],_cache['index'] = keys,index
         else:
             keys,index = _cache['keys'],_cache['index']
@@ -1674,6 +1792,12 @@ class Dataset(optimise.Optimiser):
                                  self.associated_kinds[key]['default'],
                                   dtype=data['assoc'][key].dtype)))
         self._length = new_length
+        ## increase length of modify time array
+        if len(self._row_modify_time) < new_length:
+            self._row_modify_time = np.concatenate((
+                self._row_modify_time,
+                np.full(new_length*self._over_allocate_factor
+                        -len(self._row_modify_time),timestamp())))
 
     def __add__(self,other):
         """Adding dataset concatenates data in all keys."""

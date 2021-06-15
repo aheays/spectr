@@ -1091,8 +1091,7 @@ class Generic(levels.Base):
             keys_to_copy = _cache[suffix]['keys_to_copy']
             ## copy all data only if it has changed
             for key_self,key_level in keys_to_copy:
-                if np.any(self[key_self][iline] !=level[key_level][ilevel]):
-                    self.set(key_self,level[key_level][ilevel],index=iline)
+                self.set(key_self,level[key_level,ilevel],index=iline,set_changed_only=True)
                  
     def set_levels(self,match=None,**keys_vals):
         """Set level data from keys_vals into self."""
@@ -1191,7 +1190,8 @@ class Linear(Generic):
             xQspline,yQspline = zip(*Qknots)
             xΔspline,yΔspline = zip(*Δknots)
             ## get index limit to defined xkey range
-            index = self._get_combined_index(index,match,**match_kwargs)
+            index,sort_order = self._get_combined_index(index,match,**match_kwargs)
+            assert sort_order is None,'Not implemented'
             irange = (self[xkey]>=max(np.min(xQspline),np.min(xΔspline))) & (self[xkey]<=min(np.max(xQspline),np.max(xΔspline)))
             if index is None:
                 index = irange
@@ -1209,7 +1209,6 @@ class Linear(Generic):
         Qindex = _cache['Qindex']
         Pindex = _cache['Pindex']
         Rindex = _cache['Rindex']
-        
         xQspline,yQspline = _cache['xQspline'],_cache['yQspline']
         xΔspline,yΔspline = _cache['xΔspline'],_cache['yΔspline']
         ## set data
@@ -1218,15 +1217,15 @@ class Linear(Generic):
                 raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
             else:
                 self[ykey] = default
-        Qy = tools.spline(xQspline,yQspline,self.get(xkey,index=Qindex),order=order)
-        Py = (tools.spline(xQspline,yQspline,self.get(xkey,index=Pindex),order=order)
-              + tools.spline(xΔspline,yΔspline,self.get(xkey,index=Pindex),order=order))
-        Ry = (tools.spline(xQspline,yQspline,self.get(xkey,index=Rindex),order=order)
-              - tools.spline(xΔspline,yΔspline,self.get(xkey,index=Rindex),order=order))
-        self.set(ykey,value=Qy,index=Qindex,ΔJ=0)
-        self.set(ykey,value=Py,index=Pindex,ΔJ=-1)
-        self.set(ykey,value=Ry,index=Rindex,ΔJ=+1)
-        ## set previously-set uncertainties to NaN
+        ## compute splined values
+        Qy = tools.spline(xQspline,yQspline,self[xkey,Qindex],order=order)
+        Py = (tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order) + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order))
+        Ry = (tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order) - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order))
+        ## set data
+        self.set(ykey,value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
+        self.set(ykey,value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
+        self.set(ykey,value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
+        ## set uncertainties to NaN
         if self.is_set((ykey,'unc')):
             self.set((ykey,'unc'),nan,index=Qindex)
             self.set((ykey,'unc'),nan,index=Pindex)

@@ -511,7 +511,7 @@ class Optimiser:
                     ## one of its parameters has changed
                     or any([p._last_modify_value_time > o._last_construct_time for p in o.parameters])
                     ## it is a Dataset and its data has changed
-                    or (isinstance(o,Dataset) and o._last_modify_data_time > o._last_construct_time)
+                    or (isinstance(o,Dataset) and o.global_modify_time > o._last_construct_time)
                     ## one of its suboptimisers has been reconstructed
                     or any([to._last_construct_time > o._last_construct_time for to in o.get_all_suboptimisers(include_self=False)])
             ):

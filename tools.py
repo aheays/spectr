@@ -1068,10 +1068,12 @@ def printcols(*columns):
 #####################################
 
 def find_inverse(index_array,total_shape):
-    """Convert an integer index array into a boolean mask."""
-    retval = np.full(total_shape,False)
-    retval[index_array] = True
-    return retval
+    """Convert an integer index array into a boolean mask and also return
+    sort_order to match index_array to boolean array."""
+    bool_array = np.full(total_shape,False)
+    sort_order = np.argsort(index_array)
+    bool_array[index_array] = True
+    return bool_array,sort_order
 
 def cast_abs_float_array(x):
     """Return as 1D array of absolute floating point values."""

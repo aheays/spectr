@@ -509,81 +509,92 @@ class Model(Optimiser):
             imatch = line.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
             nmatch = np.sum(imatch)
             line_copy = line.copy(index=imatch)
-            ## keys that might possibly change
-            variable_keys = [key for key in line_copy.keys() if line_copy.get_kind(key)=='f']
             ## set parameter data
             for key,val in set_keys_vals.items():
                 line_copy[key] = float(val)
+            ## get ykey
             if kind == 'absorption':
                 ykey = 'τ'
             elif kind == 'emission':
                 ykey = 'I'
             else:
-                raise Exception(f"Invalid kind {repr(kind)}")
+                raise Exception(f"Invalid kind {repr(kind)} try 'absorption' or 'emission'")
+            ## calculate full spectrum
+            def _calculate_spectrum(line,index):
+                x,y = line.calculate_spectrum(
+                    x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=ymin,ncpus=ncpus,lineshape=lineshape,index=index)
+                return y
+            y = _calculate_spectrum(line_copy,None)
+            ## important data — only update spectrum if these have changed
+            data = {key:line_copy[key] for key in ('ν',ykey,'Γ','ΓD') if line_copy.is_known(key)}
             ## cache
-            (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
-             _cache['line_copy'],_cache['ykey']) = (
-                 variable_keys,imatch,nmatch,line_copy,ykey)
-            ## calculate spectrum
-            x,y = line_copy.calculate_spectrum(
-                x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                ymin=ymin,ncpus=ncpus,lineshape=lineshape)
+            (_cache['data'],_cache['y'],
+             _cache['imatch'],_cache['nmatch'],
+             _cache['line_copy'],_cache['ykey'],
+             _cache['_calculate_spectrum']) = (
+                 data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum)
         else:
             ## subsequent runs -- maybe only recompute a few line
-            (variable_keys,imatch,nmatch,line_copy,y,ykey) = (
-                _cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
-                _cache['line_copy'],_cache['y'],_cache['ykey'])
-            full_recalculation = False
-            lines_changed = False
+            ##
+            ## load cache
+            (data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum) = (
+                 _cache['data'],_cache['y'],
+                 _cache['imatch'],_cache['nmatch'],
+                 _cache['line_copy'],_cache['ykey'],
+                 _cache['_calculate_spectrum']) 
             ## nothing to be done
             if nmatch == 0:
                 return
-            ## x grid has changed
-            if self._xchanged:
-                full_recalculation = True
-            ## set_keys_vals has modified parameters
+            ## set modified data in set_keys_vals
             for key,val in set_keys_vals.items():
                 if (isinstance(val,Parameter) and
                     self._last_construct_time < val._last_modify_value_time):
                     line_copy.set(key,val)
-                    full_recalculation = True
-            ## line spectrum has changed -- find changed lines
-            if self._last_construct_time < line._last_construct_time:
-                ichanged = np.full(len(line_copy),False)
-                changed_keys = []
-                for key in variable_keys:
-                    i = line[key][imatch] != line_copy[key]
-                    if np.any(i):
-                        changed_keys.append(key)
-                        ichanged |= i
-                nchanged = np.sum(ichanged)
-                if nchanged > (len(line_copy)/2):
-                    ## most lines change — just recompute everything
-                    full_recalculation = True
-                lines_changed = True
-            ## recalculate
-            if full_recalculation:
-                if lines_changed:
-                    for key in changed_keys:
-                        line_copy.set(key,line[key][imatch])
-                x,y = line_copy.calculate_spectrum(
-                    x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=ymin,ncpus=ncpus,lineshape=lineshape,)
-            elif lines_changed:
-                ## recompute old version of lines that have changed
-                xold,yold = line_copy.calculate_spectrum(
-                    x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=ymin,ncpus=ncpus,lineshape=lineshape,index=ichanged)
-                ## update data in line_copy and compute new version
-                ## of changed line
-                for key in changed_keys:
-                    line_copy.set(key,line[key][imatch])
-                xnew,ynew = line_copy.calculate_spectrum(
-                    x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=ymin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
-                y = y + ynew - yold
+            ## update from keys and rows that have changed
+            ichanged_row = line.row_modify_time[imatch] > self._last_construct_time
+            if np.sum(ichanged_row) > 0:
+                for key in line.explicitly_set_keys():
+                    if line.get_key_modify_time(key) > self._last_construct_time:
+                        line_copy[key,ichanged_row] = line[key,imatch][ichanged_row]
+            ## x grid has changed, full recalculation
+            if self._xchanged:
+                y = _calculate_spectrum(line_copy,None)
+            ## else find all changed lines and update those only
+            elif line_copy.global_modify_time > self._last_construct_time:
+                ## some lines have changed
+                # def _find_significant_difference(yold,ynew):
+                #     return np.abs((ynew-yold)/yold) > 1e-14
+                # ichanged = np.any([_find_significant_difference(data[key],line_copy[key]) for key in data],0)
+                ichanged = np.any([np.abs((line_copy[key]-data[key])/data[key]) > 1e-14 for key in data],0)
+                if (
+                        False and # HACK deactivate
+                        ## ykey has changed
+                         (line_copy.get_key_modify_time(ykey) > self._last_construct_time)
+                        ## no key other than ykey has changed
+                        and (np.all([line_copy.get_key_modify_time(key) < self._last_construct_time for key in data if key != ykey]))
+                        ## all lines have changed
+                        and np.all(ichanged)
+                        ## ykey has changed by a near-constant factor -- RISKY!!!!
+                        and _find_significant_difference(data[ykey],line_copy[ykey])
+                ):
+                    ## constant factor ykey -- scale saved spectrum
+                    y *= np.mean(line_copy[ykey]/data[ykey])
+                elif (np.sum(ichanged)/len(ichanged)) > 0.5:
+                    ## more than half lines have changed -- full
+                    ## recalculation
+                    y = _calculate_spectrum(line_copy,None)
+                else:
+                    ## temporary object to calculate old spectrum
+                    line_old = dataset.make(
+                        classname=line_copy.classname,
+                        **{key:data[key][ichanged] for key in data})
+                    yold = _calculate_spectrum(line_old,None)
+                    ## partial recalculation
+                    ynew = _calculate_spectrum(line_copy,ichanged)
+                    y += ynew - yold
             else:
-                ## re-use previous y
+                ## nothing changed keep old spectrum
                 pass
         ## apply to model
         if kind == 'absorption':
@@ -591,6 +602,7 @@ class Model(Optimiser):
         else:
             self.y += y
         _cache['y'] = y
+        _cache['data'] = {key:line_copy[key] for key in data}
 
     @optimise_method()
     def add_absorption_lines(
