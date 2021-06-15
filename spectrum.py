@@ -552,35 +552,33 @@ class Model(Optimiser):
                     self._last_construct_time < val._last_modify_value_time):
                     line_copy.set(key,val)
             ## update from keys and rows that have changed
-            ichanged_row = line.row_modify_time[imatch] > self._last_construct_time
-            if np.sum(ichanged_row) > 0:
+            ichanged = line.row_modify_time[imatch] > self._last_construct_time
+            nchanged = np.sum(ichanged)
+            if nchanged > 0:
                 for key in line.explicitly_set_keys():
                     if line.get_key_modify_time(key) > self._last_construct_time:
-                        line_copy[key,ichanged_row] = line[key,imatch][ichanged_row]
+                        line_copy[key,ichanged] = line[key,imatch][ichanged]
             ## x grid has changed, full recalculation
             if self._xchanged:
                 y = _calculate_spectrum(line_copy,None)
             ## else find all changed lines and update those only
             elif line_copy.global_modify_time > self._last_construct_time:
-                ## some lines have changed
-                # def _find_significant_difference(yold,ynew):
-                #     return np.abs((ynew-yold)/yold) > 1e-14
-                # ichanged = np.any([_find_significant_difference(data[key],line_copy[key]) for key in data],0)
-                ichanged = np.any([np.abs((line_copy[key]-data[key])/data[key]) > 1e-14 for key in data],0)
                 if (
                         False and # HACK deactivate
+                        ## all lines have changed
+                        (nchanged == len(ichanged))
                         ## ykey has changed
-                         (line_copy.get_key_modify_time(ykey) > self._last_construct_time)
+                        and (line_copy.get_key_modify_time(ykey) > self._last_construct_time)
                         ## no key other than ykey has changed
                         and (np.all([line_copy.get_key_modify_time(key) < self._last_construct_time for key in data if key != ykey]))
-                        ## all lines have changed
-                        and np.all(ichanged)
                         ## ykey has changed by a near-constant factor -- RISKY!!!!
                         and _find_significant_difference(data[ykey],line_copy[ykey])
+                        ## ## ykey has changed by constant factor -- MACHINE PRECISION?
+                        ## and len(np.unique(data[ykey]/line_copy[ykey])) == 1
                 ):
                     ## constant factor ykey -- scale saved spectrum
                     y *= np.mean(line_copy[ykey]/data[ykey])
-                elif (np.sum(ichanged)/len(ichanged)) > 0.5:
+                elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
                     ## recalculation
                     y = _calculate_spectrum(line_copy,None)
