@@ -196,7 +196,7 @@ class Dataset(optimise.Optimiser):
         ## set vary to False if set, but only on the first execution
         if 'not_first_execution' not in _cache:
             if 'vary' in self._data[ykey]['assoc']:
-                self._data[ykey]['assoc']['vary'][index] = False
+                self.set((ykey,'vary'),False,index=index)
             _cache['not_first_execution'] = True
 
     def _set_value(self,key,value,index=None,dependencies=None,**prototype_kwargs):
@@ -268,18 +268,18 @@ class Dataset(optimise.Optimiser):
             ## length to match
             if len(self) == 0:
                 self._reallocate(len(value))
-            ## If this is the nonzero-length data set then increase
-            ## length of self and set any other keys with defaults to
-            ## their default values
-            if len(self) == 0 and len(value) > 0:
-                for tkey,tdata in self._data.items():
-                    if tkey == key:
-                        continue
-                    if 'default' in tdata:
-                        tdata['value'] = tdata['cast'](np.full(len(self),tdata['default']))
-                    else:
-                        raise Exception(f'Need default for key {tkey}')
-            elif len(value) != len(self):
+                ## If this is the first nonzero-length data set then increase
+                ## length of self and set any other keys with defaults to
+                ## their default values
+                if len(value) > 0:
+                    for tkey,tdata in self._data.items():
+                        if tkey == key:
+                            continue
+                        if 'default' in tdata:
+                            tdata['value'] = tdata['cast'](np.full(len(self),tdata['default']))
+                        else:
+                            raise Exception(f'Need default for key {tkey}')
+            if len(value) != len(self):
                 raise Exception(f'Length of new data {repr(key)} is {len(value)} and does not match the length of existing data: {len(self)}.')
             ## cast and set data
             data['value'] = data['cast'](value)
@@ -361,32 +361,46 @@ class Dataset(optimise.Optimiser):
             else:
                 index &= self.match(match)
         if isinstance(key,str):
-            return self._get_data(key,index,units)
+            ## return vector data
+            if key not in self._data:
+                try:
+                    ## attempt to infer
+                    self._infer(key)
+                except InferException as err:
+                    if key in self.prototypes and 'default' in self.prototypes[key]:
+                        self[key] = self.prototypes[key]['default']
+                    else:
+                        raise err
+            if index is None:
+                ## get default entire index
+                index = slice(0,len(self))
+            data = self._data[key]
+            retval = data['value'][:self._length][index]
+            if units is not None:
+                ## convert units before setting
+                retval = convert.units(retval,self._data[key]['units'],units)
+            return retval
         else:
             key,assoc = key
             return self._get_associated_data(key,assoc,index,units)
 
-    def _get_data(self,key,index=None,units=None):
-        """Get value for key."""
-        ## return vector data
-        if key not in self._data:
-            try:
-                ## attempt to infer
-                self._infer(key)
-            except InferException as err:
-                if key in self.prototypes and 'default' in self.prototypes[key]:
-                    self[key] = self.prototypes[key]['default']
-                else:
-                    raise err
-        if index is None:
-            ## get default entire index
-            index = slice(0,len(self))
+    def has_data(self,key,*subkeys):
+        """Test if key is in the internal data dictionary, possibly indexed by
+        subkeys."""
+        try:
+            self.get_data(key,*subkeys)
+            return True
+        except KeyError:
+            return False
+
+    def get_data(self,key,*subkeys):
+        """Return a copy of data corresponding to key in the internal
+        data dictionary, possibly indexed by subkeys."""
+        self.assert_known(key)
         data = self._data[key]
-        retval = data['value'][:self._length][index]
-        if units is not None:
-            ## convert units before setting
-            retval = convert.units(retval,self._data[key]['units'],units)
-        return retval
+        for key in subkeys:
+            data = data[key]
+        return copy(data)
 
     def _get_associated_data(self,key,assoc,index=None,units=None):
         """Get associatedf value."""
@@ -502,7 +516,7 @@ class Dataset(optimise.Optimiser):
         ## set vary to False if set, but only on the first execution
         if 'not_first_execution' not in _cache:
             if 'vary' in self._data[key]['assoc']:
-                self._data[key]['assoc']['vary'][index] = False
+                self.set((key,'vary'),False,index=index)
             _cache['not_first_execution'] = True
 
     def keys(self):
@@ -511,9 +525,9 @@ class Dataset(optimise.Optimiser):
     def limit_to_keys(self,keys):
         """Unset all keys except these."""
         keys = tools.ensure_iterable(keys)
-        self.assert_known(keys)
+        self.assert_known(*keys)
         self.unlink_inferences(keys)
-        self.unset([key for key in self if key not in keys])
+        self.unset(*[key for key in self if key not in keys])
 
     def optimised_keys(self):
         return [key for key in self.keys() if self.is_set((key,'vary'))]
@@ -598,7 +612,7 @@ class Dataset(optimise.Optimiser):
                         ## (key,assoc,index) tuple, return data
                         return self.get(index[:2],index=index[2])
                     else:
-                        raise Exception
+                        raise Exception(f"Cannot interpret index: {repr(index)}")
                 else:
                     ## list of keys, make a copy containing these
                     return self.copy(keys=index)
@@ -828,14 +842,15 @@ class Dataset(optimise.Optimiser):
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         ## get matching indices
         index,sort_order = source._get_combined_index(index,match,**match_kwargs)
-        assert sort_order is None,'Not implemented'
+        if sort_order is None:
+            sort_order = slice(0,np.sum(index))
         ## copy data
         for key in keys:
-            self[key] = source[key][index]
+            self[key] = source[key][index][sort_order]
             if copy_assoc:
                 ## copy associated data
                 for assoc in source._data[key]['assoc']:
-                    self[key,assoc] = source[key,assoc][index]
+                    self[key,assoc] = source[key,assoc][index][sort_order]
 
     @optimise_method()
     def copy_from_and_optimise(
@@ -1297,18 +1312,19 @@ class Dataset(optimise.Optimiser):
         retval += ']'
         return retval
 
-    def print_data(self,delimiter=' | '):
+    def format_flat(self,delimiter=' | '):
         """Print flat data"""
-        print(self.format(
+        return self.format(
             delimiter=delimiter,
             unique_values_in_header=False,
             include_description=False,
             include_assoc=True,
             include_keys_with_leading_underscore=False,
+            include_key_description=False,
+            include_classname=False,
             quote_strings=False,
             quote_keys=False,
-        ))
-
+        )
 
     def __str__(self):
         return self.format(
@@ -1357,6 +1373,7 @@ class Dataset(optimise.Optimiser):
             delimiter=None,
             load_assoc=True,
             txt_to_dict_kwargs=None,
+            translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
             **set_keys_vals   # set this data after loading is done
     ):
         '''Load data from a file.'''
@@ -1425,13 +1442,29 @@ class Dataset(optimise.Optimiser):
                 data[key.replace('HT_HITRAN','HITRAN_HT')] = data.pop(key) #  HACK
         ## END OF TEMP HACK DELETE
         ## translate keys
-        if translate_keys is not None:
-            for from_key,to_key in translate_keys.items():
-                if from_key in data:
-                    if to_key is None:
-                        data.pop(from_key)
-                    else:
-                        data[to_key] = data.pop(from_key)
+        if translate_keys is None:
+            translate_keys = {}
+        if translate_from_anh_spectrum:
+            translate_keys.update({
+                'Jp':'J_u', 'Sp':'S_u', 'Tp':'E_u',
+                'labelp':'label_u', 'sp':'s_u',
+                'speciesp':'species_u', 'Λp':'Λ_u', 'vp':'v_u',
+                'column_densityp':'Nself_u', 'temperaturep':'Teq_u',
+                'Jpp':'J_l', 'Spp':'S_l', 'Tpp':'E_l',
+                'labelpp':'label_l', 'spp':'s_l',
+                'speciespp':'species_l', 'Λpp':'Λ_l', 'vpp':'v_l',
+                'column_densitypp':'Nself_l', 'temperaturepp':'Teq_l',
+                'Treduced_common_polynomialp':None, 'Tref':'Eref',
+                'branch':'branch', 'dfv':None,
+                'level_transition_type':None, 'partition_source':None,
+                'Γ':'Γ','df':None,
+            })
+        for from_key,to_key in translate_keys.items():
+            if from_key in data:
+                if to_key is None:
+                    data.pop(from_key)
+                else:
+                    data[to_key] = data.pop(from_key)
         ## test for a matching classname, return if requested or make
         ## sure it matches self
         if return_classname_only:
@@ -1845,10 +1878,16 @@ class Dataset(optimise.Optimiser):
         ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
         for t in [xkey,*ykeys,*zkeys]:
             self.assert_known(t)
+        ## set xlabel
+        xlabel = xkey
+        if self.has_data(xkey,'units'):
+            xlabel += ' ('+self.get_data(xkey,'units')+')'
         ## plot each 
         ymin = {}
         for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
             ylabel = ykey
+            if self.has_data(ykey,'units'):
+                ylabel += ' ('+self.get_data(ykey,'units')+')'
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
                 z.sort(xkey)
                 if zlabel_format_function is None:
@@ -1858,24 +1897,23 @@ class Dataset(optimise.Optimiser):
                     ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = None
-                    if title is None:
-                        title = ylabel+' '+zlabel
+                    title = zlabel
                 elif ynewaxes and not znewaxes:
                     ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = (zlabel if len(zkeys)>0 else None) 
-                    if title is None:
-                        title = ylabel
+                    title = ylabel
                 elif not ynewaxes and znewaxes:
                     ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = ylabel
-                    if title is None:
-                        title = zlabel
+                    ylabel = None
+                    title = zlabel
                 elif not ynewaxes and not znewaxes:
                     ax = fig.gca()
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = ylabel+' '+zlabel
+                    ylabel = None
                 ## plotting kwargs
                 kwargs = copy(plot_kwargs)
                 kwargs.setdefault('marker',marker)
@@ -1913,6 +1951,10 @@ class Dataset(optimise.Optimiser):
                     line = ax.plot(x,y,**kwargs)
                 if title is not None:
                     ax.set_title(title)
+                if ylabel is not None:
+                    ax.set_ylabel(ylabel)
+                if xlabel is not None:
+                    ax.set_xlabel(xlabel)
                 if 'label' in kwargs:
                     if legend:
                         plotting.legend(fontsize='x-small',loc=legend_loc)
@@ -1929,7 +1971,6 @@ class Dataset(optimise.Optimiser):
                         if yend == 'data':
                             t,t,t,yend = plotting.get_data_range(ax)
                     ax.set_ylim(ybeg,yend)
-                ax.set_xlabel(xkey)
                 ax.set_xscale(xscale)
                 ax.set_yscale(yscale)
                 ax.grid(True,color='gray',zorder=-5)
@@ -1952,12 +1993,9 @@ def find_common(x,y,keys=None,verbose=False):
     ## if empty list then nothing to be done
     if len(x)==0 or len(y)==0:
         return(np.array([],dtype=int),np.array([],dtype=int))
-    ## use quantum numbers as default keys -- could use _qnhash instead
+    ## use quantum numbers as default keys -- could use qnhash instead
     if keys is None:
-        if hasattr(x,'defining_qn') and hasattr(y,'defining_qn'):
-            keys = list(getattr(x,'defining_qn'))
-        else:
-            raise Exception("No keys provided and defining_qn unavailable x.")
+        raise Exception("No keys provided and defining_qn unavailable x.")
     if verbose:
         print('find_commmon keys:',keys)
     for key in keys:

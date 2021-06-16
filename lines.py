@@ -35,7 +35,7 @@ prototypes = {}
 
 ## copy prototypes directly from levels
 for key in (
-        'reference','_qnhash',
+        'reference','qnhash',
         'species','point_group',
         'Zsource',
         'mass','reduced_mass',
@@ -64,7 +64,7 @@ for key in ('species','Zsource','Eref','mass','reduced_mass','Teq','Tex','Tvib',
 prototypes['species']['infer'].append((('species_l'),lambda self,species_l: species_l))
 prototypes['species']['infer'].append((('species_u'),lambda self,species_u: species_u))
 
-## add lines things
+## get branch label, and decode it to quantum numbers
 _ΔJ_translate = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
 _ef_translate = {-1:'f',+1:'e'}
 @vectorise(vargs=(1,2,3,4,5))
@@ -77,6 +77,11 @@ def _f0(self,ΔJ,Fi_u,Fi_l,ef_u,ef_l):
     retval = f'{ΔJ}{Fi_u}{Fi_l}{ef_u}{ef_l}'
     return retval
 prototypes['branch'] = dict(description="Rotational branch ΔJ.Fiu.Fil.efu.efl", kind='U', fmt='<10s',infer=[(('ΔJ','Fi_u','Fi_l','ef_u','ef_l'),_f0)])
+for key in ('ef_u','ef_l','Fi_u','Fi_l'):
+    @vectorise(vkeys=('branch',))
+    def _f0(self,branch,key=key):
+        return quantum_numbers.decode_branch(branch)[key]
+    prototypes[key]['infer'].append(('branch',_f0))
 
 def _f1(self,fv,SJ,J_l,Λ_u,Λ_l):
     """Get band fvalues from line strength"""
@@ -126,23 +131,6 @@ for key in ('J','N','S','Λ','Ω','Σ','v'):
 ## column 
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
 prototypes['Nself'] = dict(description="Column density",units="cm-2",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
-
-## _qnhash of line is copied ok from levels, but _qnhash_l and
-## _qnhash_u must have suffices added to defining_qn
-def _f0(self,suffix):
-    defining_qn = []
-    for key in self.defining_qn:
-        if len(key)>len(suffix) and key[-2:]==suffix:
-            if not self.is_known(key):
-                raise InferException(f'Cannot infer _qnhash_l because {key} not known')
-            defining_qn.append(key)
-    _qnhash = np.empty(len(self),dtype=int)
-    for i,qn in enumerate(zip(*[self[key] for key in defining_qn])):
-        _qnhash[i] = hash(qn)
-    self._set_value(f'_qnhash{suffix}',_qnhash,dependencies=defining_qn)
-    return None
-prototypes['_qnhash_l'] = dict(description="Hash of quantum numbers defining the lower level", kind='i',infer=[((),lambda self,f=_f0:f(self,'_l')),])
-prototypes['_qnhash_u'] = dict(description="Hash of quantum numbers defining the upper level", kind='i',infer=[((),lambda self,f=_f0:f(self,'_u')),])
 
 
 ####################################
@@ -251,52 +239,95 @@ prototypes['E_u']['infer'].append((('E_l','ν'),lambda self,El,ν: El+ν))
 prototypes['Ee_l']['infer'].append((('Ee_u','ν'),lambda self,Eu,ν: Eu-ν))
 prototypes['Ee_u']['infer'].append((('Ee_l','ν'),lambda self,El,ν: El+ν))
 
+## vibrational transition frequencies
+prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
+prototypes['λv'] = dict(description="Electronic-vibrational transition wavelength",units="nm",kind='f', fmt='>11.4f', infer=[(('νv',), lambda self,νv: convert_units(νv,'cm-1','nm'),)],)
+
+## transition strengths
+prototypes['M']   = dict(description="Pointer to electronic transition moment",units="au", kind='O', infer=[])
+prototypes['Mv']   = dict(description="Electronic transition moment for this vibronic level",units="au", kind='f', fmt='<10.5e', infer=[(('μ','FCfactor'), lambda self,μ,FCfactor: μ/np.sqrt(FCfactor),)])
+prototypes['μv']  = dict(description="Electronic-vibrational transition moment",units="au", kind='f',  fmt='<10.5e', infer=[(('M','χp','χpp','R'), lambda self,M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),)],) # could infer from S but then sign would be unknown
+prototypes['μ']   = dict(description="Electronic-vibrational-rotational transition moment",units="au", kind='f',  fmt='<10.5e', infer=[(('M','χp','χpp','R'), lambda self,M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),)],) # could infer from S but then sign would be unknown
+def _f0(self,fv,ν,Λp,Λpp):
+    """Convert a summed band fvalue into a band_strength."""
+    Sv = fv/3.038e-6/ν
+    Sv[(Λpp==0)&(Λp!=0)] /= 2 # divisor of (2-δ(0,Λ")δ(0,Λ'))/(2-δ(0,Λ')
+    return(Sv)
+def _f1(self,Aev,ν,Λp,Λpp):
+    """Convert an average band emission rate a band_strength"""
+    Sv = Aev/2.026e-6/v**3
+    Sv[(Λp==0)&(Λpp!=0)] /= 2.
+    return(Sv)
+prototypes['Sv'] =dict(description="Band strength, ⟨vp|Re|vpp⟩**2",units="au", kind='f',  fmt='<10.5e',cast=cast_abs_float_array, infer=[
+    (('Sij','SJ'), lambda self,Sij,SJ: Sij/SJ),
+    ( ('μ',),lambda self,μ:μ**2),
+    (('fv','ν','Λp','Λpp'),lambda self,fv,ν,Λp,Λpp: band_fvalue_to_band_strength(fv,ν,Λp,Λpp)),
+    (('fv','νv','Λp','Λpp'),lambda self,fv,νv,Λp,Λpp : band_fvalue_to_band_strength(fv,νv,Λp,Λpp)),
+    (('Aev','ν','Λp','Λpp'),lambda self,Aev,ν,Λp,Λpp : band_emission_rate_to_band_strength(Aev,ν,Λp,Λpp )),
+    ( ('Aev','νv','Λp','Λpp'), lambda self,Aev,νv,Λp,Λpp: band_emission_rate_to_band_strength(Aev,νv,Λp,Λpp),)],)
+def _f1(self,f,SJ,J_l,Λ_u,Λ_l):
+    """Get band fvalues from line strength"""
+    fv = f/SJ*(2.*J_l+1.)       # correct? What about 2S+1?
+    fv[(Λ_l==0)&(Λ_u!=0)] *= 2
+    return fv
+prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',step=1e-4,cast=cast_abs_float_array,infer=[
+    (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  band_strength_to_band_fvalue(Sv,ν, Λ_u,Λ_l)),
+    ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
+    ( ('f','SJ','J_l','Λ_u','Λ_l'), _f1,)])
+prototypes['Aev'] =dict(description="Einstein A coefficient / emission rate averaged over a band.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('Sv','ν' ,'Λp','Λpp'), lambda self,Sv,ν ,Λp,Λpp: band_strength_to_band_emission_rate(Sv,ν ,Λp,Λpp)),( ('Sv','νv','Λp','Λpp'), lambda self,Sv,νv,Λp,Λpp: band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp),)],) 
+prototypes['σv'] =dict(description="Integrated cross section of an entire band.",units="cm2.cm-1", kind='f',  fmt='<10.5e', infer=[(('fv',),lambda self,fv: band_fvalue_to_band_cross_section(fv),)],)
+prototypes['Sij'] =dict(description=" strength",units="au", kind='f',  fmt='<10.5e', infer=[
+    (('μ',), lambda self,μ: μ**2),
+    (('Sv','SJ'), lambda self,Sv,SJ:  Sv*SJ),
+    ( ('f','ν','J_l'), lambda self,f,ν,J_l: f/3.038e-6/ν*(2*J_l+1)),
+    ( ('Ae','ν','J_u'), lambda self,Ae,ν,J_u: Ae/(2.026e-6*ν**3/(2*J_u+1)),)])
+prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('f','ν','J_u','J_l'), lambda self,f,ν,J_u,J_l: f*0.666886/(2*J_u+1)*(2*J_l+1)*ν**2),( ('Sij','ν','J_u'), lambda self,Sij,ν,J_u: Sij*2.026e-6*ν**3/(2*J_u+1))],)
+prototypes['FCfactor'] =dict(description="Franck-Condon factor",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R'), lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)])),],)
+prototypes['Rcentroid'] =dict(description="R-centroid",units="Å", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R','FCfactor'), lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)])),])
+
+def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
+    """Compute singlet state rotational linestrength factors."""
+    if not (np.all(S_u==0) and np.all(S_l==0)):
+        warnings.warn('Honl-London factors used for rotational linestrengths of multiplet states')
+    SJ = quantum_numbers.honl_london_factor(Ω_u,Ω_l,J_u,J_l,return_zero_on_fail=True)
+    return SJ
+prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
+
+## photoemission 
+prototypes['Finstr'] = dict(description="Instrument photoemission detection efficiency",units='dimensionless',kind='f',fmt='<7.3e',infer=[((),lambda self: 1.)])
+prototypes['I'] = dict(description="Spectrally-integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",units='not_well_defined',kind='f',fmt='<10.5e',infer=[(('Finstr','Ae','α_u','ν'),lambda self,Finstr,Ae,α_u,ν: Finstr*Ae*α_u*ν,)],)
+
+## vibrational interaction energies
+prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
+prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
+prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
+prototypes['ξDv'] = dict(description="Higher-roder reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
+
+## parity from transition selection
+def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
+    retval = copy(ef)
+    i = ΔJ==0
+    retval[i] *= -1
+    return retval
+prototypes['ef_u']['infer'].append((('ΔJ','ef_l'),_parity_selection_rule_upper_or_lower))
+prototypes['ef_l']['infer'].append((('ΔJ','ef_u'),_parity_selection_rule_upper_or_lower))
 
 
-# ## partition functions
-# def _f3(self,species,Tex,E_u,E_l,g_u,g_l,Σ_l,Σ_u,ef_l,ef_u):
-    # """Compute partition function from data in self."""
-    # if self['Zsource'] != 'self':
-        # raise InferException(f'Zsource not "self".')
-    # Z = np.full(len(species),0.)
-    # ## calculate separately for all (species,Tex) combinations
-    # for (speciesi,Texi),i in tools.unique_combinations_mask(species,Tex):
-        # i = tools.find(i)
-        # kT = convert.units(constants.Boltzmann,'J','cm-1')*Texi
-        # ## sum for all unique upper levels
-        # k = []
-        # for qn,j in tools.unique_combinations_mask(
-                # *[self[key+'_u'][i] for key in self._level_class.defining_qn]
-        # ):
-            # k.append((i[j])[0])
-        # Z[i] += np.sum(g_u[k]*np.exp(-E_u[k]/kT))
-        # ## sum for all unique lower levels
-        # k = []
-        # for qn,j in tools.unique_combinations_mask(
-                # *[self[key+'_l'][i] for key in self._level_class.defining_qn]):
-            # k.append((i[j])[0])
-        # Z[i] += np.sum(g_l[k]*np.exp(-E_l[k]/kT))
-    # return Z
-# def _f5(self,species,Tex):
-    # if self.attributes['Zsource'] != 'HITRAN':
-        # raise InferException(f'Zsource not "HITRAN".')
-    # from . import hitran
-    # return hitran.get_partition_function(species,Tex)
-# def _f4(self,species,Tex):
-    # """Compute partition function from data in self."""
-    # if self['Zsource'] != 'database':
-        # raise InferException(f'Zsource not "database"')
-    # return database.get_partition_function(species,Tex,self['Eref'])
-# prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e', infer=[
-    # (('species','Tex'),_f5),
-    # (('species','Tex'),_f4),
-    # (('species','Tex','E_u','E_l','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
-    # (('species','Tvib','Trot','E_u','E_l','Tv_l','Gv_u','g_u','g_l','Σ_l','Σ_u','ef_l','ef_u'),_f3),
-# ])
-# prototypes['Z'] = dict(description="Partition function including both upper and lower levels.", kind='f', fmt='<11.3e',infer=[])
-# prototypes['Z_l']['infer'].append((('Z'),lambda self,Z:Z))
-# prototypes['Z_u']['infer'].append((('Z'),lambda self,Z:Z))
-# prototypes['Z']['infer'].append((('Z_l','Z_u'),lambda self,Z_l,Z_u:Z_u+Z_l))
+def _collect_prototypes(level_class,base_class,new_keys):
+    ## collect all prototypes
+    default_prototypes = {}
+    for key in level_class.default_prototypes:
+        default_prototypes[key+'_l'] = prototypes[key+'_l']
+        default_prototypes[key+'_u'] = prototypes[key+'_u']
+    if base_class is not None:
+        for key in base_class.default_prototypes:
+            default_prototypes[key] = prototypes[key]
+    for key in new_keys:
+        default_prototypes[key] = prototypes[key]
+    ## get defining qn from levels
+    defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
+                        +[key+'_l' for key in level_class.defining_qn])
+
 
 ## vibrational transition frequencies
 prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
@@ -362,12 +393,7 @@ prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixi
 prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
 prototypes['ξDv'] = dict(description="Higher-roder reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
 
-
-
-
-
-
-## parity transition selection rules
+## parity from transition selection
 def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
     retval = copy(ef)
     i = ΔJ==0
@@ -376,25 +402,42 @@ def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
 prototypes['ef_u']['infer'].append((('ΔJ','ef_l'),_parity_selection_rule_upper_or_lower))
 prototypes['ef_l']['infer'].append((('ΔJ','ef_u'),_parity_selection_rule_upper_or_lower))
 
+
 def _collect_prototypes(level_class,base_class,new_keys):
     ## collect all prototypes
     default_prototypes = {}
     for key in level_class.default_prototypes:
-        default_prototypes[key+'_l'] = prototypes[key+'_l']
-        default_prototypes[key+'_u'] = prototypes[key+'_u']
+        default_prototypes[key+'_l'] = deepcopy(prototypes[key+'_l'])
+        default_prototypes[key+'_u'] = deepcopy(prototypes[key+'_u'])
     if base_class is not None:
         for key in base_class.default_prototypes:
-            default_prototypes[key] = prototypes[key]
+            default_prototypes[key] = deepcopy(prototypes[key])
     for key in new_keys:
-        default_prototypes[key] = prototypes[key]
+        default_prototypes[key] = deepcopy(prototypes[key])
     ## get defining qn from levels
     defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
                         +[key+'_l' for key in level_class.defining_qn])
-    ## add infer functions from encoded qn for defining qn
+    ## add infer functions for 'qnhash' and 'qn' to and from
+    ## defining_qn
+    if 'qnhash' in default_prototypes:
+        default_prototypes['qnhash']['infer'].append(
+            (defining_qn, lambda self,*qn:
+                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+    if 'qnhash_u' in default_prototypes:
+        default_prototypes['qnhash_u']['infer'].append(
+            ([f'{key}_u' for key in level_class.defining_qn], lambda self,*qn:
+                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+    if 'qnhash_l' in default_prototypes:
+        default_prototypes['qnhash_l']['infer'].append(
+            ([f'{key}_l' for key in level_class.defining_qn], lambda self,*qn:
+                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+    if 'qn' in default_prototypes:
+        default_prototypes['qn']['infer'].append(
+            (defining_qn, lambda self,*defining_qn:
+                     [self.encode_qn({key:self[key][i] for key in defining_qn}) for i in range(len(self))]))
     for key in defining_qn:
         default_prototypes[key]['infer'].append(
-            ('qn',
-             lambda self,qn,key=key: levels._get_key_from_qn(self,qn,key)))
+            ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
     return level_class,defining_qn,default_prototypes
 
 class Generic(levels.Base):
@@ -403,7 +446,7 @@ class Generic(levels.Base):
         level_class=levels.Generic,
         base_class=levels.Base,
         new_keys=(
-            'reference','_qnhash','qn',
+            'reference','qnhash','qn',
             'species', 'point_group','mass','Zsource',
             'Eref',
             'ν','ν0', # 'λ',

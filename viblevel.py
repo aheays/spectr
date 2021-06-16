@@ -41,13 +41,13 @@ class VibLevel(Optimiser):
         self.Zsource = Zsource
         self.Eref = Eref
         tkwargs = {'auto_defaults':True,'permit_nonprototyped_data':False}
-        self.manifolds = {}
+        self._manifolds = {}
         self._shifts = []       # used to shift individual levels after diagonalisation
         self.level = levels.Diatomic(name=f'{self.name}.level',**tkwargs)
         self.level.pop_format_input_function()
         self.level.add_suboptimiser(self)
         self.level.pop_format_input_function()
-        self.vibrational_spin_level = levels.Diatomic(**tkwargs) 
+        self.vibrational_spin_level = levels.Diatomic(**tkwargs)
         self.interactions = Dataset() 
         self.verbose = False
         self.sort_eigvals = True # try to reorder eigenvalues/eigenvectors after diagonalisation into diabatic levels
@@ -225,9 +225,13 @@ class VibLevel(Optimiser):
             iend = ibeg + n
             _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend'] = n,ef,Σ,fH,ibeg,iend
             ## add manifold data and list of vibrational_spin_levels
-            if name in self.manifolds:
+            if name in self._manifolds:
                 raise Exception(f'Non-unique name: {repr(name)}')
-            self.manifolds[name] = dict(ibeg=ibeg,iend=iend,ef=ef,Σ=Σ,n=len(ef),**kw) 
+            self._manifolds[name] = dict(ibeg=ibeg,iend=iend,ef=ef,Σ=Σ,n=len(ef),**kw)
+            ## set values missing in existing data to 0
+            for key in kw:
+                if key not in self.vibrational_spin_level:
+                    self.vibrational_spin_level[key] = 0
             self.vibrational_spin_level.extend(
                 keys='new',ef=ef,Σ=Σ,
                 # **{key:kw[key] for key in ('species','label','S','Λ','s','v','gu') if key in kw},)
@@ -246,7 +250,7 @@ class VibLevel(Optimiser):
     def add_spline_width(self,name,knots,ef=None,Σ=None,order=3):
         """Add complex width to manifold 'name' according to the given spline knots.. If ef and Σ are not none then set these levels only."""
         ## load data about this level from name
-        kw = self.manifolds[name]
+        kw = self._manifolds[name]
         ibeg = kw['ibeg']
         ## get indices to add width to
         i = np.full(kw['n'],True)
@@ -277,8 +281,8 @@ class VibLevel(Optimiser):
         """Add spin-orbit coupling of two manifolds."""
         ## get matrix cache of matrix elements
         if self._clean_construct:
-            kw1 = self.manifolds[name1]
-            kw2 = self.manifolds[name2]
+            kw1 = self._manifolds[name1]
+            kw2 = self._manifolds[name2]
             ## get coupling matrices -- cached
             JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
                 kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)

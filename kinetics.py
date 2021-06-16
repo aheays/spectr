@@ -244,9 +244,10 @@ class Species:
                     continue
                 elif r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
                     isotopes.append((
-                        r.group(1),
-                        None,
-                        int(r.group(2) if r.group(2) != '' else 1)))
+                        r.group(1), # element
+                        None,       # isotope mass number
+                        int(r.group(2) if r.group(2) != '' else 1) # multiplicity
+                    ))
                 else:
                     raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
         ## e.g., [12C][16O]2
@@ -286,6 +287,11 @@ class Species:
                         int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)))
                 else:
                     raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+        ## neutral diatomic isotoploogues e.g., 12C16O
+        elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)([0-9]*)([A-Z][a-z]?)$',name):
+            charge = 0
+            isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
+            isotopes.append((r.group(4),(None if r.group(3) == '' else int(r.group(3))),1))
         else:
             raise Exception(f'Could not decode species named: {repr(name)}')
         self._isotopes = tuple(isotopes)

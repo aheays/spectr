@@ -60,7 +60,7 @@ prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f',
 prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
 
 ## level energies
-prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','_qnhash','Eref'),lambda self,species,_qnhash,Eref: database.get_level_energy(species,Eref,_qnhash=_qnhash)),]) 
+prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','qnhash','Eref'),lambda self,species,qnhash,Eref: database.get_level_energy(species,Eref,qnhash=qnhash)),]) 
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','E0'),lambda self,E,E0: E+E0),],default_step=1e-3)
 prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f',default=0,infer=[])
 prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eres'),lambda self,E,Eres: E+Eres)])
@@ -189,7 +189,7 @@ def _f4(self,species,Tex,Eref,Zsource):
         raise InferException(f'Zsource not all "database"')
     Z = database.get_partition_function(species,Tex,Eref)
     return Z
-def _f3(self,species,Tex,E,Eref,g,_qnhash,Zsource):
+def _f3(self,species,Tex,E,Eref,g,qnhash,Zsource):
     """Compute partition function from data in self. For unique
     combinations of T/species sum over unique level energies. Always
     referenced to E0."""
@@ -200,15 +200,15 @@ def _f3(self,species,Tex,E,Eref,g,_qnhash,Zsource):
     retval = np.full(species.shape,nan)
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     for speciesi,i in tools.unique_combinations_masks(species):
-        t,j = np.unique(_qnhash[i],return_index=True)
+        t,j = np.unique(qnhash[i],return_index=True)
         retval[i] = np.sum(g[i][j]*np.exp(-(E[i][j]-Eref[i][j])/(kB*Tex[0])))
     return retval
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tex','E','Eref','g','_qnhash','Zsource'),_f3),
+    (('species','Tex','E','Eref','g','qnhash','Zsource'),_f3),
     (('species','Tex','Eref','Zsource'),_f5),
     (('species','Tex','Eref','Zsource'),_f4),
 ])
-def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
+def _f6(self,species,Tvib,Eref,Tv,v,qnhash,Zsource):
     """Compute partition function from data in self with separate
      vibrational temperature. Compute separately for
     different species and sum over unique levels only."""
@@ -219,14 +219,14 @@ def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
         raise InferException("Non-unique Tvib")
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     for speciesi,i in tools.unique_combinations_masks(species):
-        t,j = np.unique(_qnhash[i],return_index=True)
+        t,j = np.unique(qnhash[i],return_index=True)
         t,k = np.unique(v[i][j],return_index=True)
         Zvib[i] = np.sum(np.exp(-(Tv[i][j][k]-Eref[i][j][k])/(kB*Tvib[0])))
     return Zvib
 prototypes['Zvib'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tvib','Eref','Tv','v','_qnhash','Zsource'),_f6),
+    (('species','Tvib','Eref','Tv','v','qnhash','Zsource'),_f6),
 ])
-def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
+def _f6(self,species,Trot,E,Tv,g,v,qnhash,Zsource):
     """Compute partition function from data in self with separate
      vibrational temperature. Compute separately for
     different species and sum over unique levels only."""
@@ -237,11 +237,11 @@ def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     Zrot = np.full(species.shape,nan)
     for (speciesi,vi),i in tools.unique_combinations_masks(species,v):
-        t,j = np.unique(_qnhash[i],return_index=True)
+        t,j = np.unique(qnhash[i],return_index=True)
         Zrot[i] = np.sum(np.exp(-(E[i][j]-Tv[i][j])/(kB*Trot[0])))
     return Zrot
 prototypes['Zrot'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Trot','E','Tv','g','v','_qnhash','Zsource'),_f6),
+    (('species','Trot','E','Tv','g','v','qnhash','Zsource'),_f6),
 ])
 
 ## level populations
@@ -417,26 +417,9 @@ prototypes['SR'] = dict(description="Signed projection of spin angular momentum 
     (('Λ','S','Σ','s','ef','LSsign'), _f6), # most general case
 ])
 
-def _f0(self):
-    for key in self.defining_qn:
-        if not self.is_known(key):
-            raise InferException(f'Cannot infer _qnhash because {key} not known')
-    _qnhash = np.empty(len(self),dtype=int)
-    for i,qn in enumerate(zip(*[self[key] for key in self.defining_qn])):
-        _qnhash[i] = hash(qn)
-    self._set_value('_qnhash',_qnhash,dependencies=self.defining_qn)
-    return None
-prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[((),_f0),])
-
-def _f0(self):
-    """Encoded defining quantum numbers into a string."""
-    for key in self.defining_qn:
-        if not self.is_known(key):
-            raise InferException(f'Cannot infer qn because {key} not known')
-    encoded_qn = [self.encode_qn({key:self[key][i] for key in self.defining_qn}) for i in range(len(self))]
-    self._set_value('qn',encoded_qn,dependencies=self.defining_qn)
-    return None
-prototypes['qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[((),_f0)])
+## derived from defining quantum numbers
+prototypes['qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[])
+prototypes['qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[])
 
 
 
@@ -510,12 +493,21 @@ def _get_key_from_qn(self,qn,key):
         raise InferException('Could not determine from qn: {str(err)}')
 
 def _collect_prototypes(*keys,defining_qn=()):
-    default_prototypes = {key:prototypes[key] for key in keys}
-    ## add infer functions from encoded qn for defining qn
+    ## collect from module prototypes list
+    default_prototypes = {key:deepcopy(prototypes[key]) for key in keys}
+    ## add infer functions for 'qnhash' and 'qn' to and from
+    ## defining_qn
+    if 'qnhash' in default_prototypes:
+        default_prototypes['qnhash']['infer'].append(
+            (defining_qn, lambda self,*qn:
+                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+    if 'qn' in default_prototypes:
+        default_prototypes['qn']['infer'].append(
+            (defining_qn, lambda self,*qn:
+                     [self.encode_qn({key:qni[j] for (key,qni) in zip(defining_qn,qn)}) for j in range(len(self))]))
     for key in defining_qn:
         default_prototypes[key]['infer'].append(
-            ('qn',
-             lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
+            ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
     return default_prototypes
 
 class Base(Dataset):
@@ -556,49 +548,9 @@ class Base(Dataset):
     def default_zlabel_format_function(self,*args,**kwargs):
         return self.encode_qn(*args,**kwargs)
 
-    # @optimise_method(format_lines='single')
-    # def set_by_qn(self,encoded_qn=None,_cache=None,**defining_qn_and_parameters):
-        # """Set parameters to all data matching quantum numbers."""
-        # if self._clean_construct:
-            # qn,p = {},{}
-            # for key,val in defining_qn_and_parameters.items():
-                # if key in self.defining_qn:
-                    # qn[key] = val
-                # else:
-                    # p[key] = val
-            # if encoded_qn is not None:
-                # qn = qn | self.decode_qn(encoded_qn)
-            # i = self.match(qn)
-            # _cache['p'],_cache['i'] = p,i
-        # p,i = _cache['p'],_cache['i']
-        # for key,val in p.items():
-            # ## only set changed values
-            # j = self[key,i] != val
-            # ikey = copy(i)
-            # ikey[i] = j
-            # self.set(key,val,index=ikey)
-            # ## self.set(key,val,index=i)
-
-    # @optimise_method(add_construct_function=False,add_format_input_function=True,format_lines='single',execute_now=True)
-    # def set_by_qn(self,**kwargs):
-        # """Set some data to fixed values or optimised parameters, limiting
-        # setting to matching defining quantum numbers, all given as key word
-        # arguments."""
-        # ## collect quantum numbers and set data
-        # qn,p = {},{}
-        # for key,val in kwargs.items():
-            # if key in self.defining_qn:
-                # qn[key] = val
-            # else:
-                # p[key] = val
-        # ## set data
-        # for key,val in p.items():
-            # self.set_parameter(key,val,match=qn)
-            # self.pop_format_input_function()
-
     def assert_unique_qn(self,verbose=False):
         """Assert no two levels/lines are the same"""
-        t,i,c = np.unique(self['_qnhash'],return_index=True,return_counts=True)
+        t,i,c = np.unique(self['qnhash'],return_index=True,return_counts=True)
         if len(i) < len(self):
             j = [ti for ti,tc in zip(i,c) if tc > 1]
             if verbose or self.verbose:
@@ -623,6 +575,12 @@ class Base(Dataset):
                 keys_vals.setdefault(key,val)
         return Dataset.match(self,keys_vals)
 
+    def find_common(x,y,keys=None,verbose=False):
+        """Default keys to defining_qn."""
+        if keys is None:
+            keys = x.defining_qn
+        return Dataset.find_common(self,x,y,keys=keys,verbose=verbose)
+        
 class Generic(Base):
     """A generic level."""
     defining_qn = ('species','label','ef','J')
@@ -630,7 +588,7 @@ class Generic(Base):
     default_zkeys = ('species','label','ef')
     default_prototypes = _collect_prototypes(
         'species','label','ef','J',
-        'reference','_qnhash',
+        'reference','qnhash',
         'chemical_species',
         'point_group',
         'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres',
@@ -640,8 +598,7 @@ class Generic(Base):
         'Teq','Tex',
         'Zsource','Z','α',
         'Nself',
-        defining_qn=defining_qn
-    )
+        defining_qn=defining_qn)
 
     def encode_qn(self,qn):
         """Encode qn into a string"""
@@ -652,12 +609,12 @@ class Generic(Base):
         return quantum_numbers.decode_linear_level(encoded_qn)
     
 class Atomic(Generic):
-    default_prototypes = _collect_prototypes(
-        *Generic.default_prototypes,
-        'conf','L','gu','lande_g','term'
-    )
     defining_qn = ('species','conf','J','S',)
     default_zkeys = ('species',)
+    default_prototypes = _collect_prototypes(
+        *Generic.default_prototypes,
+        'conf','L','gu','lande_g','term',
+        defining_qn=defining_qn)
 
     def load_from_nist(self,filename):
         """Load NIST tab-separated atomic levels data file."""
@@ -703,13 +660,13 @@ class Atomic(Generic):
         self['S'] = S
 
 class Linear(Generic):
+    defining_qn = ('species','label','ef','J')
+    default_zkeys = ('species','label','ef','Σ')
     default_prototypes = _collect_prototypes(
         *Generic.default_prototypes,
         'Λ','s','Σ','SR','Ω','Fi','LSsign',
         'i','gu','σv','sa','ef',
-    )
-    defining_qn = ('species','label','ef','J')
-    default_zkeys = ('species','label','ef','Σ')
+        defining_qn=defining_qn)
 
     def encode_qn(self,qn_dict):
         """Encode qn into a string"""
@@ -721,14 +678,16 @@ class Linear(Generic):
 
 class Triatomic(Linear):
     """A generic level."""
+    defining_qn = ('species','label','ef','ν1','ν2','ν3','l2','J')
+    defining_zkeys = ('species','label','ef','ν1','ν2','ν3','l2')
     default_prototypes = _collect_prototypes(
         *Linear.default_prototypes,
         'ν1','ν2','ν3','l2',
-    )
-    defining_qn = ('species','label','ef','ν1','ν2','ν3','l2','J')
-    defining_zkeys = ('species','label','ef','ν1','ν2','ν3','l2')
+        defining_qn=defining_qn)
 
 class Diatomic(Linear):
+    defining_qn = ('species','label','v','Σ','ef','J')
+    default_zkeys = ('species','label','v','Σ','ef')
     default_prototypes = _collect_prototypes(
         *Linear.default_prototypes,
         'v',
@@ -744,9 +703,7 @@ class Diatomic(Linear):
         'pDv','qDv',
         'Tvreduced','Tvreduced_common',
         'Bv_μscaled',
-    )
-    defining_qn = ('species','label','v','Σ','ef','J')
-    default_zkeys = ('species','label','v','Σ','ef')
+        defining_qn=defining_qn)
 
     def load_from_duo(self,filename):
         """Load an output level list computed by DUO (yurchenko2016)."""

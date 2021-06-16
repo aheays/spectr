@@ -789,20 +789,26 @@ def encode_level(qn):
         retval = retval + '('+','.join(t)+')'
     return retval
 
-# def decode_branch(branch):
-    # """Expect e.g., P13ee, P11, P1, P. Return as dict."""
-    # t = {'O':-2,'P':-1,'Q':0,'R':1,'S':2}
-    # branch = branch.strip()
-    # if re.match(r'^[OPQRS][0-9][0-9][ef][ef]$',branch):
-        # return(dict(ΔJ = t[branch[0]], Fp = branch[1], Fpp = branch[2], efp = branch[3], efpp = branch[4],))
-    # elif re.match(r'^[OPQRS][0-9][0-9]$',branch):
-        # return(dict(ΔJ = t[branch[0]], Fp = branch[1], Fpp = branch[2],))
-    # elif re.match(r'^[OPQRS][0-9][0-9]$',branch):
-        # return(dict(ΔJ = t[branch[0]], Fp = branch[1], Fpp = branch[1],))
-    # elif re.match(r'^[OPQRS]$',branch):
-        # return(dict(ΔJ = t[branch[0]]))
-    # else:
-        # raise InvalidEncodingException("Branch format unknown: "+repr(branch))
+_decode_branch_ΔJ_letter = {'O':-2,'P':-1,'Q':0,'R':1,'S':2}
+_decode_branch_ef_letter = {'e':+1,'f':-1,}
+@tools.cache
+def decode_branch(branch):
+    """Expect e.g., P13ee, P11, P1, P. Return as dict."""
+    branch = branch.strip()
+    if r:=re.match(r'^([OPQRS])([0-9])([0-9])([ef])([ef])$',branch):
+        return {'ΔJ': _decode_branch_ΔJ_letter[r.group(1)],
+                'Fi_u': int(r.group(2)),
+                'Fi_l': int(r.group(3)),
+                'ef_u': _decode_branch_ef_letter[r.group(4)],
+                'ef_l': _decode_branch_ef_letter[r.group(5)]}
+    elif r:=re.match(r'^([OPQRS])([0-9])([0-9])$',branch):
+        return {'ΔJ': _decode_branch_ΔJ_letter[r.group(1)],
+                'Fi_u': int(r.group(2)),
+                'Fi_l': int(r.group(3)),}
+    elif r:=re.match(r'^([OPQRS])$',branch):
+        return {'ΔJ': _decode_branch_ΔJ_letter[r.group(1)],}
+    else:
+        raise InvalidEncodingException(f"Cannot decode branch: {repr(branch)}")
 
 # def decode_electronic_term_symbol(term):
     # """Get quantum numbers form e.g. 1Σ+, 3Πg"""
