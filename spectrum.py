@@ -527,7 +527,7 @@ class Model(Optimiser):
                 return y
             y = _calculate_spectrum(line_copy,None)
             ## important data — only update spectrum if these have changed
-            data = {key:line_copy[key] for key in ('ν',ykey,'Γ','ΓD') if line_copy.is_known(key)}
+            data = {key:line_copy[key] for key in ('ν',ykey,'ΓL','ΓD') if line_copy.is_known(key)}
             ## cache
             (_cache['data'],_cache['y'],
              _cache['imatch'],_cache['nmatch'],
@@ -820,7 +820,7 @@ class Model(Optimiser):
                 x=self.x,
                 x0=lines['ν'][i],
                 S=lines['τ'][i],
-                ΓL=lines['Γ'][i],
+                ΓL=lines['ΓL'][i],
                 ΓG=lines['ΓD'][i],
                 νvc=lines['νvc'][i],
                 Smin=τmin,
@@ -836,75 +836,6 @@ class Model(Optimiser):
     def add_noise(self,rms=1):
         """Add normally distributed noise with given rms."""
         self.y += rms*tools.randn(len(self.y))
-
-    # def add_emission_lines(
-            # self,
-            # lines,
-            # nfwhmL=None,
-            # nfwhmG=None,
-            # Imin=None,
-            # gaussian_method=None,
-            # voigt_method=None,
-            # use_multiprocessing=None,
-            # use_cache=None,
-            # **optimise_keys_vals):
-        # self.add_suboptimiser(lines) # to model rebuilt when transition changed
-        # # self.transitions.append(transition)   
-        # name = f'add_emission_lines {lines.name} to {self.name}'
-        # # assert name not in self.emission_intensities,f'Non-unique name in emission_intensities: {repr(name)}'
-        # # self.emission_intensities[name] = None
-        # p = self.add_parameter_set(**optimise_keys_vals,note=name)
-        # cache = {}
-        # def construct_function():
-            # ## first call -- no good, x not set yet
-            # if self.experiment is None:
-                # # self.emission_intensities[name] = None
-                # return
-            # ## recompute spectrum
-            # if (cache =={}
-                # # or self.emission_intensities[name] is None # currently no spectrum computed
-                # or self.timestamp<lines.timestamp # transition has changed
-                # or self.timestamp<p.timestamp     # optimise_keys_vals has changed
-                # or self._xchanged
-                # ):
-                # ## update optimise_keys_vals that have changed
-                # for key,val in p.items():
-                    # if (not lines.is_set(key)
-                        # or np.any(lines[key]!=val)):
-                        # lines[key] = val
-                # ## that actual computation
-                # x,y = lines.calculate_spectrum(
-                    # x=self.x,
-                    # ykey='I',
-                    # nfwhmG=(nfwhmG if nfwhmG is not None else 10),
-                    # nfwhmL=(nfwhmL if nfwhmL is not None else 100),
-                    # ymin=Imin,
-                    # ΓG='ΓD',
-                    # ΓL='Γ',
-                    # # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran stepwise'),
-                    # gaussian_method=(gaussian_method if gaussian_method is not None else 'fortran'),
-                    # voigt_method=(voigt_method if voigt_method is not None else 'wofz'),
-                    # use_multiprocessing=(use_multiprocessing if use_multiprocessing is not None else False),
-                    # use_cache=(use_cache if use_cache is not None else True),
-                # )
-                # cache['intensity'] = y
-            # ## add emission intensity to the overall model
-            # self.y += cache['intensity']
-        # self.add_construct_function(construct_function)
-        # ## new input line
-        # def f():
-            # retval = f'{self.name}.add_emission_lines({lines.name}'
-            # if nfwhmL is not None: retval += f',nfwhmL={repr(nfwhmL)}'
-            # if nfwhmG is not None: retval += f',nfwhmG={repr(nfwhmG)}'
-            # if Imin is not None: retval += f',Imin={repr(Imin)}'
-            # if use_multiprocessing is not None: retval += f',use_multiprocessing={repr(use_multiprocessing)}'
-            # if use_cache is not None: retval += f',use_cache={repr(use_cache)}'
-            # if voigt_method is not None: retval += f',voigt_method={repr(voigt_method)}'
-            # if gaussian_method is not None: retval += f',gaussian_method={repr(gaussian_method)}'
-            # if len(p)>0: retval += f',{p.format_input()}'
-            # return(retval+')')
-        # self.add_format_input_function(f)
-        
 
     def set_residual_weighting(self,weighting,xbeg=None,xend=None):
         """Set the weighting or residual between xbeg and xend to a
@@ -1617,45 +1548,80 @@ class Model(Optimiser):
         ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
         self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
 
-    def add_soleil_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
-        """Adds two copies of soleil spectrum onto the model (after
-        convolution with instrument function perhaps). One copy shifted up by
-        shift(cm-1) and one shifted down. Shifted up copy is scaled by
-        magnitude, copy shifted down is scaled by -magnitude. This is to deal
-        with periodic errors aliasing the spectrum due to periodic
-        vibrations."""
-        filename = self.experiment.experimental_parameters['filename']
-        x,y,header = load_soleil_spectrum_from_file(filename)
-        yshifted ={'left':None,'right':None}
-        p = self.add_parameter_set('add_soleil_double_shifted_delta_function',
-                                   magnitude=magnitude,shift=shift,
-                                   step_default={'magnitude':1e-3,'shift':1e-3},)
-        previous_shift = [p['shift']]
-        self.add_format_input_function(lambda: f'{self.name}.add_soleil_double_shifted_delta_function({p.format_input()})')
-        def f():
-            ## +shift from left -- use cached value of splined shifted
-            ## spectrum if shift has not changed
-            ## positive for this shift
-            if yshifted['left'] is None or p['shift']!=previous_shift[0]:
-                i = tools.inrange(self.x,x-p['shift'])
-                j = tools.inrange(x+p['shift'],self.x)
-                dy = tools.spline(x[j]+p['shift'],y[j],self.x[i])
-                yshifted['left'] = (i,dy)
-            else:
-                i,dy = yshifted['left']
-            self.y[i] += dy*p['magnitude']
-            ## -shift from right -- use cached value of splined
-            ## shifted spectrum if shift has not changed, magnitude is
-            ## negative for this shift
-            if yshifted['right'] is None or p['shift']!=previous_shift[0]:
-                i = tools.inrange(self.x,x+p['shift'])
-                j = tools.inrange(x-p['shift'],self.x)
-                dy = tools.spline(x[j]-p['shift'],y[j],self.x[i])
-                yshifted['right'] = (i,dy)
-            else:
-                i,dy = yshifted['right']
-            self.y[i] += dy*p['magnitude']*-1
-        self.add_construct_function(f)
+    # def add_soleil_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
+        # """Adds two copies of soleil spectrum onto the model (after
+        # convolution with instrument function perhaps). One copy shifted up by
+        # shift(cm-1) and one shifted down. Shifted up copy is scaled by
+        # magnitude, copy shifted down is scaled by -magnitude. This is to deal
+        # with periodic errors aliasing the spectrum due to periodic
+        # vibrations."""
+        # filename = self.experiment.experimental_parameters['filename']
+        # x,y,header = load_soleil_spectrum_from_file(filename)
+        # yshifted ={'left':None,'right':None}
+        # p = self.add_parameter_set('add_soleil_double_shifted_delta_function',
+                                   # magnitude=magnitude,shift=shift,
+                                   # step_default={'magnitude':1e-3,'shift':1e-3},)
+        # previous_shift = [p['shift']]
+        # self.add_format_input_function(lambda: f'{self.name}.add_soleil_double_shifted_delta_function({p.format_input()})')
+        # def f():
+            # ## +shift from left -- use cached value of splined shifted
+            # ## spectrum if shift has not changed
+            # ## positive for this shift
+            # if yshifted['left'] is None or p['shift']!=previous_shift[0]:
+                # i = tools.inrange(self.x,x-p['shift'])
+                # j = tools.inrange(x+p['shift'],self.x)
+                # dy = tools.spline(x[j]+p['shift'],y[j],self.x[i])
+                # yshifted['left'] = (i,dy)
+            # else:
+                # i,dy = yshifted['left']
+            # self.y[i] += dy*p['magnitude']
+            # ## -shift from right -- use cached value of splined
+            # ## shifted spectrum if shift has not changed, magnitude is
+            # ## negative for this shift
+            # if yshifted['right'] is None or p['shift']!=previous_shift[0]:
+                # i = tools.inrange(self.x,x+p['shift'])
+                # j = tools.inrange(x-p['shift'],self.x)
+                # dy = tools.spline(x[j]-p['shift'],y[j],self.x[i])
+                # yshifted['right'] = (i,dy)
+            # else:
+                # i,dy = yshifted['right']
+            # self.y[i] += dy*p['magnitude']*-1
+        # self.add_construct_function(f)
+
+    @optimise_method(format_lines='single')
+    def set_soleil_sidebands(self,yscale=0.1,shift=1000,signum_magnitude=None,_cache=None):
+        """Adds two copies of spectrum onto itself shifted rightwards and
+        leftwards by shift (cm-1) and scaled by ±yscale."""
+        ## load and cache spectrum
+        if self._clean_construct:
+            x,y,header = load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
+            _cache['x'],_cache['y'] = x,y
+        x,y = _cache['x'],_cache['y']
+        ## get signum convolution kernel
+        if signum_magnitude is not None:
+            dx = (x[-1]-x[0])/(len(x)-1)
+            nconv = int(10/dx)
+            xconv = np.linspace(-nconv,nconv,2*nconv+1)
+            yconv = np.full(len(xconv),1.0)
+            i = xconv!=0
+            yconv[i] = 1/xconv[i]*signum_magnitude
+        ## shift from left
+        i = ((x+shift) >= self.x[0]) & ((x+shift) <= self.x[-1])
+        xi,yi = x[i]+shift,y[i]
+        j = (self.x>=xi[0]) & (self.x<=xi[-1])
+        sideband = yscale*tools.spline(xi,yi,self.x[j])
+        if signum_magnitude is not None:
+            sideband = signal.oaconvolve(sideband,yconv,'same')
+        self.y[j] += sideband
+        ## shift from right
+        i = ((x-shift) >= self.x[0]) & ((x-shift) <= self.x[-1])
+        xi,yi = x[i]-shift,y[i]
+        j = (self.x>=xi[0]) & (self.x<=xi[-1])
+        sideband = yscale*tools.spline(xi,yi,self.x[j])
+        if signum_magnitude is not None:
+            sideband = signal.oaconvolve(sideband,yconv,'same')
+        self.y[j] -= sideband
+
         
     def plot(
             self,

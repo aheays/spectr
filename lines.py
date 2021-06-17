@@ -197,12 +197,14 @@ prototypes['HT_νVC'] = dict(description='Frequency of velocity changing collisi
 prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-Tran profile',units='dimensionless',kind='f',infer=[(('HITRAN_HT_η',),lambda self,η:η),])
 
 
+## Lorentzian linewidth
+prototypes['Γn'] = dict(description="Natural Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',default=0.0,infer=[
+    (('Γ_u','Γ_l'),lambda self,Γu,Γl: Γu+Γl),
+])
+prototypes['Γ_l']['infer'].append((('Γn','Γ_u'),lambda self,Γn,Γu: Γn-Γu))
+prototypes['Γ_u']['infer'].append((('Γn','Γ_l'),lambda self,Γn,Γl: Γn-Γl))
 
-## linewidths
-prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or transition" ,units="cm-1.FWHM", kind='f', fmt='<10.5g',default=0.0,infer=[
-    ## manually input all permutations of broadening affects --  could
-    ## use 'self' in a function but then infer connections will not be
-    ## made
+prototypes['Γp'] = dict(description="Pressure-broadening Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',default=0.0,infer=[
     (('Γself','Γair','ΓX'),lambda self,Γ0,Γ1,Γ2: Γ0+Γ1+Γ2),
     (('Γself','Γair'),lambda self,Γ0,Γ1: Γ0+Γ1),
     (('Γself','ΓX'),lambda self,Γ0,Γ1: Γ0+Γ1),
@@ -211,10 +213,16 @@ prototypes['Γ'] = dict(description="Total Lorentzian linewidth of level or tran
     ('Γair' ,lambda self,Γ0: Γ0),
     ('ΓX',lambda self,Γ0: Γ0),
 ])
-prototypes['Γ']['infer'].append((('Γ_u','Γ_l'),lambda self,Γu,Γl: Γu+Γl))
-prototypes['Γ_l']['infer'].append((('Γ','Γ_u'),lambda self,Γ,Γu: Γ-Γu))
-prototypes['Γ_u']['infer'].append((('Γ','Γ_l'),lambda self,Γ,Γl: Γ-Γl))
+
+prototypes['ΓL'] = dict(description="Total Lorentzian linewidth of transition" ,units="cm-1.FWHM", kind='f', fmt='<10.5g',default=0.0,infer=[
+    (('Γn','Γp'),lambda self,Γ0,Γ1: Γ0+Γ1),
+    ('Γn',lambda self,Γ0: Γ0),
+    ('Γp' ,lambda self,Γ0: Γ0),
+])
+
+## Gaussian linewidth
 prototypes['ΓD'] = dict(description="Gaussian Doppler width",units="cm-1.FWHM",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,)])
+prototypes['ΓG'] = dict(description="Total Gaussian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g', infer=[('ΓD',lambda self,Γ:Γ),])
 
 ## line frequencies
 prototypes['ν0'] = dict(description="Transition wavenumber in a vacuum",units="cm-1", kind='f', fmt='>0.6f', default_step=1e-3, infer=[])
@@ -455,7 +463,8 @@ class Generic(levels.Base):
             'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr',
             'Nself',
             'Teq','Tex','Ttr',
-            'Γ','ΓD',
+            # 'Γ','ΓD',
+            'Γn','Γp','ΓD','ΓL','ΓG',
             ## pressure broadening stuff
             'mJ_l',
             'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
@@ -468,6 +477,15 @@ class Generic(levels.Base):
     default_xkey = 'J_u'
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
       
+    def load(self,*args,**kwargs):
+        """Hack to auto translate some keys."""
+        if 'translate_keys' not in kwargs or kwargs['translate_keys'] is None:
+            kwargs['translate_keys'] = {}
+        kwargs['translate_keys'] |= {
+            'Γ':'ΓL',
+            }
+        Dataset.load(self,*args,**kwargs)
+
     def encode_qn(self,qn):
         """Encode qn into a string"""
         return quantum_numbers.encode_linear_line(qn)
@@ -624,11 +642,11 @@ class Generic(levels.Base):
                 return x,np.zeros(x.shape)
         ## guess a default lineshape
         if lineshape is None:
-            if self.is_known('Γ','ΓD') and np.any(self['Γ']!=0) and np.any(self['ΓD']!=0):
+            if self.is_known('ΓL','ΓG') and np.any(self['ΓL']!=0) and np.any(self['ΓG']!=0):
                 lineshape = 'voigt'
-            elif self.is_known('Γ') and np.any(self['Γ']!=0):
+            elif self.is_known('ΓL') and np.any(self['ΓL']!=0):
                 lineshape = 'lorentzian'
-            elif self.is_known('ΓD') and np.any(self['ΓD']!=0):
+            elif self.is_known('ΓG') and np.any(self['ΓG']!=0):
                 lineshape = 'gaussian'
             else:
                 raise Exception(f"Cannot determine lineshape because both Γ and ΓD are unknown or zero")
@@ -661,7 +679,6 @@ class Generic(levels.Base):
         if index is not None:
             i = np.full(len(self),False)
             i[index] = True
-
         else:
             i = np.full(len(self),True)
         ## neglect lines out of x-range -- NO ACCOUNTING FOR EDGES!!!!
@@ -671,25 +688,25 @@ class Generic(levels.Base):
             i &= self[ykey] > ymin
         ## get line function and arguments
         if lineshape is None:
-            if self.is_known('Γ','ΓD'):
+            if self.is_known('ΓL','ΓG'):
                 lineshape = 'voigt'
-            elif self.is_known('Γ'):
+            elif self.is_known('ΓL'):
                 lineshape = 'lorentzian'
-            elif self.is_known('ΓD'):
+            elif self.is_known('ΓG'):
                 lineshape = 'gaussian'
             else:
                 raise Exception("No lineshape has computable widths.") 
         if lineshape == 'voigt':
             line_function = lineshapes.voigt
-            line_args = (self[xkey][i],self[ykey][i],self['Γ'][i],self['ΓD'][i])
+            line_args = (self[xkey][i],self[ykey][i],self['ΓL'][i],self['ΓG'][i])
             line_kwargs = dict(nfwhmL=nfwhmL,nfwhmG=nfwhmG)
         elif lineshape == 'gaussian':
             line_function = lineshapes.gaussian
-            line_args = (self[xkey][i],self[ykey][i],self['ΓD'][i])
+            line_args = (self[xkey][i],self[ykey][i],self['ΓG'][i])
             line_kwargs = dict(nfwhm=nfwhmG)
         elif lineshape == 'lorentzian':
             line_function = lineshapes.lorentzian
-            line_args = (self[xkey][i],self[ykey][i],self['Γ'][i])
+            line_args = (self[xkey][i],self[ykey][i],self['ΓL'][i])
             line_kwargs = dict(nfwhm=nfwhmL)
         elif lineshape == 'hartmann-tran':
             if xkey != 'ν':
@@ -1023,19 +1040,33 @@ class Generic(levels.Base):
                 # self.set(key,val[ichanged],index=ilines[ichanged])
 
     @optimise_method(add_construct_function=False)
-    def generate_dipole_allowed_lines_from_levels(
+    def generate_from_levels(
             self,
             levelu,levell,      # upper and lower level objects
-            matchu=idict(),     # only use matching upper levels
-            matchl=idict(),     # only use matching lower levels
-            _cache=()
+            match=None,      # only keep these matching liens
+            matchu=None,     # only use matching upper levels
+            matchl=None,     # only use matching lower levels
+            add_duplicate=False, # whether to add a duplicate if line is already present
+            _cache=(),
+            **defaults
     ):
         """Combine upper and lower levels into a line list, only including
         dipole-allowed transitions. SLOW IMPLEMENTATION"""
         ## get matching upper and lower level indices
+        if matchu is None:
+            matchu = {}
+        if matchl is None:
+            matchl = {}
+        ## limit match upper and lower levels further if match
+        if match is not None:
+            if 'encoded_qn' in match:
+                match |= self.decode_qn(match.pop('encoded_qn'))
+            tu,tl = quantum_numbers.separate_upper_lower(match)
+            matchu |= tu
+            matchl |= tl
         iu = tools.find(levelu.match(matchu))
         il = tools.find(levell.match(matchl))
-        ## collect indices pairs of allowed transitions
+        ## collect indices pairs of dipole-allowed transitions
         ku,kl = [],[]
         for species in np.unique(levelu['species'][iu]):
             ## indices of common species
@@ -1050,12 +1081,20 @@ class Generic(levels.Base):
                             ku.append(ju)
                             kl.append(jl)
         ## collect allowed data
-        data = {}
+        data = dataset.make(self.classname,**defaults)
         for key in levelu:
             data[key+'_u'] = levelu[key][ku]
         for key in levell:
             data[key+'_l'] = levell[key][kl]
-        self.extend(data,keys='all')
+        ## remove duplicates
+        if not add_duplicate:
+            i = tools.isin(data['qnhash'],self['qnhash'])
+            data = data[~i]
+        ## remove unwanted lines
+        if match is not None:
+            data.limit_to_match(match)
+        ## add to self
+        self.concatenate(data,keys='all',)
 
     @optimise_method()
     def copy_level_data(
@@ -1214,7 +1253,7 @@ class Linear(Generic):
     def set_spline_fv_PQR(
             self,
             xkey='J_u',
-            ykey='fv',
+            key='fv',
             Qknots=None,
             Δknots=None,
             order=3,
@@ -1223,7 +1262,7 @@ class Linear(Generic):
             index=None,
             _cache=None,
             **match_kwargs):
-        """Set ykey to spline function of xkey defined by knots at
+        """Set key to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
         given, then only set these."""
         ## To do: cache values or match results so only update if
@@ -1254,24 +1293,30 @@ class Linear(Generic):
         xQspline,yQspline = _cache['xQspline'],_cache['yQspline']
         xΔspline,yΔspline = _cache['xΔspline'],_cache['yΔspline']
         ## set data
-        if not self.is_known(ykey):
+        if not self.is_known(key):
             if default is None:
-                raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
+                raise Exception(f'Setting {repr(key)} to spline but it is not known and no default value if provided')
             else:
-                self[ykey] = default
+                self[key] = default
         ## compute splined values
         Qy = tools.spline(xQspline,yQspline,self[xkey,Qindex],order=order)
         Py = (tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order) + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order))
         Ry = (tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order) - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order))
         ## set data
-        self.set(ykey,value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
-        self.set(ykey,value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
-        self.set(ykey,value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
+        self.set(key,value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
+        self.set(key,value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
+        self.set(key,value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
         ## set uncertainties to NaN
-        if self.is_set((ykey,'unc')):
-            self.set((ykey,'unc'),nan,index=Qindex)
-            self.set((ykey,'unc'),nan,index=Pindex)
-            self.set((ykey,'unc'),nan,index=Rindex)
+        if self.is_set((key,'unc')):
+            self.set((key,'unc'),nan,index=Qindex)
+            self.set((key,'unc'),nan,index=Pindex)
+            self.set((key,'unc'),nan,index=Rindex)
+        ## set vary to False if set, but only on the first execution
+        if 'not_first_execution' not in _cache:
+            if 'vary' in self._data[key]['assoc']:
+                self.set((key,'vary'),False,index=index)
+            _cache['not_first_execution'] = True
+
 
 
     # def set_effective_rotational_linestrengths(self,Ω_u,Ω_l):
