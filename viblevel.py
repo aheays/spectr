@@ -130,13 +130,13 @@ class VibLevel(Optimiser):
             if self.experimental_level is not None:
                 ## get all experimental_levels for defined
                 ## levels, nan for missing
-                self.level['Eref'] = nan
-                self.level['Γref'] = nan
+                self.level['Eexp'] = nan
+                self.level['Γexp'] = nan
                 iexp,imod = dataset.find_common(self.experimental_level,self.level,keys=self.level.defining_qn)
-                self.level['Eref'][imod] = self.experimental_level['E'][iexp]
-                self.level['Eref','unc'][imod] = self.experimental_level['E','unc'][iexp]
-                self.level['Γref'][imod] = self.experimental_level['Γ'][iexp]
-                self.level['Γref','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
+                self.level['Eexp'][imod] = self.experimental_level['E'][iexp]
+                self.level['Eexp','unc'][imod] = self.experimental_level['E','unc'][iexp]
+                self.level['Γexp'][imod] = self.experimental_level['Γ'][iexp]
+                self.level['Γexp','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
                 self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
         else:
             if self.experimental_level is not None:
@@ -168,7 +168,7 @@ class VibLevel(Optimiser):
                     i = self.vibrational_spin_level.match(ef=ef)
                     i = i[self.vibrational_spin_level.match(Ω_max=J)]
                     j = self.level.match(J=J,ef=ef,Ω_max=J)
-                    k = _permute_to_minimise_difference(eigvals[i],self.level.get('Eref',j))
+                    k = _permute_to_minimise_difference(eigvals[i],self.level.get('Eexp',j))
                     eigvals[i] = eigvals[i][k]
                     eigvects[np.ix_(i,i)] = eigvects[np.ix_(i,i)][np.ix_(k,k)]
             ## save eigenvalues
@@ -301,14 +301,18 @@ class VibLevel(Optimiser):
             self.H[:,i+ibeg,j+jbeg] += t
             self.H[:,j+jbeg,i+ibeg] += np.conj(t)
 
-    def plot(self,fig=None,**plot_kwargs):
+    def plot(
+            self,
+            fig=None,
+            ylim_Eresidual=None,
+            **plot_kwargs,):
         """Plot data and residual error."""
         if fig is None:
             fig = plotting.gcf()
         fig.clf()
-
-        ax0 = plotting.subplot(0,fig=fig)
-        ax0.set_title('E')
+        ## 
+        axE = plotting.subplot(0,fig=fig)
+        axE.set_title('E')
         legend_data = []
         for ilevel,(qn,m) in enumerate(self.level.unique_dicts_matches('species','label','v')):
             for isublevel,(qn2,m2) in enumerate(m.unique_dicts_matches('Σ','ef')):
@@ -322,36 +326,39 @@ class VibLevel(Optimiser):
                 legend_data.append(tkwargs)
 
 
-
                 if self.experimental_level is None:
                     tkwargs = plot_kwargs
-                    ax0.plot(m2['J'],m2['E'],**tkwargs)
+                    axE.plot(m2['J'],m2['E'],**tkwargs)
                 else:
-                    ax1 = plotting.subplot(1,fig=fig)
-                    ax1.set_title('Eres')
+                    ## plot E residual
+                    axEres = plotting.subplot(1,fig=fig)
+                    axEres.set_title('Eres')
                     tkwargs = plot_kwargs | {'marker':'',}
-                    ax0.plot(m2['J'],m2['E'],**tkwargs)
+                    axE.plot(m2['J'],m2['E'],**tkwargs)
                     tkwargs = plot_kwargs | {'linestyle':'',}
-                    ax0.errorbar(m2['J'],m2['Eref'],m2['Eref','unc'],**tkwargs)
-                    ax1.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**tkwargs)
+                    axE.errorbar(m2['J'],m2['Eexp'],m2['Eexp','unc'],**tkwargs)
+                    axEres.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**tkwargs)
 
                 if np.any(self.level['Γ'] > 0):
-                    ax2 = plotting.subplot(2,fig=fig)
-                    ax2.set_title('Γ')
+                    axΓ = plotting.subplot(2,fig=fig)
+                    axΓ.set_title('Γ')
                     if self.experimental_level is None:
                         tkwargs = plot_kwargs
-                        ax2.plot(m2['J'],m2['Γ'],**tkwargs)
+                        axΓ.plot(m2['J'],m2['Γ'],**tkwargs)
                     else:
-                        ax3 = plotting.subplot(3,fig=fig)
-                        ax3.set_title('Γres')
+                        axΓres = plotting.subplot(3,fig=fig)
+                        axΓres.set_title('Γres')
                         tkwargs = plot_kwargs | {'marker':'',}
-                        ax2.plot(m2['J'],m2['Γ'],**tkwargs)
+                        axΓ.plot(m2['J'],m2['Γ'],**tkwargs)
                         tkwargs = plot_kwargs | {'linestyle':'',}
-                        ax2.errorbar(m2['J'],m2['Γref'],m2['Γref','unc'],**tkwargs)
-                        ax3.errorbar(m2['J'],m2['Γres'],m2['Γres','unc'],**tkwargs)
+                        axΓ.errorbar(m2['J'],m2['Γexp'],m2['Γexp','unc'],**tkwargs)
+                        axΓres.errorbar(m2['J'],m2['Γexp'],m2['Γexp','unc'],**tkwargs)
+
+        if ylim_Eresidual is not None:
+            axEres.set_ylim(ylim_Eresidual)
 
 
-        plotting.legend(*legend_data,show_style=True,ax=ax0)
+        plotting.legend(*legend_data,show_style=True,ax=axE)
 
         
 class VibLine(Optimiser):
@@ -551,10 +558,10 @@ def _get_linear_H(S,Λ,s):
         for j,(Σj,efj) in enumerate(zip(Σs,efs)):
             if efi != efj:
                 continue
-            # ef = (1 if efi=='e' else -1) # Here ef is +1 for 'e' and -1 for 'f'
             ## 1Π state
-            if Λ>0 and S==0: 
-                if efi=='f' and efj=='f': H[i,j] += p['qv']*J*(J+1)   # coefficient
+            if Λ>0 and S==0:
+                if efi==-1 and efj==-1:
+                    H[i,j] += p['qv']*J*(J+1)   # coefficient
             ## is ef=1 for e, ef=-1 for f 2Π states, amiot1981
             ## table II, there are more distortion constants,
             ## which I have not included here, but could be
@@ -562,9 +569,9 @@ def _get_linear_H(S,Λ,s):
             ## multiplication?
             elif Λ==1 and S==0.5:
                 for i,(Σi,efi) in enumerate(zip(Σs,efs)):
-                    efi = (1 if efi=='e' else -1)
+                    efi = (1 if efi==+1 else -1)
                     for j,(Σj,efj) in enumerate(zip(Σs,efs)):
-                        efj = (1 if efj=='e' else -1)
+                        efj = (1 if efj==+1 else -1)
                         if efi!=efj: continue
                         ## diagonal elseement for level 2 in amiot1981
                         if   Σi==-0.5 and Σj==-0.5:
@@ -1077,12 +1084,15 @@ def calc_viblevel(
     v.construct()
     return v
 
-def calc_level(*args_viblevel,**kwargs_viblevel):
+def calc_level(*args_viblevel,match=None,**kwargs_viblevel):
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_level, add_spline_width etc."""
     v = calc_viblevel(*args_viblevel,**kwargs_viblevel)
-    return v.level
+    if match is not None:
+        return v.level.matches(match)
+    else:
+        return v.level
 
 def calc_line(
         species=None,J_l=None,ΔJ=None,
