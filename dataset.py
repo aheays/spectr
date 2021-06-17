@@ -509,7 +509,7 @@ class Dataset(optimise.Optimiser):
             _cache['index'],sort_order = self._get_combined_index(index,match,**match_kwargs)
             assert sort_order is None
         index = _cache['index']
-        self.set(key,value=value,index=index,set_changed_only=True)
+        self.set(key,value=value,index=index,set_changed_only= True)
         if self._clean_construct and isinstance(value,Parameter):
             self.set((key,'unc'),value.unc,index=index)
             self.set((key,'step'),value.step,index=index)
@@ -974,8 +974,8 @@ class Dataset(optimise.Optimiser):
             copy_inferred_data= True,
         )
 
-    def limit_to_match(self,**keys_vals):
-        self.index(self.match(**keys_vals))
+    def limit_to_match(self,*match_args,**match_kwargs):
+        self.index(self.match(*match_args,**match_kwargs))
 
     def remove_match(self,*match_args,**match_keys_vals):
         self.index(~self.match(*match_args,**match_keys_vals))
@@ -1338,7 +1338,8 @@ class Dataset(optimise.Optimiser):
             quote_strings=False,
             quote_keys=False,
         )
-
+        # return self.format_flat()
+            
     def save(self,filename,keys=None,**format_kwargs):
         """Save some or all data to a file."""
         if keys is None:
