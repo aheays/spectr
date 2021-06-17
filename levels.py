@@ -146,8 +146,8 @@ prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", 
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[(('A',),lambda self,τ: 5.309e-12*A,)])
-prototypes['Γref'] = dict(description="Reference level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[])
-prototypes['Γres'] = dict(description="Residual error of level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[(('Γ','Γref'),lambda self,Γ,Γref: Γ-Γref)])
+prototypes['Γexp'] = dict(description="Reference level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[])
+prototypes['Γres'] = dict(description="Residual error of level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[(('Γ','Γexp'),lambda self,Γ,Γexp: Γ-Γexp)])
 prototypes['τ'] = dict(description="Total decay lifetime",units="s", kind='f', infer=[(('A',), lambda self,A: 1/A,)])       
 prototypes['A'] = dict(description="Total decay rate",units="s-1", kind='f', infer=[(('Γ',),lambda self,Γ: Γ/5.309e-12,)])
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',fmt='g',infer=[])
@@ -555,7 +555,7 @@ class Base(Dataset):
             j = [ti for ti,tc in zip(i,c) if tc > 1]
             if verbose or self.verbose:
                 print('\nNon-unique levels:\n')
-                print(self[j])
+                print(self[j].format_flat())
                 print()
             raise Exception(f"There are {len(j)} sets of quantum numbers that are repeated (set verbose=True to print).")
 
@@ -571,6 +571,7 @@ class Base(Dataset):
             keys_vals = {}
         keys_vals = keys_vals | kwargs 
         if 'encoded_qn' in keys_vals:
+            self.decode_qn(keys_vals['encoded_qn'])
             for key,val in self.decode_qn(keys_vals.pop('encoded_qn')).items():
                 keys_vals.setdefault(key,val)
         return Dataset.match(self,keys_vals)
@@ -591,8 +592,8 @@ class Generic(Base):
         'reference','qnhash',
         'chemical_species',
         'point_group',
-        'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres',
-        'Γ','Γref','Γres',
+        'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres','Eexp',
+        'Γ','Γexp','Γres',
         'N','S',
         'g','gnuclear','Inuclear',
         'Teq','Tex',
