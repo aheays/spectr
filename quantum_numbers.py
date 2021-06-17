@@ -11,6 +11,7 @@ from immutabledict import immutabledict as idict
 
 from .dataset import Dataset
 from . import tools
+from . import kinetics
 from .tools import vectorise
 
 # ## non-standard library
@@ -18,6 +19,10 @@ from .tools import vectorise
 
 ## form here
 from .exceptions import DatabaseException,InvalidEncodingException
+
+
+
+
 
 # def allowed_level(**qn):
     # """Return bool or array of bools if quantum number are an acceptable
@@ -112,7 +117,7 @@ from .exceptions import DatabaseException,InvalidEncodingException
             # if qnj[key] not in qni[key]: return(False)
     # return(True)
 
-def separate_upper_lower_quantum_numbers(qn):
+def separate_upper_lower(qn):
     """Divide quantum numbers into upper and lower level dictionaries and
     remove 'p' and 'pp' suffices."""
     qnl,qnu = {},{}
@@ -121,11 +126,14 @@ def separate_upper_lower_quantum_numbers(qn):
             qnl[key[:-2]] = val
         elif len(key)>2 and key[-2:]=='_u':
             qnu[key[:-2]] = val
+        elif key in ('species',):
+            qnu[key] = val
+            qnl[key] = val
         else:
             raise Exception(f"Could not categorise as upper or lower quantum number: {repr(key)} = {repr(val)}")
     return qnu,qnl
 
-def join_upper_lower_quantum_numbers(qn_u,qn_l):
+def join_upper_lower(qn_u,qn_l):
     """Upper and lower level quantum numnbers get 'p' or 'pp' suffices
     added and returned as a single dictionary."""
     qn = {}
@@ -255,123 +263,206 @@ def encode_rotational_transition(qn):
     name = _translate_ΔJ[qn['ΔJ']]
     return name
 
-translate_Λ = {'O':-2,'P':-1,'Q':0,'R':1,'S':2}
 
-def decode_rotational_transition(name,return_separately=False):
-    """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
-    upper,lower,Δ = {},{},{}
-    t = name
-    if len(t)==0:
-        return data
-    ## get Δ['J']
-    Δ['J'] = translate_Λ[t[0]]
-    t = t[1:]
-    if len(t)>0:
-        ## look for FpFppefpefpp
-        if re.match(r'([0-9]{2}[ef]{2}).*',t):
-            upper['Fi'] = int(t[0])
-            upper['ef'] = t[2]
-            lower['Fi'] = int(t[1])
-            lower['ef'] = t[3]
-            t = t[4:]
-    ## look for ΔJ
-    if len(t)>0:
+_decode_ΔJ = {'O':-2,'P':-1,'Q':0,'R':1,'S':2}
+def decode_ΔJ(encoded):
+    return _decode_ΔJ[encoded]
+
+_decode_Λ = {'Σ':0,'Σ⁺':0,'Σ⁻':0,'Π':1,'Φ':2,'Γ':3}
+def decode_Λ(encoded):
+    return _decode_Λ[encoded]
+
+_decode_Λs = {'Σ+':(0,0),'Σ-':(0,1), 'Σ⁺':(0,0),'Σ⁻':(0,1), 'Π':(1,0),'Φ':(2,0),'Γ':(1,0)}
+def decode_Λs(encoded):
+    return _decode_Λs[encoded]
+    
+_decode_ef = {'e':+1,'f':-1,}
+def decode_ef(encoded):
+    return _decode_ef[encoded]
+    
+_decode_gu = {'g':+1,'u':-1,}
+def decode_gu(encoded):
+    return _decode_gu[encoded]
+
+_decode_sa = {'s':+1,'a':-1,}
+def decode_sa(encoded):
+    return _decode_sa[encoded]
+
+def decode_comma_separated_equalities(encoded):
+    """E.g,. decode 'a=1,b=2.53' into {'a':1,'b':2.53}. COULD IMPLEMENT
+    NON-NUMERIC DATA."""
+    retval = {}
+    for pair in encoded.split(','):
+        key,val = pair.split('=')
         try:
-            lower['J'] = float(t)
-            upper['J'] = lower['J'] + Δ['J']
+            retval[key.strip()] = int(val)
         except ValueError:
-            raise InvalidEncodingException('Invalid encoding for rotational transition '+repr(name))
-    ## return dict
-    if return_separately:
-        return (upper,lower,Δ)
+            try:
+                retval[key.strip()] = float(val)
+            except ValueError:
+                raise InvalidEncodingException(f'Could not decode comma separated equalities: {repr(encoded)}')
+    return retval
+
+# def decode_rotational_transition(encoded):
+#     """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
+#     ## e.g, P13ee7
+#     if r:=re.match(r'^([OPQRS])([0-9])([0-9])([ef])([ef])$',encoded):
+#         qn = {'ΔJ':decode_ΔJ(r.group(1)),
+#               'Fi_u':int(r.group(2)),
+#               'Fi_l':int(r.group(3)),
+#               'ef_u':decode_ef(r.group(4)),
+#               'ef_l':decode_ef(r.group(5))}
+#     ## e.g, P13
+#     elif r:=re.match(r'^([OPQRS])([0-9])([0-9])$',encoded):
+#         qn = {'ΔJ':decode_ΔJ(r.group(1)),
+#               'Fi_u':int(r.group(2)),
+#               'Fi_l':int(r.group(3))}
+#     ## e.g, P
+#     elif r:=re.match(r'^([OPQRS])$',encoded):
+#         qn = {'ΔJ':decode_ΔJ(r.group(1))}
+#     else:
+#         raise InvalidEncodingException(f'Could not decode rotational transition: {repr(encoded)}')
+#     return qn
+
+def decode_rotational_transition(encoded):
+    """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
+    ## e.g, P, P5, P13ee, P13ee5, P13ee5.5 
+    if r:=re.match(r'^([OPQRS])([0-9][0-9][ef][ef])?([0-9]+(?:\.[05])?)?$',encoded):
+        qn = {}
+        qn['ΔJ'] = decode_ΔJ(r.group(1))
+        if r.group(2) is not None:
+            qn['Fi_u'] = int(r.group(2)[0])
+            qn['Fi_l'] = int(r.group(2)[1])
+            qn['ef_u'] = decode_ef(r.group(2)[3])
+            qn['ef_l'] = decode_ef(r.group(2)[4])
+        if r.group(3) is not None:
+            try:
+                qn['J_l'] = int(r.group(3))
+            except ValueError:
+                qn['J_l'] = float(r.group(3))
     else:
-        retval = join_upper_lower_quantum_numbers(upper,lower)
-        for key,val in Δ.items():
-            retval['Δ'+key] = val
-        return retval 
+        raise InvalidEncodingException(f'Could not decode rotational transition: {repr(encoded)}')
+    return qn
+
+# @vectorise()
+# def decode_linear_level(name):
+#     """Decode something of the form 32S16O_A.3Π(v=0,Ω=1,J=5) etc."""
+#     name = name.replace('Sigma','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') 
+#     ## get all data
+#     data = dict()
+#     ## match species_term "species_term"
+#     if re.match(r'(?:([^_]+)_)?(.+)',name):
+#         r = re.match(r'(?:([^_]+)_)?(.+)',name)
+#         if r.group(1) is not None: data['species'] = r.group(1)
+#         term = r.groups()[1]
+#         ## term of the form b07 or o3_00 o3.00
+#         if re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term):
+#             r = re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term)
+#             data['label'] = r.group(1)
+#             data['v'] = float(r.group(2))
+#         elif re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term):
+#             r = re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term)
+#             data['label'] = r.groups()[0]
+#             data['v'] = float(r.groups()[1])
+#         ## term of the form c4.3Sigma-1e(0) etc
+#         elif re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term):
+#             r = re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term)
+#             if r.group(1) not in (None,''): data['label'] = r.group(1)
+#             if r.group(2) not in (None,''): data['S'] = float((int(r.group(2))-1)/2)
+#             if r.group(3) not in (None,''):
+#                 term_symbol = r.groups()[2]
+#                 data['s'] = 0
+#                 if   term_symbol=='Σ+': data['Λ'] = 0
+#                 elif term_symbol=='Σ-': data['Λ'],data['s'] = 0,1
+#                 elif term_symbol=='Π':  data['Λ'] = 1
+#                 elif term_symbol=='Δ':  data['Λ'] = 2
+#                 elif term_symbol=='Φ':  data['Λ'] = 3
+#             ## if not Σ/Π etc term symbol then this must be the vibrational level (in old system)
+#             if r.group(3) is None and r.group(4) is not None and re.match('[0-9]+',r.group(4)):
+#                 data['v'] = float(r.group(4))
+#                 rest = None
+#             ## otherwise must be electronic quantum numbers
+#             else:
+#                 rest = r.group(4)
+#             if rest is not None:
+#                 r = re.match(r'([^(]*)\((.*)\)',rest)
+#                 if r:
+#                     rest,parenthesised = r.groups()
+#                 else:
+#                     rest,parenthesised = rest,None
+#                 ## match rest
+#                 if r:=re.match(r'^([gu]?)([0-9]*)([ef+-]?)$',rest):
+#                     if r.group(1) == 'g':
+#                         data['gu'] = +1
+#                     elif r.group(1) == 'u':
+#                         data['gu'] = -1
+#                     if r.group(2) != '':
+#                         data['F'] = int(r.group(2))
+#                     if r.group(3) == 'e':
+#                         data['ef'] = +1
+#                     elif r.group(3) == 'f':
+#                         data['ef'] = -1
+#                     elif r.group(3) == '+':
+#                         data['σv'] = +1
+#                     elif r.group(3) == '-':
+#                         data['σv'] = -1
+#                 ## split parenthesised stuff on comma and look for v, J etc. Assume (v) of (v,J)
+#                 if parenthesised is not None:
+#                     x = re.split(r' *, *',parenthesised)
+#                     ## look for J=5 etc
+#                     for t in copy(x):
+#                         if r:=re.match(r' *([^ )]+) *= *([^ )]+) *',t):
+#                             data[r.group(1)] = r.group(2)
+#                             x.pop(x.index(t))
+#                     ## else assume (v) or (v,J)
+#                     if len(x)==1:
+#                         data['v'] = float(x[0])
+#                     if len(x)==2:
+#                         data['v'],data['J'] = float(x[0]),float(x[1])
+#         ## cast
+#         for key,val in data.items():
+#             if key in ('v','Λ','s','ef','gu','pm'):
+#                 data[key] = int(val)
+#             elif key in ('J','Ω','S','Σ','SR'):
+#                 data[key] = float(val)
+#     return data
 
 @vectorise()
-def decode_linear_level(name):
+def decode_linear_level(encoded):
     """Decode something of the form 32S16O_A.3Π(v=0,Ω=1,J=5) etc."""
-    name = name.replace('Sigma','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') 
-    ## get all data
-    data = dict()
-    ## match species_term "species_term"
-    if re.match(r'(?:([^_]+)_)?(.+)',name):
-        r = re.match(r'(?:([^_]+)_)?(.+)',name)
-        if r.group(1) is not None: data['species'] = r.group(1)
-        term = r.groups()[1]
-        ## term of the form b07 or o3_00 o3.00
-        if re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term):
-            r = re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term)
-            data['label'] = r.group(1)
-            data['v'] = float(r.group(2))
-        elif re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term):
-            r = re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term)
-            data['label'] = r.groups()[0]
-            data['v'] = float(r.groups()[1])
-        ## term of the form c4.3Sigma-1e(0) etc
-        elif re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term):
-            r = re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term)
-            if r.group(1) not in (None,''): data['label'] = r.group(1)
-            if r.group(2) not in (None,''): data['S'] = float((int(r.group(2))-1)/2)
-            if r.group(3) not in (None,''):
-                term_symbol = r.groups()[2]
-                data['s'] = 0
-                if   term_symbol=='Σ+': data['Λ'] = 0
-                elif term_symbol=='Σ-': data['Λ'],data['s'] = 0,1
-                elif term_symbol=='Π':  data['Λ'] = 1
-                elif term_symbol=='Δ':  data['Λ'] = 2
-                elif term_symbol=='Φ':  data['Λ'] = 3
-            ## if not Σ/Π etc term symbol then this must be the vibrational level (in old system)
-            if r.group(3) is None and r.group(4) is not None and re.match('[0-9]+',r.group(4)):
-                data['v'] = float(r.group(4))
-                rest = None
-            ## otherwise must be electronic quantum numbers
-            else:
-                rest = r.group(4)
-            if rest is not None:
-                r = re.match(r'([^(]*)\((.*)\)',rest)
-                if r:
-                    rest,parenthesised = r.groups()
-                else:
-                    rest,parenthesised = rest,None
-                ## match rest
-                if r:=re.match(r'^([gu]?)([0-9]*)([ef+-]?)$',rest):
-                    if r.group(1) == 'g':
-                        data['gu'] = +1
-                    elif r.group(1) == 'u':
-                        data['gu'] = -1
-                    if r.group(2) != '':
-                        data['F'] = int(r.group(2))
-                    if r.group(3) == 'e':
-                        data['ef'] = +1
-                    elif r.group(3) == 'f':
-                        data['ef'] = -1
-                    elif r.group(3) == '+':
-                        data['σv'] = +1
-                    elif r.group(3) == '-':
-                        data['σv'] = -1
-                ## split parenthesised stuff on comma and look for v, J etc. Assume (v) of (v,J)
-                if parenthesised is not None:
-                    x = re.split(r' *, *',parenthesised)
-                    ## look for J=5 etc
-                    for t in copy(x):
-                        if r:=re.match(r' *([^ )]+) *= *([^ )]+) *',t):
-                            data[r.group(1)] = r.group(2)
-                            x.pop(x.index(t))
-                    ## else assume (v) or (v,J)
-                    if len(x)==1:
-                        data['v'] = float(x[0])
-                    if len(x)==2:
-                        data['v'],data['J'] = float(x[0]),float(x[1])
-        ## cast
-        for key,val in data.items():
-            if key in ('v','Λ','s','ef','gu','pm'):
-                data[key] = int(val)
-            elif key in ('J','Ω','S','Σ','SR'):
-                data[key] = float(val)
-    return data
+    if '–' in encoded:
+        raise Exception(f'Encoded linear level contains "–", perhaps it is a line: {repr(encoded)}')
+    ## 32S16O_A.3Π(v=0,Ω=1,J=5)
+    if r:=re.match(r'^(.+_)?([^(]+)(\(.*\))?$',encoded):
+        qn = {}
+        ## get species
+        if r.group(1) is not None:
+            qn['species'] = decode_species(r.group(1)[:-1])
+        ## decode term.
+        term = r.group(2)
+        ## e.g., Ap
+        if r2:=re.match(r'^([A-Za-z]+[′″]?)?$',term):
+            qn['label'] = r2.group(1)
+        ## e.g., Ap.3Σ+g
+        elif r2:=re.match(r'^([A-Za-z]+[′″]?)?\.([0-9])?(Σ\+|Σ-|Π|Δ|Γ)([gu])?$',term):
+            qn['label'] = r2.group(1)
+            if r2.group(2) is not None:
+                qn['S'] = (float(r2.group(2))-1)/2
+            qn['Λ'],qn['s'] = decode_Λs(r2.group(3))
+            if r2.group(4) is not None:
+                qn['gu'] = decode_gu(r2.group(4))
+        ## e.g., Ap³Σ⁺g
+        elif r2:=re.match(r'^([A-Za-z]+[′″]?)?([⁰¹²³⁴⁵⁶⁷⁸⁹])?(Σ⁺|Σ⁻|Π|Δ|Γ)([gu])?$',term):
+            qn['label'] = r2.group(1)
+            if r2.group(2) is not None:
+                qn['S'] = (float(tools.regularise_unicode(r2.group(2)))-1)/2
+            qn['Λ'],qn['s'] = decode_Λs(r2.group(3))
+            if r2.group(4) is not None:
+                qn['gu'] = decode_gu(r2.group(4))
+        ## decode data in parentheses
+        if r.group(3) is not None:
+            qn |= decode_comma_separated_equalities(r.group(3)[1:-1])
+        return qn
 
 def encode_linear_level(qn=None,**more_qn):
     """Turn quantum numbers etc (as in decode_level) into a string name. """
@@ -398,7 +489,7 @@ def encode_linear_level(qn=None,**more_qn):
         elif Λ==3:
             retval = 'Φ'
         else:
-            raise Exception('Λ>3 not implemented')
+            raise InvalidEncodingException('Λ>3 not implemented')
         if Λ>0 and 's' in qn: qn.pop('s') # not needed
         if 'S' in qn:
             retval = str(int(2*float(qn.pop('S'))+1))+retval
@@ -409,7 +500,7 @@ def encode_linear_level(qn=None,**more_qn):
             elif gu == -1:
                 retval += 'u'
             else:
-                raise Exception(f'Invalid quantum number value: {gu=}')
+                raise InvalidEncodingException(f'Invalid quantum number value: {gu=}')
     ## add electronic state label
     if 'label' in qn and retval=='':
         retval =  qn.pop('label')
@@ -430,49 +521,75 @@ def encode_linear_level(qn=None,**more_qn):
         retval = retval + '('+','.join(t)+')'
     return retval
     
-def decode_linear_line(name,return_separately=False):
+# def decode_linear_line(name,return_separately=False):
+#     """Name must be in the form
+#     species_levelp-levelpp_rotationaltransition. Matched from beginning,
+#     and returns when matching runs out."""
+#     original_name = name
+#     name = name.replace(' ','') # all white space removed
+#     qn = dict()                 # determined quantum numbers
+#     ## look for rotational name as e.g., ..._P11fe23, if found
+#     ## decode and remove from name
+#     rot_qn_upper = rot_qn_lower = rot_qn_Δ = {}
+#     r = re.match(r'^(.*)_([^_–]+)$',name)
+#     if r:
+#         try:
+#             rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
+#             name = r.group(1)
+#         except InvalidEncodingException: # not a valid rotational name
+#             pass
+#     ## split upper and lower level
+#     name = name.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
+#     if r:=re.match(r'^([^–]+)–([^–]+)$',name):
+#         upper,lower = r.groups()
+#     else:
+#         raise Exception('Incorrectly encoded linear line name: No "–" present dividing upper and lowe levels.')
+#     upper,lower = decode_linear_level(upper),decode_linear_level(lower)
+#     ## add rotational qn if found above
+#     lower.update(rot_qn_lower)
+#     upper.update(rot_qn_upper)
+#     ## convert ensure upper/lower J is calculated from ΔJ if possible
+#     if 'J' in rot_qn_Δ:
+#         if 'J' in lower and 'J' not in upper:
+#             upper['J'] = lower['J'] + rot_qn_Δ['J']
+#         elif 'J' not in lower and 'J' in upper:
+#             lower['J'] = upper['J'] - rot_qn_Δ['J']
+#     ## assume common species if only given once
+#     if 'species' in upper and 'species' not in lower:
+#         lower['species'] = upper['species'] 
+#     if return_separately:
+#         return upper,lower
+#     else:
+#         retval = join_upper_lower(upper,lower)
+#         for key,val in rot_qn_Δ.items():
+#             retval['Δ'+key] = val
+#         return retval
+
+
+def decode_species(species):
+    """Try to normalise a species name."""
+    return kinetics.get_species(species).name
+
+
+def decode_linear_line(encoded):
     """Name must be in the form
     species_levelp-levelpp_rotationaltransition. Matched from beginning,
     and returns when matching runs out."""
-    original_name = name
-    name = name.replace(' ','') # all white space removed
-    qn = dict()                 # determined quantum numbers
-    ## look for rotational name as e.g., ..._P11fe23, if found
-    ## decode and remove from name
-    rot_qn_upper = rot_qn_lower = rot_qn_Δ = {}
-    r = re.match(r'^(.*)_([^_–]+)$',name)
-    if r:
-        try:
-            rot_qn_upper,rot_qn_lower,rot_qn_Δ  = decode_rotational_transition(r.group(2),return_separately=True)
-            name = r.group(1)
-        except InvalidEncodingException: # not a valid rotational name
-            pass
-    ## split upper and lower level
-    name = name.replace('Σ','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
-    if r:=re.match(r'^([^–]+)–([^–]+)$',name):
-        upper,lower = r.groups()
+    if '–' not in encoded:
+        raise Exception(f'Encoded linear line does not contain "–": {repr(encoded)}')
+
+    ## e.g., species_upper–lower_rot
+    if r:=re.match(r'([^_]+_)?([^–_]+)–([^–_]+)(_.+)?$',encoded):
+        qn = {}
+        if r.group(1) is not None:
+            qn |= {'species':decode_species(r.group(1)[:-1])}
+        qn |= {f'{key}_u':val for key,val in decode_linear_level(r.group(2)).items()}
+        qn |= {f'{key}_l':val for key,val in decode_linear_level(r.group(3)).items()}
+        if r.group(4) is not None:
+            qn |= decode_rotational_transition(r.group(4)[1:])
     else:
-        raise Exception('Incorrectly encoded linear line name: No "–" present dividing upper and lowe levels.')
-    upper,lower = decode_linear_level(upper),decode_linear_level(lower)
-    ## add rotational qn if found above
-    lower.update(rot_qn_lower)
-    upper.update(rot_qn_upper)
-    ## convert ensure upper/lower J is calculated from ΔJ if possible
-    if 'J' in rot_qn_Δ:
-        if 'J' in lower and 'J' not in upper:
-            upper['J'] = lower['J'] + rot_qn_Δ['J']
-        elif 'J' not in lower and 'J' in upper:
-            lower['J'] = upper['J'] - rot_qn_Δ['J']
-    ## assume common species if only given once
-    if 'species' in upper and 'species' not in lower:
-        lower['species'] = upper['species'] 
-    if return_separately:
-        return upper,lower
-    else:
-        retval = join_upper_lower_quantum_numbers(upper,lower)
-        for key,val in rot_qn_Δ.items():
-            retval['Δ'+key] = val
-        return retval
+        raise InvalidEncodingException(f"Could not decode linear line: {repr(encoded)}")
+    return qn
 
 def encode_linear_line(qn=None,qnl=None,qnu=None,):
     ## get all upper and lower qn
@@ -500,93 +617,93 @@ def encode_linear_line(qn=None,qnl=None,qnu=None,):
         retval += '_'+encode_rotational_transition(qn)
     return retval
 
-def decode_level(name):
-    """Decode something of the form 32S16O_A.3Π(v=0,Ω=1,J=5) etc."""
-    ## vectorise
-    if not np.isscalar(name):
-        data = [decode_level(namei) for namei in name]
-        retval = {key:[t[key] for t in data] for key in data[0].keys()}
-        return(retval)
-    name = name.replace('Sigma','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
-    ## HACK check if this is a transition if "-" present and raise an error if so
-    if re.match(r'.*[^Σ=]-.*',name): raise InvalidEncodingException(f'This looks like a transition not a level: {repr(name)}')
-    ## get all data
-    data = dict()
-    ## match species_term "species_term"
-    if re.match(r'(?:([^_]+)_)?(.+)',name):
-        r = re.match(r'(?:([^_]+)_)?(.+)',name)
-        if r.group(1) is not None: data['species'] = r.group(1)
-        term = r.groups()[1]
-        ## term of the form b07 or o3_00 o3.00
-        if re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term):
-            r = re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term)
-            data['label'] = r.group(1)
-            data['v'] = float(r.group(2))
-        elif re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term):
-            r = re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term)
-            data['label'] = r.groups()[0]
-            data['v'] = float(r.groups()[1])
-        ## term of the form c4.3Sigma-1e(0) etc
-        elif re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term):
-            r = re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term)
-            if r.group(1) not in (None,''): data['label'] = r.group(1)
-            if r.group(2) not in (None,''): data['S'] = float((int(r.group(2))-1)/2)
-            if r.group(3) not in (None,''):
-                term_symbol = r.groups()[2]
-                data['s'] = 0
-                if   term_symbol=='Σ+': data['Λ'] = 0
-                elif term_symbol=='Σ-': data['Λ'],data['s'] = 0,1
-                elif term_symbol=='Π':  data['Λ'] = 1
-                elif term_symbol=='Δ':  data['Λ'] = 2
-                elif term_symbol=='Φ':  data['Λ'] = 3
-            ## if not Σ/Π etc term symbol then this must be the vibrational level (in old system)
-            if r.group(3) is None and r.group(4) is not None and re.match('[0-9]+',r.group(4)):
-                data['v'] = float(r.group(4))
-                rest = None
-            ## otherwise must be electronic quantum numbers
-            else:
-                rest = r.group(4)
-            if rest is not None:
-                r = re.match(r'([^(]*)\((.*)\)',rest)
-                if r:
-                    rest,parenthesised = r.groups()
-                else:
-                    rest,parenthesised = rest,None
-                ## match rest
-                r = re.match(r'([gu]?)?([0-9]+)?([ef+-]?)?$',rest)
-                if r:
-                    if r.group(1) not in (None,''):
-                        data['gu'] = (+1 if r.group(1)=='g' else -1)
-                    if r.group(2) is not None:
-                        data['F'] = float(r.group(2))
-                    if r.group(3) not in (None,''):
-                        data['ef'] = (+1 if r.group(1)=='e' else -1)
-                ## split parenthesised stuff on comma and look for v, J etc. Assume (v) of (v,J)
-                if parenthesised is not None:
-                    x = re.split(r' *, *',parenthesised)
-                    ## look for J=5 etc
-                    for t in copy(x):
-                        r = re.match(r' *([^ )]+) *= *([^ )]+) *',t)
-                        if r:
-                            data[r.group(1)] = r.group(2)
-                            x.pop(x.index(t))
-                    ## else assume (v) or (v,J)
-                    if len(x)==1: data['v'] = float(x[0])
-                    if len(x)==2: data['v'],data['J'] = float(x[0]),float(x[1])
-        ## try get additional information by looking up spectral database
-        # if 'species' in data and 'label' in data:
-            # for key in ('Λ','S','s'):
-                # try:
-                    # data.setdefault(key,database.get_electronic_state_quantum_number(data['species'],data['label'],key))
-                # except DatabaseException:
-                    # pass
-        ## cast
-        for key,val in data.items():
-            if key in ('v','Λ','s',):
-                data[key] = int(val)
-            elif key in ('J','Ω','S','Σ','SR'):
-                data[key] = float(val)
-    return data
+# def decode_level(name):
+    # """Decode something of the form 32S16O_A.3Π(v=0,Ω=1,J=5) etc."""
+    # ## vectorise
+    # if not np.isscalar(name):
+        # data = [decode_level(namei) for namei in name]
+        # retval = {key:[t[key] for t in data] for key in data[0].keys()}
+        # return(retval)
+    # name = name.replace('Sigma','Σ').replace('Pi','Π').replace('Delta','Δ').replace('Phi','Φ') # hack to make greek symbols compatible
+    # ## HACK check if this is a transition if "-" present and raise an error if so
+    # if re.match(r'.*[^Σ=]-.*',name): raise InvalidEncodingException(f'This looks like a transition not a level: {repr(name)}')
+    # ## get all data
+    # data = dict()
+    # ## match species_term "species_term"
+    # if re.match(r'(?:([^_]+)_)?(.+)',name):
+        # r = re.match(r'(?:([^_]+)_)?(.+)',name)
+        # if r.group(1) is not None: data['species'] = r.group(1)
+        # term = r.groups()[1]
+        # ## term of the form b07 or o3_00 o3.00
+        # if re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term):
+            # r = re.match(r'^([a-zA-Z]+)([0-9]+)(?:_|$)',term)
+            # data['label'] = r.group(1)
+            # data['v'] = float(r.group(2))
+        # elif re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term):
+            # r = re.match(r'^([a-zA-Z0-9]+)\.([0-9]+)(?:_|$)',term)
+            # data['label'] = r.groups()[0]
+            # data['v'] = float(r.groups()[1])
+        # ## term of the form c4.3Sigma-1e(0) etc
+        # elif re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term):
+            # r = re.match(r" *([a-zA-Z'0-9]*)(?:.([0-9]*)(Σ\+|Σ-|Σ|Π|Δ))?(.*)? *$",term)
+            # if r.group(1) not in (None,''): data['label'] = r.group(1)
+            # if r.group(2) not in (None,''): data['S'] = float((int(r.group(2))-1)/2)
+            # if r.group(3) not in (None,''):
+                # term_symbol = r.groups()[2]
+                # data['s'] = 0
+                # if   term_symbol=='Σ+': data['Λ'] = 0
+                # elif term_symbol=='Σ-': data['Λ'],data['s'] = 0,1
+                # elif term_symbol=='Π':  data['Λ'] = 1
+                # elif term_symbol=='Δ':  data['Λ'] = 2
+                # elif term_symbol=='Φ':  data['Λ'] = 3
+            # ## if not Σ/Π etc term symbol then this must be the vibrational level (in old system)
+            # if r.group(3) is None and r.group(4) is not None and re.match('[0-9]+',r.group(4)):
+                # data['v'] = float(r.group(4))
+                # rest = None
+            # ## otherwise must be electronic quantum numbers
+            # else:
+                # rest = r.group(4)
+            # if rest is not None:
+                # r = re.match(r'([^(]*)\((.*)\)',rest)
+                # if r:
+                    # rest,parenthesised = r.groups()
+                # else:
+                    # rest,parenthesised = rest,None
+                # ## match rest
+                # r = re.match(r'([gu]?)?([0-9]+)?([ef+-]?)?$',rest)
+                # if r:
+                    # if r.group(1) not in (None,''):
+                        # data['gu'] = (+1 if r.group(1)=='g' else -1)
+                    # if r.group(2) is not None:
+                        # data['F'] = float(r.group(2))
+                    # if r.group(3) not in (None,''):
+                        # data['ef'] = (+1 if r.group(1)=='e' else -1)
+                # ## split parenthesised stuff on comma and look for v, J etc. Assume (v) of (v,J)
+                # if parenthesised is not None:
+                    # x = re.split(r' *, *',parenthesised)
+                    # ## look for J=5 etc
+                    # for t in copy(x):
+                        # r = re.match(r' *([^ )]+) *= *([^ )]+) *',t)
+                        # if r:
+                            # data[r.group(1)] = r.group(2)
+                            # x.pop(x.index(t))
+                    # ## else assume (v) or (v,J)
+                    # if len(x)==1: data['v'] = float(x[0])
+                    # if len(x)==2: data['v'],data['J'] = float(x[0]),float(x[1])
+        # ## try get additional information by looking up spectral database
+        # # if 'species' in data and 'label' in data:
+            # # for key in ('Λ','S','s'):
+                # # try:
+                    # # data.setdefault(key,database.get_electronic_state_quantum_number(data['species'],data['label'],key))
+                # # except DatabaseException:
+                    # # pass
+        # ## cast
+        # for key,val in data.items():
+            # if key in ('v','Λ','s',):
+                # data[key] = int(val)
+            # elif key in ('J','Ω','S','Σ','SR'):
+                # data[key] = float(val)
+    # return data
 
 # def encode_level(**kwargs):
     # """Turn quantum numbers etc (as in decode_level) into a string name. """
@@ -702,7 +819,7 @@ def decode_transition(transition,return_separately=False):
     if return_separately:
         return(upper,lower)
     else:
-        retval = join_upper_lower_quantum_numbers(upper,lower)
+        retval = join_upper_lower(upper,lower)
         if rot_qn_Δ is not None:
             for key,val in rot_qn_Δ.items():
                 retval['Δ'+key] = val
@@ -789,24 +906,22 @@ def encode_level(qn):
         retval = retval + '('+','.join(t)+')'
     return retval
 
-_decode_branch_ΔJ_letter = {'O':-2,'P':-1,'Q':0,'R':1,'S':2}
-_decode_branch_ef_letter = {'e':+1,'f':-1,}
 @tools.cache
 def decode_branch(branch):
     """Expect e.g., P13ee, P11, P1, P. Return as dict."""
     branch = branch.strip()
     if r:=re.match(r'^([OPQRS])([0-9])([0-9])([ef])([ef])$',branch):
-        return {'ΔJ': _decode_branch_ΔJ_letter[r.group(1)],
+        return {'ΔJ': decode_ΔJ[r.group(1)],
                 'Fi_u': int(r.group(2)),
                 'Fi_l': int(r.group(3)),
-                'ef_u': _decode_branch_ef_letter[r.group(4)],
-                'ef_l': _decode_branch_ef_letter[r.group(5)]}
+                'ef_u': decode_ef[r.group(4)],
+                'ef_l': decode_ef[r.group(5)]}
     elif r:=re.match(r'^([OPQRS])([0-9])([0-9])$',branch):
-        return {'ΔJ': _decode_branch_ΔJ_letter[r.group(1)],
+        return {'ΔJ': decode_ΔJ[r.group(1)],
                 'Fi_u': int(r.group(2)),
                 'Fi_l': int(r.group(3)),}
     elif r:=re.match(r'^([OPQRS])$',branch):
-        return {'ΔJ': _decode_branch_ΔJ_letter[r.group(1)],}
+        return {'ΔJ': decode_ΔJ[r.group(1)],}
     else:
         raise InvalidEncodingException(f"Cannot decode branch: {repr(branch)}")
 
