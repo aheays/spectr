@@ -4,6 +4,7 @@ from copy import copy
 from functools import lru_cache
 
 import numpy as np
+from numpy import array,arange
 from bidict import bidict
 import periodictable
 from scipy import integrate,constants
@@ -209,31 +210,13 @@ class Species:
     """Info about a species. Currently assumed to be immutable data only."""
 
     def __init__(self,name):
-        # ## determine if name is for a species or an isotopologue
-        # print('DEBUG:', name)
-        # if '[' in name or ']' in name:
-            # self.isotopologue = name
-            # try:
-                # self.species = database.get_species_property(self.isotopologue,'iso_indep')
-            # except DatabaseException:
-                # self.species = re.sub(r'\[[0-9]*([A-Z-az])\]',r'\1',name)
-        # else:
-            # self.species = name
-            # self.isotopologue = database.get_species_property(self.species,'iso_main')
-        
         self.decode_name(name)
         self.encode_name(self._isotopes,self._charge)
 
-    # def _get_charge(self):
-        # if self._charge is None:
-            # if r:=re.match('^(.*[^+-])([+]+|-+)$',self.species): # ddd+ / ddd++
-                # self._charge = r.group(2).count('+') - r.group(2).count('-')
-            # else:
-                # self._charge = 0
-        # return self._charge
-
     def decode_name(self,name):
-        """Turn standard name string into ordered isotope list and charge."""
+        """Turn standard name string into ordered isotope list and charge.  If
+        any isotopic masses are given then they will be added to all
+        elements."""
         isotopes = []                   # (element,mass_number,multiplicity)
         ## e.g., CO2
         if r:=re.match(r'^((?:[A-Z][a-z]?[0-9]*)+)([-+]*)$',name):
@@ -245,7 +228,7 @@ class Species:
                 elif r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
                     isotopes.append((
                         r.group(1), # element
-                        None,       # isotope mass number
+                        None,       # isotope mass number — make no assumptions
                         int(r.group(2) if r.group(2) != '' else 1) # multiplicity
                     ))
                 else:
@@ -287,13 +270,20 @@ class Species:
                         int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)))
                 else:
                     raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-        ## neutral diatomic isotoploogues e.g., 12C16O
+        ## neutral diatomic isotopologues e.g., 12C16O
         elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)([0-9]*)([A-Z][a-z]?)$',name):
             charge = 0
             isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
             isotopes.append((r.group(4),(None if r.group(3) == '' else int(r.group(3))),1))
         else:
             raise Exception(f'Could not decode species named: {repr(name)}')
+        ## if any masses given, then make sure all are specified
+        i = array([t[1] is None for t in isotopes])
+        if np.any(i) and not np.all(i):
+            for ii in tools.find(i):
+                isotopes[ii] = (isotopes[ii][0],
+                                database.get_most_abundant_isotope_mass_number(isotopes[ii][0]),
+                                isotopes[ii][2])
         self._isotopes = tuple(isotopes)
         self._charge = charge
 

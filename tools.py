@@ -1247,6 +1247,38 @@ def dict_to_hdf5(fid,data,compress=False,verbose=True):
                     if verbose:
                         raise error
                         print(error)
+def dict_to_hdf5(fid,data,compress=False,verbose=True):
+    """Save all elements of a dictionary as datasets, attributes, or
+    subgropus in an hdf5 file."""
+    if isinstance(fid,str):
+        ## open file if necessary
+        fid = expand_path(fid)
+        mkdir(dirname(fid)) # make leading directories if not currently there
+        with h5py.File(fid,mode='w') as new_fid:
+            dict_to_hdf5(new_fid,data,compress,verbose)
+            return
+    ## add data
+    for key,val in data.items():
+        if isinstance(val,dict):
+            ## recursively create groups
+            group = fid.create_group(key)
+            dict_to_hdf5(group,val,compress,verbose)
+        else:
+            if isinstance(val,np.ndarray):
+                ## add arrays as a dataset
+                if compress:
+                    kwargs={'compression':"gzip",'compression_opts':9}
+                else:
+                    kwargs = {}
+                fid.create_dataset(key,data=numpy_to_hdf5(val),**kwargs)
+            else:
+                ## add non-array data as attribute
+                try:
+                    fid.attrs.create(key,val)
+                except TypeError as error:
+                    if verbose:
+                        raise error
+                        print(error)
 
 def append_to_hdf5(filename,**keys_vals):
     """Added key=val to hdf5 file."""
@@ -2635,47 +2667,47 @@ def sortall(x,*others,reverse=False):
         # retval[key] = [t[key] for t in dicts]
     # return(retval)
 
-# def common(x,y,use_hash=False):
-    # """Return indices of common elements in x and y listed in the order
-    # they appear in x. Raises exception if repeating multiple matches
-    # found."""
-    # if not use_hash:
-        # ix,iy = [],[]
-        # for ixi,xi in enumerate(x):
-            # iyi = find([xi==t for t in y])
-            # if len(iyi)==1: 
-                # ix.append(ixi)
-                # iy.append(iyi[0])
-            # elif len(iyi)==0:
-                # continue
-            # else:
-                # raise Exception('Repeated value in y for: '+repr(xi))
-        # if len(np.unique(iy))!=len(iy):
-            # raise Exception('Repeated value in x for something.')
-        # return(np.array(ix),np.array(iy))
-    # else:
-        # xhash = np.array([hash(t) for t in x])
-        # yhash = np.array([hash(t) for t in y])
-        # ## get sorted hashes, checking for uniqueness
-        # xhash,ixhash = np.unique(xhash,return_index=True)
-        # assert len(xhash)==len(x),f'Non-unique values in x.'
-        # yhash,iyhash = np.unique(yhash,return_index=True)
-        # assert len(yhash)==len(y),f'Non-unique values in y.'
-        # ## use np.searchsorted to find one set of hashes in the other
-        # iy = np.arange(len(yhash))
-        # ix = np.searchsorted(xhash,yhash)
-        # ## remove y beyond max of x
-        # i = ix<len(xhash)
-        # ix,iy = ix[i],iy[i]
-        # ## requires removing hashes that have no search sorted partner
-        # i = yhash[iy]==xhash[ix]
-        # ix,iy = ix[i],iy[i]
-        # ## undo the effect of the sorting above
-        # ix,iy = ixhash[ix],iyhash[iy]
-        # ## sort by index of first array -- otherwise sorting seems to be arbitrary
-        # i = np.argsort(ix)
-        # ix,iy = ix[i],iy[i]
-        # return(ix,iy)
+def common(x,y,use_hash=False):
+    """Return indices of common elements in x and y listed in the order
+    they appear in x. Raises exception if repeating multiple matches
+    found."""
+    if not use_hash:
+        ix,iy = [],[]
+        for ixi,xi in enumerate(x):
+            iyi = find([xi==t for t in y])
+            if len(iyi)==1: 
+                ix.append(ixi)
+                iy.append(iyi[0])
+            elif len(iyi)==0:
+                continue
+            else:
+                raise Exception('Repeated value in y for: '+repr(xi))
+        if len(np.unique(iy))!=len(iy):
+            raise Exception('Repeated value in x for something.')
+        return(np.array(ix),np.array(iy))
+    else:
+        xhash = np.array([hash(t) for t in x])
+        yhash = np.array([hash(t) for t in y])
+        ## get sorted hashes, checking for uniqueness
+        xhash,ixhash = np.unique(xhash,return_index=True)
+        assert len(xhash)==len(x),f'Non-unique values in x.'
+        yhash,iyhash = np.unique(yhash,return_index=True)
+        assert len(yhash)==len(y),f'Non-unique values in y.'
+        ## use np.searchsorted to find one set of hashes in the other
+        iy = np.arange(len(yhash))
+        ix = np.searchsorted(xhash,yhash)
+        ## remove y beyond max of x
+        i = ix<len(xhash)
+        ix,iy = ix[i],iy[i]
+        ## requires removing hashes that have no search sorted partner
+        i = yhash[iy]==xhash[ix]
+        ix,iy = ix[i],iy[i]
+        ## undo the effect of the sorting above
+        ix,iy = ixhash[ix],iyhash[iy]
+        ## sort by index of first array -- otherwise sorting seems to be arbitrary
+        i = np.argsort(ix)
+        ix,iy = ix[i],iy[i]
+        return(ix,iy)
 
 
 # def get_common(x,y):

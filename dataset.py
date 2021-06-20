@@ -45,6 +45,7 @@ class Dataset(optimise.Optimiser):
 
     ## prototypes on instantiation
     default_prototypes = {}
+    default_permit_nonprototyped_data = False
 
     ## used for plotting and sorting perhaps
     default_zkeys = ()
@@ -71,7 +72,11 @@ class Dataset(optimise.Optimiser):
         self.description = description
         self._row_modify_time = np.array([],dtype=float,ndmin=1) # record modification time of each explicitly set row
         self._global_modify_time = timestamp() # record modification time of any explicit change
-        self.permit_nonprototyped_data = permit_nonprototyped_data # allow the addition of data not in self.prototypes
+        ## whether to allow the addition of data not in self.prototypes
+        if permit_nonprototyped_data is None:
+            self.permit_nonprototyped_data = self.default_permit_nonprototyped_data
+        else:
+            self.permit_nonprototyped_data = permit_nonprototyped_data
         self.permit_indexing = permit_indexing # Data can be added to the end of arrays, but not removal or rearranging of data
         self.auto_defaults = auto_defaults # set default values if necessary automatically
         self.verbose = False                             # print extra information at various places
@@ -134,22 +139,27 @@ class Dataset(optimise.Optimiser):
 
     def set(
             self,
-            key_assoc,
+            key,
             value,
             index=None,         # set these indices only
             match=None,         # set these matches only
             set_changed_only=False, # only set data if it differs from value
+            description=None,
+            fmt=None,
+            units=None,
             **match_kwargs
     ):
         """Set value of key or (key,assoc)"""
-        key,assoc = self._separate_key_assoc(key_assoc)
+        key,assoc = self._separate_key_assoc(key)
+        if r:=re.match(r'.*([\'"=# ]).*',key):
+            raise Exception(f"Forbidden character {repr(r.group(1))} in key {repr(key)}. Forbidden regexp: ['\"=# ]")
         ## combine indices -- might need to sort value if an index array is given
         index,sort_order = self._get_combined_index(index,match,**match_kwargs)
         if sort_order is not None and tools.isiterable(value):
             value = np.array(value)[sort_order]
         ## reduce index and value to changed data only
         if set_changed_only:
-            index_changed = self[key_assoc,index] != value
+            index_changed = self[key,assoc,index] != value
             if index is None:
                 index = index_changed
             else:
@@ -158,7 +168,7 @@ class Dataset(optimise.Optimiser):
                 value = np.array(value)[index_changed]
         ## set value or associated data
         if assoc is None:
-            self._set_value(key,value,index)
+            self._set_value(key,value,index,description=description,fmt=fmt,units=units)
         else:
             self._set_associated_data(key,assoc,value,index)
         
@@ -199,7 +209,9 @@ class Dataset(optimise.Optimiser):
                 self.set((ykey,'vary'),False,index=index)
             _cache['not_first_execution'] = True
 
-    def _set_value(self,key,value,index=None,dependencies=None,**prototype_kwargs):
+    def _set_value(self,key,value,index=None,
+                   dependencies=None,
+                   description=None,fmt=None,units=None):
         """Set a value"""
         ## update modification if externally set, not if it is inferred
         if self.verbose:
@@ -238,8 +250,12 @@ class Dataset(optimise.Optimiser):
                         continue
                     data[tkey] = tval
             ## apply prototype kwargs
-            for tkey,tval in prototype_kwargs.items():
-                data[tkey] = tval
+            if description is not None:
+                data['description'] = description
+            if fmt is not None:
+                data['fmt'] = fmt
+            if units is not None:
+                data['units'] = units
             ## if a scalar value is then expand to full length, if
             ## vector then cast as a new array.  Do not use asarray
             ## but instead make a copy -- this will prevent mysterious
@@ -257,6 +273,9 @@ class Dataset(optimise.Optimiser):
             for tkey in ('description','fmt','cast'):
                 if tkey not in data:
                     data[tkey] = self.kinds[data['kind']][tkey]
+            if 'units' not in data:
+                data['units'] = 'unknown'
+        
             if data['kind']=='f' and 'default_step' not in data:
                 data['default_step'] = 1e-8
             ## if a scalar expand to length of self
@@ -582,6 +601,50 @@ class Dataset(optimise.Optimiser):
         except InferException:
             return False
             
+    # def __getitem__(self,index):
+    #     """If string 'x' return value of 'x'. If "ux" return uncertainty
+    #     of x. If list of strings return a copy of self restricted to
+    #     that data. If an index, return an indexed copy of self."""
+    #     if isinstance(index,str):
+    #         ## a key -- return data
+    #         return self.get(index)
+    #     elif isinstance(index,slice):
+    #         ## a slice -- return indexed copy
+    #         return self.copy(index=index)
+    #     elif isinstance(index,int):
+    #         ## an index -- return as flat dict containing scalar data
+    #         return self.as_flat_dict(index=index)
+    #     elif tools.isiterable(index):
+    #         if len(index) == 0:
+    #             ## empty index, make an empty copy of self
+    #             return self.copy(index=index)
+    #         elif isinstance(index[0],str):
+    #             if isinstance(index,tuple):
+    #                 if len(index) == 2:
+    #                     if isinstance(index[1],str):
+    #                         ## (key,assoc) tuple, return data
+    #                         return self.get(index)
+    #                     else:
+    #                         ## (key,index) tuple, return data
+    #                         return self.get(index[0],index=index[1])
+    #                 elif len(index) == 3:
+    #                     if index[1] is None:
+    #                         ## (key,None,index) tuple, return data
+    #                         return self.get(index[0],index=index[2])
+    #                     else:
+    #                         ## (key,assoc,index) tuple, return data
+    #                         return self.get(index[:2],index=index[2])
+    #                 else:
+    #                     raise Exception(f"Cannot interpret index: {repr(index)}")
+    #             else:
+    #                 ## list of keys, make a copy containing these
+    #                 return self.copy(keys=index)
+    #         else:
+    #             ## array index, make an index copy of self
+    #             return self.copy(index=index)
+    #     else:
+    #         raise Exception(f"Cannot interpret index: {repr(index)}")
+
     def __getitem__(self,index):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
@@ -595,27 +658,30 @@ class Dataset(optimise.Optimiser):
         elif isinstance(index,int):
             ## an index -- return as flat dict containing scalar data
             return self.as_flat_dict(index=index)
+        elif isinstance(index,set):
+            ## a set of keys -- make a copy of self restricted to these keys
+            return self.copy(keys=index)
         elif tools.isiterable(index):
-            if len(index) == 0:
-                ## empty index, make an empty copy of self
-                return self.copy(index=index)
-            elif isinstance(index[0],str):
-                if isinstance(index,tuple):
-                    if len(index) == 2:
-                        if  isinstance(index[1],str):
-                            ## (key,assoc) tuple, return data
-                            return self.get(index)
-                        else:
-                            ## (key,index) tuple, return data
-                            return self.get(index[0],index=index[1])
-                    elif len(index) == 3:
+            if len(index) > 0 and isinstance(index[0],str):
+                if len(index) == 1:
+                    ## a key
+                    return self.get(index)
+                elif len(index) == 2:
+                    if isinstance(index[1],str):
+                        ## (key,assoc) tuple, return data
+                        return self.get(index)
+                    else:
+                        ## (key,index) tuple, return data
+                        return self.get(index[0],index=index[1])
+                elif len(index) == 3:
+                    if index[1] is None:
+                        ## (key,None,index) tuple, return data
+                        return self.get(index[0],index=index[2])
+                    else:
                         ## (key,assoc,index) tuple, return data
                         return self.get(index[:2],index=index[2])
-                    else:
-                        raise Exception(f"Cannot interpret index: {repr(index)}")
                 else:
-                    ## list of keys, make a copy containing these
-                    return self.copy(keys=index)
+                    raise Exception(f"Cannot interpret index: {repr(index)}")
             else:
                 ## array index, make an index copy of self
                 return self.copy(index=index)
@@ -844,13 +910,16 @@ class Dataset(optimise.Optimiser):
         index,sort_order = source._get_combined_index(index,match,**match_kwargs)
         if sort_order is None:
             sort_order = slice(0,np.sum(index))
-        ## copy data
+        ## copy data and selected prototype data
         for key in keys:
-            self[key] = source[key][index][sort_order]
+            self.set(key, source[key,index][sort_order],
+                     description=source.get_data(key,'description'),
+                     units=source.get_data(key,'units'),
+                     fmt=source.get_data(key,'fmt'),)
             if copy_assoc:
                 ## copy associated data
                 for assoc in source._data[key]['assoc']:
-                    self[key,assoc] = source[key,assoc][index][sort_order]
+                    self[key,assoc] = source[key,assoc,index][sort_order]
 
     @optimise_method()
     def copy_from_and_optimise(
@@ -1678,7 +1747,24 @@ class Dataset(optimise.Optimiser):
                 cast = self.associated_kinds[assoc]['cast']
                 data['assoc'][assoc][old_length:total_length] = cast(new_val)
 
-    @optimise_method(add_construct_function= True)
+    def join(self,new_dataset):
+        """Join keys form new data set onto this one.  No overlap allowed."""
+        ## error checks
+        if len(self) != len(new_dataset):
+            raise Exception(f'Length mismatch between self and new dataset: {len(self)} and {len(new_dataset)}')
+        i,j = tools.common(self.keys(),new_dataset.keys())
+        if len(i)>0:
+            raise Exception(f'Overlapping keys between self and new dataset: {repr(self.keys()[i])}')
+        ## add from new_dataset
+        for key in new_dataset:
+            if key in self.prototypes:
+                self[key] = new_dataset[key]
+            else:
+                if not self.permit_nonprototyped_data:
+                    raise Exception(f'Key from new dataset is not prototyped in self: {repr(key)}')
+                self._data[key] = deepcopy(new_dataset._data[key])
+
+    @optimise_method()
     def concatenate_and_optimise(self,new_dataset,keys='old',_cache=None):
         """Extend self by new_dataset using keys existing in self. New data updated
         on optimisaion if new_dataset changes."""
@@ -1701,9 +1787,11 @@ class Dataset(optimise.Optimiser):
             ## update data in place
             index = slice(_cache['old_length'],_cache['total_length'])
             for key in _cache['keys']:
-                self.set(key,new_dataset[key],index)
-                for assoc in self._data[key]['assoc']:
-                    self.set((key,assoc),new_dataset[key,assoc],index)
+                self.set(key,new_dataset[key],index,set_changed_only=True)
+                if 'vary' in new_dataset.get_data(key,'assoc'):
+                    self.set((key,'vary'),False,index)
+                if 'unc' in new_dataset.get_data(key,'assoc'):
+                    self.set((key,'unc'),new_dataset[key,'unc'],index)
 
     def append(self,keys_vals_as_dict=None,keys='all',**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
@@ -2081,6 +2169,6 @@ def load(filename,classname=None,**load_kwargs):
 def copy_from(dataset,*args,**kwargs):
     """Make a copy of dataset with additional initialisation args and
     kwargs."""
-    classname = dataset['classname'] # use the same class as dataset
+    classname = dataset.classname # use the same class as dataset
     retval = make(classname,*args,copy_from=dataset,**kwargs)
     return retval

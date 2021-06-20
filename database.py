@@ -170,144 +170,6 @@ def get_partition_function(
     Z = np.sum(level['g']*np.exp(-(level['E']+level['Eref']-Eref)/(kB*Tex)))
     return Z
 
-# def get_term_values(
-        # species,
-        # label,                  # compulsory for caching
-        # Tref=None,              # return values relative to this amount relative to equilbrium energy of, or "T0-Te", if None use whatever is in database
-        # **quantum_numbers,      # limit to these
-# ):
-    # """Load term value data. Returns as array. If a quantum number is
-    # iterable then return as array of values. Always returns a 1D
-    # array."""
-    # ## check if their is an interable quantum number (one only)
-    # iterable_quantum_numbers = {}
-    # scalar_quantum_numbers = {}
-    # for key,val in quantum_numbers.items():
-        # if tools.is_iterable_not_string(val):
-            # iterable_quantum_numbers[key] = val
-        # else:
-            # scalar_quantum_numbers[key] = val
-    # assert len(iterable_quantum_numbers)<=1,"Only one iterable key permitted."
-    # ## load data and reduce by scalar quantum numbers
-    # level = get_level(species,label)
-    # # if len(scalar_quantum_numbers)>0:
-    # #     # level = level.matches(**scalar_quantum_numbers)
-    # #     iscalar = level.match(**scalar_quantum_numbers)
-    # # T = level['T'][i]
-    # # ## if there is an iterable quantum number reduce to matching
-    # # ## values -- in this order -- must be unique
-    # # if len(iterable_quantum_numbers)>0:
-    # #     key = [t for t in iterable_quantum_numbers.keys()][0]
-    # #     val = [t for t in iterable_quantum_numbers.values()][0]
-    # # try:
-    # #     T = T[tools.findin(val,level[key])]
-    # # # except Exception as err:
-    # #     # raise DatabaseException(str(err))
-    # # # ## set requested Tref
-    # # # if Tref is None:
-    # #     # pass
-    # # # elif Tref=='T0-Te':
-    # #     # T += level['Tref'] - get_species_property(species,'T0-Te')
-    # # # else:
-    # #     # T += level['Tref']-Tref
-    # # # return(T)
-    # i = level.match(**quantum_numbers)
-    # T = level['T'][i]
-    # # ## if there is an iterable quantum number reduce to matching
-    # # ## values -- in this order -- must be unique
-    # # if len(iterable_quantum_numbers)>0:
-        # # key = [t for t in iterable_quantum_numbers.keys()][0]
-        # # val = [t for t in iterable_quantum_numbers.values()][0]
-    # # try:
-        # # T = T[tools.findin(val,level[key])]
-    # # # except Exception as err:
-        # # # raise DatabaseException(str(err))
-    # # # ## set requested Tref
-    # if Tref is None:
-        # pass
-    # elif Tref=='T0-Te':
-        # T += level['Tref'] - get_species_property(species,'T0-Te')
-    # else:
-        # T += level['Tref']-Tref
-    # return(T)
-    # return(1.0)
-
-
-# def get_term_value(*args,**quantum_numbers):
-    # """Load a strictly scalar term value."""
-    # retval = get_term_values(*args,**quantum_numbers)
-    # if len(retval)==0:
-        # raise Exception(f"No term value found for: {repr(args)}, {repr(quantum_numbers)}")
-    # elif len(retval)>1:
-        # raise Exception(f"Multiple ({len(retval)}) term values found for: {repr(args)}, {repr(quantum_numbers)}")
-    # return(float(retval))
-
-
-# # @cachetools.cached(cache=cachetools.LRUCache(1e3))
-# def get_boltzmann_population(temperature,species,J,**quantum_numbers):
-    # """Load term value data. All quantum numbers must be scalar. If J
-    # is vector then return array, else return a scalar float."""
-    # partition_function = get_partition_function(species,temperature)
-    # level = get_level(species,J=J,**quantum_numbers)
-    # population = level['g']*np.exp(-1.4387751297850826/temperature*level['T'])/partition_function
-        # # raise DatabaseException(str(err))
-    # # if np.isscalar(J):  return(float(population[i][j]))
-    # # else:               return(population[i][j])
-    # return(population)
-
-
-
-# def decode_species(species,raise_error_if_unrecognised=False):
-    # """Some species have abbreviations, they are corrected here to a
-    # standard form."""
-    # if   species in ['14',14,'14N2','N2']:   return '14N2'
-    # elif species in ['1415',1415,'14N15N']:  return '14N15N'
-    # elif species in ['15',15,'15N2']:        return '15N2'
-    # elif species in ['12C16O',1216,'1216']:  return '12C16O'
-    # elif species in ['12C17O',1217,'1217']:  return '12C17O'
-    # elif species in ['12C18O',1218,'1218']:  return '12C18O'
-    # elif species in ['13C16O',1316,'1316']:  return '13C16O'
-    # elif species in ['13C17O',1317,'1317']:  return '13C17O'
-    # elif species in ['13C18O',1318,'1318']:  return '13C18O'
-    # elif species in ['14C16O',1416,'1416']:  return '14C16O'
-    # elif species in ['14C17O',1417,'1417']:  return '14C17O'
-    # elif species in ['14C18O',1418,'1418']:  return '14C18O'
-    # elif species in ['NI','N I','N']:  return 'N'
-    # elif species in ['Ar I','Ar','Argon','argon']:  return 'Ar'
-    # elif species in ['Xe I','Xe','Xenon','xenon']:  return 'Xe'
-    # elif species in ['H2',]:     return 'H2'
-    # elif species in ['D2',]:     return 'D2'
-    # elif species in ['HD',]:     return 'HD'
-    # elif species in ['NO','nitric oxide','nitrogen monoxide']:     return 'NO'
-    # elif species in ['OH','hydroxyl radical']:     return 'OH'
-    # elif species in ['OD','isotopic hydroxyl radical']:     return 'OD'
-    # else:
-        # if raise_error_if_unrecognised:
-            # raise Exception("Unrecognised species: "+str(species))
-        # else:
-            # return(species)       # if cannot decode return as is
-
-# # @cachetools.cached(cache=cachetools.LRUCache(1e2))
-# @functools.lru_cache
-# def get_spectral_contaminant_linelist(*species,νbeg=None,νend=None):
-    # """Load contaminant data and return.  Keys reference to data files in
-    # data_dir/spectral_contaminants. Default species is a mixture. Could add more H2 and D2 from
-    # ~/data/species/H2/lines_levels/meudon_observatory/all_emission_lines
-    # ~/data/species/H2/lines_levels/meudon_D2/all_lines """
-    # ## default mix
-    # if len(species)==0:
-        # species = ('default_mix',)
-    # ## load all files
-    # linelist = Dynamic_Recarray(
-        # load_from_filename=[
-            # f'{data_directory}/spectral_contaminants/{speciesi}'
-            # for speciesi in species])
-    # ## filter
-    # if νbeg is not None:
-        # linelist.remove(linelist['ν']<νbeg)
-    # if νend is not None:
-        # linelist.remove(linelist['ν']>νend)
-    # return(linelist)
 
 @lru_cache
 def get_isotopes(element_name):
@@ -318,6 +180,14 @@ def get_isotopes(element_name):
                 for mass_number in element.isotopes]
     isotopes = tuple(sorted(isotopes,key=lambda x: -x[1]))
     return isotopes
+
+@lru_cache
+def get_most_abundant_isotope_mass_number(element_name):
+    """Return mass number of the most abundance isotope of an element."""
+    element = getattr(periodictable,element_name)
+    i = np.argmax([element[m].abundance
+                   for m in element.isotopes])
+    return element.isotopes[i]
 
 @lru_cache
 def get_atomic_mass(element_name,mass_number):

@@ -305,6 +305,8 @@ class VibLevel(Optimiser):
             self,
             fig=None,
             ylim_Eresidual=None,
+            plot_errorbars=True,
+            reduce_coefficients=(0,),
             **plot_kwargs,):
         """Plot data and residual error."""
         if fig is None:
@@ -319,25 +321,29 @@ class VibLevel(Optimiser):
                 plot_kwargs |= dict(
                     color=plotting.newcolor(ilevel),
                     linestyle=plotting.newlinestyle(isublevel),
-                    marker= plotting.newmarker(isublevel),
-                    fillstyle='none',
+                    marker= plotting.newmarker(int(qn2['Σ'])-m['Σ'].min()),
+                    fillstyle=('bottom' if qn2['ef']==1 else 'top'),
                 )
                 tkwargs = plot_kwargs | {'label':quantum_numbers.encode_linear_level(**qn,**qn2) ,}
                 legend_data.append(tkwargs)
-
+                ΔEreduce = np.polyval(reduce_coefficients,m2['J']*(m2['J']+1))
 
                 if self.experimental_level is None:
                     tkwargs = plot_kwargs
-                    axE.plot(m2['J'],m2['E'],**tkwargs)
+                    axE.plot(m2['J'],m2['E']-ΔEreduce,**tkwargs)
                 else:
                     ## plot E residual
                     axEres = plotting.subplot(1,fig=fig)
                     axEres.set_title('Eres')
                     tkwargs = plot_kwargs | {'marker':'',}
-                    axE.plot(m2['J'],m2['E'],**tkwargs)
+                    axE.plot(m2['J'],m2['E']-ΔEreduce,**tkwargs)
                     tkwargs = plot_kwargs | {'linestyle':'',}
-                    axE.errorbar(m2['J'],m2['Eexp'],m2['Eexp','unc'],**tkwargs)
-                    axEres.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**tkwargs)
+                    if plot_errorbars:
+                        axE.errorbar(m2['J'],m2['Eexp']-ΔEreduce,m2['Eexp','unc'],**tkwargs)
+                        axEres.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**tkwargs)
+                    else:
+                        axE.plot(m2['J'],m2['Eexp']-ΔEreduce,**tkwargs)
+                        axEres.plot(m2['J'],m2['Eres'],**tkwargs)
 
                 if np.any(self.level['Γ'] > 0):
                     axΓ = plotting.subplot(2,fig=fig)
@@ -351,8 +357,12 @@ class VibLevel(Optimiser):
                         tkwargs = plot_kwargs | {'marker':'',}
                         axΓ.plot(m2['J'],m2['Γ'],**tkwargs)
                         tkwargs = plot_kwargs | {'linestyle':'',}
-                        axΓ.errorbar(m2['J'],m2['Γexp'],m2['Γexp','unc'],**tkwargs)
-                        axΓres.errorbar(m2['J'],m2['Γexp'],m2['Γexp','unc'],**tkwargs)
+                        if plot_errorbars:
+                            axΓ.errorbar(m2['J'],m2['Γexp'],m2['Γexp','unc'],**tkwargs)
+                            axΓres.errorbar(m2['J'],m2['Γexp'],m2['Γexp','unc'],**tkwargs)
+                        else:
+                            axΓ.plot(m2['J'],m2['Γexp'],**tkwargs)
+                            axΓres.plot(m2['J'],m2['Γexp'],**tkwargs)
 
         if ylim_Eresidual is not None:
             axEres.set_ylim(ylim_Eresidual)
@@ -502,8 +512,8 @@ class VibLine(Optimiser):
         given ['μ']."""
         if self._clean_construct:
             ## get all quantum numbers
-            kwu = self.level_u.manifolds[name_u]
-            kwl = self.level_l.manifolds[name_l]
+            kwu = self.level_u._manifolds[name_u]
+            kwl = self.level_l._manifolds[name_l]
             ## get transition moment functions for all ef/Σ combinations
             ## and add optimisable parameter to functions
             fμ = _get_linear_transition_moment(kwu['S'],kwu['Λ'],kwu['s'],kwl['S'],kwl['Λ'],kwl['s'],verbose=self.verbose)
@@ -517,16 +527,18 @@ class VibLine(Optimiser):
             for iΔJ,ΔJ in enumerate(self.ΔJ):
                 self.μ0[:,iΔJ,i+kwu['ibeg'],j+kwl['ibeg']] += fμ[i,j](self.J_l,ΔJ)*float(μv)
 
-    def plot(self,T=None,**kwargs):
+    def plot(self,Teq=300,match=None,**kwargs):
         kwargs.setdefault('xkey','ν')
         kwargs.setdefault('zkeys',None)
-        if T is None:
+        if Teq is None:
             kwargs.setdefault('ykey','Sij')
         else:
             kwargs.setdefault('ykey','σ')
-            self.line['Teq'] = T
+            self.line['Teq'] = Teq
             self.line['Zsource'] = 'self'
         tline = self.line[self.line['Sij'] > 0]
+        if match is not None:
+            tline.limit_to_match(match)
         fig = tline.plot_stick_spectrum(**kwargs)
         return fig
 
@@ -1090,7 +1102,9 @@ def calc_level(*args_viblevel,match=None,**kwargs_viblevel):
     add_level, add_spline_width etc."""
     v = calc_viblevel(*args_viblevel,**kwargs_viblevel)
     if match is not None:
-        return v.level.matches(match)
+        retval = dataset.make(v.level.classname)
+        retval.copy_from_and_optimise(v.level,match=match)
+        return retval
     else:
         return v.level
 

@@ -1008,7 +1008,7 @@ def newlinestyle(index=None,reset=None):
 
 _newmarker_nextmarker=0
 # markers=('o','x','t','d')
-markers=("o","s","d","p","+","x","v","^","<",">","1","2","3","4","8","*","h","H","D","|","_",)
+markers=("o","s","d","p","v","^","<",">","1","2","3","4","8","*","+","x","h","H","D","|","_",)
 def newmarker(index=None,reset=None):
     """Retuns a marker type string, different to the last one, from
     the list markers. If reset is set, returns to first element of
@@ -2347,7 +2347,7 @@ def annotate_spectrum_by_branch(
         ystep = 0.1, # separation between branch annotations in data coords
         zkeys = ('branch',), # how to divide up into separate annotations, 
         xkey = 'ν',          # 
-        label_key='J_l', # what quantum number to give as a rotational label
+        label_key='J_u', # what quantum number to give as a rotational label
         label_frequency=False,
         match_qn=None,        # only annotate matching qn
         qn_not_to_label=(), # e.g., [{'Σ':-1,'Jpp':[0,2],}] would not label these, requries label_translate_function is None
@@ -2358,6 +2358,7 @@ def annotate_spectrum_by_branch(
     """Annotate spectrum with separate lines and names found in a
     Lines object."""
     zkeys = tools.ensure_iterable(zkeys)
+    zkeys = [t for t in zkeys if lines.is_known(t)]
     lines.assert_known(xkey,label_key,*zkeys)
     retval = []
     # color_dict = {tqn:newcolor(it) for it,tqn in enumerate(lines.unique_combinations(*zkeys))}

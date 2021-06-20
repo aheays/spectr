@@ -19,19 +19,18 @@ from . import plotting
 class OneDimensionalAtmosphere(Dataset):
 
     default_prototypes = {}
-    default_prototypes['description'] = dict( description="",kind=str ,infer=[])
-    default_prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer=[])
-    default_prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
-    default_prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer=[])
-    default_prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
-    default_prototypes['z'] = dict(description="Height above surface (cm)" ,kind='f' ,infer=[])
-    default_prototypes['z(km)'] = dict(description="Height above surface (km)" ,kind='f' ,infer=[('z',lambda self,z: z*1e-5,),])
-    default_prototypes['Ttr'] = dict(description="Translational temperature (K)" ,kind='f' ,infer=[('T',lambda self,T:T),])
-    default_prototypes['T'] = dict(description="Temperature (K)" ,kind='f' ,infer=[])
-    default_prototypes['nt'] = dict(description="Total number density (cm-3)" ,kind='f' ,infer=[])
+    # default_prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer=[])
+    # default_prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
+    # default_prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer=[])
+    # default_prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
+    default_prototypes['z'] = dict(description="Height above surface",units='cm',fmt='0.5e',kind='f' ,infer=[])
+    default_prototypes['z(km)'] = dict(description="Height above surface",units='km',kind='f' ,infer=[('z',lambda self,z: z*1e-5,),])
+    default_prototypes['Ttr'] = dict(description="Translational temperature",units='K',kind='f' ,infer=[('T',lambda self,T:T),])
+    default_prototypes['T'] = dict(description="Temperature" ,units='K',kind='f' ,fmt='0.6g',infer=[])
+    default_prototypes['nt'] = dict(description="Total number density",units='cm-3',kind='f' ,fmt='0.6e',infer=[])
     default_prototypes['Nt'] = dict(description="Total number column density (cm-2)" ,kind='f' ,infer=[(('z','nt'),lambda self,z,nt: tools.cumtrapz(nt,z,reverse=True),),])
-    default_prototypes['p'] = dict(description="Pressure (bar)" ,kind='f' ,infer=[])
-    default_prototypes['Kzz'] = dict(description="Turbulent diffusion constant (cm2.s-1)" ,kind='f' ,infer=[])
+    default_prototypes['p'] = dict(description="Pressure",units='bar',kind='f' ,fmt='0.6g',infer=[])
+    default_prototypes['Kzz'] = dict(description="Turbulent diffusion coefficient",units='cm2.s-1' ,kind='f' ,infer=[])
     default_prototypes['Hz'] = dict(description="Local scale height (cm1)" ,kind='f' ,infer=[])
     default_prototypes['zeta(s-1)'] = dict(description="not implemented" ,kind='f' ,infer=[])
     default_prototypes['h'] = dict(description="not implemented" ,kind='f' ,infer=[])
@@ -44,10 +43,7 @@ class OneDimensionalAtmosphere(Dataset):
         dz[-1] = (z[-1]-z[-2])/2
         return dz
     default_prototypes['dz'] = dict(description="Depth of grid cell (cm)." ,kind='f' ,infer=[('z',_f),])
-
-    def __init__(self):
-        Dataset.__init__(self)
-        self.permit_nonprototyped_data = False
+    default_permit_nonprototyped_data = False
 
 class AtmosphericChemistry():
     """1D model atmosphere"""
@@ -186,7 +182,11 @@ class AtmosphericChemistry():
         return len(self.state)
 
     def set_density(self,species,density):
-        self.density[species] = density
+        # self.density[species] = density
+        self.density.set(
+            species, density,
+            description=f'Number density of {species}',
+            units='cm-3', fmt='10.5e',)
 
     def get_density(self,species):
         return self.density[species]

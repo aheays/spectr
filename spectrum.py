@@ -1548,48 +1548,9 @@ class Model(Optimiser):
         ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
         self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
 
-    # def add_soleil_double_shifted_delta_function(self,magnitude,shift=(1000,None)):
-        # """Adds two copies of soleil spectrum onto the model (after
-        # convolution with instrument function perhaps). One copy shifted up by
-        # shift(cm-1) and one shifted down. Shifted up copy is scaled by
-        # magnitude, copy shifted down is scaled by -magnitude. This is to deal
-        # with periodic errors aliasing the spectrum due to periodic
-        # vibrations."""
-        # filename = self.experiment.experimental_parameters['filename']
-        # x,y,header = load_soleil_spectrum_from_file(filename)
-        # yshifted ={'left':None,'right':None}
-        # p = self.add_parameter_set('add_soleil_double_shifted_delta_function',
-                                   # magnitude=magnitude,shift=shift,
-                                   # step_default={'magnitude':1e-3,'shift':1e-3},)
-        # previous_shift = [p['shift']]
-        # self.add_format_input_function(lambda: f'{self.name}.add_soleil_double_shifted_delta_function({p.format_input()})')
-        # def f():
-            # ## +shift from left -- use cached value of splined shifted
-            # ## spectrum if shift has not changed
-            # ## positive for this shift
-            # if yshifted['left'] is None or p['shift']!=previous_shift[0]:
-                # i = tools.inrange(self.x,x-p['shift'])
-                # j = tools.inrange(x+p['shift'],self.x)
-                # dy = tools.spline(x[j]+p['shift'],y[j],self.x[i])
-                # yshifted['left'] = (i,dy)
-            # else:
-                # i,dy = yshifted['left']
-            # self.y[i] += dy*p['magnitude']
-            # ## -shift from right -- use cached value of splined
-            # ## shifted spectrum if shift has not changed, magnitude is
-            # ## negative for this shift
-            # if yshifted['right'] is None or p['shift']!=previous_shift[0]:
-                # i = tools.inrange(self.x,x+p['shift'])
-                # j = tools.inrange(x-p['shift'],self.x)
-                # dy = tools.spline(x[j]-p['shift'],y[j],self.x[i])
-                # yshifted['right'] = (i,dy)
-            # else:
-                # i,dy = yshifted['right']
-            # self.y[i] += dy*p['magnitude']*-1
-        # self.add_construct_function(f)
 
     @optimise_method(format_lines='single')
-    def set_soleil_sidebands(self,yscale=0.1,shift=1000,signum_magnitude=None,_cache=None):
+    def set_soleil_sidebands(self,yscale=0.1,shift=1000,signum_magnitude=None,_parameters=None,_cache=None):
         """Adds two copies of spectrum onto itself shifted rightwards and
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
@@ -1597,30 +1558,37 @@ class Model(Optimiser):
             x,y,header = load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
-        ## get signum convolution kernel
-        if signum_magnitude is not None:
-            dx = (x[-1]-x[0])/(len(x)-1)
-            nconv = int(10/dx)
-            xconv = np.linspace(-nconv,nconv,2*nconv+1)
-            yconv = np.full(len(xconv),1.0)
-            i = xconv!=0
-            yconv[i] = 1/xconv[i]*signum_magnitude
-        ## shift from left
-        i = ((x+shift) >= self.x[0]) & ((x+shift) <= self.x[-1])
-        xi,yi = x[i]+shift,y[i]
-        j = (self.x>=xi[0]) & (self.x<=xi[-1])
-        sideband = yscale*tools.spline(xi,yi,self.x[j])
-        if signum_magnitude is not None:
-            sideband = signal.oaconvolve(sideband,yconv,'same')
-        self.y[j] += sideband
-        ## shift from right
-        i = ((x-shift) >= self.x[0]) & ((x-shift) <= self.x[-1])
-        xi,yi = x[i]-shift,y[i]
-        j = (self.x>=xi[0]) & (self.x<=xi[-1])
-        sideband = yscale*tools.spline(xi,yi,self.x[j])
-        if signum_magnitude is not None:
-            sideband = signal.oaconvolve(sideband,yconv,'same')
-        self.y[j] -= sideband
+        ## get signum convolution kernel if it is the first run or one
+        ## of the input parameters has changed
+        if (self._clean_construct
+            or 'sidebands' not in _cache
+            or np.any([_cache[id(p)]!=float(p) for p in _parameters])):
+            for p in _parameters:
+                _cache[id(p)] = float(p)
+            sidebands = np.full(self.x.shape,0.0)
+            ## shift from left
+            i = ((x+shift) >= self.x[0]) & ((x+shift) <= self.x[-1])
+            xi,yi = x[i]+shift,y[i]
+            j = (self.x>=xi[0]) & (self.x<=xi[-1])
+            sidebands[j] = yscale*tools.spline(xi,yi,self.x[j])
+            ## shift from right
+            i = ((x-shift) >= self.x[0]) & ((x-shift) <= self.x[-1])
+            xi,yi = x[i]-shift,y[i]
+            j = (self.x>=xi[0]) & (self.x<=xi[-1])
+            sidebands[j] -= yscale*tools.spline(xi,yi,self.x[j])
+            ## convolve with phase error
+            if signum_magnitude is not None:
+                dx = (x[-1]-x[0])/(len(x)-1)
+                nconv = int(10/dx)
+                xconv = np.linspace(-nconv,nconv,2*nconv+1)
+                yconv = np.full(len(xconv),1.0)
+                i = xconv!=0
+                yconv[i] = 1/xconv[i]*signum_magnitude
+                sidebands = signal.oaconvolve(sidebands,yconv,'same')
+                _cache['sidebands'] = sidebands
+        ## add sidebands
+        sidebands = _cache['sidebands']
+        self.y += sidebands
 
         
     def plot(

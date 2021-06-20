@@ -606,10 +606,10 @@ class Optimiser:
                         # suboptimiser.residual_scale_factor = 1/tools.rms(suboptimiser.residual)
                     # else:
                         # suboptimiser.residual_scale_factor /= tools.rms(suboptimiser.residual)
-        ## get initial values and reset uncertainties
-        self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
         ## full reconstruct -- then set to efficient partial reconstruct
         self.construct(clean_construct=True)
+        ## get initial values and reset uncertainties
+        self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
         ## some communication variables between methods to do with
         ## monitoring the optimisation
         self._monitor_frequency = monitor_frequency
