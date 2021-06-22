@@ -490,8 +490,8 @@ class Model(Optimiser):
     @optimise_method()
     def add_lines(
             self,
+            line,
             kind='absorption',
-            line=None,
             nfwhmL=20,
             nfwhmG=10,
             ymin=None,
@@ -511,7 +511,7 @@ class Model(Optimiser):
             line_copy = line.copy(index=imatch)
             ## set parameter data
             for key,val in set_keys_vals.items():
-                line_copy[key] = float(val)
+                line_copy[key] = val
             ## get ykey
             if kind == 'absorption':
                 ykey = 'τ'
@@ -521,6 +521,8 @@ class Model(Optimiser):
                 raise Exception(f"Invalid kind {repr(kind)} try 'absorption' or 'emission'")
             ## calculate full spectrum
             def _calculate_spectrum(line,index):
+                if len(line) == 0:
+                    return np.full(len(self.x),0.0)
                 x,y = line.calculate_spectrum(
                     x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=ymin,ncpus=ncpus,lineshape=lineshape,index=index)

@@ -643,13 +643,13 @@ class Atomic(Generic):
                 ('Lande','lande_g'),
                 ('Reference',None)
         ):
-            if key1 is not None:
+            if key1 is not None and key0 in data:
                 self[key1] = data[key0]
         self['reference'] = 'NIST'
         ## decode NIST terms -- incomplete
         S = []
         for t in data['Term']:
-            if r:=re.match(r'^([0-9]+)([SPDFG])(\*?)$',t): 
+            if r:=re.match(r'^([0-9]+)([SPDFGH])(\*?)$',t): 
                 ## e.e., 1S
                 S.append((float(r.group(1))-1)/2)
             elif r:=re.match(r'^([0-9]+)\[([0-9/]+)\](\*?)$',t): 

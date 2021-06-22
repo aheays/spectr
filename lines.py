@@ -280,7 +280,7 @@ def _f1(self,f,SJ,J_l,Λ_u,Λ_l):
     fv = f/SJ*(2.*J_l+1.)       # correct? What about 2S+1?
     fv[(Λ_l==0)&(Λ_u!=0)] *= 2
     return fv
-prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',step=1e-4,cast=cast_abs_float_array,infer=[
+prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',default_step=1e-4,cast=cast_abs_float_array,infer=[
     (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  band_strength_to_band_fvalue(Sv,ν, Λ_u,Λ_l)),
     ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
     ( ('f','SJ','J_l','Λ_u','Λ_l'), _f1,)])
@@ -1008,10 +1008,7 @@ class Generic(levels.Base):
             data.limit_to_match(match)
         ## set defaults
         for key in defaults:
-            print('DEBUG:', key,data.is_set('fv','step'))
-            import pdb; pdb.set_trace(); # DEBUG
             data[key] = defaults[key]
-            print('DEBUG:', key,data.is_set('fv','step'))
         ## add to self
         self.concatenate(data,keys='all',)
 

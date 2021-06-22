@@ -35,11 +35,11 @@ class Dataset(optimise.Optimiser):
 
     ##  Kinds of subdata that are vectors
     vector_subkinds = {
-        'value'    : {'description':'Value of this data'},
-        'unc'      : {'description':'Uncertainty'                         , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':0.0   ,},
-        'step'     : {'description':'Numerical differentiation step size' , 'kind':'f' , 'valid_kinds':('f',), 'cast':lambda x:np.abs(x,dtype=float)     ,'fmt':'8.2e'  ,'default':1e-8  ,},
-        'vary'     : {'description':'Whether to vary during optimisation' , 'kind':'b' , 'valid_kinds':('f',), 'cast':convert_to_bool_vector_array       ,'fmt':''      ,'default':False ,},
-        'ref'      : {'description':'Source reference'                    , 'kind':'U' ,                       'cast':lambda x:np.asarray(x,dtype='U20') ,'fmt':'s'     ,'default':nan   ,},
+        'value'        : {'description' : 'Value of this data'},
+        'unc'          : {'description' : 'Uncertainty'                         , 'kind'         : 'f' , 'valid_kinds'                : ('f',), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 0.0   ,},
+        'step'         : {'description' : 'Default numerical differentiation step size' , 'kind' : 'f' , 'valid_kinds'                : ('f',), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 1e-8  ,},
+        'vary'         : {'description' : 'Whether to vary during optimisation' , 'kind'         : 'b' , 'valid_kinds'                : ('f',), 'cast' : convert_to_bool_vector_array       ,'fmt' : ''      ,'default'               : False ,},
+        'ref'          : {'description' : 'Source reference'                    , 'kind'         : 'U' ,                       'cast' : lambda x       : np.asarray(x,dtype='U20') ,'fmt'          : 's'     ,'default'               : nan   ,},
     }
 
     ##  Kinds of subdata that are single valued but maybe complex objects
@@ -162,7 +162,7 @@ class Dataset(optimise.Optimiser):
             **match_kwargs
     ):
         """Set value of key or (key,data)"""
-        forbidden_character_regexp = r'.*([\'"=# ,:]).*' 
+        forbidden_character_regexp = r'.*([\'"=#,:]).*' 
         if r:=re.match(forbidden_character_regexp,key):
             raise Exception(f"Forbidden character {repr(r.group(1))} in key {repr(key)}. Forbidden regexp: {repr(forbidden_character_regexp)}")
         ## scalar subkind — set and return, not cast
@@ -226,9 +226,9 @@ class Dataset(optimise.Optimiser):
 
     def _set_value(self,key,value,index=None,dependencies=None):
         """Set a value"""
-        ## update modification if externally set, not if it is inferred
-        # if self.verbose:
-            # print(f'{self.name}: setting {key}')
+        ## turn Parameter into its floating point value
+        if isinstance(value,Parameter):
+            value = float(value)
         ## if key is already set then delete anything previously
         ## inferred from it, and previous things it is inferred 
         if key in self:
@@ -338,7 +338,7 @@ class Dataset(optimise.Optimiser):
             elif len(value) != len(self):
                 raise Exception(f'Length of new subdata {repr(subkey)} for key {repr(key)} ({len(value)} does not match existing data length ({len(self)})')
             ## set data
-            data[subkey] = subkind ['cast'](value)
+            data[subkey] = subkind['cast'](value)
         else:
             ## set part of array by index
             if subkey not in data:
@@ -374,7 +374,10 @@ class Dataset(optimise.Optimiser):
         ## if data is not set then set default if possible
         if not self.is_set(key,subkey):
             assert subkey != 'value','should be inferred above'
-            if 'default' in subkind:
+            if subkey == 'step' and 'default_step' in data:
+                ## special shortcut case for specied default step
+                self.set(key,subkey,data['default_step'])
+            elif 'default' in subkind:
                 self.set(key,subkey,subkind['default'])
             else:
                 raise InferException(f'Could not determine default value for subkey {repr(subkey)})')
@@ -417,10 +420,17 @@ class Dataset(optimise.Optimiser):
         self.prototypes[key] = dict(kind=kind,**kwargs)
         for tkey,tval in self.data_kinds[kind].items():
             self.prototypes[key].setdefault(tkey,tval)
-
             
     def get_kind(self,key):
         return self._data[key]['kind']
+
+    def _has_attribute(self,key,subkey,attribute):
+        """Test if key,subkey has a certain attribute."""
+        self.assert_known(key,subkey)
+        if subkey == 'value':
+            return (attribute in self._data[key])
+        else:
+            return (attribute in self.all_subkinds[subkey])
 
     def _get_attribute(self,key,subkey,attribute):
         """Get data from data_kinds or all_subkinds"""
@@ -461,7 +471,7 @@ class Dataset(optimise.Optimiser):
         return retval
 
     @optimise_method(format_lines='single')
-    def set_and_optimise(
+    def set_value(
             self,
             key,
             value,          # a scalar or Parameter
@@ -485,6 +495,8 @@ class Dataset(optimise.Optimiser):
             if 'vary' in self._data[key]:
                 self.set(key,'vary',False,index=index)
             _cache['not_first_execution'] = True
+
+    set_and_optimise = set_value
 
     def keys(self):
         return list(self._data.keys())
@@ -590,12 +602,12 @@ class Dataset(optimise.Optimiser):
                 key,subkey,index = key[0],'value',key[1]
         elif len(key) == 3:
                 key,subkey,index = key[0],key[1],key[2]
-        if isinstance(value,optimise.P):
-            if subkey != 'value':
-                raise Exception()
-            self.set_value(key,value,index)
-        else:
-            self.set(key,subkey,value,index)
+        # if isinstance(value,optimise.P):
+            # if subkey != 'value':
+                # raise Exception()
+            # self.set_value(key,value,index)
+        # else:
+        self.set(key,subkey,value,index)
        
     def clear(self):
         """Clear all data"""
@@ -1175,6 +1187,11 @@ class Dataset(optimise.Optimiser):
             quote_keys=False,
         )
         # return self.format_flat()
+
+    def __repr__(self):
+        if len(self)>50:
+            return(self.name)
+        return f"{self.classname}(load_from_string='''\n{self.format_flat()}''')"
             
     def save(
             self,
@@ -1498,11 +1515,10 @@ class Dataset(optimise.Optimiser):
                 if subkey in self.vector_subkinds:
                     if new_dataset.is_known(key,subkey):
                         new_val = new_dataset[key,subkey]
+                    elif self._has_attribute(key,subkey,'default'):
+                        new_val = self._get_attribute(key,subkey,'default')
                     else:
-                        if 'default' in self.all_subkinds[subkey]:
-                            new_val = self.all_subkinds[subkey]['default']
-                        else:
-                            raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
+                        raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
                     data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
 
     def join(self,new_dataset):
