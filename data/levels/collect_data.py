@@ -1,16 +1,16 @@
 from spectr import *
 
 
-########
-## H2 ##
-########
-d = levels.Diatomic(species='¹H₂',Eref=0)
-d.load('~/data/species/H2/lines_levels/ground_state/H2_term_values_relative_to_fundamental_komasa2011',
-       labels_commented=True,
-       keys=('species','label','v','J','E'),
-       translate_keys={'T':'E','dT':'E_unc',},)
-d['species'] = '¹H₂'
-d.save('¹H₂.h5')
+# ########
+# ## H2 ##
+# ########
+# d = levels.Diatomic(species='¹H₂',Eref=0)
+# d.load('~/data/species/H2/lines_levels/ground_state/H2_term_values_relative_to_fundamental_komasa2011',
+       # labels_commented=True,
+       # keys=('species','label','v','J','E'),
+       # translate_keys={'T':'E','dT':'E_unc',},)
+# d['species'] = '¹H₂'
+# d.save('¹H₂.h5')
 
 # ########
 # ## Ar ##
@@ -18,6 +18,13 @@ d.save('¹H₂.h5')
 # t = levels.Atomic(species='Ar')
 # t.load_from_nist('~/data/species/Ar/lines_levels/NIST_levels_2021-06-03.tsv')
 # t.save('Ar.h5')
+
+## O
+t = levels.Atomic(species='O')
+t.description = 'NIST database OI energy levels downloaded 2021-06-22.'
+t.load_from_nist('~/data/species/O/lines_levels/NIST_levels_2021-06-22.tsv')
+t.remove(np.isnan(t['E']))
+t.save('O.h5')
 
 # ########
 # ## N2 ##
