@@ -231,6 +231,14 @@ def vectorise_arguments(function):
         # retval += ','.join([str(key)+'='+repr(val) for key,val in kwargs.items()])+','
     # return(retval)
 
+def combine_dicts(*input_dicts):
+    """Combine input dicts into one, ignoring any that are None."""
+    retval = {}
+    for d in input_dicts:
+        if d is not None:
+            retval |= d
+    return retval
+
 def dict_to_kwargs(d,keys=None):
     """Expand a dict into evaluable kwargs. Default to all keys."""
     if keys is None:
