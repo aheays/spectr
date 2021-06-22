@@ -247,94 +247,6 @@ prototypes['E_u']['infer'].append((('E_l','ν'),lambda self,El,ν: El+ν))
 prototypes['Ee_l']['infer'].append((('Ee_u','ν'),lambda self,Eu,ν: Eu-ν))
 prototypes['Ee_u']['infer'].append((('Ee_l','ν'),lambda self,El,ν: El+ν))
 
-## vibrational transition frequencies
-prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
-prototypes['λv'] = dict(description="Electronic-vibrational transition wavelength",units="nm",kind='f', fmt='>11.4f', infer=[(('νv',), lambda self,νv: convert_units(νv,'cm-1','nm'),)],)
-
-## transition strengths
-prototypes['M']   = dict(description="Pointer to electronic transition moment",units="au", kind='O', infer=[])
-prototypes['Mv']   = dict(description="Electronic transition moment for this vibronic level",units="au", kind='f', fmt='<10.5e', infer=[(('μ','FCfactor'), lambda self,μ,FCfactor: μ/np.sqrt(FCfactor),)])
-prototypes['μv']  = dict(description="Electronic-vibrational transition moment",units="au", kind='f',  fmt='<10.5e', infer=[(('M','χp','χpp','R'), lambda self,M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),)],) # could infer from S but then sign would be unknown
-prototypes['μ']   = dict(description="Electronic-vibrational-rotational transition moment",units="au", kind='f',  fmt='<10.5e', infer=[(('M','χp','χpp','R'), lambda self,M,χp,χpp,R: np.array([integrate.trapz(χpi*np.conj(χppi)*Mi,R) for (χpi,χppi,Mi) in zip(χp,χpp,M)]),)],) # could infer from S but then sign would be unknown
-def _f0(self,fv,ν,Λp,Λpp):
-    """Convert a summed band fvalue into a band_strength."""
-    Sv = fv/3.038e-6/ν
-    Sv[(Λpp==0)&(Λp!=0)] /= 2 # divisor of (2-δ(0,Λ")δ(0,Λ'))/(2-δ(0,Λ')
-    return(Sv)
-def _f1(self,Aev,ν,Λp,Λpp):
-    """Convert an average band emission rate a band_strength"""
-    Sv = Aev/2.026e-6/v**3
-    Sv[(Λp==0)&(Λpp!=0)] /= 2.
-    return(Sv)
-prototypes['Sv'] =dict(description="Band strength, ⟨vp|Re|vpp⟩**2",units="au", kind='f',  fmt='<10.5e',cast=cast_abs_float_array, infer=[
-    (('Sij','SJ'), lambda self,Sij,SJ: Sij/SJ),
-    ( ('μ',),lambda self,μ:μ**2),
-    (('fv','ν','Λp','Λpp'),lambda self,fv,ν,Λp,Λpp: band_fvalue_to_band_strength(fv,ν,Λp,Λpp)),
-    (('fv','νv','Λp','Λpp'),lambda self,fv,νv,Λp,Λpp : band_fvalue_to_band_strength(fv,νv,Λp,Λpp)),
-    (('Aev','ν','Λp','Λpp'),lambda self,Aev,ν,Λp,Λpp : band_emission_rate_to_band_strength(Aev,ν,Λp,Λpp )),
-    ( ('Aev','νv','Λp','Λpp'), lambda self,Aev,νv,Λp,Λpp: band_emission_rate_to_band_strength(Aev,νv,Λp,Λpp),)],)
-def _f1(self,f,SJ,J_l,Λ_u,Λ_l):
-    """Get band fvalues from line strength"""
-    fv = f/SJ*(2.*J_l+1.)       # correct? What about 2S+1?
-    fv[(Λ_l==0)&(Λ_u!=0)] *= 2
-    return fv
-prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',step=1e-4,cast=cast_abs_float_array,infer=[
-    (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  band_strength_to_band_fvalue(Sv,ν, Λ_u,Λ_l)),
-    ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
-    ( ('f','SJ','J_l','Λ_u','Λ_l'), _f1,)])
-prototypes['Aev'] =dict(description="Einstein A coefficient / emission rate averaged over a band.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('Sv','ν' ,'Λp','Λpp'), lambda self,Sv,ν ,Λp,Λpp: band_strength_to_band_emission_rate(Sv,ν ,Λp,Λpp)),( ('Sv','νv','Λp','Λpp'), lambda self,Sv,νv,Λp,Λpp: band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp),)],) 
-prototypes['σv'] =dict(description="Integrated cross section of an entire band.",units="cm2.cm-1", kind='f',  fmt='<10.5e', infer=[(('fv',),lambda self,fv: band_fvalue_to_band_cross_section(fv),)],)
-prototypes['Sij'] =dict(description=" strength",units="au", kind='f',  fmt='<10.5e', infer=[
-    (('μ',), lambda self,μ: μ**2),
-    (('Sv','SJ'), lambda self,Sv,SJ:  Sv*SJ),
-    ( ('f','ν','J_l'), lambda self,f,ν,J_l: f/3.038e-6/ν*(2*J_l+1)),
-    ( ('Ae','ν','J_u'), lambda self,Ae,ν,J_u: Ae/(2.026e-6*ν**3/(2*J_u+1)),)])
-prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('f','ν','J_u','J_l'), lambda self,f,ν,J_u,J_l: f*0.666886/(2*J_u+1)*(2*J_l+1)*ν**2),( ('Sij','ν','J_u'), lambda self,Sij,ν,J_u: Sij*2.026e-6*ν**3/(2*J_u+1))],)
-prototypes['FCfactor'] =dict(description="Franck-Condon factor",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R'), lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)])),],)
-prototypes['Rcentroid'] =dict(description="R-centroid",units="Å", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R','FCfactor'), lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)])),])
-
-def _f0(self,S_u,S_l,Ω_u,Ω_l,J_u,J_l):
-    """Compute singlet state rotational linestrength factors."""
-    if not (np.all(S_u==0) and np.all(S_l==0)):
-        warnings.warn('Honl-London factors used for rotational linestrengths of multiplet states')
-    SJ = quantum_numbers.honl_london_factor(Ω_u,Ω_l,J_u,J_l,return_zero_on_fail=True)
-    return SJ
-prototypes['SJ'] = dict(description="Rotational line strength",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('S_u','S_l','Ω_u','Ω_l','J_u','J_l'),_f0),])
-
-## photoemission 
-prototypes['Finstr'] = dict(description="Instrument photoemission detection efficiency",units='dimensionless',kind='f',fmt='<7.3e',infer=[((),lambda self: 1.)])
-prototypes['I'] = dict(description="Spectrally-integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",units='not_well_defined',kind='f',fmt='<10.5e',infer=[(('Finstr','Ae','α_u','ν'),lambda self,Finstr,Ae,α_u,ν: Finstr*Ae*α_u*ν,)],)
-
-## vibrational interaction energies
-prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
-prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
-prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
-prototypes['ξDv'] = dict(description="Higher-roder reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
-
-## parity from transition selection
-def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
-    retval = copy(ef)
-    i = ΔJ==0
-    retval[i] *= -1
-    return retval
-prototypes['ef_u']['infer'].append((('ΔJ','ef_l'),_parity_selection_rule_upper_or_lower))
-prototypes['ef_l']['infer'].append((('ΔJ','ef_u'),_parity_selection_rule_upper_or_lower))
-
-
-def _collect_prototypes(level_class,base_class,new_keys):
-    ## collect all prototypes
-    default_prototypes = {}
-    for key in level_class.default_prototypes:
-        default_prototypes[key+'_l'] = prototypes[key+'_l']
-        default_prototypes[key+'_u'] = prototypes[key+'_u']
-    if base_class is not None:
-        for key in base_class.default_prototypes:
-            default_prototypes[key] = prototypes[key]
-    for key in new_keys:
-        default_prototypes[key] = prototypes[key]
-    ## get defining qn from levels
-    defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
-                        +[key+'_l' for key in level_class.defining_qn])
 
 
 ## vibrational transition frequencies
@@ -1082,7 +994,7 @@ class Generic(levels.Base):
                             ku.append(ju)
                             kl.append(jl)
         ## collect allowed data
-        data = dataset.make(self.classname,**defaults)
+        data = dataset.make(self.classname)
         for key in levelu:
             data[key+'_u'] = levelu[key][ku]
         for key in levell:
@@ -1094,6 +1006,12 @@ class Generic(levels.Base):
         ## remove unwanted lines
         if match is not None:
             data.limit_to_match(match)
+        ## set defaults
+        for key in defaults:
+            print('DEBUG:', key,data.is_set('fv','step'))
+            import pdb; pdb.set_trace(); # DEBUG
+            data[key] = defaults[key]
+            print('DEBUG:', key,data.is_set('fv','step'))
         ## add to self
         self.concatenate(data,keys='all',)
 
