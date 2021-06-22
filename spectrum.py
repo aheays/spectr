@@ -550,13 +550,13 @@ class Model(Optimiser):
             for key,val in set_keys_vals.items():
                 if (isinstance(val,Parameter) and
                     self._last_construct_time < val._last_modify_value_time):
-                    line_copy.set(key,val)
+                    line_copy.set(key,'value',val)
             ## update from keys and rows that have changed
             ichanged = line.row_modify_time[imatch] > self._last_construct_time
             nchanged = np.sum(ichanged)
             if nchanged > 0:
                 for key in line.explicitly_set_keys():
-                    if line.get_key_modify_time(key) > self._last_construct_time:
+                    if line[key,'_modify_time'] > self._last_construct_time:
                         line_copy[key,ichanged] = line[key,imatch][ichanged]
             ## x grid has changed, full recalculation
             if self._xchanged:
@@ -571,9 +571,9 @@ class Model(Optimiser):
                         ## all lines have changed
                         (nchanged == len(ichanged))
                         ## ykey has changed
-                        and (line_copy.get_key_modify_time(ykey) > self._last_construct_time)
+                        and (line_copy[ykey,_modify_time] > self._last_construct_time)
                         ## no key other than ykey has changed
-                        and (np.all([line_copy.get_key_modify_time(key) < self._last_construct_time for key in data if key != ykey]))
+                        and (np.all([line_copy[key,'_modify_time'] < self._last_construct_time for key in data if key != ykey]))
                         ## ykey has changed by a near-constant factor -- RISKY!!!!
                         and _find_significant_difference(data[ykey],line_copy[ykey])
                         ## ## ykey has changed by constant factor -- MACHINE PRECISION?

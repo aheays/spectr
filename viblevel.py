@@ -40,14 +40,13 @@ class VibLevel(Optimiser):
         self.species = get_species(species)
         self.Zsource = Zsource
         self.Eref = Eref
-        tkwargs = {'auto_defaults':True,'permit_nonprototyped_data':False}
         self._manifolds = {}
         self._shifts = []       # used to shift individual levels after diagonalisation
-        self.level = levels.Diatomic(name=f'{self.name}.level',**tkwargs)
+        self.level = levels.Diatomic(name=f'{self.name}.level')
         self.level.pop_format_input_function()
         self.level.add_suboptimiser(self)
         self.level.pop_format_input_function()
-        self.vibrational_spin_level = levels.Diatomic(**tkwargs)
+        self.vibrational_spin_level = levels.Diatomic()
         self.interactions = Dataset() 
         self.verbose = False
         self.sort_eigvals = True # try to reorder eigenvalues/eigenvectors after diagonalisation into diabatic levels

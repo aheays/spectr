@@ -117,7 +117,7 @@ def _f0(self,point_group):
     if point_group in ('K','C∞v'):
         return 1.
     else:
-        raise InferException
+        raise InferException(f'Trivial gnuclear only possible from point_group in (K,C∞v)')
 @vectorise(cache=True,vargs=(1,2,3))
 def _f1(self,point_group,Inuclear,sa):
     """Calculate homonuclear diatomic molecule level degeneracy."""
@@ -552,10 +552,9 @@ class Base(Dataset):
         """Assert no two levels/lines are the same"""
         t,i,c = np.unique(self['qnhash'],return_index=True,return_counts=True)
         if len(i) < len(self):
-            j = [ti for ti,tc in zip(i,c) if tc > 1]
+            j = array([ti for ti,tc in zip(i,c) if tc > 1])
             if verbose or self.verbose:
                 print('\nNon-unique levels:\n')
-                print(self[j].format_flat())
                 print()
             raise Exception(f"There are {len(j)} sets of quantum numbers that are repeated (set verbose=True to print).")
 

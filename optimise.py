@@ -455,10 +455,10 @@ class Optimiser:
                     unique_parameters.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
-                    vary = optimiser.get((key,'vary'))
+                    vary = optimiser.get(key,'vary')
                     value.extend(optimiser[key][vary])
-                    unc.extend(optimiser.get((key,'unc'),index=vary))
-                    step.extend(optimiser.get((key,'step'),index=vary))
+                    unc.extend(optimiser.get(key,'unc',index=vary))
+                    step.extend(optimiser.get(key,'step',index=vary))
         return value,step,unc
 
     def _set_parameters(self,p,dp=None,rescale=False):
@@ -488,11 +488,11 @@ class Optimiser:
                     already_set.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
-                    vary = optimiser.get((key,'vary'))
+                    vary = optimiser.get(key,'vary')
                     ## could speed up using slice rather than pop?
                     for i in tools.find(vary):
-                        optimiser.set(key,p.pop(0),index=i)
-                        optimiser.set((key,'unc'),dp.pop(0),index=i)
+                        optimiser.set(key,'value',p.pop(0),index=i)
+                        optimiser.set(key,'unc',dp.pop(0),index=i)
 
     construct_functions = property(lambda self: list(self._construct_functions.values()) + list(self._post_construct_functions.values())[::-1])
 

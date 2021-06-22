@@ -2359,7 +2359,8 @@ def annotate_spectrum_by_branch(
     Lines object."""
     zkeys = tools.ensure_iterable(zkeys)
     zkeys = [t for t in zkeys if lines.is_known(t)]
-    lines.assert_known(xkey,label_key,*zkeys)
+    for key in (xkey,label_key,*zkeys):
+        lines.assert_known(key)
     retval = []
     # color_dict = {tqn:newcolor(it) for it,tqn in enumerate(lines.unique_combinations(*zkeys))}
     # lines = deepcopy(lines)

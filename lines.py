@@ -642,7 +642,7 @@ class Generic(levels.Base):
                 return x,np.zeros(x.shape)
         ## guess a default lineshape
         if lineshape is None:
-            if self.is_known('ΓL','ΓG') and np.any(self['ΓL']!=0) and np.any(self['ΓG']!=0):
+            if self.is_known('ΓG') and self.is_known('ΓL') and np.any(self['ΓL']!=0) and np.any(self['ΓG']!=0):
                 lineshape = 'voigt'
             elif self.is_known('ΓL') and np.any(self['ΓL']!=0):
                 lineshape = 'lorentzian'
@@ -651,7 +651,8 @@ class Generic(levels.Base):
             else:
                 raise Exception(f"Cannot determine lineshape because both Γ and ΓD are unknown or zero")
         ## get x and ykeys
-        self.assert_known(xkey,ykey)
+        self.assert_known(xkey)
+        self.assert_known(ykey)
         ## get a default frequency scale if none provided
         if x is None:
             if dx is not None:
@@ -1172,7 +1173,7 @@ class Generic(levels.Base):
             keys_to_copy = _cache[suffix]['keys_to_copy']
             ## copy all data only if it has changed
             for key_self,key_level in keys_to_copy:
-                self.set(key_self,level[key_level,ilevel],index=iline,set_changed_only= True)
+                self.set(key_self,'value',level[key_level,ilevel],index=iline,set_changed_only= True)
                  
     def set_levels(self,match=None,**keys_vals):
         """Set level data from keys_vals into self."""
@@ -1271,8 +1272,7 @@ class Linear(Generic):
             xQspline,yQspline = zip(*Qknots)
             xΔspline,yΔspline = zip(*Δknots)
             ## get index limit to defined xkey range
-            index,sort_order = self._get_combined_index(index,match,**match_kwargs)
-            assert sort_order is None,'Not implemented'
+            index = self._get_combined_index(index,match,return_bool=True,**match_kwargs)
             irange = (self[xkey]>=max(np.min(xQspline),np.min(xΔspline))) & (self[xkey]<=min(np.max(xQspline),np.max(xΔspline)))
             if index is None:
                 index = irange
@@ -1303,18 +1303,18 @@ class Linear(Generic):
         Py = (tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order) + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order))
         Ry = (tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order) - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order))
         ## set data
-        self.set(key,value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
-        self.set(key,value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
-        self.set(key,value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
+        self.set(key,'value',value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
+        self.set(key,'value',value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
+        self.set(key,'value',value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
         ## set uncertainties to NaN
-        if self.is_set((key,'unc')):
-            self.set((key,'unc'),nan,index=Qindex)
-            self.set((key,'unc'),nan,index=Pindex)
-            self.set((key,'unc'),nan,index=Rindex)
+        if self.is_set(key,'unc'):
+            self.set(key,'unc',nan,index=Qindex)
+            self.set(key,'unc',nan,index=Pindex)
+            self.set(key,'unc',nan,index=Rindex)
         ## set vary to False if set, but only on the first execution
         if 'not_first_execution' not in _cache:
-            if 'vary' in self._data[key]['assoc']:
-                self.set((key,'vary'),False,index=index)
+            if self.is_set(key,'vary'):
+                self.set(key,'vary',False,index=index)
             _cache['not_first_execution'] = True
 
 
