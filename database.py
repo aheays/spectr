@@ -65,9 +65,6 @@ data_directory = tools.expand_path('~/src/python/spectr/data/')
 @tools.vectorise(cache=True)
 def normalise_species(species):
     """Try to normalise a species name."""
-    # if species in species_synonyms:
-        # species = species_synonyms[species]
-    # return species
     return kinetics.get_species(species).name
 
 @tools.vectorise(cache=True)
@@ -246,10 +243,19 @@ electronic_states={
     ('CO','d')  :{'Λ':2,'S':1,'s'  :0,'LSsign':-1},
     ('CO','e')  :{'Λ':0,'S':1,'s'  :1,'LSsign':1},
     ('CO','k')  :{'Λ':1,'S':1,'s'  :0,'LSsign':1},
-    ('H₂','X')  :{'Λ':0,'S':0,'s'  :0,'gu'    :1,'LSsign' :1},
-    ('H₂','B')  :{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('H₂','C')  :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('H₂','D')  :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('H₂','X')  : {'Λ' : 0,'S' : 0,'s' : 0,'gu' : 1,'LSsign'  : 1},
+    ('H₂','GK') : {'Λ' : 0,'S' : 0,'s' : 0,'gu' : 1,'LSsign'  : 1},
+    ('H₂','H')  : {'Λ' : 0,'S' : 0,'s' : 0,'gu' : 1,'LSsign'  : 1},
+    ('H₂','B')  : {'Λ' : 0,'S' : 0,'s' : 0,'gu' : -1,'LSsign' : 1},
+    ('H₂','C')  : {'Λ' : 1,'S' : 0,'s' : 0,'gu' : -1,'LSsign' : 1},
+    ('H₂','B′') : {'Λ' : 0,'S' : 0,'s' : 0,'gu' : -1,'LSsign' : 1},
+    ('H₂','D')  : {'Λ' : 1,'S' : 0,'s' : 0,'gu' : -1,'LSsign' : 1},
+    ('H₂','I')  : {'Λ' : 1,'S' : 0,'s' : 0,'gu' : +1,'LSsign' : 1},
+    ('H₂','B″') : {'Λ' : 0,'S' : 0,'s' : 0,'gu' : -1,'LSsign' : 1},
+    ('H₂','J')  : {'Λ' : 2,'S' : 0,'s' : 0,'gu' : +1,'LSsign' : 1},
+    ('H₂','b')  : {'Λ' : 2,'S' : 1,'s' : 0,'gu' : +1,'LSsign' : 1},
+    ('H₂','c')  : {'Λ' : 1,'S' : 1,'s' : 0,'gu' : +1,'LSsign' : 1},
+    ('H₂','EF') : {'Λ' : 0,'S' : 0,'s' : 0,'gu' : +1,'LSsign' : 1},
     ('OH','X')  :{'Λ':1,'S':0.5,'s':0,'LSsign':-1},
     ('OH','A')  :{'Λ':0,'S':0.5,'s':0,'LSsign':1},
     ('OH','B')  :{'Λ':0,'S':0.5,'s':0,'LSsign':1},
@@ -320,7 +326,3 @@ electronic_states={
 }
 
 
-species_synonyms = {
-    'HH':'H2',
-    '[1H][1H]':'H2',
-    }
