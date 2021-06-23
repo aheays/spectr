@@ -24,7 +24,6 @@ from . import convert
 from . import quantum_numbers
 from .exceptions import InferException
 # from .lines import prototypes
-from . import levels
 from . import dataset
 from .dataset import Dataset
 from .optimise import Parameter,P,optimise_method
@@ -340,17 +339,13 @@ def _collect_prototypes(level_class,base_class,new_keys):
     ## add infer functions for 'qnhash' and 'qn' to and from
     ## defining_qn
     if 'qnhash' in default_prototypes:
-        default_prototypes['qnhash']['infer'].append(
-            (defining_qn, lambda self,*qn:
-                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+        default_prototypes['qnhash']['infer'].append((defining_qn,levels._qn_hash))
     if 'qnhash_u' in default_prototypes:
         default_prototypes['qnhash_u']['infer'].append(
-            ([f'{key}_u' for key in level_class.defining_qn], lambda self,*qn:
-                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+            ([f'{key}_u' for key in level_class.defining_qn], levels._qn_hash))
     if 'qnhash_l' in default_prototypes:
         default_prototypes['qnhash_l']['infer'].append(
-            ([f'{key}_l' for key in level_class.defining_qn], lambda self,*qn:
-                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+            ([f'{key}_l' for key in level_class.defining_qn], levels._qn_hash))
     if 'qn' in default_prototypes:
         default_prototypes['qn']['infer'].append(
             (defining_qn, lambda self,*defining_qn:
@@ -988,11 +983,10 @@ class Generic(levels.Base):
             for Δefabs,ΔJ in ((0,+1), (0,-1),(2,0),):
                 ## look for allowed Δef/ΔJ transitions
                 for ju in tiu:
-                    for jl in til:
-                        if (abs(levelu['ef'][ju]-levell['ef'][jl]) == Δefabs
-                            and (levelu['J'][ju]-levell['J'][jl]) == ΔJ):
-                            ku.append(ju)
-                            kl.append(jl)
+                    for jl in til[(np.abs(levell['ef',til]-levelu['ef',ju]) == Δefabs)
+                                  & ((levelu['J',ju]-levell['J',til]) == ΔJ)]:
+                        ku.append(ju)
+                        kl.append(jl)
         ## collect allowed data
         data = dataset.make(self.classname)
         for key in levelu:

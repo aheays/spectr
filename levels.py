@@ -4,6 +4,8 @@ import functools
 from copy import copy,deepcopy
 import re
 from pprint import pprint
+import hashlib
+import pickle
 
 ## nonstandard libraries
 from scipy import constants
@@ -492,15 +494,18 @@ def _get_key_from_qn(self,qn,key):
     except KeyError as err:
         raise InferException('Could not determine from qn: {str(err)}')
 
+def _qn_hash(self,*qn):
+    """Compute qn hash."""
+    qnhash = [hash(qni) for qni in zip(*qn)]
+    return qnhash
+
 def _collect_prototypes(*keys,defining_qn=()):
     ## collect from module prototypes list
     default_prototypes = {key:deepcopy(prototypes[key]) for key in keys}
     ## add infer functions for 'qnhash' and 'qn' to and from
     ## defining_qn
     if 'qnhash' in default_prototypes:
-        default_prototypes['qnhash']['infer'].append(
-            (defining_qn, lambda self,*qn:
-                     [hash(tuple([qni[j] for qni in qn])) for j in range(len(self))]))
+        default_prototypes['qnhash']['infer'].append((defining_qn,_qn_hash),)
     if 'qn' in default_prototypes:
         default_prototypes['qn']['infer'].append(
             (defining_qn, lambda self,*qn:
