@@ -31,6 +31,7 @@ class Dataset(optimise.Optimiser):
         'b':    {'cast':convert_to_bool_vector_array       ,'fmt':''      ,'description':'bool'  },
         'U':    {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt':'s'     ,'description':'str'   },
         'O':    {'cast':lambda x:np.asarray(x,dtype=object),'fmt':''      ,'description':'object'},
+        'h':    {'cast':lambda x:np.asarray(x,dtype='S20') ,'fmt':''      ,'description':'SHA1 hash'},
     }
 
     ##  Kinds of subdata that are vectors
@@ -381,7 +382,6 @@ class Dataset(optimise.Optimiser):
                 self.set(key,subkey,subkind['default'])
             else:
                 raise InferException(f'Could not determine default value for subkey {repr(subkey)})')
-
         ## return data
         if subkey in self.scalar_subkinds:
             ## scalar subdata
@@ -440,13 +440,19 @@ class Dataset(optimise.Optimiser):
         else:
             return self.all_subkinds[subkey][attribute]
             
-            
     def _get_combined_index(self,index,match,return_bool=False,**match_kwargs):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
         if index is None and match is None and len(match_kwargs)==0:
             ## no indices at all
             retval = None
+        elif np.isscalar(index):
+            ## single index
+            retval = index
+            if match is not None and len(match_kwargs) != 0:
+                raise Exception("Single index cannot be addtionally matched.")
+            if return_bool:
+                raise Exception("Single index cannot be returned as a boolean array.")
         else:
             ## get index into a bool or index array
             if index is None:
@@ -463,11 +469,11 @@ class Dataset(optimise.Optimiser):
             if match is not None or len(match_kwargs) > 0:
                 imatch = self.match(match,**match_kwargs)
                 retval = retval[tools.find(imatch[retval])]
-        if return_bool:
-            ## convert to boolean array
-            t = np.full(len(self),False)
-            t[retval] = True
-            retval = t
+            if return_bool:
+                ## convert to boolean array
+                t = np.full(len(self),False)
+                t[retval] = True
+                retval = t
         return retval
 
     @optimise_method(format_lines='single')
@@ -602,11 +608,6 @@ class Dataset(optimise.Optimiser):
                 key,subkey,index = key[0],'value',key[1]
         elif len(key) == 3:
                 key,subkey,index = key[0],key[1],key[2]
-        # if isinstance(value,optimise.P):
-            # if subkey != 'value':
-                # raise Exception()
-            # self.set_value(key,value,index)
-        # else:
         self.set(key,subkey,value,index)
        
     def clear(self):
@@ -1016,7 +1017,7 @@ class Dataset(optimise.Optimiser):
         if keys is None:
             keys = self.keys()
         for i in range(len(self)):
-            yield {key:self.get(key,'value',i)[0] for key in keys}
+            yield {key:self.get(key,'value',i) for key in keys}
 
     def row_data(self,keys=None,index=None):
         """Iterate rows, returning data in a tuple."""
@@ -1497,6 +1498,8 @@ class Dataset(optimise.Optimiser):
             keys = list(new_dataset.explicitly_set_keys())
         elif keys == 'all':
             keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
+        else:
+            keys = keys
         ## make sure necessary keys are known
         for key in keys:
             self.assert_known(key)
