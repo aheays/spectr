@@ -67,10 +67,8 @@ from spectr import *
 # t.load_from_nist('~/data/species/C/NIST_transitions_2021-04-22.psv')
 # t.save('C.h5')
 
-# ########
-## H2 ##
-########
 
+## H2
 d = lines.Diatomic(
     description='H2 data downloaded from Meudon observatory "fichiers_all"',
     species='¹H₂',label_l='X')
@@ -91,5 +89,7 @@ d.load('~/data/species/H2/lines_levels/meudon_observatory/fichiers_all',
        keys=('label_u', 'v_u', 'J_u', 'v_l', 'J_l', 'Ae', 'ν', 'Γ',
              # 'At', 'Ad',
              ),)
+d['label_u',d.match(label_u=('C+','C-'))] = 'C'
+d['label_u',d.match(label_u=('D+','D-'))] = 'D'
 # d.limit_to_match(v_l_max=10,J_l_max=10)
 d.save('¹H₂.h5')

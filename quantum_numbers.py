@@ -577,7 +577,6 @@ def decode_linear_line(encoded):
     and returns when matching runs out."""
     if '–' not in encoded:
         raise Exception(f'Encoded linear line does not contain "–": {repr(encoded)}')
-
     ## e.g., species_upper–lower_rot
     if r:=re.match(r'([^_]+_)?([^–_]+)–([^–_]+)(_.+)?$',encoded):
         qn = {}
