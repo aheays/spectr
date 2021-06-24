@@ -279,7 +279,7 @@ def _f1(self,f,SJ,J_l,Λ_u,Λ_l):
     fv = f/SJ*(2.*J_l+1.)       # correct? What about 2S+1?
     fv[(Λ_l==0)&(Λ_u!=0)] *= 2
     return fv
-prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',default_step=1e-4,cast=cast_abs_float_array,infer=[
+prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',default_step=1e-5,cast=cast_abs_float_array,infer=[
     (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  band_strength_to_band_fvalue(Sv,ν, Λ_u,Λ_l)),
     ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
     ( ('f','SJ','J_l','Λ_u','Λ_l'), _f1,)])
@@ -740,6 +740,15 @@ class Generic(levels.Base):
         data_string = '\n'.join(data_string)
         data = Dataset()
         data.load_from_string(data_string,delimiter='|')
+        for key in ('term_i','term_k'):
+            for regexp in (
+                    '^nan$',
+                    '^\(.*\)\*?$',
+                    ):
+                i = data.match_re({key:regexp})
+                if np.any(i):
+                    print(f'Removing {sum(i)} values for {key} I do not understand matching regexp {repr(regexp)}')
+                    data.index(~i)
         ## manipulate some data
         for key in ('J_i','J_k'):
             if data.get_kind(key) == 'U':
@@ -802,7 +811,8 @@ class Generic(levels.Base):
                 ('S_l','S_l'),
                 ('gu_l','gu_l'),
         ):
-            self[key1] = data[key0]
+            if key0 in data:
+                self[key1] = data[key0]
         self['reference'] = 'NIST'
         
     def load_from_pgopher(
@@ -1306,6 +1316,48 @@ class Diatomic(Linear):
         else:
             raise Exception(f'intensity_type must be "absorption" or "emission" or "partition"')
         self.extend(**data)
+
+    def load_from_spectra(self,filename):
+        """Old filetype. Incomplete"""
+        ## load vector data
+        data = tools.file_to_dict(filename,labels_commented=True)
+        length = len(list(data.values())[0])
+        ## load header
+        with open(filename,'r') as fid:
+            for line in fid:
+                if r:=re.match(r'^# ([^ ]+) = ([^ "]+) .*',line):
+                    data[r.group(1)] = np.full(length,r.group(2))
+                elif r:=re.match(r'^# ([^ ]+) = "(.*)" .*',line):
+                    data[r.group(1)] = np.full(length,r.group(2))
+        ## keys to translate
+        for key in list(data):
+            if r:=re.match(r'^(.+)pp$',key):
+                data[r.group(1)+'_l'] = data.pop(key)
+            elif r:=re.match(r'^(.+)p$',key):
+                data[r.group(1)+'_u'] = data.pop(key)
+        for key in list(data):
+            if r:=re.match(r'^d(.+)$',key):
+                print(f'Load spectrum uncertainty not implemented: {key}')
+                data.pop(key)
+                ## data[r.group(1)+':unc'] = data.pop(key)
+        for key_old,key_new in (
+                ('T_u','E_u'),
+                ('T_l','E_l'),
+                ('Tref','E0'),
+                ):
+            if key_old in data:
+                data[key_new] = data.pop(key_old)
+        ## data to modify
+        if 'ef' in data:
+            i = data['ef']=='f'
+            data['ef'] = np.full(len(data['ef']),+1,dtype=int)
+            data['ef'][i] = -1
+        ## data to ignore
+        for key in ('level_transition_type',
+                    'partition_source',):
+            if key in data:
+                data.pop(key)
+        self.extend(keys='all',**data)
 
 class Triatomic(Linear):
     """E.g., CO2, CS2."""

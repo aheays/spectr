@@ -19,12 +19,18 @@ from spectr import *
 # t.load_from_nist('~/data/species/Ar/lines_levels/NIST_levels_2021-06-03.tsv')
 # t.save('Ar.h5')
 
-## O
-t = levels.Atomic(species='O')
-t.description = 'NIST database OI energy levels downloaded 2021-06-22.'
-t.load_from_nist('~/data/species/O/lines_levels/NIST_levels_2021-06-22.tsv')
-t.remove(np.isnan(t['E']))
-t.save('O.h5')
+# ## O
+# t = levels.Atomic(species='O')
+# t.description = 'NIST database OI energy levels downloaded 2021-06-22.'
+# t.load_from_nist('~/data/species/O/lines_levels/NIST_levels_2021-06-22.tsv')
+# t.remove(np.isnan(t['E']))
+# t.save('O.h5')
+
+## Kr
+t = levels.Atomic(species='Kr')
+t.description = 'NIST database Kr I energy levels downloaded 2021-06-23.'
+t.load_from_nist('~/data/species/Kr/lines_levels/NIST_levels_2021-06-23.tsv')
+t.save('Kr.h5')
 
 # ########
 # ## N2 ##

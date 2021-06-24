@@ -638,6 +638,15 @@ class Atomic(Generic):
                 for i,t in enumerate(data[key]):
                     if re.match(tre,t):
                         data[key][i] = t[1:-1]
+        ## remove term symbols I do not know how to decode
+        for regexp in (
+                '^nan$',
+                '^\(.*\)\*?$',
+                ):
+            i = data.match_re(Term=regexp)
+            if np.any(i):
+                print(f'Removing {sum(i)} terms I do not understand matching regexp {repr(regexp)}')
+                data.index(~i)
         ## add to self
         for key0,key1 in (
                 ('Configuration','conf'),
@@ -653,7 +662,7 @@ class Atomic(Generic):
         self['reference'] = 'NIST'
         ## decode NIST terms -- incomplete
         S = []
-        for t in data['Term']:
+        for i,t in enumerate(data['Term']):
             if r:=re.match(r'^([0-9]+)([SPDFGH])(\*?)$',t): 
                 ## e.e., 1S
                 S.append((float(r.group(1))-1)/2)
@@ -763,4 +772,3 @@ class Diatomic(Linear):
                 ):
             data.pop(key)
         self.extend(**data)
-

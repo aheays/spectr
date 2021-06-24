@@ -910,17 +910,17 @@ def decode_branch(branch):
     """Expect e.g., P13ee, P11, P1, P. Return as dict."""
     branch = branch.strip()
     if r:=re.match(r'^([OPQRS])([0-9])([0-9])([ef])([ef])$',branch):
-        return {'ΔJ': decode_ΔJ[r.group(1)],
+        return {'ΔJ': decode_ΔJ(r.group(1)),
                 'Fi_u': int(r.group(2)),
                 'Fi_l': int(r.group(3)),
-                'ef_u': decode_ef[r.group(4)],
-                'ef_l': decode_ef[r.group(5)]}
+                'ef_u': decode_ef(r.group(4)),
+                'ef_l': decode_ef(r.group(5))}
     elif r:=re.match(r'^([OPQRS])([0-9])([0-9])$',branch):
-        return {'ΔJ': decode_ΔJ[r.group(1)],
+        return {'ΔJ': decode_ΔJ(r.group(1)),
                 'Fi_u': int(r.group(2)),
                 'Fi_l': int(r.group(3)),}
     elif r:=re.match(r'^([OPQRS])$',branch):
-        return {'ΔJ': decode_ΔJ[r.group(1)],}
+        return {'ΔJ': decode_ΔJ(r.group(1)),}
     else:
         raise InvalidEncodingException(f"Cannot decode branch: {repr(branch)}")
 

@@ -535,13 +535,16 @@ class Optimiser:
                     ## combine construct function residuals into one
                     if o.residual is not None and len(o.residual)>0:
                         o.residual = np.concatenate(o.residual)
+                ## scale residual
+                o.residual = o.residual_scale_factor*np.array(o.residual)
                 ## record time of construction
                 o._last_construct_time = timestamp()
             ## remove any clean construct mark
             o._clean_construct = False
             ## add residual to return value for optimisation, possibly rescaling it
             if o.residual is not None:
-                combined_residual.append(o.residual_scale_factor*np.array(o.residual))
+                # combined_residual.append(o.residual_scale_factor*np.array(o.residual))
+                combined_residual.append(o.residual)
         combined_residual = np.concatenate(combined_residual)  # includes own residual and for all suboptimisers
         self.combined_residual = combined_residual # this includes residuals from construct_functions combined with suboptimisers
         return combined_residual

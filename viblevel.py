@@ -384,14 +384,10 @@ class VibLine(Optimiser):
         self.species = self.level_l.species
         self.Zsource = Zsource
         self.level_u.Eref = self.level_l.Eref = self.Eref = Eref
-        tkwargs = {'auto_defaults':True, 'permit_nonprototyped_data':False,}
-        self.line = lines.Diatomic(name=f'{self.name}.line',**tkwargs)
+        self.line = lines.Diatomic(name=f'{self.name}.line')
         self.line.pop_format_input_function()
         self.line.add_suboptimiser(self)
         self.line.pop_format_input_function()
-        # self.vibrational_line = lines.Diatomic(**tkwargs)
-        # self.vibrational_spin_line = lines.Diatomic(**tkwargs)
-        # self.vibrational_spin_line.add_suboptimiser(self)
         # self.μ = None
         self._set_J_l_ΔJ(J_l,ΔJ)
         ## transitions

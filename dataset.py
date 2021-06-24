@@ -270,7 +270,7 @@ class Dataset(optimise.Optimiser):
             if data['kind'] == 'S':
                 data['kind'] = 'U'
             ## some other prototype data based on kind
-            data |= self.data_kinds[data['kind']]
+            data = self.data_kinds[data['kind']] | data
             ## if a scalar expand to length of self
             ## and set as default value
             if not tools.isiterable(value):
@@ -345,7 +345,7 @@ class Dataset(optimise.Optimiser):
             if subkey not in data:
                 ## set missing data outside indexed range to a default
                 ## value using the get method
-                self._get_subdata(key,subkey)
+                self.get(key,subkey)
             ## set indexed data
             data[subkey][:len(self)][index] = subkind['cast'](value)
 
@@ -661,8 +661,9 @@ class Dataset(optimise.Optimiser):
                 continue
             if self.is_inferred(key):
                 for tkey in self._data[key]['_inferred_from']:
-                    if key in self._data[tkey]['_inferred_to']:
-                        self._data[tkey]['_inferred_to'].remove(key)
+                    if tkey in self._data:
+                        if key in self._data[tkey]['_inferred_to']:
+                            self._data[tkey]['_inferred_to'].remove(key)
             ## recursively delete everything inferred to
             for tkey in self._data[key]['_inferred_to']:
                 if tkey not in keys and tkey in self:
@@ -773,6 +774,16 @@ class Dataset(optimise.Optimiser):
                         self.set(key,subkey,source[key,subkey,index])
                     else:
                         self.set(key,subkey,source[key,subkey])
+
+    def match_re(self,keys_vals=None,**kwarg_keys_vals):
+        """Match string keys to regular expressions."""
+        if keys_vals is None:
+            keys_vals = {}
+        keys_vals = keys_vals | kwarg_keys_vals
+        retval = np.full(len(self),True)
+        for key,regexp in keys_vals.items():
+            retval &= np.array([re.match(regexp,val) for val in self[key]],dtype=bool)
+        return retval
 
     def match(self,keys_vals=None,**kwarg_keys_vals):
         """Return boolean array of data matching all key==val.\n\nIf key has
