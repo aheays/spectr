@@ -81,7 +81,6 @@ def calc_unbound_wavefunction(R,Rstep,V,μ,E,method='fortran'):
     χretval[:,:,iopen] = χ
     return(χretval)
 
-
 def find_single_channel_bound_levels_in_energy_range(
         V,                      # Potential energy curve (cm-1)
         dR,                     # Internuclear-distance grid step (Å)

@@ -17,7 +17,7 @@ from . import dataset
 from . import plotting
 from .dataset import Dataset
 from .tools import find,cache
-from .optimise import Optimiser,P,optimise_method
+from .optimise import Optimiser,P,Parameter,optimise_method
 from .kinetics import get_species,Species
 
 
@@ -35,6 +35,7 @@ class VibLevel(Optimiser):
             # eigenvalue_ordering='maximise coefficients', # for deciding on the quantum number assignments of mixed level, options are 'minimise residual', 'maximise coefficients', 'preserve energy ordering' or None
             Eref=0.,       # energy reference relative to equilibrium energy, defaults to 0. -- not well defined
             Zsource='self',
+            sort_eigvals=False,
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
@@ -49,7 +50,7 @@ class VibLevel(Optimiser):
         self.vibrational_spin_level = levels.Diatomic()
         self.interactions = Dataset() 
         self.verbose = False
-        self.sort_eigvals = True # try to reorder eigenvalues/eigenvectors after diagonalisation into diabatic levels
+        self.sort_eigvals = sort_eigvals# try to reorder eigenvalues/eigenvectors after diagonalisation into diabatic levels
         self.sort_eigvals_to_match_experiment = False
         ## inputs / outputs of diagonalisation
         self.eigvals = None
@@ -134,8 +135,9 @@ class VibLevel(Optimiser):
                 iexp,imod = dataset.find_common(self.experimental_level,self.level,keys=self.level.defining_qn)
                 self.level['Eexp'][imod] = self.experimental_level['E'][iexp]
                 self.level['Eexp','unc'][imod] = self.experimental_level['E','unc'][iexp]
-                self.level['Γexp'][imod] = self.experimental_level['Γ'][iexp]
-                self.level['Γexp','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
+                if self.experimental_level.is_known('Γ'):
+                    self.level['Γexp'][imod] = self.experimental_level['Γ'][iexp]
+                    self.level['Γexp','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
                 self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
         else:
             if self.experimental_level is not None:
@@ -185,7 +187,7 @@ class VibLevel(Optimiser):
             return residual
 
     @optimise_method()
-    def add_level(self,name,Γv=0,_cache=None,**kwargs):
+    def add_manifold(self,name,Γv=0,_cache=None,**kwargs):
         """Add a new electronic vibrational level. kwargs contains fitting
         parameters and optionally extra quantum numbers."""
         ## process inputs
@@ -208,6 +210,15 @@ class VibLevel(Optimiser):
             for key in kw:
                 if key not in allowed_kwargs:
                     raise Exception(f'Keyword argument {repr(key)} is not a known quantum number of Hamiltonian parameter. Allowed kwargs: {allowed_kwargs} ')
+            ## set differentiation stepsize
+            stepsizes = {'Tv':1e-3, 'Bv':1e-5, 'Dv':1e-8, 'Hv':1e-13,
+                         'Lv':1e-15, 'Mv':1e-17, 'Av':1e-3, 'ADv':1e-7, 'λv':1e-5,
+                         'λDv':1e-8, 'λHv':1e-11, 'γv':1e-3, 'γDv':1e-7, 'ov':1e-3,
+                         'pv':1e-3, 'pDv':1e-7, 'qv':1e-3, 'qDv':1e-7,}
+            for key in kw:
+                if isinstance(kw[key],Parameter) and key in stepsizes:
+                    kw[key].step = stepsizes[key]
+            ## cache
             _cache['kw'] = kw
         kw = _cache['kw']
         ## Checks that integer/half-integer nature of J corresponds to
@@ -244,6 +255,8 @@ class VibLevel(Optimiser):
         ## update H
         for i,j in np.ndindex((n,n)):
             self.H[:,i+ibeg,j+ibeg] = fH[i,j](self.J,**kw) + 1j*Γv
+
+    add_level = add_manifold    # deprecated
 
     @optimise_method()
     def add_spline_width(self,name,knots,ef=None,Σ=None,order=3):
@@ -336,13 +349,14 @@ class VibLevel(Optimiser):
                     axEres.set_title('Eres')
                     tkwargs = plot_kwargs | {'marker':'',}
                     axE.plot(m2['J'],m2['E']-ΔEreduce,**tkwargs)
-                    tkwargs = plot_kwargs | {'linestyle':'',}
+                    Ekwargs = plot_kwargs | {'linestyle':'',}
+                    Ereskwargs = plot_kwargs | {'linestyle':'-',}
                     if plot_errorbars:
-                        axE.errorbar(m2['J'],m2['Eexp']-ΔEreduce,m2['Eexp','unc'],**tkwargs)
-                        axEres.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**tkwargs)
+                        axE.errorbar(m2['J'],m2['Eexp']-ΔEreduce,m2['Eexp','unc'],**Ekwargs)
+                        axEres.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**Ereskwargs)
                     else:
-                        axE.plot(m2['J'],m2['Eexp']-ΔEreduce,**tkwargs)
-                        axEres.plot(m2['J'],m2['Eres'],**tkwargs)
+                        axE.plot(m2['J'],m2['Eexp']-ΔEreduce,**Ekwargs)
+                        axEres.plot(m2['J'],m2['Eres'],**Ereskwargs)
 
                 if np.any(self.level['Γ'] > 0):
                     axΓ = plotting.subplot(2,fig=fig)
@@ -363,7 +377,9 @@ class VibLevel(Optimiser):
                             axΓ.plot(m2['J'],m2['Γexp'],**tkwargs)
                             axΓres.plot(m2['J'],m2['Γexp'],**tkwargs)
 
-        if ylim_Eresidual is not None:
+        if self.experimental_level is not None and ylim_Eresidual is not None:
+            if np.isscalar(ylim_Eresidual):
+                ylim_Eresidual = (-ylim_Eresidual,ylim_Eresidual)
             axEres.set_ylim(ylim_Eresidual)
 
 
@@ -1015,17 +1031,24 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
     c = eigvects.real**2
     ## mask of levels without confirmed assignments
     not_found = np.full(len(c), True) 
-    ## find all mixing coefficients greater than
-    ## 0.5 and fix their assignments
-    for i in range(len(c)):
-        j = np.argsort(-c[i,:])
-        if c[i,j[0]] > 0.5:
-            j = j[0]
-            ii = list(range(len(c)))           # index of columns
-            ii[i],ii[j] = j,i                  # swap largest c into diagonal position 
-            c = c[:,ii]                        # swap for all columns
-            eigvals,eigvects = eigvals[ii],eigvects[:,ii] # and eigvalues
-            not_found[i] = False 
+    ## find all mixing coefficients greater than 0.5 and fix their
+    ## assignments.  If its too many to test permutations of remainder
+    ## then accept coefficients min_frac_diff bigger than the next
+    ## coefficient
+    min_frac_diff = 2
+    while sum(not_found) > 7:
+        # print('DEBUG:',sum(not_found),min_frac_diff )
+        for i in range(len(c)):
+            j = np.argsort(-c[i,:])
+            ## accept if greater than 0.5 coefficient, or 5% bigger than next coefficient
+            if c[i,j[0]] > 0.5 or c[i,j[0]]/c[i,j[1]] > min_frac_diff:
+                j = j[0]
+                ii = list(range(len(c)))           # index of columns
+                ii[i],ii[j] = j,i                  # swap largest c into diagonal position 
+                c = c[:,ii]                        # swap for all columns
+                eigvals,eigvects = eigvals[ii],eigvects[:,ii] # and eigvalues
+                not_found[i] = False
+        min_frac_diff -= 0.1
     ## trial all permutations of remaining
     ## unassigned levels, looking for the one
     ## which gives the best assignments
@@ -1033,7 +1056,7 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         ## limit to mixing coefficient array of unassigned levels
         c_not_found = c[not_found,:][:,not_found]
         number_not_found = len(c_not_found)
-        if number_not_found > 10:
+        if number_not_found > 8:
             warnings.warn(f'Trialing all permutations of {number_not_found} levels.')
         ## loop through all permutations, looking for globally best metric
         best_permutation = None
@@ -1071,17 +1094,17 @@ def _permute_to_minimise_difference(x,y):
 def calc_viblevel(
         name='viblevel',
         species=None,J=None,
-        levels=None,         # {name:add_level_kwargs,...}
+        levels=None,         # {name:add_manifold_kwargs,...}
         couplings=None, # None or {name1,name2:add_coupling_kwargs,...}
         spline_widths=None, # None or {name:add_spline_width_kwargs,...}
 ):
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
-    add_level, add_spline_width etc."""
+    add_manifold, add_spline_width etc."""
     v = VibLevel(name=name,species=species,J=J)
     if levels is not None:
         for name,kwargs in levels.items():
-            v.add_level(name,**kwargs)
+            v.add_manifold(name,**kwargs)
     if couplings is not None:
         for (name1,name2),kwargs in couplings.items():
             v.add_coupling(name1,name2,**kwargs)
@@ -1094,7 +1117,7 @@ def calc_viblevel(
 def calc_level(*args_viblevel,match=None,**kwargs_viblevel):
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
-    add_level, add_spline_width etc."""
+    add_manifold, add_spline_width etc."""
     v = calc_viblevel(*args_viblevel,**kwargs_viblevel)
     if match is not None:
         retval = dataset.make(v.level.classname)
@@ -1111,7 +1134,7 @@ def calc_line(
 ):
     """Compute a VibLevel model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
-    add_level, add_spline_width etc."""
+    add_manifold, add_spline_width etc."""
     upper['species'] = lower['species'] = species
     upper = calc_viblevel(**upper)
     lower = calc_viblevel(**lower)

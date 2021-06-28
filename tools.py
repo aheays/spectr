@@ -9,11 +9,11 @@ import itertools
 import io
 import inspect
 
-from scipy import interpolate,constants,integrate,linalg,stats
+from scipy import interpolate,constants,integrate,linalg,stats,signal
 import csv
 import glob as glob_module
 import numpy as np
-from numpy import array
+from numpy import array,arange
 import h5py
 from sympy.printing.pycode import pycode
 
@@ -3015,6 +3015,19 @@ def gaussian(x,fwhm=1.,mean=0.,norm='area'):
         return t/t.sum()
     else:
         raise Exception('normalisation method '+norm+' not known')
+
+def convolve_with_padding(x,y,xconv,yconv):
+    """Convolve function (x,y) with (xconv,yconv) returning length of (x,y). M"""
+    dxorig = (x[-1]-x[0])/(len(x)-1)
+    width = xconv[-1]-xconv[0]
+    dx = width/(len(xconv)-1)
+    if abs(dx-dxorig)/dx > 1e-5:
+        raise Exception("Grid steps do not match")
+    padding = arange(dx,width+dx,dx)
+    xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+    ypad = np.concatenate((np.full(padding.shape,y[0]),y,np.full(padding.shape,y[-1])))
+    yout = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+    return yout
 
 def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=False):
     """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate

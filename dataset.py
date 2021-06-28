@@ -238,8 +238,8 @@ class Dataset(optimise.Optimiser):
         ## new indeed data and return
         if index is not None:
             if key not in self:
-                if 'default' in prototype_kwargs:
-                    self.set(key,value=prototype_kwargs['default'])
+                if key in self.prototypes and 'default' in self.prototypes[key]:
+                    self.set(key,'value',value=self.prototypes[key]['default'])
                 else:
                     raise Exception(f'Setting {repr(key)} for (possible) partial indices but it is not already set')
             data = self._data[key]
@@ -510,9 +510,10 @@ class Dataset(optimise.Optimiser):
     def limit_to_keys(self,keys):
         """Unset all keys except these."""
         keys = tools.ensure_iterable(keys)
-        self.assert_known(*keys)
+        for key in keys:
+            self.assert_known(key)
         self.unlink_inferences(keys)
-        for key in self:
+        for key in list(self):
             if key not in keys:
                 self.unset(key)
 
@@ -562,7 +563,8 @@ class Dataset(optimise.Optimiser):
         that data. If an arg, return an arged copy of self."""
         if isinstance(arg,int):
             ## single indexed value
-            return self.copy(index=arg)
+            # return self.copy(index=arg)
+            return self.row(index=arg)
         elif isinstance(arg,slice):
             ## index by slice
             return self.copy(index=arg)
@@ -1022,6 +1024,14 @@ class Dataset(optimise.Optimiser):
                     retval[key][subkey] = self.get(key,subkey)
         return retval
         
+    def row(self,index,keys=None):
+        """Iterate value data row by row, returns as a dictionary of
+        scalar values."""
+        if keys is None:
+            keys = self.keys()
+        return {key:self.get(key,'value',int(index)) for key in keys}
+        
+        
     def rows(self,keys=None):
         """Iterate value data row by row, returns as a dictionary of
         scalar values."""
@@ -1292,7 +1302,8 @@ class Dataset(optimise.Optimiser):
             for key,val in flat_data.items():
                 if key == 'classname':
                     ## classname attribute
-                    self.classname = val
+                    data['classname'] = val
+                    # self.classname = val
                 elif key == 'description':
                     ## description attribute
                     self.description = val
@@ -1502,6 +1513,9 @@ class Dataset(optimise.Optimiser):
     def concatenate(self,new_dataset,keys='old'):
         """Extend self by new_dataset using keys existing in self. New data updated
         on optimisaion if new_dataset changes."""
+        if len(self.keys()) == 0:
+            self.copy_from(new_dataset)
+            return 
         ## limit to keys
         if keys == 'old':
             keys = list(self.explicitly_set_keys())

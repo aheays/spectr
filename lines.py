@@ -197,11 +197,11 @@ prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-T
 
 
 ## Lorentzian linewidth
-prototypes['Γn'] = dict(description="Natural Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',default=0.0,infer=[
+prototypes['Γ'] = dict(description="Natural Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',default=0.0,infer=[
     (('Γ_u','Γ_l'),lambda self,Γu,Γl: Γu+Γl),
 ])
-prototypes['Γ_l']['infer'].append((('Γn','Γ_u'),lambda self,Γn,Γu: Γn-Γu))
-prototypes['Γ_u']['infer'].append((('Γn','Γ_l'),lambda self,Γn,Γl: Γn-Γl))
+prototypes['Γ_l']['infer'].append((('Γ','Γ_u'),lambda self,Γn,Γu: Γn-Γu))
+prototypes['Γ_u']['infer'].append((('Γ','Γ_l'),lambda self,Γn,Γl: Γn-Γl))
 
 prototypes['Γp'] = dict(description="Pressure-broadening Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',default=0.0,infer=[
     (('Γself','Γair','ΓX'),lambda self,Γ0,Γ1,Γ2: Γ0+Γ1+Γ2),
@@ -214,8 +214,8 @@ prototypes['Γp'] = dict(description="Pressure-broadening Lorentzian linewidth o
 ])
 
 prototypes['ΓL'] = dict(description="Total Lorentzian linewidth of transition" ,units="cm-1.FWHM", kind='f', fmt='<10.5g',default=0.0,infer=[
-    (('Γn','Γp'),lambda self,Γ0,Γ1: Γ0+Γ1),
-    ('Γn',lambda self,Γ0: Γ0),
+    (('Γ','Γp'),lambda self,Γ0,Γ1: Γ0+Γ1),
+    ('Γ',lambda self,Γ0: Γ0),
     ('Γp' ,lambda self,Γ0: Γ0),
 ])
 
@@ -371,7 +371,7 @@ class Generic(levels.Base):
             'Nself',
             'Teq','Tex','Ttr',
             # 'Γ','ΓD',
-            'Γn','Γp','ΓD','ΓL','ΓG',
+            'Γ','Γp','ΓD','ΓL','ΓG',
             ## pressure broadening stuff
             'mJ_l',
             'pair','γ0air','nγ0air','δ0air','nδ0air','Γair','Δνair',
@@ -493,7 +493,8 @@ class Generic(levels.Base):
         if zkeys is None:
             zkeys = self.default_zkeys
         ## compute keys before dividing into z matches
-        self.assert_known(xkey,ykey)
+        self.assert_known(xkey)
+        self.assert_known(ykey)
         for iz,(qn,tline) in enumerate(self.unique_dicts_matches(*tools.ensure_iterable(zkeys))):
             t_plot_kwargs = plot_kwargs | {
                 'color':plotting.newcolor(iz),
@@ -958,6 +959,7 @@ class Generic(levels.Base):
                 # self.set(key,val[ichanged],index=ilines[ichanged])
 
     @optimise_method(add_construct_function=False)
+
     def generate_from_levels(
             self,
             levelu,levell,      # upper and lower level objects
@@ -966,10 +968,15 @@ class Generic(levels.Base):
             matchl=None,     # only use matching lower levels
             add_duplicate=False, # whether to add a duplicate if line is already present
             _cache=(),
+            optimise=False,
             **defaults
     ):
         """Combine upper and lower levels into a line list, only including
         dipole-allowed transitions. SLOW IMPLEMENTATION"""
+        if isinstance(levell,str):
+            qn = quantum_numbers.decode_linear_level(levell)
+            levell = database.get_level(qn['species'])
+            levell.limit_to_match(qn)
         ## get matching upper and lower level indices
         if matchu is None:
             matchu = {}
@@ -1004,7 +1011,7 @@ class Generic(levels.Base):
         for key in levell:
             data[key+'_l'] = levell[key][kl]
         ## remove duplicates
-        if not add_duplicate:
+        if not add_duplicate and len(self) > 0:
             i = tools.isin(data['qnhash'],self['qnhash'])
             data = data[~i]
         ## remove unwanted lines
@@ -1015,6 +1022,10 @@ class Generic(levels.Base):
             data[key] = defaults[key]
         ## add to self
         self.concatenate(data,keys='all',)
+        ## set data to be copied
+        if optimise:
+            self.copy_level_data(levelu)
+            self.copy_level_data(levell)
 
     @optimise_method()
     def copy_level_data(
@@ -1058,6 +1069,12 @@ class Generic(levels.Base):
                         continue
                     iline.append(j)
                     ilevel.append(np.full(j.shape,i))
+                ## test any matching levels found
+                if len(iline) == 0:
+                    _cache[suffix]['iline'] = None
+                    _cache[suffix]['ilevel'] = None
+                    _cache[suffix]['keys_to_copy'] = None
+                    continue
                 iline = np.concatenate(iline)
                 ilevel = np.concatenate(ilevel)
                 ## find line data not constrained by any level
@@ -1087,12 +1104,13 @@ class Generic(levels.Base):
         ## quantum numbers to match in self
         ## copy data
         for suffix in ('_u','_l'):
-            iline = _cache[suffix]['iline']
-            ilevel = _cache[suffix]['ilevel']
-            keys_to_copy = _cache[suffix]['keys_to_copy']
-            ## copy all data only if it has changed
-            for key_self,key_level in keys_to_copy:
-                self.set(key_self,'value',level[key_level,ilevel],index=iline,set_changed_only= True)
+            if _cache[suffix]['iline'] is not None:
+                iline = _cache[suffix]['iline']
+                ilevel = _cache[suffix]['ilevel']
+                keys_to_copy = _cache[suffix]['keys_to_copy']
+                ## copy all data only if it has changed
+                for key_self,key_level in keys_to_copy:
+                    self.set(key_self,'value',level[key_level,ilevel],index=iline,set_changed_only= True)
                  
     def set_levels(self,match=None,**keys_vals):
         """Set level data from keys_vals into self."""
@@ -1247,7 +1265,7 @@ class Linear(Generic):
 
 class Diatomic(Linear):
 
-    _level_class,defining_qn,default_prototypes = _collect_prototypes(
+    level_class,defining_qn,default_prototypes = _collect_prototypes(
         level_class=levels.Diatomic,
         base_class=Linear,
         new_keys=(
@@ -1323,6 +1341,7 @@ class Diatomic(Linear):
         data = tools.file_to_dict(filename,labels_commented=True)
         length = len(list(data.values())[0])
         ## load header
+        filename = tools.expand_path(filename)
         with open(filename,'r') as fid:
             for line in fid:
                 if r:=re.match(r'^# ([^ ]+) = ([^ "]+) .*',line):
@@ -1341,23 +1360,60 @@ class Diatomic(Linear):
                 data.pop(key)
                 ## data[r.group(1)+':unc'] = data.pop(key)
         for key_old,key_new in (
-                ('T_u','E_u'),
-                ('T_l','E_l'),
-                ('Tref','E0'),
+                ('T_u','E_u'), ('T_l','E_l'),
+                ('F_l','Fi_l'), ('F_u','Fi_u'),
                 ):
             if key_old in data:
                 data[key_new] = data.pop(key_old)
         ## data to modify
-        if 'ef' in data:
-            i = data['ef']=='f'
-            data['ef'] = np.full(len(data['ef']),+1,dtype=int)
-            data['ef'][i] = -1
+        for key in ('ef_u','ef_l'):
+            if key in data:
+                i = data[key]=='f'
+                data[key] = np.full(len(data[key]),+1,dtype=int)
+                data[key][i] = -1
         ## data to ignore
-        for key in ('level_transition_type',
-                    'partition_source',):
+        for key in (
+                'level_transition_type',
+                'ΓDoppler',
+                'partition_source',
+                'partition_l',
+                'temperature_l',
+                'column_density_l',
+                'population_l',
+                'Tref',
+                'group_l',
+                'name',
+                'Sv',
+                'mass_l',
+        ):
             if key in data:
                 data.pop(key)
         self.extend(keys='all',**data)
+
+
+    def concatenate_with_combination_differences(self,line):
+        """Concatenate lines in line and add more lines iwth allowed
+        combination differnces."""
+        for key in ['E_u','E_l',*line.defining_qn]:
+            line.assert_known(key)
+            line.unlink_inferences(key)
+        for key in ('ΔJ','ν'):
+            line.unset(key)
+        ## for each line find lower levels for matching Q/P/R branch
+        ## transitions and add to self
+        new_data = Diatomic()
+        for i,row in enumerate(line.rows()):
+            for Πef,ΔJ in (
+                    (1,array([-1,+1])), # P/R branch
+                    (-1,0), # Q branch
+            ):
+                level_l = database.get_level(row['species_l']).matches(
+                    label=row['label_l'], v=row['v_l'],
+                    ef=row['ef_u']*Πef, J=row['J_u']+ΔJ,)
+                level_l.limit_to_keys(['E',*level_l.defining_qn])
+                for row_l in level_l.rows():
+                    new_data.append(row|{f'{key}_l':val for key,val in row_l.items()})
+        self.concatenate(new_data)
 
 class Triatomic(Linear):
     """E.g., CO2, CS2."""

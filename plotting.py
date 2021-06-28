@@ -2342,7 +2342,7 @@ def annotate_spectrum(
     ax.set_ylim(ylim)
     
 def annotate_spectrum_by_branch(
-        lines,             # Lines object
+        line,             # Line object
         ybeg = 1,               # y position of first coord
         ystep = 0.1, # separation between branch annotations in data coords
         zkeys = ('branch',), # how to divide up into separate annotations, 
@@ -2355,24 +2355,25 @@ def annotate_spectrum_by_branch(
         label_function = None, # a function to modify automatically generated rotational level labels
         **kwargs_annotate_spectrum # pass directly to annotate_spectrum
 ):
-    """Annotate spectrum with separate lines and names found in a
-    Lines object."""
+    """Annotate spectrum with separate line and names found in a
+    Line object."""
     zkeys = tools.ensure_iterable(zkeys)
-    zkeys = [t for t in zkeys if lines.is_known(t)]
-    for key in (xkey,label_key,*zkeys):
-        lines.assert_known(key)
+    zkeys = [t for t in zkeys if line.is_known(t)]
+    if label_key is not None and not line.is_known(label_key):
+        label_key = None
+    line.assert_known(xkey)
     retval = []
-    # color_dict = {tqn:newcolor(it) for it,tqn in enumerate(lines.unique_combinations(*zkeys))}
-    # lines = deepcopy(lines)
+    # color_dict = {tqn:newcolor(it) for it,tqn in enumerate(line.unique_combinations(*zkeys))}
+    # line = deepcopy(line)
     iz = 0
     
-    for iz,(qn,zlines) in enumerate(lines.unique_dicts_matches(*zkeys)):
+    for iz,(qn,zline) in enumerate(line.unique_dicts_matches(*zkeys)):
         if match_qn is not None:
-            zlines.limit_to_matches(**match_qn)
-        if len(zlines)==0: continue
+            zline.limit_to_matches(**match_qn)
+        if len(zline)==0: continue
         ## get annotation name
         if name_function is None:
-            name = lines.default_zlabel_format_function(qn)
+            name = line.default_zlabel_format_function(qn)
         else:
             name = name_function(qn)
         ## update kwargs for this annotation
@@ -2381,25 +2382,25 @@ def annotate_spectrum_by_branch(
         # # kwargs.setdefault('color',color_dict[tuple(qn.values())])
         kwargs.setdefault('color',newcolor(iz))
         if label_function is not None:
-            labels = [label_function(t) for t in zlines.iter_dict(*tools.ensure_iterable(label_key))]
+            labels = [label_function(t) for t in zline.iter_dict(*tools.ensure_iterable(label_key))]
         elif label_key is None:
-            labels = ['' for t in zlines.rows()]
+            labels = ['' for t in zline.rows()]
         elif np.isscalar(label_key):
-            if tools.isnumeric(lines[label_key][0]):
-                labels = [format(t[label_key],'g') for t in zlines.rows()]
+            if tools.isnumeric(line[label_key][0]):
+                labels = [format(t[label_key],'g') for t in zline.rows()]
             else:
-                labels = [format(t[label_key]) for t in zlines.rows()]
+                labels = [format(t[label_key]) for t in zline.rows()]
         else:
-            labels = [repr(t) for t in zlines[label_key]]
+            labels = [repr(t) for t in zline[label_key]]
         ## remove some labels
         for keys_vals in qn_not_to_label :
-            for ii in tools.find(zlines.match(**keys_vals)):
+            for ii in tools.find(zline.match(**keys_vals)):
                 labels[ii] = ''
         ## add frequency to labels
         if label_frequency:
             labels = [f'{label}({x:0.4f})' for label,x in zip(labels,ztransition[xkey])]
         ## make annotation
-        retval.append(annotate_spectrum(zlines[xkey],labels=labels,ylevel=ybeg+iz*ystep,**kwargs))
+        retval.append(annotate_spectrum(zline[xkey],labels=labels,ylevel=ybeg+iz*ystep,**kwargs))
     return retval
 
 def plot_stick_spectrum(x,y,ax=None,**plot_kwargs):

@@ -1566,6 +1566,54 @@ class Model(Optimiser):
         ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
         self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
 
+    @optimise_method()
+    def convolve_with_instrument_function(
+            self,
+            sinc_fwhm=None,
+            gaussian_fwhm=None,
+            lorentzian_fwhm=None,
+            signum_magnitude=None,
+            width=None,
+            _cache=None,
+    ):
+        """Convolve with soleil instrument function."""
+        ## get automatically set values if not given explicitly
+        if 'sinc_FWHM' in self.experiment.experimental_parameters:
+            if sinc_fwhm is None:
+                sinc_fwhm = self.experiment.experimental_parameters['sinc_FWHM']
+            else:
+                if abs(self.experiment.experimental_parameters['sinc_FWHM']-sinc_fwhm)>(1e-5*sinc_fwhm):
+                    warnings.warn(f'sinc FWHM {float(sinc_fwhm)} does not match soleil data file header {float(self.experiment.experimental_parameters["sinc_FWHM"])}')
+        ## compute instrument function
+        dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
+        ## instrument function grid
+        if width is None:
+            width = (self.x[-1]-self.x[0])/2
+        x = np.arange(0,width+dx*0.5,dx,dtype=float)
+        x = np.concatenate((-x[-1:0:-1],x))
+        imidpoint = int((len(x)-1)/2)
+        ## initial function is a delta function
+        y = np.full(x.shape,0.)
+        y[imidpoint] = 1.
+        ## convolve with sinc function
+        if sinc_fwhm is not None:
+            y = signal.oaconvolve(y,lineshapes.sinc(x,Γ=abs(sinc_fwhm)),'same')
+        ## convolve with gaussian function
+        if gaussian_fwhm is not None:
+            y = signal.oaconvolve(y,lineshapes.gaussian(x,Γ=abs(gaussian_fwhm)),'same')
+        ## convolve with lorentzian function
+        if lorentzian_fwhm is not None:
+            y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
+        ## if necessary account for phase correction by convolving with a signum
+        if signum_magnitude is not None:
+            x[imidpoint] = 1e-99  # avoid divide by zero warning
+            ty = 1/x*signum_magnitude # hyperbolically decaying signum on either side
+            ty[imidpoint] = 1 # the central part  -- a delta function
+            y = signal.oaconvolve(y,ty,'same')
+        ## normalise 
+        y = y/y.sum()
+        ## convolve model with instrument function
+        self.y = tools.convolve_with_padding(self.x,self.y,x,y)
 
     @optimise_method(format_lines='single')
     def set_soleil_sidebands(self,yscale=0.1,shift=1000,signum_magnitude=None,_parameters=None,_cache=None):
@@ -1692,6 +1740,9 @@ class Model(Optimiser):
                 self.y *= -1
         if plot_residual and self.y is not None and self.experiment.y is not None:
             yres = self.experiment.y[self._iexp]-self.y
+            # yres = self.residual
+            # i = self.residual_weighting != 0
+            # yres[i] /= self.residual_weighting[i]
             ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
             tkwargs = dict(color=plotting.newcolor(2), label='Exp-Mod residual error', **plot_kwargs)
@@ -2031,8 +2082,6 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     header['xmin'],header['xmax'] = x.min(),x.max()
     header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
     return (x,y,header)
-
-
         
 def load_spectrum(filename,**kwargs):
     """Use a heuristic method to load a directory output by

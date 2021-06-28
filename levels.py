@@ -76,7 +76,7 @@ prototypes['lande_g'] = dict(description="Lande g factor",units='dimensionless',
 def _f0(self,species,label,v,Σ,ef,J,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
-    order = 3
+    order = 2
     Ereduced = np.full(E.shape,0.0)
     for di,i in tools.unique_combinations_masks(species,label,v,Σ,ef):
         speciesi,labeli,vi,Σi,efi = di
@@ -579,6 +579,21 @@ class Base(Dataset):
             for key,val in self.decode_qn(keys_vals.pop('encoded_qn')).items():
                 keys_vals.setdefault(key,val)
         return Dataset.match(self,keys_vals)
+
+    def set(self,key,subkey,value,index=None,match=None,set_changed_only=False,**match_kwargs):
+        """Overload  Dataset.set to handle 'encoded_qn'."""
+        if key == 'encoded_qn':
+            for tkey,tvalue in self.decode_qn(value).items():
+                Dataset.set(self,tkey,subkey,tvalue,index,match,set_changed_only,**match_kwargs)
+        else:
+            Dataset.set(self,key,subkey,value,index,match,set_changed_only,**match_kwargs)
+
+    def append(self,*args,**kwargs):
+        """Overload Dataset.append to handle 'encoded_qn'."""
+        if 'encoded_qn' in kwargs:
+            qn = self.decode_qn(kwargs.pop('encoded_qn'))
+            kwargs = qn | kwargs
+        Dataset.append(self,*args,**kwargs)
 
     def find_common(x,y,keys=None,verbose=False):
         """Default keys to defining_qn."""

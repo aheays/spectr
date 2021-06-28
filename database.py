@@ -133,9 +133,12 @@ def get_level(species):
     isotopologues)."""
     species = normalise_species(species)
     try:
-        return dataset.load(f'{data_directory}/levels/{species}.h5')
+        retval =  dataset.load(f'{data_directory}/levels/{species}.h5')
     except FileNotFoundError as err:
         raise DatabaseException(str(err))
+    # if len(match) > 0:
+        # retval = retval.matches(match)
+    return retval
 
 @tools.vectorise(cache=True)
 def get_level_energy(species,Eref=0,**match_qn):
