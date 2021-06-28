@@ -50,8 +50,10 @@ class VibLevel(Optimiser):
         self.vibrational_spin_level = levels.Diatomic()
         self.interactions = Dataset() 
         self.verbose = False
-        self.sort_eigvals = sort_eigvals# try to reorder eigenvalues/eigenvectors after diagonalisation into diabatic levels
-        self.sort_eigvals_to_match_experiment = False
+        ##  try to reorder eigenvalues/eigenvectors after
+        ##  diagonalisation into diabatic levels
+        self.sort_eigvals = sort_eigvals
+        self.sort_eigvals_to_match_experiment =  True
         ## inputs / outputs of diagonalisation
         self.eigvals = None
         self.eigvects = None
@@ -166,10 +168,9 @@ class VibLevel(Optimiser):
             ## respect reference data
             if self.experimental_level is not None and self.sort_eigvals_to_match_experiment:
                 for ef in (+1,-1):
-                    i = self.vibrational_spin_level.match(ef=ef)
-                    i = i[self.vibrational_spin_level.match(Ω_max=J)]
+                    i = self.vibrational_spin_level.match(ef=ef,Ω_max=J)
                     j = self.level.match(J=J,ef=ef,Ω_max=J)
-                    k = _permute_to_minimise_difference(eigvals[i],self.level.get('Eexp',j))
+                    k = _permute_to_minimise_difference(eigvals[i],self.level['Eexp',j])
                     eigvals[i] = eigvals[i][k]
                     eigvects[np.ix_(i,i)] = eigvects[np.ix_(i,i)][np.ix_(k,k)]
             ## save eigenvalues
