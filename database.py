@@ -201,6 +201,7 @@ def get_atomic_mass(element_name,mass_number):
 
 def get_lines(species):
     """Load spectral lines from reference data."""
+    species = normalise_species(species)
     data = dataset.load(f'{data_directory}/lines/{species}.h5')
     data.name = tools.make_valid_python_symbol_name(f'lines_{species}')
     return data

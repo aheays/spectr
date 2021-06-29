@@ -76,7 +76,7 @@ prototypes['lande_g'] = dict(description="Lande g factor",units='dimensionless',
 def _f0(self,species,label,v,Σ,ef,J,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
-    order = 2
+    order = 3
     Ereduced = np.full(E.shape,0.0)
     for di,i in tools.unique_combinations_masks(species,label,v,Σ,ef):
         speciesi,labeli,vi,Σi,efi = di
