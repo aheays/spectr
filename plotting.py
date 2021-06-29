@@ -587,6 +587,8 @@ def _extra_interaction_on_button_press(event):
                 fontsize='x-small', color='red',)
             axes._my_extra_interaction['list_of_point_annotations'].extend((point,annotation))
             plt.draw()
+        elif event.button == 2:
+            tools.set_clipboard(format(event.xdata),target='primary')
 
 def _extra_interaction_on_scroll_event(event):
     """what do to when mouse wheel is rolled -- zoom in and out"""

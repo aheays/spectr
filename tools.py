@@ -1711,9 +1711,14 @@ def get_clipboard():
     assert status==0, 'error getting clipboard: '+output
     return output
 
-def set_clipboard(string):
+def set_clipboard(string,target='clipboard'):
     """Send a string to clipboard."""
-    pipe=os.popen(r'xsel --input --clipboard','w');
+    if target == 'clipboard':
+        pipe=os.popen(r'xsel --input --clipboard','w')
+    elif target == 'primary':
+        pipe=os.popen(r'xsel --input --primary','w')
+    else:
+        raise Exception(f"bad target: {target}")
     pipe.write(string)
     pipe.close()
 

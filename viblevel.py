@@ -35,7 +35,7 @@ class VibLevel(Optimiser):
             # eigenvalue_ordering='maximise coefficients', # for deciding on the quantum number assignments of mixed level, options are 'minimise residual', 'maximise coefficients', 'preserve energy ordering' or None
             Eref=0.,       # energy reference relative to equilibrium energy, defaults to 0. -- not well defined
             Zsource='self',
-            sort_eigvals=False,
+            diabaticise_eigenvalues=False,
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
@@ -52,7 +52,7 @@ class VibLevel(Optimiser):
         self.verbose = False
         ##  try to reorder eigenvalues/eigenvectors after
         ##  diagonalisation into diabatic levels
-        self.sort_eigvals = sort_eigvals
+        self.diabaticise_eigenvalues = diabaticise_eigenvalues
         self.sort_eigvals_to_match_experiment =  True
         ## inputs / outputs of diagonalisation
         self.eigvals = None
@@ -160,13 +160,13 @@ class VibLevel(Optimiser):
             for i in tools.find_blocks(H!=0,error_on_empty_block=False):
                 He = H[np.ix_(i,i)]
                 eigvalsi,eigvectsi = linalg.eig(He)
-                if self.sort_eigvals:
+                if self.diabaticise_eigenvalues:
                     eigvalsi,eigvectsi = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
                 eigvals[i] = eigvalsi
                 eigvects[np.ix_(i,i)] = np.real(eigvectsi)
             ## reorder to get approximate minimal difference with
             ## respect reference data
-            if self.experimental_level is not None and self.sort_eigvals_to_match_experiment:
+            if self.sort_eigvals_to_match_experiment and self.experimental_level is not None:
                 for ef in (+1,-1):
                     i = self.vibrational_spin_level.match(ef=ef,Ω_max=J)
                     j = self.level.match(J=J,ef=ef,Ω_max=J)
