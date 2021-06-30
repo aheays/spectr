@@ -173,7 +173,7 @@ class Dataset(optimise.Optimiser):
             ## combine indices -- might need to sort value if an index array is given
             combined_index = self._get_combined_index(index,match,**match_kwargs)
             ## reduce index and value to changed data only
-            if set_changed_only:
+            if set_changed_only and self.is_set(key,subkey):
                 index_changed = self[key,subkey,combined_index] != value
                 if combined_index is None:
                     combined_index = index_changed
