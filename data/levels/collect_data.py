@@ -26,11 +26,17 @@ from spectr import *
 # t.remove(np.isnan(t['E']))
 # t.save('O.h5')
 
-## Kr
-t = levels.Atomic(species='Kr')
-t.description = 'NIST database Kr I energy levels downloaded 2021-06-23.'
-t.load_from_nist('~/data/species/Kr/lines_levels/NIST_levels_2021-06-23.tsv')
-t.save('Kr.h5')
+# ## Kr
+# t = levels.Atomic(species='Kr')
+# t.description = 'NIST database Kr I energy levels downloaded 2021-06-23.'
+# t.load_from_nist('~/data/species/Kr/lines_levels/NIST_levels_2021-06-23.tsv')
+# t.save('Kr.h5')
+
+## Xe
+t = levels.Atomic(species='Xe')
+t.description = 'NIST database Xe I energy levels downloaded 2021-07-30.'
+t.load_from_nist('~/data/species/Xe/lines_levels/NIST_levels_2021-07-30.tsv')
+t.save('Xe.h5')
 
 # ########
 # ## N2 ##

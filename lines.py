@@ -5,7 +5,7 @@ import re
 import warnings
 
 import numpy as np
-from numpy import nan,array,linspace
+from numpy import nan,array,linspace,inf
 from scipy import constants
 from immutabledict import immutabledict as idict
 
@@ -1192,8 +1192,8 @@ class Linear(Generic):
             self,
             xkey='J_u',
             key='fv',
-            Qknots=None,
-            Δknots=None,
+            Qknots=None,        # list of spline points, or single value
+            Δknots=None,        # list of spline points, or single value
             order=3,
             default=None,
             match=None,
@@ -1202,15 +1202,29 @@ class Linear(Generic):
             **match_kwargs):
         """Set key to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
-        given, then only set these."""
+        given, then only set these.  If spline list is replaced with a
+        single value then use this as a constant."""
         ## To do: cache values or match results so only update if
         ## knots or match values have changed
-        if len(_cache) == 0: 
-            xQspline,yQspline = zip(*Qknots)
-            xΔspline,yΔspline = zip(*Δknots)
+        if len(_cache) == 0:
+            ## save lists spline points (or single values
+            if tools.isiterable(Qknots):
+                xQspline,yQspline = zip(*Qknots)
+            else:
+                xQspline,yQspline = None,Qknots
+            if tools.isiterable(Δknots):
+                xΔspline,yΔspline = zip(*Δknots)
+            else:
+                xΔspline,yΔspline = None,Δknots
             ## get index limit to defined xkey range
             index = self._get_combined_index(index,match,return_bool=True,**match_kwargs)
-            irange = (self[xkey]>=max(np.min(xQspline),np.min(xΔspline))) & (self[xkey]<=min(np.max(xQspline),np.max(xΔspline)))
+            irange = (self[xkey]>=max(
+                (0 if xQspline is None else np.min(xQspline)),
+                (0 if xΔspline is None else np.min(xΔspline))
+            )) & (self[xkey]<=min(
+                (inf if xQspline is None else np.max(xQspline)),
+                (inf if xΔspline is None else np.max(xΔspline))
+            ))
             if index is None:
                 index = irange
             else:
@@ -1235,10 +1249,23 @@ class Linear(Generic):
                 raise Exception(f'Setting {repr(key)} to spline but it is not known and no default value if provided')
             else:
                 self[key] = default
-        ## compute splined values
-        Qy = tools.spline(xQspline,yQspline,self[xkey,Qindex],order=order)
-        Py = (tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order) + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order))
-        Ry = (tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order) - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order))
+        ## compute splined values (or use single value)
+        if xQspline is None:
+            Qy = yQspline
+        else:
+            Qy = tools.spline(xQspline,yQspline,self[xkey,Qindex],order=order)
+        if xQspline is None:
+            Py = yQspline
+            Ry = yQspline
+        else:
+            Py = tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order)
+            Ry = tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order)
+        if xΔspline is None:
+            Py = Py + yΔspline
+            Ry = Ry - yΔspline
+        else:
+            Py = Py + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order)
+            Ry = Ry - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order)
         ## set data
         self.set(key,'value',value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
         self.set(key,'value',value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)

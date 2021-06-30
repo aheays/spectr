@@ -76,7 +76,10 @@ prototypes['lande_g'] = dict(description="Lande g factor",units='dimensionless',
 def _f0(self,species,label,v,Σ,ef,J,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
-    order = 3
+    if hasattr(self,'reduced_order'):
+        order = self.reduced_order
+    else:
+        order = 3
     Ereduced = np.full(E.shape,0.0)
     for di,i in tools.unique_combinations_masks(species,label,v,Σ,ef):
         speciesi,labeli,vi,Σi,efi = di
@@ -601,6 +604,12 @@ class Base(Dataset):
             keys = x.defining_qn
         return Dataset.find_common(self,x,y,keys=keys,verbose=verbose)
         
+    def plot(self,*args,reduced_order=None,**kwargs):
+        """Wrapper for Datset.plot"""
+        if reduced_order is not None:
+            self.reduced_order = reduced_order
+        return Dataset.plot(self,*args,**kwargs)
+
 class Generic(Base):
     """A generic level."""
     defining_qn = ('species','label','ef','J')
@@ -655,8 +664,9 @@ class Atomic(Generic):
                         data[key][i] = t[1:-1]
         ## remove term symbols I do not know how to decode
         for regexp in (
-                '^nan$',
-                '^\(.*\)\*?$',
+                r'^nan$',
+                r'^\*$',
+                # r'^(.*)*?$',
                 ):
             i = data.match_re(Term=regexp)
             if np.any(i):

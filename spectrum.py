@@ -510,9 +510,9 @@ class Model(Optimiser):
             ymin=None,
             lineshape=None,
             ncpus=1,
-            match=idict(),
             _cache=None,
             verbose=None,
+            match=None,
             **set_keys_vals
     ):
         ## nothing to be done
@@ -520,7 +520,10 @@ class Model(Optimiser):
             return
         if self._clean_construct:
             ## first run — initalise local copy of lines data and
-            imatch = line.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
+            tmatch = {} if match is None else copy(match)
+            tmatch.setdefault('ν_min',(self.x[0]-1))
+            tmatch.setdefault('ν_max',(self.x[-1]+1))
+            imatch = line.match(**tmatch)
             nmatch = np.sum(imatch)
             line_copy = line.copy(index=imatch)
             if verbose is not None:
@@ -1672,8 +1675,8 @@ class Model(Optimiser):
             label_zkeys=None,   # divide series by these keys
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
-            plot_title= True,
-            title='auto',
+            plot_title=False,
+            title=None,
             plot_legend= True,
             # contaminants_to_plot=('default',), # what contaminant to label
             plot_contaminants=False,
@@ -1727,14 +1730,14 @@ class Model(Optimiser):
             # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
             ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
-            tkwargs = dict(color=plotting.newcolor(0), label='Experimental spectrum', **plot_kwargs)
+            tkwargs = dict(color=plotting.newcolor(0), label=f'Experimental spectrum: {self.experiment.name}', **plot_kwargs)
             ax.plot(self.x,self.yexp,**tkwargs)
         if plot_model and self.y is not None:
             if invert_model:
                 self.y *= -1
             ymin,ymax = min(ymin,self.y.min(),-0.1*self.y.max()),max(ymax,self.y.max()*1.1)
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
-            tkwargs = dict(color=plotting.newcolor(1), label='Model spectrum', **plot_kwargs)
+            tkwargs = dict(color=plotting.newcolor(1), label=f'Model spectrum: {self.name}', **plot_kwargs)
             ax.plot(self.x,self.y,**tkwargs)
             if invert_model:
                 self.y *= -1
@@ -1745,7 +1748,7 @@ class Model(Optimiser):
             # yres[i] /= self.residual_weighting[i]
             ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
-            tkwargs = dict(color=plotting.newcolor(2), label='Exp-Mod residual error', **plot_kwargs)
+            tkwargs = dict(color=plotting.newcolor(2), label='Experiment-Model residual', **plot_kwargs)
             ax.plot(self.x,yres+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
@@ -1813,11 +1816,8 @@ class Model(Optimiser):
                             ls='',marker='o',markersize=6,mfc='none')
                     icontaminant += 1
         ## finalise plot
-        if (plot_title
-            and hasattr(self.experiment,'experimental_parameters')
-            and 'filename' in self.experiment.experimental_parameters):
-            if title == 'auto':
-                # title = tools.basename(self.experiment.experimental_parameters['filename'])
+        if plot_title:
+            if title is None:
                 title = self.name
             t = ax.set_title(title,fontsize='x-small')
             t.set_in_layout(False)
