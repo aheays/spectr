@@ -53,17 +53,15 @@ from spectr import *
 # t.load_from_nist('~/data/species/Ar/lines_levels/NIST_transitions_20201-06-03.tsv')
 # t.save('Ar.h5')
 
-## Kr
-t = lines.Atomic(species='Kr')
-t.load_from_nist('~/data/species/Kr/lines_levels/NIST_transitions_2021-06-23.tsv')
-t.save('Kr.h5')
+# ## Kr
+# t = lines.Atomic(species='Kr')
+# t.load_from_nist('~/data/species/Kr/lines_levels/NIST_transitions_2021-06-23.tsv')
+# t.save('Kr.h5')
 
-# #######
-# ## O ##
-# #######
-# t = lines.Atomic(species='O')
-# t.load_from_nist('~/data/species/O/NIST_transitions_2021-04-22.psv')
-# t.save('O.h5')
+## O
+t = lines.Atomic(species='O',description='NIST O I transitions downloaded 2021-04-22')
+t.load_from_nist('~/data/species/O/lines_levels/NIST_transitions_2021-04-22.tsv')
+t.save('O.h5')
 
 # #######
 # ## C ##
