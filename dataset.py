@@ -163,9 +163,12 @@ class Dataset(optimise.Optimiser):
             **match_kwargs
     ):
         """Set value of key or (key,data)"""
+        ## check for invalid key
         forbidden_character_regexp = r'.*([\'"=#,:]).*' 
         if r:=re.match(forbidden_character_regexp,key):
             raise Exception(f"Forbidden character {repr(r.group(1))} in key {repr(key)}. Forbidden regexp: {repr(forbidden_character_regexp)}")
+        ## make array copies
+        value = copy(value)
         ## scalar subkind — set and return, not cast
         if subkey in self.scalar_subkinds:
             self._data[key][subkey] = value
@@ -237,7 +240,8 @@ class Dataset(optimise.Optimiser):
         ## if an index is provided then data must already exist, set
         ## new indeed data and return
         if index is not None:
-            if key not in self:
+            # if key not in self:
+            if not self.is_known(key):
                 if key in self.prototypes and 'default' in self.prototypes[key]:
                     self.set(key,'value',value=self.prototypes[key]['default'])
                 else:
@@ -561,40 +565,101 @@ class Dataset(optimise.Optimiser):
         """If string 'x' return value of 'x'. If "ux" return uncertainty
         of x. If list of strings return a copy of self restricted to
         that data. If an arg, return an arged copy of self."""
-        if isinstance(arg,int):
-            ## single indexed value
-            # return self.copy(index=arg)
+        if isinstance(arg,str):
+            ## a non indexed key
+            return self.get(key=arg)
+        elif isinstance(arg,(int,np.int64)):
+            ## single indexed row
             return self.row(index=arg)
         elif isinstance(arg,slice):
             ## index by slice
             return self.copy(index=arg)
-        elif isinstance(arg,str):
-            ## a non indexed key
-            return self.get(key=arg)
         elif isinstance(arg,np.ndarray):
             ## an index array
             return self.copy(index=arg)
         elif not tools.isiterable(arg):
+            ## no more single valued arguments defined
             raise Exception(f"Cannot interpret getitem argument: {repr(arg)}")
+        elif isinstance(arg[0],(int,np.int64,bool)):
+            ## index
+            return self.copy(index=arg)
         elif len(arg) == 1:
-            if isinstance(arg,str):
-                return self.get(key=arg[0])
+            if isinstance(arg[0],str):
+                ## copy with keys
+                return self.copy(key=arg)
             else:
+                ## copy with index
                 return self.copy(index=arg[0])
+
+            
         elif len(arg) == 2:
-            if not isinstance(arg[0],str):
-                return self.copy(index=arg)
-            if isinstance(arg[1],str):
-                return self.get(key=arg[0],subkey=arg[1])
+            if isinstance(arg[0],str):
+                if isinstance(arg[1],str):
+                    if arg[1] in self.all_subkinds:
+                        ## return key,subkey
+                        return self.get(key=arg[0],subkey=arg[1])
+                    else:
+                        ## copy keys
+                        return self.copy(keys=arg)
+                else:
+                    ## return key,index
+                    return self.get(key=arg[0],index=arg[1])
+
             else:
-                return self.get(key=arg[0],index=arg[1])
+                ## copy with keys and index
+                return self.copy(keys=arg[0],index=arg[1])
+            
+
         elif len(arg) == 3:
-            if not isinstance(arg[0],str):
-                return self.copy(index=arg)
-            else:
+            if arg[1] in self.all_subkinds:
+                ## get key,subkey,index
                 return self.get(key=arg[0],subkey=arg[1],index=arg[2])
+            else:
+                ## copy keys
+                return self.copy(keys=arg)
+
         else:
-            raise Exception(f"Cannot interpret key: {repr(arg)}")
+            ## all args are keys for copying
+            return self.copy(keys=arg)
+
+            
+        # elif tools.isiterable(arg[0]):
+            # ## make a copy of self possibly with keys and indices
+            # ## specified
+            # if len(arg) == 1:
+                # if isinstance(arg[0][0],str):
+                    # ## a list of keys
+                    # return self.copy(key=arg[0])
+                # else:
+                    # ## an index of some kind
+                    # return self.copy(index=arg[0])
+            # elif len(arg) == 2:
+                # ## list of keys and index
+                # return self.copy(key=arg[0],index=arg[1])
+
+        # else:
+            # raise Exception(f"Cannot interpret getitem argument: {repr(arg)}")
+
+        # elif len(arg) == 1:
+            # ## a single vector argument – return copy
+            # if isinstance(arg,str):
+                # return self.get(key=arg[0])
+            # else:
+                # return self.copy(index=arg[0])
+        # elif len(arg) == 2:
+            # if not isinstance(arg[0],str):
+                # return self.copy(index=arg)
+            # if isinstance(arg[1],str):
+                # return self.get(key=arg[0],subkey=arg[1])
+            # else:
+                # return self.get(key=arg[0],index=arg[1])
+        # elif len(arg) == 3:
+            # if not isinstance(arg[0],str):
+                # return self.copy(index=arg)
+            # else:
+                # return self.get(key=arg[0],subkey=arg[1],index=arg[2])
+        # else:
+            # raise Exception(f"Cannot interpret key: {repr(arg)}")
 
     def __setitem__(self,key,value):
         """Set key, (key,subkey), (key,index), (key,subkey,index) to
@@ -724,6 +789,7 @@ class Dataset(optimise.Optimiser):
         index = source._get_combined_index(index,match,**match_kwargs)
         ## copy data and selected prototype data
         for key in keys:
+            # self.set(key,'value',source[key,'value',index])
             self.set(key,'value',source[key,'value',index])
             ## get a list of subkeys to copy for this key, ignore those beginning with '_'
             if subkeys is None:
@@ -771,9 +837,11 @@ class Dataset(optimise.Optimiser):
         ## copy data and selected prototype data
         for key in keys:
             for subkey in subkeys:
-                if source.is_set(key,subkey):
+                if (source.is_set(key,subkey)
+                    and (not self.is_set(key,subkey)
+                         or source[key,'_modify_time'] > self[key,'_modify_time'])):
                     if subkey in self.vector_subkinds:
-                        self.set(key,subkey,source[key,subkey,index])
+                        self.set(key,subkey,source[key,subkey,index],set_changed_only= True)
                     else:
                         self.set(key,subkey,source[key,subkey])
 
