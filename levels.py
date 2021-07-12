@@ -795,5 +795,6 @@ class Diatomic(Linear):
                 'level_transition_type',
                 'partition_source',
                 ):
-            data.pop(key)
+            if key in data:
+                data.pop(key)
         self.extend(**data)
