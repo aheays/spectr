@@ -872,6 +872,9 @@ class Optimiser:
     rms = property(_get_rms)
 
 
+
+_default_stepsize = 1e-4
+
 class Parameter():
     """An adjustable parameter."""
 
@@ -893,9 +896,9 @@ class Parameter():
             self.step = abs(float(step))
         else:
             if self.value != 0:
-                self.step = self.value*1e-4
+                self.step = self.value*_default_stepsize
             else:
-                self.step = 1e-4
+                self.step = _default_stepsize
         self._last_modify_value_time = timestamp()
 
     def _get_value(self):
