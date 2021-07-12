@@ -6,7 +6,7 @@ from time import perf_counter as timestamp
 import warnings
 
 import numpy as np
-from numpy import nan,array
+from numpy import nan,array,arange
 import sympy
 from scipy import linalg
 
@@ -107,7 +107,7 @@ class VibLevel(Optimiser):
                 (len(self.J),
                  len(self.vibrational_spin_level),
                  len(self.vibrational_spin_level)),
-                0.,
+                0.0,
                 dtype=complex)
         else:
             self.H *= 0    
@@ -141,6 +141,7 @@ class VibLevel(Optimiser):
                     self.level['Γexp'][imod] = self.experimental_level['Γ'][iexp]
                     self.level['Γexp','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
                 self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
+            self._diabaticise_indices = {}
         else:
             if self.experimental_level is not None:
                 iexp = self._finalise_construct_cache['iexp']
@@ -153,17 +154,26 @@ class VibLevel(Optimiser):
         self.eigvects = {}             # mixing coefficients
         for iJ,J in enumerate(self.J):
             H = self.H[iJ,:,:]
-            H[np.isnan(H)] = 0.
+            # H[np.isnan(H)] = 0.0
+            iallowed = ~np.isnan(np.diag(H).real)
+            Hallowed = H[np.ix_(iallowed,iallowed)]
             ## diagonalise independent block submatrices separately
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
             eigvects = np.zeros(self.H.shape[1:3],dtype=float)
-            for i in tools.find_blocks(H!=0,error_on_empty_block=False):
-                He = H[np.ix_(i,i)]
-                eigvalsi,eigvectsi = linalg.eig(He)
+            for nblock,iblock in enumerate(tools.find_blocks(Hallowed!=0,error_on_empty_block=False)):
+                Hblock = Hallowed[np.ix_(iblock,iblock)]
+                eigvalsi,eigvectsi = linalg.eig(Hblock)
                 if self.diabaticise_eigenvalues:
-                    eigvalsi,eigvectsi = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
-                eigvals[i] = eigvalsi
-                eigvects[np.ix_(i,i)] = np.real(eigvectsi)
+                    if (J,nblock) not in self._diabaticise_indices:
+                        eigvalsi,eigvectsi,index = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
+                        self._diabaticise_indices[J,nblock] = index
+                    else:
+                        k = self._diabaticise_indices[J,nblock]
+                        eigvalsi = eigvalsi[k]
+                        eigvectsi = eigvectsi[np.ix_(k,k)]
+                k = find(iallowed)[iblock]
+                eigvals[k] = eigvalsi
+                eigvects[np.ix_(k,k)] = np.real(eigvectsi)
             ## reorder to get approximate minimal difference with
             ## respect reference data
             if self.sort_eigvals_to_match_experiment and self.experimental_level is not None:
@@ -212,10 +222,10 @@ class VibLevel(Optimiser):
                 if key not in allowed_kwargs:
                     raise Exception(f'Keyword argument {repr(key)} is not a known quantum number of Hamiltonian parameter. Allowed kwargs: {allowed_kwargs} ')
             ## set differentiation stepsize
-            stepsizes = {'Tv':1e-3, 'Bv':1e-5, 'Dv':1e-8, 'Hv':1e-13,
+            stepsizes = {'Tv':1e-3, 'Bv':1e-6, 'Dv':1e-9, 'Hv':1e-13,
                          'Lv':1e-15, 'Mv':1e-17, 'Av':1e-3, 'ADv':1e-7, 'λv':1e-5,
                          'λDv':1e-8, 'λHv':1e-11, 'γv':1e-3, 'γDv':1e-7, 'ov':1e-3,
-                         'pv':1e-3, 'pDv':1e-7, 'qv':1e-3, 'qDv':1e-7,}
+                         'pv':1e-3, 'pDv':1e-7, 'qv':1e-6, 'qDv':1e-7,}
             for key in kw:
                 if isinstance(kw[key],Parameter) and key in stepsizes:
                     kw[key].step = stepsizes[key]
@@ -234,28 +244,30 @@ class VibLevel(Optimiser):
             n = len(ef)
             ibeg = len(self.vibrational_spin_level)
             iend = ibeg + n
+            Ω = kw['Λ'] + Σ
             _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend'] = n,ef,Σ,fH,ibeg,iend
             ## add manifold data and list of vibrational_spin_levels
             if name in self._manifolds:
                 raise Exception(f'Non-unique name: {repr(name)}')
-            self._manifolds[name] = dict(ibeg=ibeg,iend=iend,ef=ef,Σ=Σ,n=len(ef),**kw)
+            self._manifolds[name] = dict(ibeg=ibeg,iend=iend,ef=ef,Σ=Σ,n=len(ef),Ω=Ω,**kw)
             ## set values missing in existing data to 0
             for key in kw:
                 if key not in self.vibrational_spin_level:
                     self.vibrational_spin_level[key] = 0
-            self.vibrational_spin_level.extend(
-                keys='new',ef=ef,Σ=Σ,
-                # **{key:kw[key] for key in ('species','label','S','Λ','s','v','gu') if key in kw},)
-                **{key:kw[key] for key in kw},)
+            self.vibrational_spin_level.extend(keys='new',ef=ef,Σ=Σ, **{key:kw[key] for key in kw},)
             ## make H bigger
             tH = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
             tH[:,:ibeg,:ibeg] = self.H
             self.H = tH
             _cache['fH'] = fH
-        n,ef,Σ,fH,ibeg,iend = _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend']
+            ## cache indices of valid J
+            _cache['iJ'] = [self.J>=Ωi for Ωi in Ω]
+        n,ef,Σ,fH,ibeg,iend,iJ = _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend'],_cache['iJ']
         ## update H
         for i,j in np.ndindex((n,n)):
-            self.H[:,i+ibeg,j+ibeg] = fH[i,j](self.J,**kw) + 1j*Γv
+            k = iJ[i] & iJ[j]
+            self.H[k,i+ibeg,j+ibeg] = fH[i,j](self.J[k],**kw) + 1j*Γv
+            self.H[~k,i+ibeg,j+ibeg] = nan
 
     add_level = add_manifold    # deprecated
 
@@ -301,28 +313,27 @@ class VibLevel(Optimiser):
                 kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
             ibeg,jbeg = kw1['ibeg'],kw2['ibeg']
             ## determine valid J for interaction to occur between particular sublevels
-            Ω1 = self.vibrational_spin_level[kw1['ibeg']:kw1['iend']]['Ω']
-            Ω2 = self.vibrational_spin_level[kw2['ibeg']:kw2['iend']]['Ω']
-            J_iJ = {}
-            for i,j in np.ndindex(JL.shape):
-                iJ =  (self.J>Ω1[i]) & (self.J>Ω2[j])
-                J = self.J[iJ]
-                J_iJ[i,j] = (J,iJ)
+            Σ1 = self.vibrational_spin_level[kw1['ibeg']:kw1['iend']]['Σ']
+            Σ2 = self.vibrational_spin_level[kw2['ibeg']:kw2['iend']]['Σ']
+            ## cache indices of valid J
+            iJ1 = [self.J>=Ω for Ω in kw1['Ω']]
+            iJ2 = [self.J>=Ω for Ω in kw2['Ω']]
             ## save cache
             _cache |= dict(
                 ibeg=ibeg,jbeg=jbeg,
                 JL=JL,JS=JS,LS=LS,
                 NNJL=NNJL,NNJS=NNJS,NNLS=NNLS,
-                J_iJ=J_iJ)
+                iJ1=iJ1,iJ2=iJ2,)
         ## load cache
-        ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS,J_iJ = (
+        ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS,iJ1,iJ2 = (
             _cache['ibeg'],_cache['jbeg'],
             _cache['JL'],_cache['JS'],_cache['LS'],
             _cache['NNJL'],_cache['NNJS'],_cache['NNLS'],
-            _cache['J_iJ'],)
+            _cache['iJ1'],_cache['iJ2'],)
         ## substitute into Hamiltonian (both upper and lowe diagonals, treated as real)
         for i,j in np.ndindex(JL.shape):
-            J,iJ = J_iJ[i,j]
+            iJ = iJ1[i] & iJ2[j]
+            J = self.J[iJ]
             t = (
                 ηv*LS[i,j](J) 
                 + ηDv*NNLS[i,j](J)
@@ -337,6 +348,7 @@ class VibLevel(Optimiser):
     def plot(
             self,
             fig=None,
+            ylim_E=None,
             ylim_Eresidual=None,
             plot_errorbars=True,
             reduce_coefficients=(0,),
@@ -373,8 +385,10 @@ class VibLevel(Optimiser):
                     Ekwargs = plot_kwargs | {'linestyle':'',}
                     Ereskwargs = plot_kwargs | {'linestyle':'-',}
                     if plot_errorbars:
-                        axE.errorbar(m2['J'],m2['Eexp']-ΔEreduce,m2['Eexp','unc'],**Ekwargs)
-                        axEres.errorbar(m2['J'],m2['Eres'],m2['Eres','unc'],**Ereskwargs)
+                        i = ~np.isnan(m2['Eexp'])
+                        axE.errorbar(m2['J'][i],m2['Eexp'][i]-ΔEreduce[i],m2['Eexp','unc'][i],**Ekwargs)
+                        i = ~np.isnan(m2['Eres'])
+                        axEres.errorbar(m2['J'][i],m2['Eres'][i],m2['Eres','unc'][i],**Ereskwargs)
                     else:
                         axE.plot(m2['J'],m2['Eexp']-ΔEreduce,**Ekwargs)
                         axEres.plot(m2['J'],m2['Eres'],**Ereskwargs)
@@ -398,6 +412,8 @@ class VibLevel(Optimiser):
                             axΓ.plot(m2['J'],m2['Γexp'],**tkwargs)
                             axΓres.plot(m2['J'],m2['Γexp'],**tkwargs)
 
+        if ylim_E is not None:
+            axE.set_ylim(ylim_E)
         if self.experimental_level is not None and ylim_Eresidual is not None:
             if np.isscalar(ylim_Eresidual):
                 ylim_Eresidual = (-ylim_Eresidual,ylim_Eresidual)
@@ -1048,6 +1064,7 @@ def _diabaticise_eigenvalues_in_blocks(eigvals,eigvects):
         
 def _diabaticise_eigenvalues(eigvals,eigvects):
     """Re-order eigvals/eigvects to maximise eigvects diagonal."""
+    index = arange(len(eigvals))
     ## fractional character array
     c = eigvects.real**2
     ## mask of levels without confirmed assignments
@@ -1058,7 +1075,6 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
     ## coefficient
     min_frac_diff = 2
     while sum(not_found) > 7:
-        # print('DEBUG:',sum(not_found),min_frac_diff )
         for i in range(len(c)):
             j = np.argsort(-c[i,:])
             ## accept if greater than 0.5 coefficient, or 5% bigger than next coefficient
@@ -1068,6 +1084,7 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
                 ii[i],ii[j] = j,i                  # swap largest c into diagonal position 
                 c = c[:,ii]                        # swap for all columns
                 eigvals,eigvects = eigvals[ii],eigvects[:,ii] # and eigvalues
+                index = index[ii]
                 not_found[i] = False
         min_frac_diff -= 0.1
     ## trial all permutations of remaining
@@ -1093,7 +1110,8 @@ def _diabaticise_eigenvalues(eigvals,eigvects):
         c[:,not_found] = (c[:,not_found])[:,best_permutation]
         eigvects[:,not_found] = (eigvects[:,not_found])[:,best_permutation]
         eigvals[not_found] = (eigvals[not_found])[best_permutation]
-    return eigvals,eigvects
+        index[not_found] = (index[not_found])[best_permutation]
+    return eigvals,eigvects,index
 
 def _permute_to_minimise_difference(x,y):
     """Get rearrangment of x that approximately minimises its rms
