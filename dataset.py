@@ -845,7 +845,7 @@ class Dataset(optimise.Optimiser):
                     else:
                         self.set(key,subkey,source[key,subkey])
 
-    def match_re(self,keys_vals=None,**kwarg_keys_vals):
+    def match_regexp(self,keys_vals=None,**kwarg_keys_vals):
         """Match string keys to regular expressions."""
         if keys_vals is None:
             keys_vals = {}
@@ -1853,18 +1853,21 @@ class Dataset(optimise.Optimiser):
                     ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = None
-                    title = zlabel
+                    if title is None:
+                        title = zlabel
                 elif ynewaxes and not znewaxes:
                     ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = (zlabel if len(zkeys)>0 else None) 
-                    title = ylabel
+                    if title is None:
+                        title = ylabel
                 elif not ynewaxes and znewaxes:
                     ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = ylabel
                     ylabel = None
-                    title = zlabel
+                    if title is None:
+                        title = zlabel
                 elif not ynewaxes and not znewaxes:
                     ax = fig.gca()
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
