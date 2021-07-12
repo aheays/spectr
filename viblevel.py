@@ -300,19 +300,39 @@ class VibLevel(Optimiser):
             JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
                 kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
             ibeg,jbeg = kw1['ibeg'],kw2['ibeg']
-            _cache['ibeg'],_cache['jbeg'],_cache['JL'],_cache['JS'],_cache['LS'],_cache['NNJL'],_cache['NNLS'],_cache['NNLS'] = ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS
-        ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS = _cache['ibeg'],_cache['jbeg'],_cache['JL'],_cache['JS'],_cache['LS'],_cache['NNJL'],_cache['NNLS'],_cache['NNLS']
+            ## determine valid J for interaction to occur between particular sublevels
+            Ω1 = self.vibrational_spin_level[kw1['ibeg']:kw1['iend']]['Ω']
+            Ω2 = self.vibrational_spin_level[kw2['ibeg']:kw2['iend']]['Ω']
+            J_iJ = {}
+            for i,j in np.ndindex(JL.shape):
+                iJ =  (self.J>Ω1[i]) & (self.J>Ω2[j])
+                J = self.J[iJ]
+                J_iJ[i,j] = (J,iJ)
+            ## save cache
+            _cache |= dict(
+                ibeg=ibeg,jbeg=jbeg,
+                JL=JL,JS=JS,LS=LS,
+                NNJL=NNJL,NNJS=NNJS,NNLS=NNLS,
+                J_iJ=J_iJ)
+        ## load cache
+        ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS,J_iJ = (
+            _cache['ibeg'],_cache['jbeg'],
+            _cache['JL'],_cache['JS'],_cache['LS'],
+            _cache['NNJL'],_cache['NNJS'],_cache['NNLS'],
+            _cache['J_iJ'],)
         ## substitute into Hamiltonian (both upper and lowe diagonals, treated as real)
         for i,j in np.ndindex(JL.shape):
+            J,iJ = J_iJ[i,j]
             t = (
-                ηv*LS[i,j](self.J) 
-                + ηDv*NNLS[i,j](self.J)
-                + -ξv*JL[i,j](self.J) - ξDv*NNJL[i,j](self.J)
-                + pv*JS[i,j](self.J) 
+                ηv*LS[i,j](J) 
+                + ηDv*NNLS[i,j](J)
+                + -ξv*JL[i,j](J)
+                - ξDv*NNJL[i,j](J)
+                + pv*JS[i,j](J) 
                 + float(He)
             )
-            self.H[:,i+ibeg,j+jbeg] += t
-            self.H[:,j+jbeg,i+ibeg] += np.conj(t)
+            self.H[iJ,i+ibeg,j+jbeg] += t
+            self.H[iJ,j+jbeg,i+ibeg] += np.conj(t)
 
     def plot(
             self,
