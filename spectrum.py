@@ -146,6 +146,10 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
 
     @optimise_method()
+    def convolve_with_gaussian(self,width):
+        self.y = tools.convolve_with_gaussian(self.x,self.y,width)
+
+    @optimise_method()
     def set_soleil_sidebands(self,yscale=0.1,shift=1000,signum_magnitude=None,_cache=None):
         """Adds two copies of spectrum onto itself shifted rightwards and
         leftwards by shift (cm-1) and scaled by ±yscale."""
@@ -1187,7 +1191,7 @@ class Model(Optimiser):
         ## normalised sum of gaussians
         yconv = np.full(xconv.shape,0.0)
         for width,area,offset in widths_areas_offsets:
-            yconv += lineshapes.gaussian(xconv,offset,abs(area),abs(width))
+            yconv += lineshapes.gaussian(xconv,float(offset),float(area),abs(width))
         yconv /= yconv.sum() 
         ## convolve padded y and substitute into self
         self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(self.x)]
@@ -1675,6 +1679,7 @@ class Model(Optimiser):
             label_zkeys=None,   # divide series by these keys
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
+            minimum_Sij_to_label=None, # for emission lines
             plot_title=False,
             title=None,
             plot_legend= True,
@@ -1743,9 +1748,8 @@ class Model(Optimiser):
                 self.y *= -1
         if plot_residual and self.y is not None and self.experiment.y is not None:
             yres = self.experiment.y[self._iexp]-self.y
-            # yres = self.residual
-            # i = self.residual_weighting != 0
-            # yres[i] /= self.residual_weighting[i]
+            if self.residual_weighting is not None:
+                yres *= self.residual_weighting
             ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
             tkwargs = dict(color=plotting.newcolor(2), label='Experiment-Model residual', **plot_kwargs)
@@ -1771,6 +1775,8 @@ class Model(Optimiser):
                     i &= line['τ']>minimum_τ_to_label
                 if minimum_I_to_label is not None:
                     i &= line['I']>minimum_I_to_label
+                if minimum_Sij_to_label is not None:
+                    i &= line['Sij']>minimum_Sij_to_label
                 line = line[i]
                 if len(line)==0:
                     continue
