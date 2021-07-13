@@ -103,6 +103,9 @@ class VibLevel(Optimiser):
     def _initialise_construct(self,_cache=None):
         """Make a new array if a clean construct, or set to zero."""
         if self._clean_construct:
+            self.vibrational_spin_level.clear()
+            self._manifolds.clear()
+            ## initialise Hamiltonian matrices
             self.H = np.full(
                 (len(self.J),
                  len(self.vibrational_spin_level),
@@ -141,7 +144,6 @@ class VibLevel(Optimiser):
                     self.level['Γexp'][imod] = self.experimental_level['Γ'][iexp]
                     self.level['Γexp','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
                 self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
-            self._diabaticise_indices = {}
         else:
             if self.experimental_level is not None:
                 iexp = self._finalise_construct_cache['iexp']
@@ -163,14 +165,8 @@ class VibLevel(Optimiser):
             for nblock,iblock in enumerate(tools.find_blocks(Hallowed!=0,error_on_empty_block=False)):
                 Hblock = Hallowed[np.ix_(iblock,iblock)]
                 eigvalsi,eigvectsi = linalg.eig(Hblock)
-                if self.diabaticise_eigenvalues:
-                    if (J,nblock) not in self._diabaticise_indices:
-                        eigvalsi,eigvectsi,index = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
-                        self._diabaticise_indices[J,nblock] = index
-                    else:
-                        k = self._diabaticise_indices[J,nblock]
-                        eigvalsi = eigvalsi[k]
-                        eigvectsi = eigvectsi[np.ix_(k,k)]
+                if self.diabaticise_eigenvalues and self._clean_construct:
+                    eigvalsi,eigvectsi,index = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
                 k = find(iallowed)[iblock]
                 eigvals[k] = eigvalsi
                 eigvects[np.ix_(k,k)] = np.real(eigvectsi)
@@ -229,15 +225,11 @@ class VibLevel(Optimiser):
             for key in kw:
                 if isinstance(kw[key],Parameter) and key in stepsizes:
                     kw[key].step = stepsizes[key]
-            ## cache
             _cache['kw'] = kw
-        kw = _cache['kw']
-        ## Checks that integer/half-integer nature of J corresponds to
-        ## quantum number S
-        if kw['S']%1!=self.J[0]%1:
-            raise Exception(f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}')
-        ## get quantum numbers and Hamiltonian
-        if 'fH' not in _cache:
+            ## Checks that integer/half-integer nature of J corresponds to
+            ## quantum number S
+            if kw['S']%1!=self.J[0]%1:
+                raise Exception(f'Integer/half-integer nature of S and J do not match: {S%1} and {self.J[0]%1}')
             ## get Hamiltonian and insert adjustable parameters into
             ## functions, including complex width
             ef,Σ,sH,fH = _get_linear_H(kw['S'],kw['Λ'],kw['s'])
@@ -262,7 +254,7 @@ class VibLevel(Optimiser):
             _cache['fH'] = fH
             ## cache indices of valid J
             _cache['iJ'] = [self.J>=Ωi for Ωi in Ω]
-        n,ef,Σ,fH,ibeg,iend,iJ = _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend'],_cache['iJ']
+        n,ef,Σ,fH,ibeg,iend,iJ,kw = _cache['n'],_cache['ef'],_cache['Σ'],_cache['fH'],_cache['ibeg'],_cache['iend'],_cache['iJ'],_cache['kw']
         ## update H
         for i,j in np.ndindex((n,n)):
             k = iJ[i] & iJ[j]
