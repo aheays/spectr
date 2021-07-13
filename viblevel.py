@@ -35,7 +35,9 @@ class VibLevel(Optimiser):
             # eigenvalue_ordering='maximise coefficients', # for deciding on the quantum number assignments of mixed level, options are 'minimise residual', 'maximise coefficients', 'preserve energy ordering' or None
             Eref=0.,       # energy reference relative to equilibrium energy, defaults to 0. -- not well defined
             Zsource='self',
-            diabaticise_eigenvalues=False,
+            sort_diabaticise=True,
+            sort_manifolds=True,
+            sort_match_experiment=False,
     ):
         self.name = name          # a nice name
         self.species = get_species(species)
@@ -52,8 +54,9 @@ class VibLevel(Optimiser):
         self.verbose = False
         ##  try to reorder eigenvalues/eigenvectors after
         ##  diagonalisation into diabatic levels
-        self.diabaticise_eigenvalues = diabaticise_eigenvalues
-        self.sort_eigvals_to_match_experiment =  True
+        self.sort_diabaticise = sort_diabaticise
+        self.sort_manifolds = sort_manifolds
+        self.sort_match_experiment = sort_match_experiment
         ## inputs / outputs of diagonalisation
         self.eigvals = None
         self.eigvects = None
@@ -163,16 +166,31 @@ class VibLevel(Optimiser):
             eigvals = np.zeros(self.H.shape[2],dtype=complex)
             eigvects = np.zeros(self.H.shape[1:3],dtype=float)
             for nblock,iblock in enumerate(tools.find_blocks(Hallowed!=0,error_on_empty_block=False)):
+                k = find(iallowed)[iblock]
                 Hblock = Hallowed[np.ix_(iblock,iblock)]
                 eigvalsi,eigvectsi = linalg.eig(Hblock)
-                if self.diabaticise_eigenvalues and self._clean_construct:
-                    eigvalsi,eigvectsi,index = _diabaticise_eigenvalues(eigvalsi,eigvectsi)
-                k = find(iallowed)[iblock]
+                if self.sort_diabaticise:# and self._clean_construct:
+                    eigvalsi,eigvectsi = _diabaticise_eigenvalues_sort_coefficients(eigvalsi,eigvectsi)
+                ## index of this block into vibrational_spin_levels
+                ## energy sort each vibrational_spin_level, already
+                ## blocked by ef symmetry
+                if self.sort_manifolds:
+                    E0 = np.diag(Hblock).real # unperturbed energies of this block
+                    for qn,m in tools.unique_combinations_masks(
+                            self.vibrational_spin_level['label'][k],
+                            self.vibrational_spin_level['v'][k]):
+                        if np.sum(m) > 1:
+                            i = np.argsort(eigvalsi[m])
+                            j = np.argsort(np.argsort(E0[m]))
+                            l = i[j]
+                            eigvalsi[m] = eigvalsi[m][l]
+                            eigvectsi[:,m] = eigvectsi[:,m][:,l]
+                ## save block eigvals
                 eigvals[k] = eigvalsi
                 eigvects[np.ix_(k,k)] = np.real(eigvectsi)
             ## reorder to get approximate minimal difference with
             ## respect reference data
-            if self.sort_eigvals_to_match_experiment and self.experimental_level is not None:
+            if self.sort_match_experiment and self.experimental_level is not None:
                 for ef in (+1,-1):
                     i = self.vibrational_spin_level.match(ef=ef,Ω_max=J)
                     j = self.level.match(J=J,ef=ef,Ω_max=J)
@@ -1054,6 +1072,34 @@ def _diabaticise_eigenvalues_in_blocks(eigvals,eigvects):
     retval_eigvects =  linalg.block_diag(*retval_eigvects)
     return retval_eigvals,retval_eigvects
         
+def _diabaticise_eigenvalues_by_E0(eigvals,eigvects,E0):
+    """Re-order eigvals/eigvects to match the energy ordering of
+    deperturbed levels E0."""
+    i = np.argsort(eigvals)
+    j = np.argsort(np.argsort(E0))
+    index = i[j]
+    eigvals = eigvals[index]
+    eigvects = eigvects[:,index]
+    return eigvals,eigvects,index
+        
+def _diabaticise_eigenvalues_sort_coefficients(eigvals,eigvects):
+    """put largest mixing coefficients on the diagonal, beginning with
+    the smallest"""
+    c = eigvects.real**2
+    i = list(range(len(c)))
+    j = list(range(len(c)))
+    while len(j) > 0:
+        ci = c[np.ix_(j,j)]
+        imax = np.argmax(np.max(ci,1))
+        jmax = np.argmax(ci[imax])
+        if imax!=jmax:
+            c[:,j[imax]],c[:,j[jmax]] = c[:,j[jmax]].copy(),c[:,j[imax]].copy() 
+            i[j[imax]],i[j[jmax]] = i[j[jmax]],i[j[imax]]
+        j.pop(imax)
+    eigvals = eigvals[i]
+    eigvects = eigvects[:,i]
+    return eigvals,eigvects
+
 def _diabaticise_eigenvalues(eigvals,eigvects):
     """Re-order eigvals/eigvects to maximise eigvects diagonal."""
     index = arange(len(eigvals))
