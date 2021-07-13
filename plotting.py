@@ -2283,7 +2283,8 @@ def annotate_spectrum(
         if len(labels)>i:
             # label = format(labels[i])
             label = tools.format_string_or_general_numeric(labels[i])
-            if label in list(label_replacements.keys()): label = label_replacements[label]
+            if label in list(label_replacements.keys()):
+                label = label_replacements[label]
             ax.annotate(label,[e+hoffset,ylevel+labelpad],**labelkwargs)
     ## if necessary annotate name
     if name != None:
@@ -2365,10 +2366,7 @@ def annotate_spectrum_by_branch(
         label_key = None
     line.assert_known(xkey)
     retval = []
-    # color_dict = {tqn:newcolor(it) for it,tqn in enumerate(line.unique_combinations(*zkeys))}
-    # line = deepcopy(line)
     iz = 0
-    
     for iz,(qn,zline) in enumerate(line.unique_dicts_matches(*zkeys)):
         if match_qn is not None:
             zline.limit_to_matches(**match_qn)
@@ -2381,7 +2379,6 @@ def annotate_spectrum_by_branch(
         ## update kwargs for this annotation
         kwargs = copy(kwargs_annotate_spectrum)
         kwargs.setdefault('name',name)
-        # # kwargs.setdefault('color',color_dict[tuple(qn.values())])
         kwargs.setdefault('color',newcolor(iz))
         if label_function is not None:
             labels = [label_function(t) for t in zline.iter_dict(*tools.ensure_iterable(label_key))]
