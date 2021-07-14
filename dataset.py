@@ -444,7 +444,7 @@ class Dataset(optimise.Optimiser):
         else:
             return self.all_subkinds[subkey][attribute]
             
-    def _get_combined_index(self,index,match,return_bool=False,**match_kwargs):
+    def _get_combined_index(self,index=None,match=None,return_bool=False,**match_kwargs):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
         if index is None and match is None and len(match_kwargs)==0:
@@ -731,6 +731,7 @@ class Dataset(optimise.Optimiser):
                     if tkey in self._data:
                         if key in self._data[tkey]['_inferred_to']:
                             self._data[tkey]['_inferred_to'].remove(key)
+                self._data[key].pop('_inferred_from')
             ## recursively delete everything inferred to
             for tkey in self._data[key]['_inferred_to']:
                 if tkey not in keys and tkey in self:
@@ -753,7 +754,8 @@ class Dataset(optimise.Optimiser):
             self._length = len(data['value'])
 
     def remove(self,index):
-        """Remove boolean indices."""
+        """Remove indices."""
+        index = self._get_combined_index(index,return_bool=True)
         self.index(~index)
 
     def copy(self,*args_copy_from,name=None,**kwargs_copy_from):
@@ -1954,6 +1956,7 @@ def find_common(x,y,keys=None,verbose=False):
         return(np.array([],dtype=int),np.array([],dtype=int))
     ## use quantum numbers as default keys -- could use qnhash instead
     if keys is None:
+        from . import levels
         if isinstance(x,levels.Base):
             ## a hack to use defining_qn for levels/lines as defalt
             ## match keys
