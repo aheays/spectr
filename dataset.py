@@ -192,7 +192,7 @@ class Dataset(optimise.Optimiser):
         else:
             raise Exception('Invalid subkey: {repr(subkey)}')
             
-    @optimise_method(format_lines='single')
+    @optimise_method(format_multi_line=99)
     def set_spline(self,xkey,ykey,knots,order=3,default=None,
                    match=None,index=None,_cache=None,**match_kwargs):
         """Set ykey to spline function of xkey defined by knots at
@@ -480,7 +480,7 @@ class Dataset(optimise.Optimiser):
                 retval = t
         return retval
 
-    @optimise_method(format_lines='single')
+    @optimise_method(format_multi_line=99)
     def set_value(
             self,
             key,
@@ -1954,7 +1954,12 @@ def find_common(x,y,keys=None,verbose=False):
         return(np.array([],dtype=int),np.array([],dtype=int))
     ## use quantum numbers as default keys -- could use qnhash instead
     if keys is None:
-        raise Exception("No keys provided and defining_qn unavailable x.")
+        if isinstance(x,levels.Base):
+            ## a hack to use defining_qn for levels/lines as defalt
+            ## match keys
+            keys = [key for key in x.defining_qn if x.is_known(key)]
+        else:
+            raise Exception("No keys provided and defining_qn unavailable x.")
     if verbose:
         print('find_commmon keys:',keys)
     for key in keys:

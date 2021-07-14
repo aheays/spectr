@@ -1622,7 +1622,7 @@ class Model(Optimiser):
         ## convolve model with instrument function
         self.y = tools.convolve_with_padding(self.x,self.y,x,y)
 
-    @optimise_method(format_lines='single')
+    @optimise_method(format_multi_line=99)
     def set_soleil_sidebands(self,yscale=0.1,shift=1000,signum_magnitude=None,_parameters=None,_cache=None):
         """Adds two copies of spectrum onto itself shifted rightwards and
         leftwards by shift (cm-1) and scaled by ±yscale."""

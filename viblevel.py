@@ -304,7 +304,7 @@ class VibLevel(Optimiser):
         for ii in i:
             self.H[iJ,i,i] += t
 
-    @optimise_method()
+    @optimise_method(format_multi_line=4)
     def add_coupling(
             self,
             name1,name2,        
@@ -561,7 +561,7 @@ class VibLine(Optimiser):
         self.line['Γ_u'] = np.ravel(Γ_us)[self._iallowed]
         self.line['Γ_l'] = np.ravel(Γ_ls)[self._iallowed]
         
-    @optimise_method(format_lines='single')
+    @optimise_method(format_multi_line=99)
     def add_transition_moment(self,name_u,name_l,μv=1,_cache=None):
         """Add constant transition moment. μv can be optimised."""
         """Following Sec. 6.1.2.1 for lefebvre-brion_field2004. Spin-allowed

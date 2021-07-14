@@ -60,7 +60,7 @@ def optimise_method(
         add_construct_function=True,
         add_format_input_function=True,
         execute_now= True,
-        format_lines='auto',    # 'auto','single','multi
+        format_multi_line=2,
 ):
     """A decorator factory for automatically adding parameters,
     construct_function, and input_format_function to a method in an
@@ -113,14 +113,20 @@ def optimise_method(
             if add_format_input_function:
                 def f():
                     kwargs_to_format = {key:val for key,val in kwargs.items() if key[0] != '_' and val is not None}
-                    if format_lines=='single' or (format_lines=='auto' and len(kwargs_to_format)<2):
+                    # if format_lines=='single' or (format_lines=='auto' and len(kwargs_to_format)<2):
+                    #     formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
+                    #     return f'{self.name}.{function.__name__}({formatted_kwargs},)'
+                    # elif format_lines=='multi' or (format_lines=='auto' and len(kwargs_to_format)>=2):
+                    #     formatted_kwargs = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs_to_format.items()])
+                    #     return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
+                    # else:
+                    #     raise Exception(f"Bad format_line ({repr(format_line)}) valid values are 'auto', 'single', 'multi'")
+                    if len(kwargs_to_format) < format_multi_line:
                         formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
                         return f'{self.name}.{function.__name__}({formatted_kwargs},)'
-                    elif format_lines=='multi' or (format_lines=='auto' and len(kwargs_to_format)>=2):
+                    else:
                         formatted_kwargs = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs_to_format.items()])
                         return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
-                    else:
-                        raise Exception(f"Bad format_line ({repr(format_line)}) valid values are 'auto', 'single', 'multi'")
                 self.add_format_input_function(f)
             ## returns all args as a dictionary except added
             ## optimsation variables
