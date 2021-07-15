@@ -488,7 +488,7 @@ def encode_linear_level(qn=None,**more_qn):
             retval = 'Σ'
             ## get + or - superscript
             if 's' in qn:
-                retval += ('+' if qn.pop('s')==0 else '-')
+                retval += tools.superscript_numerals('+' if qn.pop('s')==0 else '-')
         elif Λ==1:
             retval = 'Π'
         elif Λ==2:
@@ -499,7 +499,7 @@ def encode_linear_level(qn=None,**more_qn):
             raise InvalidEncodingException('Λ>3 not implemented')
         if Λ>0 and 's' in qn: qn.pop('s') # not needed
         if 'S' in qn:
-            retval = str(int(2*float(qn.pop('S'))+1))+retval
+            retval = tools.superscript_numerals(str(int(2*float(qn.pop('S'))+1)))+retval
         if 'gu' in qn:
             gu = qn.pop('gu')
             if gu == +1:
@@ -512,7 +512,7 @@ def encode_linear_level(qn=None,**more_qn):
     if 'label' in qn and retval=='':
         retval =  qn.pop('label')
     elif 'label' in qn:
-        retval = qn.pop('label')+'.'+retval
+        retval = qn.pop('label')+retval
     ## prepend species
     if 'species' in qn and retval=='':
         retval =  qn.pop('species')
@@ -1099,7 +1099,7 @@ def M_indep_direction_cosine_matrix_elements(Ωp,Ωpp,Jp,Jpp,return_zero_on_fail
         retval=0.
     return retval
 
-# @functools.lru_cache(maxsize=2**20)
+@tools.cache
 def wigner3j(j1,j2,j3,m1,m2,m3,
              # method='sympy',  # symbolic calc with sympy
              # method='sympy_numeric',  # numericisation of symbolic calc from sympy

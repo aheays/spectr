@@ -641,7 +641,7 @@ def regularise_unicode(s):
     return s
 
 def superscript_numerals(s):
-    """Turn unicode symbols into something more ascii"""
+    """Turn numerals and + and - into superscript versions."""
     if len(s)>1:
         s = ''.join([superscript_numerals(t) for t in s])
     ## superscripts / subscripts 
@@ -653,7 +653,7 @@ def superscript_numerals(s):
     return s
 
 def subscript_numerals(s):
-    """Turn unicode symbols into something more ascii"""
+    """Turn numerals into subscript versions."""
     ## superscripts / subscripts 
     for x,y in (('₀','0'), ('₁','1'),
                  ('₂','2'), ('₃','3'), ('₄','4'), ('₅','5'), ('₆','6'),

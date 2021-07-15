@@ -104,9 +104,9 @@ prototypes['Ereduced'] = dict(description="Reduced level energy" ,units='cm-1',k
 def _f0(self,J,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
-    p = np.polyfit(J*(J+1),E,min(3,len(np.unique(J))-1))
-    p[-1] = 0 
-    Ereduced_common = E - np.polyval(p,J*(J+1))
+    # p = np.polyfit(J*(J+1),E,min(3,len(np.unique(J))-1))
+    # p[-1] = 0
+    Ereduced_common = E - np.polyval(self.Ereduced_common_polynomial,J*(J+1))
     return Ereduced_common
 def _df0(self,Ereduced_common,J,dJ,E,dE):
     """Uncertainty calculation to go with _f0."""
@@ -157,7 +157,7 @@ prototypes['τ'] = dict(description="Total decay lifetime",units="s", kind='f', 
 prototypes['A'] = dict(description="Total decay rate",units="s-1", kind='f', infer=[(('Γ',),lambda self,Γ: Γ/5.309e-12,)])
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',fmt='g',infer=[])
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind='f', infer=[(('J','SR'),lambda self,J,SR: J-SR,)])
-prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'S'),)])
+prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',fmt='g',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'S'),)])
 # prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum.",units='cm-1', kind='f',infer=[((),lambda self,: 0.,)])
 prototypes['Teq'] = dict(description="Equilibriated temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array,default_step=0.1)
 prototypes['Tex'] = dict(description="Excitation temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq)],cast=cast_abs_float_array,default_step=0.1)
@@ -292,10 +292,14 @@ def _f0(self,Av):
     return LSsign
 def _f1(self,λv,Bv):
     """Determine LSsign from sign of spin-orbit constant. Always right?"""
+    if np.any(np.isnan(λv)|(λv==0)):
+        raise InferException("Cannot determine LSsign from NaN or zero λv.")
     LSsign = np.sign(λv-Bv)
     return LSsign
 prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',
-                            infer=[('Av',_f0), (('λv','Bv',),_f1),])
+                            infer=[(('species','label'),lambda self,species,label: database.get_electronic_state_property(species,label,'LSsign')),
+                                   ('Av',_f0),
+                                   (('λv','Bv',),_f1),])
 
 prototypes['s'] = dict(description="s=1 for Σ- states and 0 for all other states", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'s'))])
 @vectorise(cache=True,vargs=(1,2))
@@ -628,6 +632,7 @@ class Generic(Base):
         'Zsource','Z','α',
         'Nself',
         defining_qn=defining_qn)
+    Ereduced_common_polynomial = (1,0)
 
     def encode_qn(self,qn):
         """Encode qn into a string"""
@@ -798,3 +803,4 @@ class Diatomic(Linear):
             if key in data:
                 data.pop(key)
         self.extend(**data)
+

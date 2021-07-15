@@ -2004,7 +2004,7 @@ def find_common(x,y,keys=None,verbose=False):
     iy = np.asarray(iy,dtype=int)
     return ix,iy
 
-def get_common(x,y,keys,**limit_to_matches):
+def get_common(x,y,keys=None,**limit_to_matches):
     """A short cut to find the common levels of a Dynamic_Recarrays object
     and return subset copies that are sorted to match each other."""
     if limit_to_matches is not None:

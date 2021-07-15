@@ -50,7 +50,7 @@ class VibLevel(Optimiser):
         self.level.add_suboptimiser(self)
         self.level.pop_format_input_function()
         self.vibrational_spin_level = levels.Diatomic()
-        self.interactions = Dataset() 
+        self.interactions = {}
         self.verbose = False
         ##  try to reorder eigenvalues/eigenvectors after
         ##  diagonalisation into diabatic levels
@@ -79,6 +79,73 @@ class VibLevel(Optimiser):
         ## finalise construction
         self._initialise_construct()
         self.add_post_construct_function(self._finalise_construct)
+
+    def get_electronic_vibrational_level(self):
+        retval = levels.Diatomic()
+        for i,m in enumerate(self._manifolds.values()):
+            retval.append(
+                {key:m[key] for key in m.keys()
+                 if key not in ('ef','ibeg','iend','n','Σ','Ω',)},)
+        return retval
+
+    def get_electronic_vibrational_interactions(self):
+        print( self.interactions)
+        retval = lines.Diatomic()
+        for (name1,name2),d in self.interactions.items():
+            retval.append(
+                encoded_qn=f'{name1}–{name2}',
+                **{key:val for key,val in d.items() if val!=0},)
+        return retval
+
+    def get_pgopher_linearmanifold(self):
+        """Return an xml fragment describing this viblevel as a pgopher LinearManifold."""
+        lines = []
+        lines.append(f'<LinearManifold Name="{self.name}" LimitSearch="True">')
+
+        ## add manifolds
+        level = self.get_electronic_vibrational_level()
+        encode_lambda = {(0,0):'Sigma+', (0,1):'Sigma-',
+                         (1,0):'Pi', (2,0):'Delta',
+                         (3,0):'Phi', (4,0):'Gamma',}
+        for i in range(len(level)):
+            lines.append('')
+            line = []
+            line.append(r'<Linear Name="'+level.encode_qn({key:level[key,i] for key in ('label','S','Λ','s','gu','v') if level.is_known(key)})+'"')
+            line.append('Lambda="'+encode_lambda[level['Λ',i],level['s',i]]+'"')
+            line.append('S="'+format(level['S',i]*2,'g')+'"')
+            line.append('>')
+            lines.append(' '.join(line))
+            for key1,key2 in (
+                    ('Tv','Origin'), ('Bv','B'), ('Dv','D'),
+                    ('Hv','H'), ('Lv','L'), ('Mv','M'), ('Nv','N'),
+                    ('Ov','O'),
+                    ('Av','A'), ('ADv','AD'),
+                    ('λv','LambdaSS'), ('λD','LambdaD'), ('λH','LambdaH'),
+                    ('γv','gamma'), ('γDv','gammaD'), ('γHv','gammaH'), ('γLv','gammaL'),
+                    ('ov','o'), ('oDv','oD'), ('oHv','oH'), ('oLv','oL'),
+                    ('pv','p'), ('pDv','pD'), ('pHv','pH'), ('pLv','pL'),
+                    ('qv','q'), ('qDv','qD'), ('qHv','qH'), ('qLv','qL'),
+                    ):
+                if level.is_set(key1):
+                    lines.append(f'  <Parameter Name="{key2}" Value="{level[key1,i]}"/>',)
+            lines.append(r'</Linear>')
+        ## add interactions
+        for (name1,name2),d in self.interactions.items():
+            for key1,key2 in (
+                    ('ηv','LS'),
+                    ('ξv','Luncouple'),
+            ):
+                if key1 in d and d[key1] !=0:
+                    lines.append('')
+                    lines.append(f'<LinearPerturbation Op="{key2}" Bra="{name1}" Ket="{name2}">')
+                    lines.append(f'  <Parameter Name="Value" Value="{d[key1]}"/>')
+                    lines.append(f'</LinearPerturbation>')
+        ## join lines
+        lines.append('')
+        lines.append(f'</LinearManifold>')
+
+        retval = '\n'.join(lines)
+        return retval
 
     def _get_J(self):
         return self._J
@@ -310,50 +377,92 @@ class VibLevel(Optimiser):
             name1,name2,        
             ηv=0,ηDv=0,         # LS -- spin-orbit coupling
             ξv=0,ξDv=0,         # JL -- L-uncoupling
-            pv=0,pDv=0,         # JS -- S-uncoupling
-            He=0,               # electronic coupling
+            HJSv=0,HJSDv=0,         # JS -- S-uncoupling
+            Hev=0,               # electronic coupling
+            λvtest=0,               # spin-spin off-diagonal coupling, not final formulation
             _cache=None):
         """Add spin-orbit coupling of two manifolds."""
+        assert HJSDv == 0, 'not implemented'
+        
+        ## save all interactions
+        self.interactions[name1,name2] = {
+            'ηv':ηv, 'ηDv':ηDv,
+            'ξv':ξv, 'ξDv':ξDv,
+            'HJSv':HJSv, 'HJSDv':HJSDv,
+            'Hev':Hev,
+        }
         ## get matrix cache of matrix elements
         if self._clean_construct:
             kw1 = self._manifolds[name1]
             kw2 = self._manifolds[name2]
+            S1,S2 = kw1['S'],kw2['S'],
+            s1,s2 = kw1['s'],kw2['s'],
+            Λ1,Λ2 = kw1['Λ'],kw2['Λ'],
+            Σ1,Σ2 = kw1['Σ'],kw2['Σ']
+            Ω1,Ω2 = kw1['Ω'],kw2['Ω']
+            ef1,ef2 = kw1['ef'],kw2['ef'],
+            ibeg,jbeg = kw1['ibeg'],kw2['ibeg']
             ## get coupling matrices -- cached
             JL,JS,LS,NNJL,NNJS,NNLS = _get_offdiagonal_coupling(
-                kw1['S'],kw1['Λ'],kw1['s'],kw2['S'],kw2['Λ'],kw2['s'],verbose=self.verbose)
-            ibeg,jbeg = kw1['ibeg'],kw2['ibeg']
-            ## determine valid J for interaction to occur between particular sublevels
-            Σ1 = self.vibrational_spin_level[kw1['ibeg']:kw1['iend']]['Σ']
-            Σ2 = self.vibrational_spin_level[kw2['ibeg']:kw2['iend']]['Σ']
-            ## cache indices of valid J
-            iJ1 = [self.J>=Ω for Ω in kw1['Ω']]
-            iJ2 = [self.J>=Ω for Ω in kw2['Ω']]
+                S1,Λ1,s1,S2,Λ2,s2,verbose=self.verbose)
+            ## find indices of valid J
+            iJ1 = [self.J>=Ω for Ω in Ω1]
+            iJ2 = [self.J>=Ω for Ω in Ω2]
+            ## get mask for diagonal (Λ,S,Σ,ef,)~(Λ,S,Σ,ef) transitions
+            ΛSΣefdiag = np.array([[
+                    S1==S2 and Λ1==Λ2 and Σ1i==Σ2i and ef1i==ef2i
+                        for (Σ2i,ef2i) in zip(Σ2,ef2)]
+                  for (Σ1i,ef1i) in zip(Σ1,ef1)])
+            ## get spin-spin 3-j coefficients while applying other
+            ## selection rules, see Sec. 3.4.4 and Eq. 3.4.49 of
+            ## lefebvre-brion_field2004
+            SS = np.full((len(Σ1),len(Σ2)),0.0)
+            for i,(Σ1i,ef1i,Ω1i) in enumerate(zip(Σ1,ef1,Ω1)):
+                for j,(Σ2j,ef2j,Ω2j) in enumerate(zip(Σ2,ef2,Ω2)):
+                    if (Λ1==0 and S1<=1/2) or (Λ2==0 and S2<=1/2):
+                        continue
+                    if 'gu' in kw1 and kw1['gu']!=kw2['gu']:
+                        continue
+                    if Λ1==0 and Λ2==0 and s1==s2:
+                        continue
+                    if ef1i != ef2j:
+                        continue
+                    if Ω1i != Ω2j:
+                        continue
+                    SS[i,j] = quantum_numbers.wigner3j(S1,2,S2,-Σ1i,Σ1i-Σ2j,Σ2j)
             ## save cache
             _cache |= dict(
                 ibeg=ibeg,jbeg=jbeg,
                 JL=JL,JS=JS,LS=LS,
                 NNJL=NNJL,NNJS=NNJS,NNLS=NNLS,
-                iJ1=iJ1,iJ2=iJ2,)
+                iJ1=iJ1,iJ2=iJ2,ΛSΣefdiag=ΛSΣefdiag,SS=SS)
         ## load cache
-        ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS,iJ1,iJ2 = (
+        ibeg,jbeg,JL,JS,LS,NNJL,NNJS,NNLS,iJ1,iJ2,ΛSΣefdiag,SS = (
             _cache['ibeg'],_cache['jbeg'],
             _cache['JL'],_cache['JS'],_cache['LS'],
             _cache['NNJL'],_cache['NNJS'],_cache['NNLS'],
-            _cache['iJ1'],_cache['iJ2'],)
+            _cache['iJ1'],_cache['iJ2'],_cache['ΛSΣefdiag'],_cache['SS'])
         ## substitute into Hamiltonian (both upper and lowe diagonals, treated as real)
         for i,j in np.ndindex(JL.shape):
             iJ = iJ1[i] & iJ2[j]
             J = self.J[iJ]
-            t = (
-                ηv*LS[i,j](J) 
-                + ηDv*NNLS[i,j](J)
-                + -ξv*JL[i,j](J)
-                - ξDv*NNJL[i,j](J)
-                + pv*JS[i,j](J) 
-                + float(He)
-            )
-            self.H[iJ,i+ibeg,j+jbeg] += t
-            self.H[iJ,j+jbeg,i+ibeg] += np.conj(t)
+            ## sum up all possible nonzero interactions
+            H = 0.0
+            for pi,Hi in (
+                (ηv, ηv*LS[i,j](J)), # LS
+                (ηDv, ηDv*NNLS[i,j](J)), # LS centrifugal
+                (ξv, -ξv*JL[i,j](J)),    # JL
+                (ξDv, -ξDv*NNJL[i,j](J)), # JL centrifugal
+                (HJSv, HJSv*JS[i,j](J)), # JS, better symbol needed
+                (Hev, float(Hev)*ΛSΣefdiag[i,j]), # electronic
+                (λvtest, λvtest*SS[i,j]),               # spin-spin off-diagonal coupling, not final formulation
+                    
+            ):
+                if isinstance(pi,Parameter) or pi!=0:
+                    H += Hi
+            ## add to self
+            self.H[iJ,i+ibeg,j+jbeg] += H
+            self.H[iJ,j+jbeg,i+ibeg] += np.conj(H)
 
     def plot(
             self,
@@ -362,6 +471,7 @@ class VibLevel(Optimiser):
             ylim_Eresidual=None,
             plot_errorbars=True,
             reduce_coefficients=(0,),
+            match=None,
             **plot_kwargs,):
         """Plot data and residual error."""
         if fig is None:
@@ -371,7 +481,11 @@ class VibLevel(Optimiser):
         axE = plotting.subplot(0,fig=fig)
         axE.set_title('E')
         legend_data = []
-        for ilevel,(qn,m) in enumerate(self.level.unique_dicts_matches('species','label','v')):
+        ## reducing to plot only matching levels
+        level = self.level
+        if match is not None:
+            level = level.matches(match)
+        for ilevel,(qn,m) in enumerate(level.unique_dicts_matches('species','label','v')):
             for isublevel,(qn2,m2) in enumerate(m.unique_dicts_matches('Σ','ef')):
                 plot_kwargs |= dict(
                     color=plotting.newcolor(ilevel),
@@ -403,7 +517,7 @@ class VibLevel(Optimiser):
                         axE.plot(m2['J'],m2['Eexp']-ΔEreduce,**Ekwargs)
                         axEres.plot(m2['J'],m2['Eres'],**Ereskwargs)
 
-                if np.any(self.level['Γ'] > 0):
+                if np.any(level['Γ'] > 0):
                     axΓ = plotting.subplot(2,fig=fig)
                     axΓ.set_title('Γ')
                     if self.experimental_level is None:

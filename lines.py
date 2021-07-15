@@ -11,6 +11,7 @@ from immutabledict import immutabledict as idict
 
 # from . import *
 # from .dataset import Dataset
+
 from . import tools
 from .tools import cast_abs_float_array
 from . import levels
@@ -307,10 +308,13 @@ prototypes['Finstr'] = dict(description="Instrument photoemission detection effi
 prototypes['I'] = dict(description="Spectrally-integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",units='not_well_defined',kind='f',fmt='<10.5e',infer=[(('Finstr','Ae','α_u','ν'),lambda self,Finstr,Ae,α_u,ν: Finstr*Ae*α_u*ν,)],)
 
 ## vibrational interaction energies
-prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
-prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
-prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
-prototypes['ξDv'] = dict(description="Higher-roder reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[])
+prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
+prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
+prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
+prototypes['ξDv'] = dict(description="Higher-order reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
+prototypes['HJSv'] = dict(description="Reduced JS coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
+prototypes['HJSDv'] = dict(description="Higher-order reduced JS coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
+prototypes['Hev'] = dict(description="Electronic coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
 
 ## parity from transition selection
 def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
@@ -671,12 +675,8 @@ class Generic(levels.Base):
         self."""
         ## try get all defining qn
         for key in self.defining_qn:
-            try: 
-                self[key]
-            except InferException:
-                if self.verbose:
-                    warnings.warn(f'cannot determine defining level key: {key}')
-                pass
+            if not self.is_known(key):
+                warnings.warn(f'cannot determine defining level key: {key}')
         if u_or_l not in ('u','l'):
             raise Exception("u_or_l must be 'u' or 'l'")
         suffix = '_'+u_or_l
@@ -837,8 +837,7 @@ class Generic(levels.Base):
             ## loop through each line in linelist -- saving to dict of lists
             data = {key:[] for key in (
                 'ν','E_l','E_u','v_u', 'label_u', 'J_u', 'N_u', 'Fi_u', 'ef_u', 
-                'v_l', 'label_l', 'J_l', 'N_l', 'Fi_l', 'ef_l', 
-                'Sij',
+                'v_l', 'label_l', 'J_l', 'N_l', 'Fi_l', 'ef_l' , 'Sij',
                 # 'Ae',
             )}
             for line in fid:
@@ -866,21 +865,33 @@ class Generic(levels.Base):
                 ## are influenced by the user.
                 def decode_pgo_level_name(name,manifold_name):
                     """Try various ways to decode a pgopher level name."""
-                    r = re.match(r"(Excited|Ground) ([a-zA-Z0-9']+)v=([0-9]+) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$",name) # e.g., "Excited Av=1 0.5  1 F2f"
-                    if r:
+                    if r:=re.match(re.escape(manifold_name)+r" +([^ ]+) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$",name):
+                        return dict(
+                            ## N=float(r.group(5)),
+                            Fi=float(r.group(4)),
+                            ## ef=float(1 if r.group(5) == 'e' else -1),
+                            **self.level_class.decode_qn(None,r.group(1)))
+                    elif r:=re.match(re.escape(manifold_name)+r" +([^ ]+) +([0-9.]+) +([ef]) *$",name):
+                        return dict(
+                            ## N=float(r.group(5)),
+                            ## Fi=float(r.group(4)),
+                            ## ef=float(1 if r.group(5) == 'e' else -1),
+                            **self.level_class.decode_qn(None,r.group(1)))
+                    elif r:=re.match(r"{mainf ([a-zA-Z0-9']+)v=([0-9]+) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$",name):
+                        ## e.g., "Excited Av=1 0.5  1 F2f"
                         return(dict(
                             label = r.group(2),
                             v = int(r.group(3)),
                             N = float(r.group(5)),
                             Fi = float(r.group(6)),
                         ))
-                    r = re.match(r'(.*) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$',name) # e.g., "Excited A(v=1) 0.5  1 F2f"
-                    if r:
+                    elif r:=re.match(r'(.*) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$',name):
+                        ## e.g., "Excited A(v=1) 0.5  1 F2f"
                         retval = {}
                         label_v = r.group(1)
                         retval['N'] = float(r.group(3))
                         retval['Fi'] = float(r.group(4))
-                        decoded_level_name = quantum_numbers.decode_level(label_v.strip()[len(manifold_name):])
+                        decoded_level_name = quantum_numbers.decode_linear_level(label_v.strip()[len(manifold_name):])
                         if 'label' in decoded_level_name: 
                             retval['label'] = decoded_level_name['label']
                         else:
@@ -890,17 +901,22 @@ class Generic(levels.Base):
                         else:
                             retval['v'] = -1
                         return retval
-                    r = re.match(r'(.*) +([a-zA-Z]+)\(([0-9.]+)\) +([0-9.]+) +([ef]) *$',name) # e.g., "Excited C(0)  3 e"
-                    if r:
+                    elif r:=re.match(r'(.*) +([a-zA-Z]+)\(([0-9.]+)\) +([0-9.]+) +([ef]) *$',name):
+                        ## e.g., "Excited C(0)  3 e"
                         return(dict(label = r.group(2), v = r.group(3),))
-                    raise Exception('Could not decode pgo level name: '+repr(name))
+                    else:
+                        raise Exception('Could not decode pgo level name: '+repr(name))
                 transition_name = line[17]
                 upper_level_name,lower_level_name = transition_name.strip().split(' - ')
                 tdata = decode_pgo_level_name(lower_level_name.strip(),lower_manifold)
                 for key,val in tdata.items():
+                    if key+'_l' not in data:
+                        data[key+'_l'] = []
                     data[key+'_l'].append(val)
                 tdata = decode_pgo_level_name(upper_level_name.strip(),upper_manifold)
                 for key,val in tdata.items():
+                    if key+'_u' not in data:
+                        data[key+'_u'] = []
                     data[key+'_u'].append(val)
         ## submit
         for key in [t for t in data.keys()]:
@@ -1297,6 +1313,10 @@ class Diatomic(Linear):
         base_class=Linear,
         new_keys=(
             'Tvib', 'Trot', 'Δv',
+            ## linear interactions
+            'ηv', 'ηDv', 'ξv', 'ξDv', 
+            'HJSv','HJSDv', 'Hev',
+            
         ))
     default_xkey = 'J_u'
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
