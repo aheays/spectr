@@ -7,7 +7,7 @@ import importlib
 import warnings
 
 import numpy as np
-from numpy import nan
+from numpy import nan,arange,linspace,array
 from immutabledict import immutabledict as idict
 import h5py
 
@@ -1886,7 +1886,12 @@ class Dataset(optimise.Optimiser):
                 if label is not None:
                     kwargs.setdefault('label',label_prefix+label)
                 ## plotting data
-                x = z[xkey]
+                if self[xkey,'kind'] == 'U':
+                    ## if string xkey then ensure different plots are aligned on the axis
+                    xkey_unique_strings = self.unique(xkey)
+                    x = tools.findin(z[xkey],xkey_unique_strings)
+                else:
+                    x = z[xkey]
                 y = z[ykey]
                 if plot_errorbars and z.is_set(ykey,'unc'):
                     dy = z.get(ykey,'unc')
@@ -1910,6 +1915,7 @@ class Dataset(optimise.Optimiser):
                     kwargs.setdefault('mfc',kwargs['color'])
                     kwargs.setdefault('fillstyle','full')
                     line = ax.plot(x,y,**kwargs)
+
                 if title is not None:
                     ax.set_title(title)
                 if ylabel is not None:
@@ -1935,11 +1941,40 @@ class Dataset(optimise.Optimiser):
                 ax.set_xscale(xscale)
                 ax.set_yscale(yscale)
                 ax.grid(True,color='gray',zorder=-5)
-                if self.get_kind(xkey) == 'U':
-                    plotting.set_tick_labels_text(x, axis='x', ax=ax, rotation=70,)
+                if self[xkey,'kind'] == 'U':
+                    plotting.set_tick_labels_text(xkey_unique_strings,axis='x',ax=ax,rotation=70,)
         if show:
             plotting.show()
         return fig
+
+    # def plot_bar(self,xlabelkey=None,ykeys=None):
+        # from matplotlib import pyplot as plt
+        # from spectr import plotting
+        # ax = plotting.gca()
+        # if ykeys is None:
+            # ykeys = self.keys()
+            # if xlabelkey is not None:
+                # ykeys.remove(xlabelkey)
+        # x = arange(len(self))
+        # if xlabelkey is None:
+            # xlabels = x
+        # else:
+            # xlabels = self[xlabelkey]
+        # labels = []
+        # for iykey,ykey in enumerate(ykeys):
+            # ax.bar(
+                # x=x+0.1*(iykey-(len(ykeys)-1)/2),
+                # height=self[ykey],
+                # width=-0.1,
+                # tick_label=[format(t) for t in xlabels],
+                # color=plotting.newcolor(iykey),
+            # )
+            # labels.append(dict(color=plotting.newcolor(iykey),label=ykey))
+        # plotting.legend(*labels)
+        # for t in ax.xaxis.get_ticklabels():
+            # t.set_size('small')
+            # t.set_rotation(-45)
+        
 
     def polyfit(self,xkey,ykey,index=None,**polyfit_kwargs):
         return tools.polyfit(

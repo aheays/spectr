@@ -1083,7 +1083,6 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp,verbose=False):
                     Ωp=qnppm['Ω'],Ωpp=qnpppm['Ω'],
                     Λp=qnppm['Λ'],Λpp=qnpppm['Λ'],
                     μsign=float(μsign), c=float(c)):
-
                 tJpp = (2*Jpp+1)*(2*(Jpp+ΔJ)+1)
                 tJpp[tJpp<0] = 0 # avoid sqrt <0 warnings
                 retval = (
