@@ -733,7 +733,7 @@ class Dataset(optimise.Optimiser):
                             self._data[tkey]['_inferred_to'].remove(key)
                 self._data[key].pop('_inferred_from')
             ## recursively delete everything inferred to
-            for tkey in self._data[key]['_inferred_to']:
+            for tkey in copy(self._data[key]['_inferred_to']):
                 if tkey not in keys and tkey in self:
                     self.unset(tkey)
 

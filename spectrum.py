@@ -454,55 +454,39 @@ class Model(Optimiser):
             self.y *= cache['transmission'] # add to model
         self.add_construct_function(f)
 
-    def add_absorption_cross_section(
-            self,
-            cross_section_object,
-            column_density=1e16,
-            # xshift=None,
-            # xscale=None,
-            # xbeg=None,
-            # xend=None,
-    ):
-        """Load a cross section from a file. Interpolate this to experimental
-        grid. Add absorption according to given column density, which
-        can be optimised."""
-        p = self.add_parameter_set(
-            note=f'add_absorption_cross_section {cross_section_object.name} in {self.name}',
-            column_density=column_density,# xshift=xshift, xscale=xscale,
-            step_scale_default={'column_density':0.01, 'xshift':1e-3, 'xscale':1e-8,})
-        def f():
-            retval = f'{self.name}.add_absorption_cross_section({cross_section_object.name}'
-            # if xbeg is not None:
-                # retval += f',xbeg={xbeg}'
-            # if xend is not None:
-                # retval += f',xend={xend}'
-            if len(p)>0:
-                retval += f',{p.format_input()}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(f)
-        self.add_suboptimisers(cross_section_object)
-        cache = {}
-        def f():
-            ## update if necessary
-            if ('transmission' not in cache 
-                or (p.timestamp>self.timestamp)
-                or (cross_section_object.timestamp>self.timestamp)):
-                # cache['transmission'] = np.full(self.x.shape,1.0)
-                # i = np.full(self.x.shape,
-                # if xbeg is not None:
-                    # i &= self.x>=xbeg
-                # if xend is not None:
-                    # i &= self.x<=xend
-                # cache['i'] = i
-                cache['transmission'] = np.exp(-p['column_density']*cross_section_object.σ(self.x))
-                for key in p.keys():
-                    cache[key] = p[key]
-            ## add to model
-            self.y *= cache['transmission']
-            # self.optical_depths[cross_section_object.name] = cache['τ']
-        self.add_construct_function(f)
-    add_cross_section = add_absorption_cross_section # deprecated name
+    # def add_absorption_cross_section(
+            # self,
+            # cross_section_object,
+            # column_density=1e16,
+    # ):
+        # """Load a cross section from a file. Interpolate this to experimental
+        # grid. Add absorption according to given column density, which
+        # can be optimised."""
+        # p = self.add_parameter_set(
+            # note=f'add_absorption_cross_section {cross_section_object.name} in {self.name}',
+            # column_density=column_density,# xshift=xshift, xscale=xscale,
+            # step_scale_default={'column_density':0.01, 'xshift':1e-3, 'xscale':1e-8,})
+        # def f():
+            # retval = f'{self.name}.add_absorption_cross_section({cross_section_object.name}'
+            # if len(p)>0:
+                # retval += f',{p.format_input()}'
+            # retval += ')'
+            # return(retval)
+        # self.add_format_input_function(f)
+        # self.add_suboptimisers(cross_section_object)
+        # cache = {}
+        # def f():
+            # ## update if necessary
+            # if ('transmission' not in cache 
+                # or (p.timestamp>self.timestamp)
+                # or (cross_section_object.timestamp>self.timestamp)):
+                # cache['transmission'] = np.exp(-p['column_density']*cross_section_object.σ(self.x))
+                # for key in p.keys():
+                    # cache[key] = p[key]
+            # ## add to model
+            # self.y *= cache['transmission']
+        # self.add_construct_function(f)
+    # add_cross_section = add_absorption_cross_section # deprecated name
 
     @optimise_method()
     def add_line(
@@ -523,13 +507,15 @@ class Model(Optimiser):
         if len(self.x) == 0 or len(line) == 0:
             return
         if self._clean_construct:
-            ## first run — initalise local copy of lines data and
+            ## first run — initalise local copy of lines data, do not
+            ## set keys if they are in set_keys_vals
             tmatch = {} if match is None else copy(match)
             tmatch.setdefault('ν_min',(self.x[0]-1))
             tmatch.setdefault('ν_max',(self.x[-1]+1))
             imatch = line.match(**tmatch)
             nmatch = np.sum(imatch)
-            line_copy = line.copy(index=imatch)
+            keys = [key for key in line.explicitly_set_keys() if key not in set_keys_vals]
+            line_copy = line.copy(index=imatch,keys=keys)
             if verbose is not None:
                 line_copy.verbose = verbose
             ## set parameter data
@@ -554,28 +540,37 @@ class Model(Optimiser):
             ## important data — only update spectrum if these have changed
             data = {key:line_copy[key] for key in ('ν',ykey,'ΓL','ΓD') if line_copy.is_known(key)}
             ## cache
-            (_cache['data'],_cache['y'],
-             _cache['imatch'],_cache['nmatch'],
-             _cache['line_copy'],_cache['ykey'],
-             _cache['_calculate_spectrum']) = (
-                 data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum)
+            (
+                _cache['data'],_cache['y'],
+                _cache['imatch'],_cache['nmatch'],
+                _cache['line_copy'],_cache['ykey'],
+                _cache['_calculate_spectrum'],
+            ) = (
+                data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum,
+            )
         else:
             ## subsequent runs -- maybe only recompute a few line
             ##
             ## load cache
-            (data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum) = (
+            (data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum,) = (
                  _cache['data'],_cache['y'],
                  _cache['imatch'],_cache['nmatch'],
                  _cache['line_copy'],_cache['ykey'],
-                 _cache['_calculate_spectrum']) 
+                 _cache['_calculate_spectrum'],
+            ) 
             ## nothing to be done
             if nmatch == 0:
                 return
-            ## set modified data in set_keys_vals
+            ## set modified data in set_keys_vals if they have changed
+            ## form cached values.  
             for key,val in set_keys_vals.items():
-                if (isinstance(val,Parameter) and
-                    self._last_construct_time < val._last_modify_value_time):
-                    line_copy.set(key,'value',val)
+                if isinstance(val,Parameter):
+                    if self._last_construct_time < val._last_modify_value_time:
+                        ## changed parmaeter
+                        line_copy[key] = val
+                else:
+                    ## Only update Parameters (assume other types ## cannot change)
+                    pass        
             ## update from keys and rows that have changed
             ichanged = line.row_modify_time[imatch] > self._last_construct_time
             nchanged = np.sum(ichanged)
@@ -627,8 +622,11 @@ class Model(Optimiser):
             self.y *= np.exp(-y)
         else:
             self.y += y
+        _cache['τ'] = copy(line_copy['τ']*1) #  DEBUG
         _cache['y'] = y
         _cache['data'] = {key:line_copy[key] for key in data}
+        _cache['set_keys_vals'] = {key:float(val) for key,val in set_keys_vals.items()}
+
 
     # @optimise_method()
     # def add_absorption_lines(

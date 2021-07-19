@@ -144,7 +144,6 @@ def voigt(x,
           yin = None            # set to add this line in place to an existing specturm of size matching x
 ):
     "Voigt profile -- x must be sorted for correct and efficient noninfinity nfwhmG and nfwhmL."
-    from scipy import special
     b = 0.8325546111576 # np.sqrt(np.log(2))
     norm = 1.0644670194312262*ΓG # sqrt(2*pi/8/log(2))
     if ΓG == 0:
@@ -171,9 +170,9 @@ def voigt(x,
         j0,j1 = np.searchsorted(x,[x0-(nfwhmG*ΓG),x0+(nfwhmG*ΓG)])
         if yin is None:
             y = np.zeros(x.shape,dtype=float)
-            y[i0:j0] = lorentzian(x[i0:j0],x0,S,ΓL)
-            y[j0:j1] = voigt(x[j0:j1],x0,S,ΓL,ΓG)
-            y[j1:i1] = lorentzian(x[j1:i1],x0,S,ΓL)
+            # y[i0:j0] = lorentzian(x[i0:j0],x0,S,ΓL)
+            # y[j0:j1] = voigt(x[j0:j1],x0,S,ΓL,ΓG)
+            # y[j1:i1] = lorentzian(x[j1:i1],x0,S,ΓL)
         else:
             y = yin
             y[i0:j0] += lorentzian(x[i0:j0],x0,S,ΓL)
