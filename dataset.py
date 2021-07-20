@@ -241,7 +241,6 @@ class Dataset(optimise.Optimiser):
         ## if an index is provided then data must already exist, set
         ## new indeed data and return
         if index is not None:
-            # if key not in self:
             if not self.is_known(key):
                 if key in self.prototypes and 'default' in self.prototypes[key]:
                     self.set(key,'value',value=self.prototypes[key]['default'])
@@ -250,6 +249,20 @@ class Dataset(optimise.Optimiser):
             data = self._data[key]
             if key not in self:
                 raise Exception(f'Cannot set data by index for unset key: {key}')
+            ## reallocate with increased unicode dtype length if new
+            ## strings are longer than the current array dtype
+            if self.get_kind(key) == 'U':
+                ## this is a really hacky way to get the length of string in a numpy array!!!
+                old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
+                new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(value).dtype)))
+                if new_str_len > old_str_len:
+                    ## reallocate array with new dtype with overallocation
+                    t = np.empty(
+                        len(self)*self._over_allocate_factor,
+                        dtype=f'<U{new_str_len*self._over_allocate_factor}')
+                    t[:len(self)] = self.get(key)
+                    data['value'] = t
+            ## set indexed data
             data['value'][:self._length][index] = data['cast'](value)
         else:
             ## set full array -- does not hvae to exist in in advance
@@ -1756,31 +1769,12 @@ class Dataset(optimise.Optimiser):
         total_length = original_length + extending_length
         ## reallocate and lengthen arrays if necessary
         self._reallocate(total_length)
-        ## add new data to old
+        ## add new data to old, set values first then other subdata
+        ## afterwards
         for key in keys:
-            ## the object in self to extend
-            data = self._data[key]
-            new_val = keys_vals[key]
-            ## increase unicode dtype length if new strings are
-            ## longer than the current
-            if self.get_kind(key) == 'U':
-                ## this is a really hacky way to get the length of string in a numpy array!!!
-                old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
-                new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(new_val).dtype)))
-                if new_str_len > old_str_len:
-                    ## reallocate array with new dtype with overallocation
-                    t = np.empty(
-                        len(self)*self._over_allocate_factor,
-                        dtype=f'<U{new_str_len*self._over_allocate_factor}')
-                    t[:len(self)] = self.get(key)
-                    data['value'] = t
-            ## set extending value
-            data['value'][original_length:total_length] = data['cast'](new_val)
-
-        ## set subdata
+            self.set(key,'value',keys_vals[key],slice(original_length,total_length))
         for (key,subkey),val in subkeys_vals.items():
             self.set(key,subkey,val,slice(original_length,total_length))
-
 
     def _reallocate(self,new_length):
         """Lengthen data arrays."""
