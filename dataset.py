@@ -160,6 +160,7 @@ class Dataset(optimise.Optimiser):
             index=None,         # set these indices only
             match=None,         # set these matches only
             set_changed_only=False, # only set data if it differs from value
+            kind=None,
             **match_kwargs
     ):
         """Set value of key or (key,data)"""
@@ -186,7 +187,7 @@ class Dataset(optimise.Optimiser):
                     value = np.array(value)[index_changed]
             ## set value or other subdata
             if subkey == 'value':
-                self._set_value(key,value,combined_index)
+                self._set_value(key,value,combined_index,kind=kind)
             else:
                 self._set_subdata(key,subkey,value,combined_index)
         else:
@@ -228,7 +229,7 @@ class Dataset(optimise.Optimiser):
                 self.set(ykey,'vary',False,index=index)
             _cache['not_first_execution'] = True
 
-    def _set_value(self,key,value,index=None,dependencies=None):
+    def _set_value(self,key,value,index=None,dependencies=None,kind=None):
         """Set a value"""
         ## turn Parameter into its floating point value
         if isinstance(value,Parameter):
@@ -267,6 +268,8 @@ class Dataset(optimise.Optimiser):
             if 'kind' in data and data['kind'] == 'O':
                 raise ImplementationError()
             ## use data to infer kind if necessary
+            if kind is not None:
+                data['kind'] = kind
             if 'kind' not in data:
                 value = np.asarray(value)
                 data['kind'] = value.dtype.kind
@@ -1668,18 +1671,18 @@ class Dataset(optimise.Optimiser):
                 if self.is_set(key,'vary'):
                     self.set(key,'vary',False,index)
 
-    def append(self,keys_vals_as_dict=None,keys='all',**keys_vals_as_kwargs):
+    def append(self,keys_vals=None,keys='all',**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
-        if keys_vals_as_dict is None:
-            keys_vals_as_dict = {}
-        keys_vals = dict(**keys_vals_as_dict,**keys_vals_as_kwargs)
+        if keys_vals is None:
+            keys_vals = {}
+        keys_vals |= keys_vals_as_kwargs
         for key in keys_vals:
             keys_vals[key] = [keys_vals[key]]
         self.extend(keys_vals,keys=keys)
 
     def extend(
             self,
-            keys_vals_as_dict_or_dataset=idict(),
+            keys_vals=None,
             keys='old',         # 'old','new','all'
             **keys_vals_as_kwargs
     ):
@@ -1689,39 +1692,51 @@ class Dataset(optimise.Optimiser):
         If 'all' then keys must match exactly.  If key=='new' no data
         currently present then just add this data."""
         ## get preset lists of keys to extend
+        if keys_vals is None:
+            keys_vals = {}
+        keys_vals |= keys_vals_as_kwargs
+
+        ## separate subkeys
+        subkeys_vals = {}
+        for key in list(keys_vals):
+            if not isinstance(key,str):
+                tkey,tsubkey = key
+                if tsubkey == 'value':
+                    ## no need to store subkey
+                    keys_vals[tkey] = keys_vals.pop(key)
+                else:
+                    subkeys_vals[tkey,tsubkey] = keys_vals.pop(key)
+        ## collect value keys
         if keys in ('old','all','new'):
             tkeys = set()
             if keys in ('old','all'):
                 tkeys = tkeys.union(self.explicitly_set_keys())
             if keys in ('new','all'):
-                tkeys = tkeys.union(keys_vals_as_kwargs)
-                if isinstance(keys_vals_as_dict_or_dataset,Dataset):
-                    tkeys = tkeys.union(keys_vals_as_dict_or_dataset.explicitly_set_keys())
-                else:
-                    tkeys = tkeys.union(keys_vals_as_dict_or_dataset)
+                tkeys = tkeys.union(keys_vals)
             keys = tkeys
         ## ensure all keys are present in new and old data, and limit
         ## old data to these
         new_data = {}
         for key in keys:
-            ## ensure keys are present in existing data
-            if len(self) == 0 and key not in self:
-                self[key] = []
+            ## collect new data
+            if key not in keys_vals:
+                keys_vals[key] = self._data[key]['default']
+            # ## could add logic for auto defaults based on kind as below
+            # else:
+                # raise Exception(f'Extending key missing in new data: {repr(key)}')
+            ## ensure keys are present in existing data, if kind not
+            ## in prototypes then infer from the new data, if no new
+            ## data assume float
+            if len(self) == 0 and not self.is_known(key):
+                if key in self.prototypes:
+                    kind = None
+                elif len(keys_vals[key]) > 0:
+                    kind = array(keys_vals[key]).dtype.kind
+                else:
+                    kind ='f'
+                self.set(key,'value',[],kind=kind)
             elif not self.is_known(key):
                 raise Exception(f"Extending key not in existing data: {repr(key)}")
-            ## collect new data
-            if key in keys_vals_as_dict_or_dataset:
-                new_data[key] = keys_vals_as_dict_or_dataset[key]
-            elif key in keys_vals_as_kwargs:
-                new_data[key] = keys_vals_as_kwargs[key]
-            elif (isinstance(keys_vals_as_dict_or_dataset,Dataset)
-                  and keys_vals_as_dict_or_dataset.is_known(key)):
-                new_data[key] = keys_vals_as_dict_or_dataset[key]
-            elif 'default' in self._data[key]:
-                new_data[key] = self._data[key]['default']
-            ## could add logic for auto defaults based on kind as below
-            else:
-                raise Exception(f'Extending key missing in new data: {repr(key)}')
         ## limit self to keys and mark not inferred
         self.unlink_inferences(keys)
         for key in list(self):
@@ -1730,7 +1745,7 @@ class Dataset(optimise.Optimiser):
         ## determine length of data
         original_length = len(self)
         extending_length = None
-        for key,val in new_data.items():
+        for key,val in keys_vals.items():
             if tools.isiterable(val):
                 if extending_length is None:
                     extending_length = len(val)
@@ -1745,7 +1760,7 @@ class Dataset(optimise.Optimiser):
         for key in keys:
             ## the object in self to extend
             data = self._data[key]
-            new_val = new_data[key]
+            new_val = keys_vals[key]
             ## increase unicode dtype length if new strings are
             ## longer than the current
             if self.get_kind(key) == 'U':
@@ -1759,8 +1774,13 @@ class Dataset(optimise.Optimiser):
                         dtype=f'<U{new_str_len*self._over_allocate_factor}')
                     t[:len(self)] = self.get(key)
                     data['value'] = t
-            ## set extending value -- SUBDATA NOT IMPLEMENTED
+            ## set extending value
             data['value'][original_length:total_length] = data['cast'](new_val)
+
+        ## set subdata
+        for (key,subkey),val in subkeys_vals.items():
+            self.set(key,subkey,val,slice(original_length,total_length))
+
 
     def _reallocate(self,new_length):
         """Lengthen data arrays."""
@@ -1815,6 +1835,7 @@ class Dataset(optimise.Optimiser):
             show=False,          # show figure after issuing plot commands
             ylim=None,
             title=None,
+            xsort=True,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
         """Plot data."""
@@ -1847,7 +1868,8 @@ class Dataset(optimise.Optimiser):
             if self.is_known(ykey,'units'):
                 ylabel += ' ('+self[ykey,'units']+')'
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
-                z.sort(xkey)
+                if xsort:
+                    z.sort(xkey)
                 if zlabel_format_function is None:
                     zlabel_format_function = self.default_zlabel_format_function
                 zlabel = zlabel_format_function(dz)
