@@ -757,10 +757,47 @@ def _extra_interaction_on_key(event):
         ## zoom with +/=/- keys
         _extra_interaction_zoom_out('x',axes)
         _extra_interaction_zoom_out('y',axes)
+    elif event.key=='l':
+        ## toggle y log -- preserve limits
+        _extra_interaction_toggle_log('y',axes)
+    elif event.key=='L':
+        ## toggle x log -- preserve limits
+        _extra_interaction_toggle_log('x',axes)
     ## redraw
     plt.draw()
     return
     
+def _extra_interaction_toggle_log(x_or_y,axes):
+    assert x_or_y in ('x','y')
+    if x_or_y == 'x':
+        lim = axes.get_xlim()
+        loglin = axes.get_xscale()
+    else:
+        lim = axes.get_ylim()
+        loglin = axes.get_yscale()
+    if loglin == 'linear':
+        ## make log - deal with negative limits
+        lim = sorted(lim)
+        if lim[1] <= 0:
+            lim[1] = 1
+        if lim[0] <= 0:
+            lim[0] = lim[1]/1e10
+        if x_or_y == 'x':
+            axes.set_xscale('log')
+        else:
+            axes.set_yscale('log')
+    else:
+        ## make linear
+        if x_or_y == 'x':
+            axes.set_xscale('linear')
+        else:
+            axes.set_yscale('linear')
+    ## rest axis limits
+    if x_or_y == 'x':
+        axes.set_xlim(lim)
+    else:
+        axes.set_ylim(lim)
+
 _newcolor_nextcolor=0
 linecolors_screen=(
     'red',
