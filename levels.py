@@ -176,7 +176,14 @@ def _f0(Zsource):
     if np.sum(i) > 0:
         raise Exception(f'Invalid Zsource: {repr(np.unique(Zsource[i]))}. Valid values: {_valid_Zsource}')
 # prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', kind='U', fmt='8s',infer=[((),lambda self:'self')])
-prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', kind='U', fmt='8s',default='self',infer=[])
+def _f2(Zsource):
+    retval = np.asarray(Zsource,dtype=str,)
+    allowed_Zsource = ('self','HITRAN','database')
+    for Zsourcei in np.unique(Zsource):
+        if Zsourcei not in allowed_Zsource:
+            raise Exception(f'Invalid Zsource {repr(Zsourcei)}. Allowed Zsource: {repr(allowed_Zsource)}')
+    return retval
+prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', cast=_f2,kind='U', fmt='8s',default='self',infer=[])
 
 def _f5(self,species,Tex,Eref,Zsource):
     """Get HITRAN partition function."""

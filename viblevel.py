@@ -22,7 +22,7 @@ from .kinetics import get_species,Species
 
 
 
-class VibLevel(Optimiser):
+class Level(Optimiser):
     """A vibronic interaction matrix."""
 
     def __init__(
@@ -472,12 +472,16 @@ class VibLevel(Optimiser):
             plot_errorbars=True,
             reduce_coefficients=(0,),
             match=None,
+            ## plot resiudal as histogram
+            plot_histogram=True,
+            normalise_histogram=False,
+            nbins_histogram=None,
             **plot_kwargs,):
         """Plot data and residual error."""
         if fig is None:
             fig = plotting.gcf()
         fig.clf()
-        ## 
+        ## plot energy levels
         axE = plotting.subplot(0,fig=fig)
         axE.set_title('E')
         legend_data = []
@@ -491,12 +495,10 @@ class VibLevel(Optimiser):
                     color=plotting.newcolor(ilevel),
                     linestyle=plotting.newlinestyle(isublevel),
                     marker= plotting.newmarker(int(qn2['Σ'])-m['Σ'].min()),
-                    fillstyle=('bottom' if qn2['ef']==1 else 'top'),
-                )
+                    fillstyle=('bottom' if qn2['ef']==1 else 'top'))
                 tkwargs = plot_kwargs | {'label':quantum_numbers.encode_linear_level(**qn,**qn2) ,}
                 legend_data.append(tkwargs)
                 ΔEreduce = np.polyval(reduce_coefficients,m2['J']*(m2['J']+1))
-
                 if self.experimental_level is None:
                     tkwargs = plot_kwargs
                     axE.plot(m2['J'],m2['E']-ΔEreduce,**tkwargs)
@@ -516,7 +518,13 @@ class VibLevel(Optimiser):
                     else:
                         axE.plot(m2['J'],m2['Eexp']-ΔEreduce,**Ekwargs)
                         axEres.plot(m2['J'],m2['Eres'],**Ereskwargs)
-
+                    if ylim_Eresidual is not None:
+                        if np.isscalar(ylim_Eresidual):
+                            ylim_Eresidual = (-ylim_Eresidual,ylim_Eresidual)
+                        axEres.set_ylim(ylim_Eresidual)
+                if ylim_E is not None:
+                    axE.set_ylim(ylim_E)
+                ## plot linewidths
                 if np.any(level['Γ'] > 0):
                     axΓ = plotting.subplot(2,fig=fig)
                     axΓ.set_title('Γ')
@@ -535,19 +543,21 @@ class VibLevel(Optimiser):
                         else:
                             axΓ.plot(m2['J'],m2['Γexp'],**tkwargs)
                             axΓres.plot(m2['J'],m2['Γexp'],**tkwargs)
-
-        if ylim_E is not None:
-            axE.set_ylim(ylim_E)
-        if self.experimental_level is not None and ylim_Eresidual is not None:
-            if np.isscalar(ylim_Eresidual):
-                ylim_Eresidual = (-ylim_Eresidual,ylim_Eresidual)
-            axEres.set_ylim(ylim_Eresidual)
-
-
+        ## plot E residual histogram
+        if plot_histogram:
+            ax = plotting.subplot(fig=fig)
+            if nbins_histogram is None:
+                nbins_histogram = int(len(level)/20)
+            if normalise_histogram:
+                ax.set_title('Eres (normalised)')
+                ax.hist(level['Eres']/level['Eres','unc'],nbins_histogram)
+            else:
+                ax.set_title('Eres')
+                ax.hist(level['Eres'],nbins_histogram)
         plotting.legend(*legend_data,show_style=True,ax=axE)
 
         
-class VibLine(Optimiser):
+class Line(Optimiser):
     
     """Calculate and optimally fit the line strengths of a band between
     two states defined by LocalDeperturbation objects. Currently only
@@ -1091,7 +1101,8 @@ def _get_linear_transition_moment(Sp,Λp,sp,Spp,Λpp,spp,verbose=False):
                     *(-1)**(Jpp+ΔJ-Ωp)  # phase factor --see hansson2005 eq. 13
                     *(-1 if Λp==0 else 1)   # phase factor, a hack that should be understood
                     *μsign # transition moment phase factor (+1 or -1)
-                    *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj')  # Wigner 3J line strength factor vectorised over Jpp
+                    # *quantum_numbers.wigner3j(Jpp+ΔJ,1,Jpp,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj')  # Wigner 3J line strength factor vectorised over Jpp
+                    *np.array([quantum_numbers.wigner3j(Jppi+ΔJ,1,Jppi,-Ωp,Ωp-Ωpp,Ωpp,method='py3nj') for Jppi in Jpp]) # Wigner 3J line strength factor vectorised over Jpp
                 )
                 retval[np.isnan(retval)] = 0. # not allowed
                 return retval
@@ -1288,10 +1299,10 @@ def calc_viblevel(
         couplings=None, # None or {name1,name2:add_coupling_kwargs,...}
         spline_widths=None, # None or {name:add_spline_width_kwargs,...}
 ):
-    """Compute a VibLevel model and return the generated level
+    """Compute a Level model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_manifold, add_spline_width etc."""
-    v = VibLevel(name=name,species=species,J=J)
+    v = Level(name=name,species=species,J=J)
     if levels is not None:
         for name,kwargs in levels.items():
             v.add_manifold(name,**kwargs)
@@ -1305,7 +1316,7 @@ def calc_viblevel(
     return v
 
 def calc_level(*args_viblevel,match=None,**kwargs_viblevel):
-    """Compute a VibLevel model and return the generated level
+    """Compute a Level model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_manifold, add_spline_width etc."""
     v = calc_viblevel(*args_viblevel,**kwargs_viblevel)
@@ -1322,16 +1333,20 @@ def calc_line(
         lower=None,           # kwargs for calc_level
         transition_moments=None,# None or {name_u,name_l:add_transition_moment,...}
 ):
-    """Compute a VibLevel model and return the generated level
+    """Compute a Level model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_manifold, add_spline_width etc."""
     upper['species'] = lower['species'] = species
     upper = calc_viblevel(**upper)
     lower = calc_viblevel(**lower)
-    v = VibLine('vibline',upper,lower,J_l=J_l,ΔJ=ΔJ)
+    v = Line('vibline',upper,lower,J_l=J_l,ΔJ=ΔJ)
     if transition_moments is not None:
         for (name1,name2),kwargs in transition_moments.items():
             v.add_transition_moment(name1,name2,**kwargs)
     v.construct()
     return v.line
 
+
+## deprecated
+VibLevel = Level
+VibLine = Line

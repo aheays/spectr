@@ -1861,8 +1861,8 @@ class Model(Optimiser):
         if self._figure is not None:
             ## svg / pdf are the fastest output formats. Significantly
             ## faster if there is not text on the figure
-            self._figure.savefig(directory+'/figure.png',dpi=300)
-            # self._figure.savefig(directory+'/figure.svg')
+            # self._figure.savefig(directory+'/figure.png',dpi=300)
+            self._figure.savefig(directory+'/figure.pdf')
         if output_transition_linelists:
             tools.mkdir_if_necessary(directory+'/transitions')
             for transition in self.absorption_transitions:

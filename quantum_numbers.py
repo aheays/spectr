@@ -1114,27 +1114,28 @@ def wigner3j(j1,j2,j3,m1,m2,m3,
         return(float(wigner_3j(j1,j2,j3,m1,m2,m3)))
     elif method=='py3nj':       # vectorised
         import py3nj
-        if np.isscalar(j1):
-            if j1 < 0 or j2 < 0 or j3 < 0:
-                return 0. 
-            if abs(m1) > j1 or abs(m2) > j2 or abs(m3) > j3:
-                return 0.
-            return py3nj.wigner3j(int(j1*2),int(j2*2),int(j3*2),int(m1*2),int(m2*2),int(m3*2))
-        else:
-            j1 = np.asarray(j1*2,dtype=int)
-            length = len(j1)
-            j2 = (np.full(length,j2*2,dtype=int) if np.isscalar(j2) else np.asarray(j2*2,dtype=int))
-            j3 = (np.full(length,j3*2,dtype=int) if np.isscalar(j3) else np.asarray(j3*2,dtype=int))
-            m1 = (np.full(length,m1*2,dtype=int) if np.isscalar(m1) else np.asarray(m1*2,dtype=int))
-            m2 = (np.full(length,m2*2,dtype=int) if np.isscalar(m2) else np.asarray(m2*2,dtype=int))
-            m3 = (np.full(length,m3*2,dtype=int) if np.isscalar(m3) else np.asarray(m3*2,dtype=int))
-            retval = np.zeros(length,dtype=float)
-            i = (j1>=0)&(j2>=0)&(j3>=0)&(j1>=np.abs(m1))&(j2>=np.abs(m2))&(j3>=np.abs(m3))
-            if np.any(i):
-                retval[i] = py3nj.wigner3j(j1[i],j2[i],j3[i],m1[i],m2[i],m3[i])
-            return(retval)
+        if j1 < 0 or j2 < 0 or j3 < 0:
+            return 0. 
+        if abs(m1) > j1 or abs(m2) > j2 or abs(m3) > j3:
+            return 0.
+        return py3nj.wigner3j(int(j1*2),int(j2*2),int(j3*2),int(m1*2),int(m2*2),int(m3*2))
     else:
         raise Exception(f"Unknown method: {repr(method)}")
+
+def wigner3j_vector(j1,j2,j3,m1,m2,m3):
+    """Calculate wigner 3j symbol."""
+    j1 = np.asarray(j1*2,dtype=int)
+    length = len(j1)
+    j2 = (np.full(length,j2*2,dtype=int) if np.isscalar(j2) else np.asarray(j2*2,dtype=int))
+    j3 = (np.full(length,j3*2,dtype=int) if np.isscalar(j3) else np.asarray(j3*2,dtype=int))
+    m1 = (np.full(length,m1*2,dtype=int) if np.isscalar(m1) else np.asarray(m1*2,dtype=int))
+    m2 = (np.full(length,m2*2,dtype=int) if np.isscalar(m2) else np.asarray(m2*2,dtype=int))
+    m3 = (np.full(length,m3*2,dtype=int) if np.isscalar(m3) else np.asarray(m3*2,dtype=int))
+    retval = np.zeros(length,dtype=float)
+    i = (j1>=0)&(j2>=0)&(j3>=0)&(j1>=np.abs(m1))&(j2>=np.abs(m2))&(j3>=np.abs(m3))
+    if np.any(i):
+        retval[i] = py3nj.wigner3j(j1[i],j2[i],j3[i],m1[i],m2[i],m3[i])
+    return retval 
 
 # def clebsch_gordan(j1,m1,j2,m2,J,M):
     # """Clebsch-Gordan coefficient. Gives coefficent allowing for the

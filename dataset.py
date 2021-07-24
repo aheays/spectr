@@ -602,7 +602,7 @@ class Dataset(optimise.Optimiser):
         elif len(arg) == 1:
             if isinstance(arg[0],str):
                 ## copy with keys
-                return self.copy(key=arg)
+                return self.copy(keys=arg)
             else:
                 ## copy with index
                 return self.copy(index=arg[0])
@@ -1771,10 +1771,14 @@ class Dataset(optimise.Optimiser):
         self._reallocate(total_length)
         ## add new data to old, set values first then other subdata
         ## afterwards
+        if original_length == 0:
+            index = None
+        else:
+            index = slice(original_length,total_length)
         for key in keys:
-            self.set(key,'value',keys_vals[key],slice(original_length,total_length))
+            self.set(key,'value',keys_vals[key],index)
         for (key,subkey),val in subkeys_vals.items():
-            self.set(key,subkey,val,slice(original_length,total_length))
+            self.set(key,subkey,val,index)
 
     def _reallocate(self,new_length):
         """Lengthen data arrays."""
