@@ -7,10 +7,10 @@ import warnings
 ## nonstandard library
 import numpy as np
 np.set_printoptions(linewidth=np.nan) 
-
 from numpy import array,nan,arange,linspace
 from scipy import integrate
 from scipy.constants import pi as π
+from scipy.constants import Boltzmann as kB
 
 ## import subpackages of this library
 try:

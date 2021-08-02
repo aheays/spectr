@@ -1,6 +1,8 @@
 from scipy import constants
 import numpy as np
 
+from . import tools
+
 """Convert between units and rigorously related quantities."""
 
 
@@ -49,8 +51,10 @@ groups = {
     },
 
     'volume': {
-        'm3' : 1., 
-        'cm-3': 1e6,
+        'm3'  : 1., 
+        'cm3' : 1e-6,
+        'l'   : 1e-3,
+        'L'   : 1e-3,
     },
 
     'inverse_volume': {
@@ -60,6 +64,11 @@ groups = {
 
     'time': {
         's':1.,
+        'ms':1e-3,
+        'μs':1e-6,
+        'ns':1e-9,
+        'ps':1e-12,
+        'fs':1e-15,
         'minute':60,
         'hour':60*60,
         'day':60*60*24,
@@ -109,6 +118,7 @@ groups = {
         'kPa'     :  1e3      ,
         'bar'     :  1e5      ,
         'mbar'    :  1e2      ,
+        'mb'      :  1e2      ,
         'atm'     :  101325.,
         'Torr'    :  133.322 ,
         'dyn.cm-2':  1/(1e5*1e-4)  ,
@@ -222,7 +232,7 @@ def band_strength_to_band_fvalue(Sv,νv,Λp,Λpp):
 
 def band_fvalue_to_band_strength(fv,νv,Λp,Λpp):
     """Convert band summed linestrength to a band-summed f-value."""
-    return(fv/(3.038e-6*νv *(2-my.kronecker_delta(0,Λp+Λpp)) /(2-my.kronecker_delta(0,Λpp))))
+    return fv/(3.038e-6*νv *(2-tools.kronecker_delta(0,Λp+Λpp)) /(2-tools.kronecker_delta(0,Λpp)))
 
 def band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp):
     """Convert band summed linestrength to a band-averaged emission

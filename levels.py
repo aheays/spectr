@@ -29,7 +29,6 @@ prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,i
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
-
 prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' , cast=lambda species: np.array(database.normalise_species(species),dtype=str), infer=[])
 
 @vectorise(cache=True,vargs=(1,))
@@ -37,17 +36,7 @@ def _f0(self,species):
     species_object = kinetics.get_species(species)
     return species_object['chemical_name']
 prototypes['chemical_species'] = dict(description="Chemical species without isotope specification" ,kind='U' ,infer=[('species',_f0)])
-
-# prototypes['name'] = dict(description="Quantum numbers encoded into a string" ,kind='U' ,infer=[('species',_f0)])
-
-@vectorise(cache=True,vargs=(1,))
-def _f0(self,species):
-    return kinetics.get_species(species).point_group
-    # try:
-        # return kinetics.get_species(species).point_group
-    # except:
-        # raise InferException
-prototypes['point_group']  = dict(description="Symmetry point group of species.", kind='U',fmt='s', infer=[(('species',),_f0)])
+prototypes['point_group']  = dict(description="Symmetry point group of species.", kind='U',fmt='s', infer=[(('species',),lambda self,species:database.get_species_property(species,'point_group'))])
 
 @vectorise(vargs=(1,),cache=True)
 def _f0(self,species):
@@ -146,15 +135,24 @@ def _f1(self,point_group,Inuclear,sa):
     else:
         raise InferException()
 prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)" , kind='i' , infer=[(('point_group',),_f0),( ('point_group','Inuclear','sa'),_f1),])
-
 prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", kind='f',infer=[(('species',), lambda self,species: database.get_species_property(species,'Inuclear'))])
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
-prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[(('A',),lambda self,τ: 5.309e-12*A,)])
+prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[('At',lambda self,At: 5.309e-12*At,)])
 prototypes['Γexp'] = dict(description="Reference level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[])
 prototypes['Γres'] = dict(description="Residual error of level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[(('Γ','Γexp'),lambda self,Γ,Γexp: Γ-Γexp)])
-prototypes['τ'] = dict(description="Total decay lifetime",units="s", kind='f', infer=[(('A',), lambda self,A: 1/A,)])       
-prototypes['A'] = dict(description="Total decay rate",units="s-1", kind='f', infer=[(('Γ',),lambda self,Γ: Γ/5.309e-12,)])
+prototypes['Γd'] = dict(description="Dissociation width of level." ,units="cm-1 FWHM",kind='f',default=0.0,cast=cast_abs_float_array,fmt='<10.5g', infer=[('Ad',lambda self,Ad: 5.309e-12*Ad)])
+prototypes['Γe'] = dict(description="Emission width of level." ,units="cm-1 FWHM",kind='f',default=0.0,cast=cast_abs_float_array,fmt='<10.5g', infer=[('Ae',lambda self,Ae: 5.309e-12*Ae)])
+prototypes['τ'] = dict(description="Total decay lifetime",units="s", kind='f', cast=cast_abs_float_array,infer=[(('A',), lambda self,A: 1/A,)])       
+prototypes['At'] = dict(description="Total decay rate",units="s-1", kind='f', fmt='0.5e',cast=cast_abs_float_array,infer=[
+    (('Γ',),lambda self,Γ: Γ/5.309e-12), 
+    (('Ae','Ad'),lambda self,Ae,Ad: Ae+Ad),
+],)
+prototypes['Ae'] = dict(description="Total emissive decay rate",units="s-1", kind='f', fmt='0.5e',cast=cast_abs_float_array,infer=[('Γe',lambda self,Γ: Γ/5.309e-12),(('At','Ad'),lambda self,At,Ad: At-Ad)])
+prototypes['Ad'] = dict(description="Total dissociative decay rate",units="s-1", kind='f', fmt='0.5e',cast=cast_abs_float_array,infer=[('Γd',lambda self,Γ: Γ/5.309e-12),(('At','Ae'),lambda self,At,Ae: At-Ae)])
+prototypes['ηd'] = dict(description="Fractional probability dissociative decay",units=None, kind='f',  fmt='<10.5g', infer=[(('At','Ad'),lambda self,At,Ad:Ad/At,)])
+prototypes['ηe'] = dict(description="Fractional probability emissive decay",units=None, kind='f',  fmt='<10.5g', infer=[(('At','Ae'),lambda self,At,Ae:Ae/At,)])
+
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',fmt='g',infer=[])
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind='f', infer=[(('J','SR'),lambda self,J,SR: J-SR,)])
 prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',fmt='g',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'S'),)])
@@ -638,6 +636,7 @@ class Generic(Base):
         'Teq','Tex',
         'Zsource','Z','α',
         'Nself',
+        'At','Ae','Ad','ηd','ηe','Γe','Γd',         # destruction rates and branching
         defining_qn=defining_qn)
     Ereduced_common_polynomial = (1,0)
 

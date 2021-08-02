@@ -1302,6 +1302,25 @@ def make_axes_limits_even(ax=None,beg=None,end=None,square=None):
     ax.set_ylim(beg,end)
     return(beg,end)
 
+
+def set_tick_interval(x_or_y,major_interval=1,major_minor_ratio=1,minor_interval=None,ax=None):
+    """Set ticks to a certain spacing."""
+    ## process inputs
+    if ax is None:
+        ax = plt.gca()
+    if minor_interval is None:
+        minor_interval = major_interval/major_minor_ratio
+    ## set major
+    xbeg,xend = ax.get_xlim()
+    xbeg,xend = int(xbeg-xbeg%major_interval+major_interval),int(xend-xend%major_interval)
+    xticks = np.arange(xbeg,xend+major_interval/2,major_interval)
+    ax.set_xticks(xticks,minor=False)
+    ## set minor
+    xbeg,xend = ax.get_xlim()
+    xbeg,xend = int(xbeg-xbeg%minor_interval+minor_interval),int(xend-xend%minor_interval)
+    xticks = np.arange(xbeg,xend+minor_interval/2,minor_interval)
+    ax.set_xticks(xticks,minor= True)
+
 # def add_yaxis_alternative_units(ax,transform,label='',fmt='0.3g',ticks=None,minor=False):
     # """Make an alternative y-axis (on top of plot) with units
     # transformed by a provided function."""
@@ -2255,7 +2274,8 @@ def savefig(path,fig=None,**kwargs):
     name,ext = os.path.splitext(path)
     tmp = tempfile.NamedTemporaryFile(suffix=ext)
     kwargs.setdefault('dpi',300)
-    if fig is None: fig = plt.gcf()
+    if fig is None: 
+        fig = plt.gcf()
     # kwargs.setdefault('transparent',True)
     fig.savefig(tmp.name,**kwargs)
     shutil.copyfile(tmp.name,path)

@@ -119,11 +119,12 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
                        ],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
+prototypes['σd'] = dict(description="Photodissociation cross section.",units="cm2.cm-1",kind='f',fmt='<10.5e',infer=[(('σ','ηd_u'),lambda self,σ,ηd_u: σ*ηd_u,)],)
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
 
 ## Δ quantum numbers
 for key in ('J','N','S','Λ','Ω','Σ','v'):
-    prototypes[f'Δ{key}'] = dict(description=f"{key}upper - {key}lower", kind='i', fmt='>+4g', infer=[((f'{key}_u',f'{key}_l'),lambda self,u,l: u-l,)],)
+    prototypes[f'Δ{key}'] = dict(description=f"{key}upper - {key}lower", kind='i', fmt='<+4g', infer=[((f'{key}_u',f'{key}_l'),lambda self,u,l: u-l,)],)
     prototypes[f'{key}_u']['infer'].append(((f'{key}_l',f'Δ{key}'),lambda self,l,Δ: l+Δ))
     prototypes[f'{key}_l']['infer'].append(((f'{key}_u',f'Δ{key}'),lambda self,l,Δ: l-Δ))
 
@@ -198,11 +199,11 @@ prototypes['HT_η'] = dict(description='Correlation parameter for the Hartmann-T
 
 
 ## Lorentzian linewidth
-prototypes['Γ'] = dict(description="Natural Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',default=0.0,infer=[
+prototypes['Γ'] = dict(description="Natural Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',infer=[
     (('Γ_u','Γ_l'),lambda self,Γu,Γl: Γu+Γl),
 ])
-prototypes['Γ_l']['infer'].append((('Γ','Γ_u'),lambda self,Γn,Γu: Γn-Γu))
-prototypes['Γ_u']['infer'].append((('Γ','Γ_l'),lambda self,Γn,Γl: Γn-Γl))
+prototypes['Γ_l']['infer'].append((('Γ','Γ_u'),lambda self,Γ,Γu: Γ-Γu))
+prototypes['Γ_u']['infer'].append((('Γ','Γ_l'),lambda self,Γ,Γl: Γ-Γl))
 
 prototypes['Γp'] = dict(description="Pressure-broadening Lorentzian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g',default=0.0,infer=[
     (('Γself','Γair','ΓX'),lambda self,Γ0,Γ1,Γ2: Γ0+Γ1+Γ2),
@@ -371,7 +372,7 @@ class Generic(levels.Base):
             'ν','ν0', # 'λ',
             'ΔJ', 'branch',
             'ΔJ',
-            'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr',
+            'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
             'Nself',
             'Teq','Tex','Ttr',
             # 'Γ','ΓD',
@@ -489,6 +490,7 @@ class Generic(levels.Base):
             zkeys=None,         # None or list of keys to plot as separate lines
             ax=None,
             plot_labels=True,
+            plot_legend=True,
             **plot_kwargs # can be calculate_spectrum or plot kwargs
     ):
         """No  lineshapes, just plot as sticks."""
@@ -516,7 +518,7 @@ class Generic(levels.Base):
                 length=-0.02,
                 labelsize='xx-small',namesize='x-small', namepos='float',)
             ax.set_ylim(ymin,ymax+ystep*(len(branch_annotations)+1))
-        if not plot_labels:
+        if not plot_labels and plot_legend:
             plotting.legend(ax=ax,fontsize='x-small')
         ax.set_xlabel(xkey)
         ax.set_ylabel(ykey)
@@ -1189,6 +1191,7 @@ class Linear(Generic):
         base_class=Generic,
         new_keys=(
         'fv', 'νv', 'μv',
+        'FCfactor','Aev',
         'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
         ))
     

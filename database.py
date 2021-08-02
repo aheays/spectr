@@ -65,12 +65,14 @@ data_directory = tools.expand_path('~/src/python/spectr/data/')
 @tools.vectorise(cache=True)
 def normalise_species(species):
     """Try to normalise a species name."""
-    return kinetics.get_species(species).name
+    retval = kinetics.get_species(species).name
+    return retval
 
 @tools.vectorise(cache=True)
 def normalise_chemical_species(species):
     """Normalise species without masses."""
-    return kinetics.get_species(species).chemical_name
+    retval = kinetics.get_species(species).chemical_name
+    return retval
     
 def normalise_electronic_state_label(label):
     """Try to normalise."""
@@ -169,7 +171,6 @@ def get_partition_function(
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     Z = np.sum(level['g']*np.exp(-(level['E']+level['Eref']-Eref)/(kB*Tex)))
     return Z
-
 
 @lru_cache
 def get_isotopes(element_name):
@@ -279,35 +280,35 @@ electronic_states={
     ('N₂','B′') :{'Λ':1,'S':1,'s'  :1,'gu'    :-1,'LSsign':1},
     ('N₂','b')  :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','c')  :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c3') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c4') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c5') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c6') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c₃') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c₄') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c₅') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c₆') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','e')  :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e3') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e4') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e5') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e6') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e₃') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e₄') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e₅') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e₆') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','o')  :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','o3') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','o4') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','o5') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','o6') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','o₃') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','o₄') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','o₅') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','o₆') :{'Λ':1,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','b′') :{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','c′') :{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c′4'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c′5'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c′6'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c′7'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c′8'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','c′9'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c′₄'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c′₅'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c′₆'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c′₇'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c′₈'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','c′₉'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','e′') :{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e′4'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e′5'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e′6'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e′7'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e′8'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
-    ('N₂','e′9'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e′₄'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e′₅'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e′₆'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e′₇'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e′₈'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
+    ('N₂','e′₉'):{'Λ':0,'S':0,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','C')  :{'Λ':1,'S':1,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','F')  :{'Λ':1,'S':1,'s'  :0,'gu'    :-1,'LSsign':1},
     ('N₂','G')  :{'Λ':1,'S':1,'s'  :0,'gu'    :-1,'LSsign':-1},
@@ -318,6 +319,7 @@ electronic_states={
     ('SO','B')  :{'Λ':0,'S':1,'s'  :1,'LSsign':1},
     ('SO','C')  :{'Λ':1,'S':1,'s'  :0,'LSsign':-1},
     ('SO','d')  :{'Λ':1,'S':0,'s'  :0,'LSsign':1},
+    ('SO','A′'):{'Λ':2,'S':1,'s'  :0,'LSsign':1},
     ('SO','A″'):{'Λ':0,'S':1,'s'  :1,'LSsign':-1},
     ('SO','a')  :{'Λ':2,'S':0,'s'  :0,'LSsign':1},
     ('SO','f')  :{'Λ':2,'S':0,'s'  :0,'LSsign':1},

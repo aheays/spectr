@@ -96,6 +96,7 @@ class Experiment(Optimiser):
         # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(load_function_kwargs)})')
         # x,y = tools.file_to_array_unpack(filename,**load_function_kwargs)
         x,y = tools.loadxy(filename, xcol=xcol,ycol=ycol, xkey=xkey,ykey=ykey,)
+        self.experimental_parameters['filename'] = filename
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function()
 
@@ -625,7 +626,7 @@ class Model(Optimiser):
         _cache['τ'] = copy(line_copy['τ']*1) #  DEBUG
         _cache['y'] = y
         _cache['data'] = {key:line_copy[key] for key in data}
-        _cache['set_keys_vals'] = {key:float(val) for key,val in set_keys_vals.items()}
+        _cache['set_keys_vals'] = {key:(val.value if isinstance(val,Parameter) else val) for key,val in set_keys_vals.items()}
 
 
     # @optimise_method()
@@ -821,6 +822,13 @@ class Model(Optimiser):
         # _cache['I'] = I
 
     @optimise_method()
+
+    def add_absorption_cross_section(self,x,y,N=1,_cache=None):
+        if self._clean_construct:
+            _cache['ys'] = tools.spline(x,y,self.x)
+        ys = _cache['ys']
+        self.y *= np.exp(-N*ys)
+
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
         ## x not set yet
         if self.x is None:

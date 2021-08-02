@@ -281,13 +281,13 @@ def compute_matrix_of_function(A,*args,**kwargs):
 ## mathematical functions ##
 ############################
 
-# def kronecker_delta(x,y):
-    # """1 if x==y else 0."""
-    # if np.isscalar(x) and np.isscalar(y): return(1 if x==y else 0) # scalar case
-    # if np.isscalar(x) and not np.isscalar(y): x,y = y,x            # one vector, get in right order
-    # retval = np.zeros(x.shape)
-    # retval[x==y] = 1
-    # return(retval)              # vector case
+def kronecker_delta(x,y):
+    """1 if x==y else 0."""
+    if np.isscalar(x) and np.isscalar(y): return(1 if x==y else 0) # scalar case
+    if np.isscalar(x) and not np.isscalar(y): x,y = y,x            # one vector, get in right order
+    retval = np.zeros(x.shape)
+    retval[x==y] = 1
+    return(retval)              # vector case
 
 
 def tanh_transition(x,xa,xb,center,width):
@@ -594,7 +594,8 @@ def trash(filename):
     import shlex
     os.system('trash-put '+shlex.quote(filename)+' > /dev/null 2>&1')
 
-def mkdir(*directories,trash_existing=False):
+def mkdir(*directories,trash_existing=False,
+          override_trash_existing_safety_check=False,):
     """Create directory tree (or multiple) if it doesn't exist."""
     ## if multiple loop through them
     if len(directories)>1:
@@ -604,9 +605,15 @@ def mkdir(*directories,trash_existing=False):
     ## if single then do it
     directory = expand_path(directories[0])
     if os.path.isdir(directory):
-        if trash_existing: # deletes contents--keeps directory
-            for t in glob(f'{directory}/*'):
-                trash(t)
+        if trash_existing:
+            ## This deletes the directory contents but keeps the
+            ## directory.  Much slower on some filesystems but allows
+            ## automatic file updates in emacs. A very poor test to
+            ## avoid destructive mistakes
+            if directory in ('/','/home','.','./','../') and not override_trash_existing_safety_check:
+                raise Exception(f'Will not trash directory {repr(directory)}. Set override_trash_existing_safety_check=True to proceed. ')
+            # for t in glob(f'{directory}/*'):
+            trash(directory)
         return
     ## walk parent directories making if necessary
     partial_directories = directory.split('/')
@@ -1204,23 +1211,24 @@ def numpy_to_hdf5(value):
         value = np.array(value, dtype=h5py.string_dtype(encoding='utf-8'))
     return value
     
-def hdf5_to_dict(fid):
+def hdf5_to_dict(fid,load_attributes=True):
     """Load all elements in hdf5 into a dictionary. Groups define
     subdictionaries. Scalar data set as attributes."""
     ## open file if necessary
     if isinstance(fid,str):
         with h5py.File(expand_path(fid),'r') as fid2:
-            return hdf5_to_dict(fid2)
+            return hdf5_to_dict(fid2,load_attributes=load_attributes)
     retval = {}            # the output data
     ## load attributes
-    for tkey,tval in fid.attrs.items():
-        retval[str(tkey)] = hdf5_to_numpy(tval)
+    if load_attributes:
+        for tkey,tval in fid.attrs.items():
+            retval[str(tkey)] = hdf5_to_numpy(tval)
     ## load data and subdicts
     for key,val in fid.items():
         if isinstance(val,h5py.Dataset):
             retval[str(key)] = hdf5_to_numpy(val)
         else:
-            retval[str(key)] = hdf5_to_dict(val)
+            retval[str(key)] = hdf5_to_dict(val,load_attributes=load_attributes)
     return retval
 
 def dict_to_hdf5(fid,data,compress=False,verbose=True):
@@ -1448,57 +1456,50 @@ def make_recarray(**kwargs):
 # def kwargs_to_directory(directory, **dict_to_directory_kwargs,):
     # dict_to_directory(directory,dict_to_directory_kwargs)
 
-# def dict_to_directory(
-        # directory,
-        # dictionary,
-        # array_format='h5',
+def dict_to_directory(
+        directory,
+        dictionary,
+        array_format='npy',
         # remove_string_margin=True,
-        # make_directory=True
-# ):
-    # """Create a directory and save contents of dictionary into it."""
-    # if make_directory: mkdir(directory)
-    # for key,val in dictionary.items():
-        # ## save strings to text files
-        # if isinstance(val,str):
-            # if remove_string_margin:
-                # val = re.sub(r'(^|\n)\s+\b',r'\1',val) # delete white space at beginning of all lines
-            # string_to_file(directory+'/'+str(key),val)
-        # ## save numpy arrays in binary format, or hdf5, or text file
-        # elif isinstance(val,np.ndarray):
-            # if   array_format == 'npy':  array_to_file(directory+'/'+str(key)+'.npy',val)
-            # elif array_format == 'npz':  array_to_file(directory+'/'+str(key)+'.npz',val)
-            # elif array_format == 'text': array_to_file(directory+'/'+str(key),val)
-            # elif array_format == 'h5':   array_to_file(directory+'/'+str(key)+'.h5',val)
-            # else:   raise Exception('array_format must be one of "npy", "npz", "text", "hdf5"')
-        # ## save dictionaries as subdirectories
-        # elif isinstance(val,dict):
-            # dict_to_directory(directory+'/'+str(key),val,array_format)
-        # ##
-        # else:
-            # raise Exception('Do not know how to save: key: '+repr(key)+' val: '+repr(val))
+        trash_existing=True,
+        override_trash_existing_safety_check=False,
+        error_on_unsupported_type=False,
+):
+    """Create a directory and save contents of dictionary into it."""
+    ## make directory if necessary, possibly deleting old contents
+    mkdir(directory, trash_existing=trash_existing,
+          override_trash_existing_safety_check=override_trash_existing_safety_check)
+    ## loop through all data
+    for key,val in dictionary.items():
+        if isinstance(val,dict):
+            ## recursively save dictionaries as subdirectories
+            dict_to_directory(f'{directory}/{str(key)}',val,array_format,trash_existing=False)
+        elif isinstance(val,str):
+            ## save strings to text files
+            string_to_file(f'{directory}/{str(key)}',val)
+        elif isinstance(val,np.ndarray):
+            ## save as array, defer formatting to numpy
+            extension = get_extension(array_format)
+            filename = f'{directory}/{str(key)}{extension}'
+            array_to_file(filename,np.asarray(val))
 
-# def directory_to_dict(directory):
-    # """Load all contents of a directory into a dictiionary, recursive."""
-    # directory = expand_path(directory)
-    # directory = re.sub(r'(.*[^/])/*',r'\1',directory) # remove trailing /
-    # retval = {}
-    # for filename in glob(directory+'/*'):
-        # filename = filename[len(directory)+1:]
-        # extension = os.path.splitext(filename)[1]
-        # ## load subdirectories as dictionaries
-        # if os.path.isdir(directory+'/'+filename):
-            # retval[filename] = directory_to_dict(directory+'/'+filename)
-        # ## load binary data
-        # if extension in ('.npy','.h5','.hdf5'):
-            # # retval[filename[:-4]] = np.load(diarectory+'/'+filename)
-            # retval[filename[:-len(extension)]] = file_to_array(directory+'/'+filename)
-        # ## read README as string
-        # elif filename in ('README',):
-            # retval[filename] = file_to_string(directory+'/'+filename)
-        # ## else assume text data
-        # elif filename in ('README',):
-            # retval[filename] = file_to_array(filename)
-    # return(retval)
+def directory_to_dict(directory):
+    """Load all contents of a directory into a dictionary, recursive."""
+    retval = {}
+    directory = expand_path(directory)
+    for current_dir,subdirs,files in os.walk(directory):
+        for subdir in subdirs:
+            ## load subdirectories as subdictionaries
+            retval[subdir] = directory_to_dict(f'{current_dir}/{subdir}')
+        for filename in files:
+            root,extension = os.path.splitext(filename)
+            if extension in ('.npz','.npy','.h5','.hdf5'):
+                ## load binary array data
+                retval[root] = file_to_array(f'{current_dir}/{filename}')
+            else:
+                ## load as string
+                retval[filename] = file_to_string(f'{current_dir}/{filename}')
+    return retval 
 
 
 # class Data_Directory:
@@ -2143,7 +2144,12 @@ def spline(
     # (status,output)=subprocess.getstatusoutput(command)
     # assert status==0,"Conversion from hdf5 failed:\n"+output
 
-def array_to_hdf5(filename,*args,**kwargs):
+def array_to_hdf5(
+        filename,
+        *columns,
+        description=None,       # attribute
+        **create_dataset_kwargs,
+):
     """Column stack arrays in args and save in an hdf5 file. In a
     single data set named 'data'. Overwrites existing files."""
     filename = expand_path(filename)
@@ -2152,9 +2158,12 @@ def array_to_hdf5(filename,*args,**kwargs):
     if os.path.exists(filename):
         assert not os.path.isdir(filename),'Will not overwrite directory: '+filename
         os.unlink(filename)
-    f = h5py.File(filename,'w')
-    f.create_dataset('data',data=np.column_stack(args),**kwargs)
-    f.close()
+    with h5py.File(filename,'w') as fid:
+        ## add data
+        fid.create_dataset('data',data=np.column_stack(columns),**create_dataset_kwargs)
+        ## add description as an attribute of root 
+        if description is not None:
+            fid.attrs.create('description',description)
 
 # def savetxt(filename,*args,**kwargs):
     # """Column-stacks arrays given as *args and saves them to
@@ -3575,7 +3584,7 @@ def file_to_array(
             else:
                 hdf5_kwargs[key_hdf5] = hdf5_kwargs.pop(key)
         d = hdf5_to_array(filename,**hdf5_kwargs)
-    elif filetype=='numpy':
+    elif filetype=='npy':
         d = np.load(filename)
     elif filetype in ('opus', 'opus_spectrum', 'opus_background'):
         from . import bruker
@@ -3848,9 +3857,15 @@ def file_to_dict(filename,*args,filetype=None,**kwargs):
             if val.ndim==0:
                 d[key] = np.asscalar(val)
     elif filetype == 'hdf5':
-        d = hdf5_to_dict(filename)
-        if 'header' in d: d.pop('header') # special case header, not data 
-        if 'README' in d: d.pop('README') # special case header, not data 
+        if 'load_attributes' in kwargs:
+            load_attributes = kwargs['load_attributes']
+        else:
+            load_attributes = False
+        d = hdf5_to_dict(filename,load_attributes=load_attributes)
+        if 'header' in d:
+            d.pop('header') # special case header, not data 
+        if 'README' in d:
+            d.pop('README') # special case header, not data 
     elif filetype in ('csv','ods'):
         ## load as spreadsheet, set # as comment char
         kwargs.setdefault('comment','#')
@@ -3875,13 +3890,13 @@ def file_to_dict(filename,*args,filetype=None,**kwargs):
         d = txt_to_dict(filename,*args,**kwargs)
     return(d)
 
-
-
 def infer_filetype(filename):
     """Determine type of datafile from the name or possibly its
     contents."""
     extension = os.path.splitext(filename)[1]
-    if extension=='.npz':
+    if extension=='.npy':
+        return 'npy'
+    elif extension=='.npz':
         return 'npz'
     elif extension in ('.hdf5','.h5'): # load as hdf5
         return 'hdf5'
@@ -3902,7 +3917,22 @@ def infer_filetype(filename):
     else:
         return None
     return(d)
-    
+
+_get_extension_data = {
+    'npy':'.npy',
+    'npz':'.npz',
+    'hdf5':'.h5',
+    'ods':'.ods',
+    'csv':'.csv',
+    'rs':'.rs',
+    'org':'.org',
+    'text':'',
+    'opus':'',
+    'directory':'',
+    }
+def get_extension(filetype):
+    return _get_extension_data[filetype]
+
 def file_to_string(filename):
     with open(expand_path(filename),mode='r',errors='replace') as fid:
         string = fid.read(-1)

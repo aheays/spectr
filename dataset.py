@@ -606,8 +606,6 @@ class Dataset(optimise.Optimiser):
             else:
                 ## copy with index
                 return self.copy(index=arg[0])
-
-            
         elif len(arg) == 2:
             if isinstance(arg[0],str):
                 if isinstance(arg[1],str):
@@ -620,12 +618,9 @@ class Dataset(optimise.Optimiser):
                 else:
                     ## return key,index
                     return self.get(key=arg[0],index=arg[1])
-
             else:
                 ## copy with keys and index
                 return self.copy(keys=arg[0],index=arg[1])
-            
-
         elif len(arg) == 3:
             if arg[1] in self.all_subkinds:
                 ## get key,subkey,index
@@ -633,49 +628,9 @@ class Dataset(optimise.Optimiser):
             else:
                 ## copy keys
                 return self.copy(keys=arg)
-
         else:
             ## all args are keys for copying
             return self.copy(keys=arg)
-
-            
-        # elif tools.isiterable(arg[0]):
-            # ## make a copy of self possibly with keys and indices
-            # ## specified
-            # if len(arg) == 1:
-                # if isinstance(arg[0][0],str):
-                    # ## a list of keys
-                    # return self.copy(key=arg[0])
-                # else:
-                    # ## an index of some kind
-                    # return self.copy(index=arg[0])
-            # elif len(arg) == 2:
-                # ## list of keys and index
-                # return self.copy(key=arg[0],index=arg[1])
-
-        # else:
-            # raise Exception(f"Cannot interpret getitem argument: {repr(arg)}")
-
-        # elif len(arg) == 1:
-            # ## a single vector argument – return copy
-            # if isinstance(arg,str):
-                # return self.get(key=arg[0])
-            # else:
-                # return self.copy(index=arg[0])
-        # elif len(arg) == 2:
-            # if not isinstance(arg[0],str):
-                # return self.copy(index=arg)
-            # if isinstance(arg[1],str):
-                # return self.get(key=arg[0],subkey=arg[1])
-            # else:
-                # return self.get(key=arg[0],index=arg[1])
-        # elif len(arg) == 3:
-            # if not isinstance(arg[0],str):
-                # return self.copy(index=arg)
-            # else:
-                # return self.get(key=arg[0],subkey=arg[1],index=arg[2])
-        # else:
-            # raise Exception(f"Cannot interpret key: {repr(arg)}")
 
     def __setitem__(self,key,value):
         """Set key, (key,subkey), (key,index), (key,subkey,index) to
@@ -1073,7 +1028,10 @@ class Dataset(optimise.Optimiser):
             if key in self.prototypes and 'default' in self.prototypes[key]:
                 ## use default value. Include empty dependencies so
                 ## this is not treated as explicitly set data
-                self._set_value(key,self.prototypes[key]['default'],dependencies=())
+                default_value = self.prototypes[key]['default']
+                if self.verbose:
+                    print(f'{self.name}:',''.join(['    ' for t in range(depth)])+f'Cannot infer {repr(key)} and setting to default value: {repr(default_value)}')
+                self._set_value(key,default_value,dependencies=())
             else:
                 ## complete failure to infer
                 raise InferException(f"Could not infer key: {repr(key)}")
@@ -1306,22 +1264,32 @@ class Dataset(optimise.Optimiser):
             filename,
             keys=None,
             subkeys=None,
+            fmt=None,           # 'text' (default), 'hdf5', 'directory'
             **format_kwargs,
     ):
         """Save some or all data to a file."""
+        if fmt is None:
+            ## if not provided as an input argument then get save
+            ## format form filename, or default to text
+            fmt = tools.infer_filetype(filename)
+            if fmt == None:
+                fmt = 'text'
         if keys is None:
             keys = self.keys()
         if subkeys is None:
             ## get a list of default subkeys, ignore those beginning
             ## with "_"
             subkeys = [subkey for subkey in self.vector_subkinds if subkey[0] != '_']
-        if re.match(r'.*\.npz',filename):
-            ## numpy archive
-            np.savez(filename,self.as_dict(keys=keys,subkeys=subkeys))
-        elif re.match(r'.*\.h5',filename):
+        if fmt == 'hdf5':
             ## hdf5 file
             tools.dict_to_hdf5(filename,self.as_dict(keys=keys,subkeys=subkeys),verbose=False)
-        else:
+        elif fmt == 'npz':
+            ## numpy archive
+            np.savez(filename,self.as_dict(keys=keys,subkeys=subkeys))
+        elif fmt == 'directory':
+            ## directory of npy files
+            tools.dict_to_directory(filename,self.as_dict(keys=keys,subkeys=subkeys))
+        elif fmt == 'text':
             ## text file
             if re.match(r'.*\.csv',filename):
                 format_kwargs.setdefault('delimiter',', ')
@@ -1332,13 +1300,16 @@ class Dataset(optimise.Optimiser):
             else:
                 format_kwargs.setdefault('delimiter',' ')
             tools.string_to_file(filename,self.format(keys,**format_kwargs))
-
+        else:
+            assert False
+            
     def load(
             self,
             filename,
             comment='',
             keys=None,          # load only this data
             table_name=None,
+            fmt=None,
             translate_keys=None, # from key in file to key in self, None for skip
             return_classname_only=False, # do not load the file -- just try and load the classname and return it
             labels_commented=False,
@@ -1349,7 +1320,13 @@ class Dataset(optimise.Optimiser):
             **set_keys_vals   # set this data after loading is done
     ):
         '''Load data from a file.'''
-        if re.match(r'.*\.(h5|hdf5)',filename):
+        if fmt is None:
+            ## if not provided as an input argument then get save
+            ## format form filename, or default to text
+            fmt = tools.infer_filetype(filename)
+            if fmt == None:
+                fmt = 'text'
+        if fmt == 'hdf5':
             ## hdf5 archive, load data then top-level attributes
             data = tools.hdf5_to_dict(filename)
             ## hack to get flat data or not
@@ -1359,7 +1336,11 @@ class Dataset(optimise.Optimiser):
                     break
             else:
                 data_is_flat = True
-        elif re.match(r'.*\.npz',filename):
+        elif fmt == 'directory':
+            ## hdf5 archive, load data then top-level attributes
+            data = tools.directory_to_dict(filename)
+            data_is_flat = False
+        elif fmt == 'npz':
             ## numpy npz archive.  get as scalar rather than
             ## zero-dimensional numpy array
             data = {}
@@ -1368,11 +1349,11 @@ class Dataset(optimise.Optimiser):
                     val = val.item()
                 data[key] = val
             data_is_flat = True
-        elif re.match(r'.*\.org',filename):
+        elif fmt == 'org':
             ## org to dict -- no header
             data = tools.org_table_to_dict(filename,table_name)
             data_is_flat = True
-        else:
+        elif fmt == 'text':
             data = self.load_from_text(
                 filename=filename,
                 comment=comment,
@@ -1381,6 +1362,8 @@ class Dataset(optimise.Optimiser):
                 txt_to_dict_kwargs=txt_to_dict_kwargs,
             )
             data_is_flat = True
+        else:
+            assert False
         ## build structured data from flat data 
         if data_is_flat:
             flat_data = data
@@ -1446,7 +1429,7 @@ class Dataset(optimise.Optimiser):
             self.description = str(data.pop('description'))
         ## HACK REMOVE ASSOC 2021-06-21 DELETE ONE DAY
         for key in data:
-            if 'assoc' in data[key]:
+            if 'assoc' in list(data[key]):
                 for subkey in data[key]['assoc']:
                     data[key][subkey] = data[key]['assoc'][subkey]
                 data[key].pop('assoc')
@@ -1721,11 +1704,17 @@ class Dataset(optimise.Optimiser):
                     subkeys_vals[tkey,tsubkey] = keys_vals.pop(key)
         ## collect value keys
         if keys in ('old','all','new'):
-            tkeys = set()
+            tkeys = []
             if keys in ('old','all'):
-                tkeys = tkeys.union(self.explicitly_set_keys())
+                for key in self.explicitly_set_keys():
+                    if key not in tkeys:
+                        tkeys.append(key)
+                # tkeys = tkeys.union(self.explicitly_set_keys())
             if keys in ('new','all'):
-                tkeys = tkeys.union(keys_vals)
+                for key in keys_vals:
+                    if key not in tkeys:
+                        tkeys.append(key)
+                # tkeys = tkeys.union(keys_vals)
             keys = tkeys
         ## ensure all keys are present in new and old data, and limit
         ## old data to these
@@ -1831,9 +1820,10 @@ class Dataset(optimise.Optimiser):
             yscale='linear',     # 'log' or 'linear'
             ncolumns=None,       # number of columsn of subplot -- None to automatically select
             show=False,          # show figure after issuing plot commands
+            xlim=None,
             ylim=None,
             title=None,
-            xsort=True,
+            xsort=True,         # True sort by xkey, False, do not sort, or else a key or list of keys to sort by
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
         """Plot data."""
@@ -1861,13 +1851,20 @@ class Dataset(optimise.Optimiser):
             xlabel += ' ('+self[xkey,'units']+')'
         ## plot each 
         ymin = {}
+        auto_title = None
         for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
             ylabel = ykey
             if self.is_known(ykey,'units'):
                 ylabel += ' ('+self[ykey,'units']+')'
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
-                if xsort:
+                ## sort data
+                if xsort == True:
                     z.sort(xkey)
+                elif xsort == False:
+                    pass
+                else:
+                    z.sort(xsort)
+                ## get zlabel
                 if zlabel_format_function is None:
                     zlabel_format_function = self.default_zlabel_format_function
                 zlabel = zlabel_format_function(dz)
@@ -1876,20 +1873,20 @@ class Dataset(optimise.Optimiser):
                     color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = None
                     if title is None:
-                        title = zlabel
+                        auto_title = zlabel
                 elif ynewaxes and not znewaxes:
                     ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     label = (zlabel if len(zkeys)>0 else None) 
                     if title is None:
-                        title = ylabel
+                        auto_title = ylabel
                 elif not ynewaxes and znewaxes:
                     ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns)
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
                     label = ylabel
                     ylabel = None
                     if title is None:
-                        title = zlabel
+                        auto_title = zlabel
                 elif not ynewaxes and not znewaxes:
                     ax = fig.gca()
                     color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
@@ -1935,9 +1932,10 @@ class Dataset(optimise.Optimiser):
                     kwargs.setdefault('mfc',kwargs['color'])
                     kwargs.setdefault('fillstyle','full')
                     line = ax.plot(x,y,**kwargs)
-
                 if title is not None:
                     ax.set_title(title)
+                elif auto_title is not None:
+                    ax.set_title(auto_title)
                 if ylabel is not None:
                     ax.set_ylabel(ylabel)
                 if xlabel is not None:
@@ -1947,6 +1945,8 @@ class Dataset(optimise.Optimiser):
                         plotting.legend(fontsize='x-small',loc=legend_loc)
                     if annotate_lines:
                         plotting.annotate_line(line=line)
+                if xlim is not None:
+                    ax.set_xlim(*xlim)
                 if ylim is not None:
                     if ylim == 'data':
                         t,t,ybeg,yend = plotting.get_data_range(ax)
@@ -2070,6 +2070,12 @@ def get_common(x,y,keys=None,**limit_to_matches):
 
 def _get_class(classname):
     """Find a class matching class name."""
+    ## hack -- old classnames
+    if classname == 'levels.LinearDiatomic':
+        classname = 'levels.Diatomic'
+    if classname == 'lines.LinearDiatomic':
+        classname = 'lines.Diatomic'
+    ## end of hack
     if classname == 'dataset.Dataset':
         return Dataset
     else:

@@ -379,12 +379,27 @@ class Species:
             return self._reduced_mass
         elif key == 'chemical_name':
             if not hasattr(self,'_chemical_name'):
-                t = []
-                for element,mass_number,multiplicity in self._isotopes:
-                    t.append(element)
-                    if multiplicity > 1:
-                        t.append(tools.subscript_numerals(str(multiplicity)))
-                self._chemical_name = ''.join(t)
+                ## loop throush isotopes, combine common isotopes into
+                ## a common element, e.g, ¹⁴N¹⁵N becomes N₂
+                tokens = []     # indiviudal element multiples e.g., X₄
+                element,multiplicity = None,0
+                for elementi,mass_numberi,multiplicityi in self._isotopes:
+                    if element is None:
+                        element,multiplicity = elementi,multiplicityi
+                    elif element == elementi:
+                        ## increase multiplicity of this element
+                        multiplicity += multiplicityi
+                    else:
+                        ## new token
+                        tokens.append(elementi)
+                        if multiplicity > 1:
+                            tokens.append(tools.subscript_numerals(str(multiplicity)))
+                        element,multiplicity = elementi,multiplicityi
+                ## final token
+                tokens.append(elementi)
+                if multiplicity > 1:
+                    tokens.append(tools.subscript_numerals(str(multiplicity)))
+                self._chemical_name = ''.join(tokens)
             return self._chemical_name
         # elif key == 'isotopologue':
             # return ''.join([f'[{t[1]}{t[0]}]' for t in self['isotopes']])
