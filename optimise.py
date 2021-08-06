@@ -597,16 +597,6 @@ class Optimiser:
     ):
         """Optimise parameters."""
         self._ncpus = ncpus
-        # if normalise_suboptimiser_residuals:
-            # ## normalise all suboptimiser residuals before handing to
-            # ## the least-squares routine
-            # for suboptimiser in self.get_all_suboptimisers():
-                # self.construct(reconstruct_everything=True)
-                # if suboptimiser.residual is not None and len(suboptimiser.residual)>0:
-                    # if suboptimiser.residual_scale_factor is None:
-                        # suboptimiser.residual_scale_factor = 1/tools.rms(suboptimiser.residual)
-                    # else:
-                        # suboptimiser.residual_scale_factor /= tools.rms(suboptimiser.residual)
         ## full reconstruct -- then set to efficient partial reconstruct
         self.construct(clean_construct=True)
         ## get initial values and reset uncertainties
@@ -674,7 +664,7 @@ class Optimiser:
                 self._optimisation_function(result['x'])
                 if verbose or self.verbose:
                     print('optimisation complete')
-                    print('    number parameters:    ',len(result['x']))
+                    print('    number of parameters: ',len(result['x']))
                     print('    number of evaluations:',self._number_of_optimisation_function_calls)
                     print('    number of iterations: ',result['nfev'])
                     print('    termination reason:   ',result['message'])

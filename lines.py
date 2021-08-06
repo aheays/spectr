@@ -649,8 +649,7 @@ class Generic(levels.Base):
             *line_args,
             **line_kwargs,
             ncpus=ncpus,
-            multiprocess_divide='lines',
-        )
+            multiprocess_divide='lines',)
         return x,y
 
     def calculate_transmission_spectrum(
@@ -712,7 +711,7 @@ class Generic(levels.Base):
         """Load HITRAN .data."""
         data = hitran.load(filename)
         ## interpret into transition quantities common to all transitions
-        new = self.__class__(**{
+        new = {
             'ν0':data['ν'],
             # 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
             'S296K':data['S'],
@@ -723,9 +722,9 @@ class Generic(levels.Base):
             'nγ0air':data['nair'],
             'δ0air':data['δair'],
             'γ0self':data['γself'],
-        })
+        }
         ## get species
-        i = hitran.molparam.find(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
+        i = hitran.molparam.find_unique(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
         new['species'] =  hitran.molparam['isotopologue'][i]
         ## remove natural abundance weighting
         new['S296K'] /=  hitran.molparam['natural_abundance'][i]
@@ -1465,11 +1464,11 @@ class Diatomic(Linear):
                     new_data.append(row|{f'{key}_l':val for key,val in row_l.items()})
         self.concatenate(new_data)
 
-class Triatomic(Linear):
+class LinearTriatomic(Linear):
     """E.g., CO2, CS2."""
 
     _level_class,defining_qn,default_prototypes = _collect_prototypes(
-        level_class=levels.Triatomic,
+        level_class=levels.LinearTriatomic,
         base_class=Linear,
         new_keys=(
         'fv', 'νv', 'μv',

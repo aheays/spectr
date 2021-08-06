@@ -62,7 +62,7 @@ data_directory = tools.expand_path('~/src/python/spectr/data/')
         # raise Exception('Non-unique matches found for species and label: '+repr(species)+' '+repr(label))
 
 
-@tools.vectorise(cache=True)
+@tools.vectorise(cache=True,dtype='U30')
 def normalise_species(species):
     """Try to normalise a species name."""
     retval = kinetics.get_species(species).name

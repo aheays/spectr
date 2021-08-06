@@ -535,7 +535,7 @@ class Model(Optimiser):
                     return np.full(len(self.x),0.0)
                 x,y = line.calculate_spectrum(
                     x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=ymin,ncpus=ncpus,lineshape=lineshape,index=index)
+                    ymin=ymin, ncpus=ncpus, lineshape=lineshape,index=index)
                 return y
             y = _calculate_spectrum(line_copy,None)
             ## important data — only update spectrum if these have changed
@@ -588,19 +588,19 @@ class Model(Optimiser):
                 ichanged = line_copy.row_modify_time > self._last_construct_time
                 nchanged = np.sum(ichanged)
                 if (
-                        False and # HACK deactivate
+                        # False and # HACK deactivate
                         ## all lines have changed
                         (nchanged == len(ichanged))
                         ## ykey has changed
-                        and (line_copy[ykey,_modify_time] > self._last_construct_time)
+                        and (line_copy[ykey,'_modify_time'] > self._last_construct_time)
                         ## no key other than ykey has changed
                         and (np.all([line_copy[key,'_modify_time'] < self._last_construct_time for key in data if key != ykey]))
                         ## ykey has changed by a near-constant factor -- RISKY!!!!
-                        and _find_significant_difference(data[ykey],line_copy[ykey])
-                        ## ## ykey has changed by constant factor -- MACHINE PRECISION?
-                        ## and len(np.unique(data[ykey]/line_copy[ykey])) == 1
+                        and tools.total_fractional_range(data[ykey]/line_copy[ykey])<1e-14
                 ):
                     ## constant factor ykey -- scale saved spectrum
+                    if ymin is not None and ymin != 0:
+                        warnings.warn(f'Scaling spectrum uniformly but ymin is set to a nonzero value, {repr(ymin)}.  This could lead to lines appearing in subsequent model constructions.')
                     y *= np.mean(line_copy[ykey]/data[ykey])
                 elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
@@ -623,7 +623,6 @@ class Model(Optimiser):
             self.y *= np.exp(-y)
         else:
             self.y += y
-        _cache['τ'] = copy(line_copy['τ']*1) #  DEBUG
         _cache['y'] = y
         _cache['data'] = {key:line_copy[key] for key in data}
         _cache['set_keys_vals'] = {key:(val.value if isinstance(val,Parameter) else val) for key,val in set_keys_vals.items()}
@@ -1086,8 +1085,7 @@ class Model(Optimiser):
         if ('s' not in _cache
             or np.any(_cache['x'] != x)
             or np.any(_cache['y'] != y)
-            or np.any(_cache['i'] != i)
-            ):
+            or np.any(_cache['i'] != i)):
             s = tools.spline(x,y,self.x[i],order=order)
         else:
             s = _cache['s']

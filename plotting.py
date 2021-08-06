@@ -555,7 +555,7 @@ def _extra_interaction_select_line(line):
     axes = line.axes
     axes._my_extra_interaction['selected_line_annotation'] = axes.annotate(
         line.get_label(),(0.1,0.1),xycoords='axes fraction',
-        ha='left',va='top',fontsize='large')
+        ha='left',va='top',fontsize='medium',in_layout=False)
     axes._my_extra_interaction['selected_line'] = line
     line.set_linewidth(line.get_linewidth()*2)
     line.set_markersize(line.get_markersize()*2)
@@ -1719,14 +1719,17 @@ def annotate_line(
         line = ax.get_lines()
     ## list of lines, annotate each individually
     if np.iterable(line):
-        return([annotate_line(string=string,xpos=xpos,ypos=ypos,line=l,ax=ax,color=color,xoffset=xoffset,yoffset=yoffset,**annotate_kwargs) for l in line])
+        return([annotate_line(
+            string=string,xpos=xpos,ypos=ypos,line=l,
+            ax=ax,color=color,xoffset=xoffset,yoffset=yoffset,**annotate_kwargs) for l in line])
     if ax is None: ax = line.axes
     if string is None:
         if re.match('_line[0-9]+',line.get_label()): return None
         string = line.get_label()
     ## a shift to make space around text
     if text_auto_offset:
-        text_x_offset,text_y_offset = transform_points_into_axis_fraction(matplotlib.rcParams['font.size']/2,matplotlib.rcParams['font.size']/2)
+        text_x_offset,text_y_offset = transform_points_into_axis_fraction(
+            matplotlib.rcParams['font.size']/2,matplotlib.rcParams['font.size']/2)
     xlim,ylim = ax.get_xlim(),ax.get_ylim()
     xdata,ydata = line.get_data()
     xdata,ydata = np.asarray(xdata),np.asarray(ydata)

@@ -852,6 +852,11 @@ class Dataset(optimise.Optimiser):
                             for vali in val],axis=0)
         return i
 
+    def find(self,*match_args,**match_kwargs):
+        """Return as a array of matching indices."""
+        i = tools.find(self.match(*match_args,**match_kwargs))
+        return i
+    
     # def find(self,**keys_vals):
         # """Find unique indices matching keys_vals which contains one or more
         # vector matches or the same length."""
@@ -1095,7 +1100,7 @@ class Dataset(optimise.Optimiser):
 
     def find_unique(self,**matching_keys_vals):
         """Return index of a uniquely matching row."""
-        i = tools.find(self.match(**matching_keys_vals))
+        i = self.find(**matching_keys_vals)
         if len(i) == 0:
             raise Exception(f'No matching row found: {matching_keys_vals=}')
         if len(i) > 1:
@@ -1118,8 +1123,10 @@ class Dataset(optimise.Optimiser):
         value = self.get(key,index=i)
         return value
 
-    def sort(self,*sort_keys,reverse_order=False):
+    def sort(self,sort_keys,reverse_order=False):
         """Sort rows according to key or keys."""
+        if isinstance(sort_keys,str):
+            sort_keys = [sort_keys]
         i = np.argsort(self[sort_keys[0]])
         if reverse_order:
             i = i[::-1]
@@ -1159,7 +1166,7 @@ class Dataset(optimise.Optimiser):
             formatted_key = ( "'"+key+"'" if quote_keys else key )
             if (unique_values_in_header # input parameter switch
                 and not np.any([self.is_set(key,subkey) for subkey in subkeys]) # no other subdata 
-                and self.unique(key) == 1): # value is unique
+                and len((tval:=self.unique(key)) == 1)): # value is unique
                 ## format value for header
                 header_values[key] = tval[0]
             else:
@@ -1679,7 +1686,7 @@ class Dataset(optimise.Optimiser):
     def extend(
             self,
             keys_vals=None,
-            keys='old',         # 'old','new','all'
+            # keys='old',         # 'old','new','all'
             **keys_vals_as_kwargs
     ):
         """Extend self with new_data.  Keys must be present in both new and
@@ -1687,11 +1694,10 @@ class Dataset(optimise.Optimiser):
         ignored. If keys='new' then extra keys in old data are unset.
         If 'all' then keys must match exactly.  If key=='new' no data
         currently present then just add this data."""
-        ## get preset lists of keys to extend
+        ## get lists of new data
         if keys_vals is None:
             keys_vals = {}
         keys_vals |= keys_vals_as_kwargs
-
         ## separate subkeys
         subkeys_vals = {}
         for key in list(keys_vals):
@@ -1702,49 +1708,27 @@ class Dataset(optimise.Optimiser):
                     keys_vals[tkey] = keys_vals.pop(key)
                 else:
                     subkeys_vals[tkey,tsubkey] = keys_vals.pop(key)
-        ## collect value keys
-        if keys in ('old','all','new'):
-            tkeys = []
-            if keys in ('old','all'):
-                for key in self.explicitly_set_keys():
-                    if key not in tkeys:
-                        tkeys.append(key)
-                # tkeys = tkeys.union(self.explicitly_set_keys())
-            if keys in ('new','all'):
-                for key in keys_vals:
-                    if key not in tkeys:
-                        tkeys.append(key)
-                # tkeys = tkeys.union(keys_vals)
-            keys = tkeys
-        ## ensure all keys are present in new and old data, and limit
-        ## old data to these
-        new_data = {}
-        for key in keys:
-            ## collect new data
-            if key not in keys_vals:
-                keys_vals[key] = self._data[key]['default']
-            # ## could add logic for auto defaults based on kind as below
-            # else:
-                # raise Exception(f'Extending key missing in new data: {repr(key)}')
-            ## ensure keys are present in existing data, if kind not
-            ## in prototypes then infer from the new data, if no new
-            ## data assume float
-            if len(self) == 0 and not self.is_known(key):
-                if key in self.prototypes:
-                    kind = None
-                elif len(keys_vals[key]) > 0:
-                    kind = array(keys_vals[key]).dtype.kind
-                else:
-                    kind ='f'
-                self.set(key,'value',[],kind=kind)
-            elif not self.is_known(key):
-                raise Exception(f"Extending key not in existing data: {repr(key)}")
-        ## limit self to keys and mark not inferred
-        self.unlink_inferences(keys)
-        for key in list(self):
+        ## new keys
+        keys = list(keys_vals.keys())
+        ## ensure new data includes all explicitly set keys in self
+        for key in self.explicitly_set_keys():
             if key not in keys:
-                self.unset(key)
-        ## determine length of data
+                raise Exception(f'Extending data missing key: {repr(key)}')
+        ## Ensure all new keys are existing data, unless the current
+        ## Dataset is zero length, then add them.
+        for key in keys:
+            if not self.is_known(key):
+                if len(self) == 0:
+                    if key in self.prototypes:
+                        kind = None
+                    elif len(keys_vals[key]) > 0:
+                        kind = array(keys_vals[key]).dtype.kind
+                    else:
+                        kind ='f'
+                    self.set(key,'value',[],kind=kind)
+                else:
+                    raise Exception(f"Extending key not in existing data: {repr(key)}")
+        ## determine length of new data
         original_length = len(self)
         extending_length = None
         for key,val in keys_vals.items():
@@ -1866,7 +1850,8 @@ class Dataset(optimise.Optimiser):
                     z.sort(xsort)
                 ## get zlabel
                 if zlabel_format_function is None:
-                    zlabel_format_function = self.default_zlabel_format_function
+                    # zlabel_format_function = self.default_zlabel_format_function
+                    zlabel_format_function = tools.dict_to_kwargs
                 zlabel = zlabel_format_function(dz)
                 if ynewaxes and znewaxes:
                     ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns)

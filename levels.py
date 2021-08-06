@@ -726,7 +726,7 @@ class Linear(Generic):
         """Decode string into quantum numbers"""
         return quantum_numbers.decode_linear_level(encoded_qn)
 
-class Triatomic(Linear):
+class LinearTriatomic(Linear):
     """A generic level."""
     defining_qn = ('species','label','ef','ν1','ν2','ν3','l2','J')
     defining_zkeys = ('species','label','ef','ν1','ν2','ν3','l2')

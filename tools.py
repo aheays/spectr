@@ -75,26 +75,10 @@ def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
     type, else a list is returned. If cache is True then cache
     indivdual scalar function calls."""
     def actual_decorator(function):
-
         ## get a cached version fo the function if requested
         if cache:
-
-            # ## works with multiprocessing -- can be dill pickled
-            # _cache_max_len = 10000
-            # _cache = {}
-            # def function_maybe_cached(*args):
-                # hashed_args = hash(tuple(args))
-                # if hashed_args not in _cache:
-                    # retval = function(*args)
-                    # if len(_cache) < _cache_max_len:
-                        # _cache[hashed_args] = retval
-                    # else:
-                        # warnings.warn(f'Need to implement a limited cache: {function.__name__}')
-                # return _cache[hashed_args]
-
             ## will not work with dill for some reason
             function_maybe_cached = lru_cache(function)
-
         else:
             function_maybe_cached = function
         @wraps(function)
@@ -102,7 +86,6 @@ def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
             ## this block subtitutes into kwargs with keys taken from
             ## the function signature.  get signature arguments -- skip
             ## first "self"
-            # signature_keys = list(inspect.signature(function).parameters)[1:]
             signature_keys = list(inspect.signature(function).parameters.keys())
             for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
                 if signature_key in kwargs:
@@ -133,16 +116,20 @@ def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
             else:
                 ## compute for each vectorised arg combination
                 if dtype is None:
+                    ## if no dtype return as list -- compute each separately
                     retval = []
-                else:
-                    retval = np.empty(length,dtype=dtype)
-                for i in range(length):
-                    vector_kwargs_i = {key:val[i] for key,val in vector_kwargs.items()}
-                    iretval = function_maybe_cached(**scalar_kwargs,**vector_kwargs_i)
-                    if dtype is None:
+                    for i in range(length):
+                        vector_kwargs_i = {key:val[i] for key,val in vector_kwargs.items()}
+                        iretval = function_maybe_cached(**scalar_kwargs,**vector_kwargs_i)
                         retval.append(iretval)
-                    else:
-                        retval[i] = iretval
+                else:
+                    ## if dtype return as array, only compute for unique array combinations
+                    retval = np.empty(length,dtype=dtype)
+                    # unique_combinations_masks(*vector_kwargs.values())
+                    for values,index in unique_combinations_masks(*vector_kwargs.values()):
+                        retval[index] = function_maybe_cached(
+                            **scalar_kwargs,
+                            **{key:val for key,val in zip(vector_kwargs,values)})
             return retval
         return vectorised_function
     return actual_decorator
@@ -2607,10 +2594,15 @@ def unique_combinations(*args):
 def unique_combinations_masks(*arrs):
     """All are iterables of the same length. Finds row-wise combinations of
     args that are unique. Elements of args must be hashable."""
-    # ra = np.rec.fromarrays(arrs)
+    ## pack into recarray, find unique hashes (cannot figure out how
+    ## to hash recarray rows).
     ra = np.rec.fromarrays(arrs)
-    unique_values = np.unique(ra)
-    return [(t,ra==t) for t in unique_values]
+    hashes = np.array([hash(t) for t in zip(*arrs)],dtype=int)
+    retval = []
+    for unique_hash,ifirst in zip(*np.unique(hashes,return_index=True)):
+        i = hashes == unique_hash
+        retval.append((ra[ifirst],i))
+    return retval
 
 def unique_combinations_first_index(*arrs):
     """All are iterables of the same length. Finds row-wise combinations of
@@ -2886,6 +2878,12 @@ def limit_to_range(beg,end,x,*other_arrays):
     be sorted.  Also index other_arrays and return all arrays."""
     i = np.searchsorted(x,(beg,end))
     return tuple([t[i[0]:i[1]] for t in [x]+list(other_arrays)])
+
+def total_fractional_range(x):
+    """Compute  total fractional range of x."""
+    xmax,xmin = np.max(x),np.min(x)
+    total_fractional_range = (xmax-xmin)/abs(xmin)
+    return total_fractional_range
 
 # def common_range(x,y):
     # """Return min max of values in both x and y (may not be actual
