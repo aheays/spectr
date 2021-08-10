@@ -672,7 +672,7 @@ class Optimiser:
                 pass
             ## calculate uncertainties -- KeyboardInterrupt possible
             try:
-                self.calculate_uncertainty()
+                self.calculate_uncertainty(clean_construct=False)
             except KeyboardInterrupt:
                 pass
         ## recalculate final solution
@@ -805,14 +805,20 @@ class Optimiser:
         ## return
         return jacobian
 
-    def calculate_uncertainty(self,rms_noise=None,verbose=True,ncpus=None):
+    def calculate_uncertainty(
+            self,
+            rms_noise=None,
+            verbose=True,
+            ncpus=None,
+            clean_construct=True,
+    ):
         """Compute 1σ uncertainty by first computing forward-difference
         Jacobian.  Only accurate for a well-optimised model."""
         ## whether or not to multiprocess
         if ncpus is not None:
             self._ncpus = ncpus
         ## get residual at current solugion
-        self.construct(clean_construct=True)
+        self.construct(clean_construct=clean_construct)
         residual = self.combined_residual
         ## get current parameter
         self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()

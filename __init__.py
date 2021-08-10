@@ -16,6 +16,7 @@ from scipy.constants import Boltzmann as kB
 try:
     from .fortran_tools import fortran_tools
 except ModuleNotFoundError:
+    fortran_tools = None
     warnings.warn("Could not import fortran_tools.  Is it compiled?")
 from . import tools
 from . import plotting

@@ -444,6 +444,14 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
+    def change_units(self,key,new_units):
+        """Change units of key to new_units."""
+        old_units = self[key,'units']
+        for subkey in ('value','unc','step'):
+            if self.is_set(key,subkey):
+                self[key,subkey] = convert.units(self[key,subkey],old_units,new_units)
+        self[key,'units'] = new_units
+
     def _has_attribute(self,key,subkey,attribute):
         """Test if key,subkey has a certain attribute."""
         self.assert_known(key,subkey)
@@ -890,7 +898,7 @@ class Dataset(optimise.Optimiser):
 
     def matches(self,*args,**kwargs):
         """Returns a copy reduced to matching values."""
-        return self.copy(index=self.match(*args,**kwargs),copy_inferred_data=True)
+        return self.copy(index=self.match(*args,**kwargs),copy_inferred_data=False)
 
     def limit_to_match(self,*match_args,**match_kwargs):
         self.index(self.match(*match_args,**match_kwargs))
@@ -1674,14 +1682,14 @@ class Dataset(optimise.Optimiser):
                 if self.is_set(key,'vary'):
                     self.set(key,'vary',False,index)
 
-    def append(self,keys_vals=None,keys='all',**keys_vals_as_kwargs):
+    def append(self,keys_vals=None,**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
         if keys_vals is None:
             keys_vals = {}
         keys_vals |= keys_vals_as_kwargs
         for key in keys_vals:
             keys_vals[key] = [keys_vals[key]]
-        self.extend(keys_vals,keys=keys)
+        self.extend(keys_vals)
 
     def extend(
             self,
@@ -1895,12 +1903,22 @@ class Dataset(optimise.Optimiser):
                 else:
                     x = z[xkey]
                 y = z[ykey]
-                if plot_errorbars and z.is_set(ykey,'unc'):
-                    dy = z.get(ykey,'unc')
+                if plot_errorbars and (z.is_set(ykey,'unc') or z.is_set(xkey,'unc')):
+                    ## get uncertainties if they are known
+                    if z.is_set(xkey,'unc'):
+                        dx = z.get(xkey,'unc')
+                        dx[np.isnan(dx)] = 0.
+                    else:
+                        dx = np.full(len(z),0.)
+                    if z.is_set(ykey,'unc'):
+                        dy = z.get(ykey,'unc')
+                        dy[np.isnan(dy)] = 0.
+                    else:
+                        dy = np.full(len(z),0.)
                     ## plot errorbars
                     kwargs.setdefault('mfc','none')
-                    dy[np.isnan(dy)] = 0.
-                    ax.errorbar(x,y,dy,**kwargs)
+                    i = ~np.isnan(x) & ~np.isnan(y)
+                    ax.errorbar(x[i],y[i],dy[i],dx[i],**kwargs)
                     ## plot zero/undefined uncertainty data as filled symbols
                     i = np.isnan(dy)|(dy==0)
                     if np.any(i):
@@ -1912,7 +1930,7 @@ class Dataset(optimise.Optimiser):
                         else:
                             kwargs['linestyle'] = ''
                         kwargs['label'] = None
-                        line = ax.plot(z[xkey][i],z[ykey][i],**kwargs)
+                        line = ax.plot(x[i],z[ykey][i],**kwargs)
                 else:
                     kwargs.setdefault('mfc',kwargs['color'])
                     kwargs.setdefault('fillstyle','full')
@@ -2077,7 +2095,12 @@ def make(classname='dataset.Dataset',*args,**kwargs):
     """Make an instance of the this classname."""
     return _get_class(classname)(*args,**kwargs)
 
-def load(filename,classname=None,**load_kwargs):
+def load(
+        filename,
+        classname=None,
+        prototypes=None,
+        **load_kwargs,
+):
     """Load a Dataset.  Attempts to automatically find the correct
     subclass if it is not provided as an argument, but this requires
     loading the file twice."""
@@ -2086,7 +2109,7 @@ def load(filename,classname=None,**load_kwargs):
         classname = d.load(filename,return_classname_only=True,**load_kwargs)
         if classname is None:
             classname = 'dataset.Dataset'
-    retval = make(classname)
+    retval = make(classname,prototypes=prototypes)
     retval.load(filename,**load_kwargs)
     return retval
 

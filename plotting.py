@@ -769,17 +769,18 @@ def _extra_interaction_on_key(event):
     
 def _extra_interaction_toggle_log(x_or_y,axes):
     assert x_or_y in ('x','y')
-    if not hasattr(axes,'_extra_interaction_toggle_log'):
-        axes._extra_interaction_toggle_log = 'linear'
-    loglin = axes._extra_interaction_toggle_log
     if x_or_y == 'x':
-        lim = axes.get_xlim()
+        if not hasattr(axes,'_extra_interaction_toggle_log_x'):
+            axes._extra_interaction_toggle_log_x = axes.get_xscale()
+        loglin = axes._extra_interaction_toggle_log_x
+        lim = list(axes.get_xlim())
         axis = axes.xaxis
-        # loglin = axes.get_xscale()
     else:
-        lim = axes.get_ylim()
+        if not hasattr(axes,'_extra_interaction_toggle_log_y'):
+            axes._extra_interaction_toggle_log_y = axes.get_yscale()
+        lim = list(axes.get_ylim())
         axis = axes.yaxis
-        # loglin = axes.get_yscale()
+        loglin = axes._extra_interaction_toggle_log_y
     if loglin == 'linear':
         ## make log - deal with negative limits
         lim = sorted(lim)
@@ -790,15 +791,17 @@ def _extra_interaction_toggle_log(x_or_y,axes):
         ## make linear
         if x_or_y == 'x':
             axes.set_xscale('log')
+            axes._extra_interaction_toggle_log_x = 'log'
         else:
             axes.set_yscale('log')
-        axes._extra_interaction_toggle_log = 'log'
+            axes._extra_interaction_toggle_log_y = 'log'
     else:
         if x_or_y == 'x':
             axes.set_xscale('linear')
+            axes._extra_interaction_toggle_log_x = 'linear'
         else:
             axes.set_yscale('linear')
-        axes._extra_interaction_toggle_log = 'linear'
+            axes._extra_interaction_toggle_log_y = 'linear'
     ## rest axis limits
     if x_or_y == 'x':
         axes.set_xlim(lim)

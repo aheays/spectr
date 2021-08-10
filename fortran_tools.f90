@@ -630,6 +630,24 @@ subroutine calculate_stepwise_gaussian_spectrum(x0,yint,xwid,x,y,nfwhm,nx,nlines
     y = area*fwhm/6.283185307179586/((x-center)**2+fwhm**2/4.)
   end function lorentzian
 
+  subroutine lorentzian_line(x,center,fwhm,area,y,n)
+    !! Compute Lorentzian at a single point.
+    integer*8 :: n
+    real*8,intent(in),dimension(n) :: x
+    real*8,intent(in) :: center,fwhm,area
+    real*8,dimension(n),intent(inout) :: y     
+    y = area*fwhm/6.283185307179586/((x-center)**2+fwhm**2/4.)
+  end subroutine lorentzian_line
+
+  subroutine add_lorentzian_line(x,center,fwhm,area,y,n)
+    !! Compute Lorentzian at a single point.
+    integer*8 :: n
+    real*8,intent(in),dimension(n) :: x
+    real*8,intent(in) :: center,fwhm,area
+    real*8,dimension(n),intent(inout) :: y     
+    y = y + area*fwhm/6.283185307179586/((x-center)**2+fwhm**2/4.)
+  end subroutine add_lorentzian_line
+  
   function normal_lorentzian(x) result(y)
     !! Compute Lorentzian at a single point with unit area and fwhm
     !! centered at x=0.

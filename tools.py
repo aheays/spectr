@@ -2864,6 +2864,9 @@ def find_blocks(b,error_on_empty_block=True):
         i &= ~block
     return blocks
 
+def full_range(x):
+    return np.max(x)-np.min(x)
+
 def inrange(x,xbeg,xend=None):
     """Return arrays of booleans same size as x, True for all those
     elements that xbeg<=x<=xend.\n\nIf xend is none and xbeg is an

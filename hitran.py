@@ -69,6 +69,7 @@ def download_linelist(
     MOL,ISO = translate_species_to_codes(species)
     mkdir(data_directory)
     hapi.db_begin(data_directory)
+    print('DEBUG:', (table_name,int(MOL),int(ISO),νbeg,νend))
     hapi.fetch(table_name,int(MOL),int(ISO),νbeg,νend)
 
 def calc_spectrum(

@@ -147,6 +147,15 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
 
     @optimise_method()
+
+    # @optimise_method()
+    # def interpolate(self,xstep,_cache=None):
+        # if self._clean_construct:
+            # _cache['xnew'] = np.arange(self.x[0],self.x[-1],xstep)
+            # _cache['ynew'] = tools.spline(self.x,self.y,_cache['xnew'],order=1)
+        # self.x = _cache['xnew']
+        # self.y = _cache['ynew']
+
     def convolve_with_gaussian(self,width):
         self.y = tools.convolve_with_gaussian(self.x,self.y,width)
 

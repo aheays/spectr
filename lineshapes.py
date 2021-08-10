@@ -3,9 +3,11 @@ import multiprocessing
 import numpy as np
 from numpy import array,arange,linspace
 from scipy import constants,special
+import bisect
 
 from . import tools
 from . import convert
+from . import fortran_tools
 
 def calculate_spectrum(
         x,
@@ -80,14 +82,24 @@ def sinc(x,x0=0,S=1,Γ=1):
     """Lorentzian profile.""" 
     return(S*np.sinc((x-x0)/Γ*1.2)*1.2/Γ)
 
+_lorentzian_k = 2*constants.pi
 def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None): 
     """Lorentzian profile."""
     if nfwhm is None:
         ## whole domain
         if yin is None:
-            return S*Γ/2./constants.pi/((x-x0)**2+Γ**2/4.)
+            if fortran_tools is None:
+                return S*Γ/_lorentzian_k/((x-x0)**2+Γ**2/4.)
+            else:
+                retval = np.empty(len(x),dtype=float)
+                fortran_tools.add_lorentzian_line(x,x0,Γ,S,retval)
+                return retval
         else:
-            yin += S*Γ/2./constants.pi/((x-x0)**2+Γ**2/4.)
+            if len(yin) > 0:
+                if fortran_tools is None:
+                    yin += S*Γ/_lorentzian_k/((x-x0)**2+Γ**2/4.)
+                else:
+                    fortran_tools.add_lorentzian_line(x,x0,Γ,S,yin)
             return yin
     else:
         ## partial domain inside nfwhm cutoff
@@ -166,18 +178,21 @@ def voigt(x,
         y[i0:i1] = voigt(x[i0:i1],x0,S,ΓL,ΓG)
     elif nfwhmL is not None and nfwhmG is not None:
         ## Lorentzian wings and cutoff
-        i0,i1 = np.searchsorted(x,[x0-(nfwhmG*ΓG+nfwhmL*ΓL),x0+(nfwhmG*ΓG+nfwhmL*ΓL)])
-        j0,j1 = np.searchsorted(x,[x0-(nfwhmG*ΓG),x0+(nfwhmG*ΓG)])
         if yin is None:
             y = np.zeros(x.shape,dtype=float)
-            # y[i0:j0] = lorentzian(x[i0:j0],x0,S,ΓL)
-            # y[j0:j1] = voigt(x[j0:j1],x0,S,ΓL,ΓG)
-            # y[j1:i1] = lorentzian(x[j1:i1],x0,S,ΓL)
         else:
             y = yin
-            y[i0:j0] += lorentzian(x[i0:j0],x0,S,ΓL)
-            y[j0:j1] += voigt(x[j0:j1],x0,S,ΓL,ΓG)
-            y[j1:i1] += lorentzian(x[j1:i1],x0,S,ΓL)
+        t0,t1 = nfwhmG*ΓG,nfwhmL*ΓL
+        i0 = bisect.bisect(x,x0-(t0+t1))
+        i1 = bisect.bisect(x,x0+(t0+t1))
+        j0 = bisect.bisect(x,x0-t0)
+        j1 = bisect.bisect(x,x0+t0)
+
+
+        lorentzian(x[i0:j0],x0,S,ΓL,yin=y[i0:j0])
+        y[j0:j1] += voigt(x[j0:j1],x0,S,ΓL,ΓG)
+        lorentzian(x[j1:i1],x0,S,ΓL,yin=y[j1:i1])
+
     else:
         raise Exception(f'Not implemented: nfwhmL={repr(nfwhmL)} and nfwhmG={repr(nfwhmG)}')
     return y
