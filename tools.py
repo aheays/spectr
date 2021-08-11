@@ -1474,18 +1474,19 @@ def directory_to_dict(directory):
     """Load all contents of a directory into a dictionary, recursive."""
     retval = {}
     directory = expand_path(directory)
-    for current_dir,subdirs,files in os.walk(directory):
-        for subdir in subdirs:
+    for filename in os.listdir(directory):
+        full_filename = f'{directory}/{filename}'
+        if os.path.isdir(full_filename):
             ## load subdirectories as subdictionaries
-            retval[subdir] = directory_to_dict(f'{current_dir}/{subdir}')
-        for filename in files:
+            retval[filename] = directory_to_dict(full_filename)
+        else:
             root,extension = os.path.splitext(filename)
             if extension in ('.npz','.npy','.h5','.hdf5'):
                 ## load binary array data
-                retval[root] = file_to_array(f'{current_dir}/{filename}')
+                retval[root] = file_to_array(full_filename)
             else:
                 ## load as string
-                retval[filename] = file_to_string(f'{current_dir}/{filename}')
+                retval[filename] = file_to_string(full_filename)
     return retval 
 
 
@@ -2603,6 +2604,51 @@ def unique_combinations_masks(*arrs):
         i = hashes == unique_hash
         retval.append((ra[ifirst],i))
     return retval
+
+# def unique_combinations_masks(*arrs):
+    # """All are iterables of the same length. Finds row-wise combinations of
+    # args that are unique. Elements of args must be hashable."""
+    # ## pack into recarray, find unique hashes (cannot figure out how
+    # ## to hash recarray rows).
+    # ra = np.rec.fromarrays(arrs)
+    # import pdb; pdb.set_trace(); # DEBUG
+   #  
+    # import time ; timer = time.time() # DEBUG
+
+    # # print('DEBUG:', 'unique')
+    # # sorted_idx = np.unique(arrs)
+    # # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+
+    # # print('DEBUG:', 'argsort')
+    # # sorted_idx = np.argsort(arrs)
+    # # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+
+    # print('DEBUG:', 'lex')
+    # # i = np.lexsort(arrs)
+    # i = np.lexsort(arrs)
+    # np.diff(arrs[1])
+    # print( np.diff(i)[:10],np.min(np.diff(i)),np.max(np.diff(i)))
+   #  
+   #  
+    # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+   #  
+    # # Perform lex sort and get sorted data
+    # # sorted_idx = np.lexsort(data.T)
+    # # sorted_data =  data[sorted_idx,:]
+    # # row_mask = np.append([True],np.any(np.diff(sorted_data,axis=0),1))
+    # # out = sorted_data[row_mask]
+    # # ra.sort()
+
+    # print('DEBUG:', 'hash')
+    # hashes = np.array([hash(t) for t in zip(*arrs)],dtype=int)
+    # retval = []
+    # for unique_hash,ifirst in zip(*np.unique(hashes,return_index=True)):
+        # i = hashes == unique_hash
+        # retval.append((ra[ifirst],i))
+
+    # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+    # return retval
+
 
 def unique_combinations_first_index(*arrs):
     """All are iterables of the same length. Finds row-wise combinations of
@@ -3894,6 +3940,7 @@ def file_to_dict(filename,*args,filetype=None,**kwargs):
 def infer_filetype(filename):
     """Determine type of datafile from the name or possibly its
     contents."""
+    filename = tools.expand_path(filename)
     extension = os.path.splitext(filename)[1]
     if extension=='.npy':
         return 'npy'

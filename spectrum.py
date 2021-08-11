@@ -79,8 +79,8 @@ class Experiment(Optimiser):
                 print('experimental_parameters:')
                 pprint(self.experimental_parameters)
             _cache['x'],_cache['y'] = x,y
-        ## every iteration make a copy -- more memory but survive
-        ## other changes
+        ## every iteration make a copy -- more memory but survives
+        ## in-place other changes
         self.x,self.y = copy(_cache['x']),copy(_cache['y']) 
 
     @optimise_method(add_construct_function=False)
@@ -121,6 +121,7 @@ class Experiment(Optimiser):
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function()
 
+    @optimise_method(add_construct_function=False)
     def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None):
         """Load a spectrum in an Bruker opus binary file."""
         opusdata = bruker.OpusData(filename)
@@ -147,16 +148,21 @@ class Experiment(Optimiser):
         self.pop_format_input_function() 
 
     @optimise_method()
+    def interpolate(self,xstep,order=1):
+        """Spline interpolate to a regular grid defined by xtstep."""
+        xnew = np.arange(self.x[0],self.x[-1],xstep)
+        self.y = tools.spline(self.x,self.y,xnew,order=order)
+        self.x = xnew
 
-    # @optimise_method()
-    # def interpolate(self,xstep,_cache=None):
-        # if self._clean_construct:
-            # _cache['xnew'] = np.arange(self.x[0],self.x[-1],xstep)
-            # _cache['ynew'] = tools.spline(self.x,self.y,_cache['xnew'],order=1)
-        # self.x = _cache['xnew']
-        # self.y = _cache['ynew']
+    @optimise_method()
+    def subsample(self,xskip,_cache=None):
+        """Only retain every xskipth datapoint."""
+        self.x = self.x[::xskip]
+        self.y = self.y[::xskip]
 
+    @optimise_method()
     def convolve_with_gaussian(self,width):
+        """Convolve spectrum with a gaussian."""
         self.y = tools.convolve_with_gaussian(self.x,self.y,width)
 
     @optimise_method()
@@ -1006,69 +1012,70 @@ class Model(Optimiser):
             self.y[i] = self.y[i]*interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.x[i])
         self.add_construct_function(f) # multiply spline during construct
 
-    def modulate_by_spline(
-            self,
-            ν=None,
-            amplitude=None,
-            phase=None,         # if constant then will be used as a frequency in cm-1
-            step_amplitude=1e-3,
-            vary_amplitude=False,
-            step_phase=1e-3,
-            vary_phase=False,
-            verbose=False,
-            fbeg=-np.inf, fend=-np.inf, # estimate range of frequency for auto fitting
-    ):
-        """Modulate by 1 + sinusoid."""
-        ## if scalar then use as stepsize of a regular grid
-        if ν is None:
-            ν = np.linspace(self.xexp[0],self.xexp[-1],10)
-        elif np.isscalar(ν):
-            ν = np.arange(self.xexp[0]-ν/2,self.xexp[-1]+ν/2+1,ν)
-        else:
-            ν = np.array(ν)
-        ## if no amplitude given default to 1%
-        if amplitude is None:
-            amplitude = np.full(ν.shape,1e-2)
-        elif np.isscalar(amplitude):
-            amplitude = np.full(ν.shape,amplitude)
-        ## if no phase default to frequency of 1 cm-1 if scalar use as
-        ## frequency 
-        if phase is None:
-            if verbose:
-                ax = tools.fig(880).gca()
-            phase = np.zeros(ν.shape,dtype=float)
-            for i in range(len(ν)-1):
-                νbeg,νend = ν[i],ν[i+1]
-                j = tools.inrange(self.xexp,νbeg,νend)
-                tf,tF,r = tools.power_spectrum(
-                    self.xexp[j],self.yexp[j],
-                    fit_peaks=True,
-                    xbeg=fbeg,xend=fend)
-                f0 = r['f0'][np.argmax(r['S'])]
-                phase[i+1] = phase[i] + 2*constants.pi*f0*(ν[i+1]-ν[i])
-                if verbose:
-                    print(f'{ν[i]:10.2f} {ν[i+1]:10.2f} {f0:10.4f}')
-                    ax.plot([νbeg,νend],[f0,f0],color=plotting.newcolor(0),marker='o')
-                    ax.set_xlabel('ν')
-                    ax.set_ylabel('f')
-        elif np.isscalar(phase):
-            phase = 2*constants.pi*(ν-self.xexp[0])/phase
-        amplitude = self.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
-        phase = self.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
-        def format_input_function():
-            retval = f"{self.name}.modulate_by_spline("
-            retval += f"vary_amplitude={repr(vary_amplitude)}"
-            retval += f",vary_phase={repr(vary_phase)}"
-            retval += f",ν=["+','.join([format(t,'0.4f') for t in ν])+']'
-            retval += f",amplitude=["+','.join([format(p.p,'0.4f') for p in amplitude])+']'
-            retval += f",phase=["+','.join([format(p.p,'0.4f') for p in phase])+']'
-            retval += f",step_amplitude={repr(step_amplitude)}"
-            retval += f",step_phase={repr(step_phase)}"
-            return(retval+')')
-        self.add_format_input_function(format_input_function)
-        def f():
-            self.y *= 1. + tools.spline(ν,amplitude.plist,self.x)*np.sin(tools.spline(ν,phase.plist,self.x))
-        self.add_construct_function(f)
+
+    # def modulate_by_spline(
+            # self,
+            # ν=None,
+            # amplitude=None,
+            # phase=None,         # if constant then will be used as a frequency in cm-1
+            # step_amplitude=1e-3,
+            # vary_amplitude=False,
+            # step_phase=1e-3,
+            # vary_phase=False,
+            # verbose=False,
+            # fbeg=-np.inf, fend=-np.inf, # estimate range of frequency for auto fitting
+    # ):
+        # """Modulate by 1 + sinusoid."""
+        # ## if scalar then use as stepsize of a regular grid
+        # if ν is None:
+            # ν = np.linspace(self.xexp[0],self.xexp[-1],10)
+        # elif np.isscalar(ν):
+            # ν = np.arange(self.xexp[0]-ν/2,self.xexp[-1]+ν/2+1,ν)
+        # else:
+            # ν = np.array(ν)
+        # ## if no amplitude given default to 1%
+        # if amplitude is None:
+            # amplitude = np.full(ν.shape,1e-2)
+        # elif np.isscalar(amplitude):
+            # amplitude = np.full(ν.shape,amplitude)
+        # ## if no phase default to frequency of 1 cm-1 if scalar use as
+        # ## frequency 
+        # if phase is None:
+            # if verbose:
+                # ax = tools.fig(880).gca()
+            # phase = np.zeros(ν.shape,dtype=float)
+            # for i in range(len(ν)-1):
+                # νbeg,νend = ν[i],ν[i+1]
+                # j = tools.inrange(self.xexp,νbeg,νend)
+                # tf,tF,r = tools.power_spectrum(
+                    # self.xexp[j],self.yexp[j],
+                    # fit_peaks=True,
+                    # xbeg=fbeg,xend=fend)
+                # f0 = r['f0'][np.argmax(r['S'])]
+                # phase[i+1] = phase[i] + 2*constants.pi*f0*(ν[i+1]-ν[i])
+                # if verbose:
+                    # print(f'{ν[i]:10.2f} {ν[i+1]:10.2f} {f0:10.4f}')
+                    # ax.plot([νbeg,νend],[f0,f0],color=plotting.newcolor(0),marker='o')
+                    # ax.set_xlabel('ν')
+                    # ax.set_ylabel('f')
+        # elif np.isscalar(phase):
+            # phase = 2*constants.pi*(ν-self.xexp[0])/phase
+        # amplitude = self.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
+        # phase = self.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
+        # def format_input_function():
+            # retval = f"{self.name}.modulate_by_spline("
+            # retval += f"vary_amplitude={repr(vary_amplitude)}"
+            # retval += f",vary_phase={repr(vary_phase)}"
+            # retval += f",ν=["+','.join([format(t,'0.4f') for t in ν])+']'
+            # retval += f",amplitude=["+','.join([format(p.p,'0.4f') for p in amplitude])+']'
+            # retval += f",phase=["+','.join([format(p.p,'0.4f') for p in phase])+']'
+            # retval += f",step_amplitude={repr(step_amplitude)}"
+            # retval += f",step_phase={repr(step_phase)}"
+            # return(retval+')')
+        # self.add_format_input_function(format_input_function)
+        # def f():
+            # self.y *= 1. + tools.spline(ν,amplitude.plist,self.x)*np.sin(tools.spline(ν,phase.plist,self.x))
+        # self.add_construct_function(f)
 
     @optimise_method()
     def add_intensity(self,intensity=1):
@@ -1101,7 +1108,7 @@ class Model(Optimiser):
         _cache['s'],_cache['x'],_cache['y'],_cache['i'] = s,x,y,i
         self.y[i] += s
 
-    def auto_scale_by_piecewise_sinusoid(self,xstep,xbeg=-inf,xend=inf,vary=True):
+    def auto_scale_by_piecewise_sinusoid(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
         """Automatically find regions for use in
         scale_by_piecewise_sinusoid."""
         ## get join points between regions
@@ -1121,12 +1128,13 @@ class Model(Optimiser):
             dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
             frequency = 1/dx*imax/len(FT)
             amplitude = tools.rms(residual)/self.y[i].mean()
-            regions.append((
+            regions.append([
                 xbegi,xendi,
                 P(amplitude,vary,self.y[i].mean()*1e-3),
                 P(frequency,vary,frequency*1e-3),
-                P(phase,vary,2*π*1e-3),))
+                P(phase,vary,2*π*1e-3),])
         self.scale_by_piecewise_sinusoid(regions)
+        return regions
         
     @optimise_method()
     def scale_by_piecewise_sinusoid(self,regions,_cache=None):

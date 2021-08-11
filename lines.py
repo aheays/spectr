@@ -396,7 +396,7 @@ class Generic(levels.Base):
         kwargs['translate_keys'] |= {
             'Γ':'ΓL',
             }
-        Dataset.load(self,*args,**kwargs)
+        levels.Base.load(self,*args,**kwargs)
 
     def encode_qn(self,qn):
         """Encode qn into a string"""
@@ -724,10 +724,10 @@ class Generic(levels.Base):
             'γ0self':data['γself'],
         }
         ## get species
-        i = hitran.molparam.find_unique(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
-        new['species'] =  hitran.molparam['isotopologue'][i]
+        i = hitran.get_molparam().find_unique(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
+        new['species'] =  hitran.get_molparam()['isotopologue'][i]
         ## remove natural abundance weighting
-        new['S296K'] /=  hitran.molparam['natural_abundance'][i]
+        new['S296K'] /=  hitran.get_molparam()['natural_abundance'][i]
         self.extend(**new)
         return data             # return raw HITRAN data
         

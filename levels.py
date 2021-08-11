@@ -29,7 +29,7 @@ prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,i
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
-prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' , cast=lambda species: np.array(database.normalise_species(species),dtype=str), infer=[])
+prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' , infer=[])
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
@@ -618,6 +618,19 @@ class Base(Dataset):
         if reduced_order is not None:
             self.reduced_order = reduced_order
         return Dataset.plot(self,*args,**kwargs)
+
+    def normalise_species(self):
+        """Normalise encoded species names."""
+        for key in ('species','species_u','species_l'):
+            if self.is_set(key):
+                self[key] = database.normalise_species(self[key])
+
+    def load(self,*args,normalise_species=False,**kwargs):
+        """Overload Dataset load to optionally normalise loaded species names."""
+        Dataset.load(self,*args,**kwargs)
+        if normalise_species:
+            self.normalise_species()
+
 
 class Generic(Base):
     """A generic level."""

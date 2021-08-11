@@ -184,7 +184,7 @@ class AtmosphericChemistry():
     def set_density(self,species,density):
         # self.density[species] = density
         self.density.set(
-            species, density,
+            species,'value',density,
             description=f'Number density of {species}',
             units='cm-3', fmt='10.5e',)
 
