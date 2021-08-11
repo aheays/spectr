@@ -534,6 +534,8 @@ class Model(Optimiser):
             line_copy = line.copy(index=imatch,keys=keys)
             if verbose is not None:
                 line_copy.verbose = verbose
+            if verbose:
+                print('add_line: clean construct')
             ## set parameter data
             for key,val in set_keys_vals.items():
                 line_copy[key] = val
@@ -596,6 +598,8 @@ class Model(Optimiser):
                         line_copy[key,ichanged] = line[key,imatch][ichanged]
             ## x grid has changed, full recalculation
             if self._xchanged:
+                if verbose:
+                    print('add_line: x grid has changhed, full recalculation')
                 y = _calculate_spectrum(line_copy,None)
             ## else find all changed lines and update those only
             elif line_copy.global_modify_time > self._last_construct_time:
@@ -616,12 +620,19 @@ class Model(Optimiser):
                     ## constant factor ykey -- scale saved spectrum
                     if ymin is not None and ymin != 0:
                         warnings.warn(f'Scaling spectrum uniformly but ymin is set to a nonzero value, {repr(ymin)}.  This could lead to lines appearing in subsequent model constructions.')
+                    if verbose:
+                        print('add_line: constant factor scaling all lines')
                     y *= np.mean(line_copy[ykey]/data[ykey])
                 elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
                     ## recalculation
+                    if verbose:
+                        print('add_line: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
                 else:
+                    ## a few lines have changed, update these only
+                    if verbose:
+                        print(f'add_line: {nchanged} lines have changed, recalculate these')
                     ## temporary object to calculate old spectrum
                     line_old = dataset.make(
                         classname=line_copy.classname,

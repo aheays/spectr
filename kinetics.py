@@ -391,7 +391,7 @@ class Species:
                         multiplicity += multiplicityi
                     else:
                         ## new token
-                        tokens.append(elementi)
+                        tokens.append(element)
                         if multiplicity > 1:
                             tokens.append(tools.subscript_numerals(str(multiplicity)))
                         element,multiplicity = elementi,multiplicityi
@@ -417,6 +417,13 @@ class Species:
                 raise ImplementationError("Can only compute reduced mass for atoms and diatomic species.")
         else:
                 raise Exception(f"Unknown species property: {key}")
+
+    def is_isotopologue(self):
+        """Is this species a particular isotopologue."""
+        if self['chemical_name'] == self['name']:
+            return False
+        else:
+            return True
     
     name = property(lambda self: self['name'])
     elements = property(lambda self: self['elements'])

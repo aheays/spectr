@@ -461,7 +461,7 @@ contains
     end do
   end subroutine stepwise_gaussian
 
-subroutine calculate_stepwise_gaussian_spectrum(x0,yint,xwid,x,y,nfwhm,nx,nlines)
+  subroutine calculate_stepwise_gaussian_spectrum(x0,yint,xwid,x,y,nfwhm,nx,nlines)
     !! Compute sum of all Gaussians on given domain. The line centers
     !! are computed to have integrated values consisted with a
     !! stepwise function on the input regular grid.  This is useful

@@ -207,6 +207,19 @@ def get_lines(species):
     data.name = tools.make_valid_python_symbol_name(f'lines_{species}')
     return data
 
+@cache
+def get_hitran_lines(species,**match):
+    """Load spectral lines from reference data."""
+    species = kinetics.get_species(species)
+    if species.is_isotopologue():
+        path = f'{data_directory}/hitran/{species.chemical_name}/{species.name}/lines'
+    else:
+        path = f'{data_directory}/hitran/{species.chemical_name}/natural_abundance/lines'
+    line = dataset.load(path)
+    if len(match) > 0:
+        line = line.matches(match)
+    return line
+
 electronic_states={
     ('C₂','X')  :{'Λ':0,'S':0,'s'  :1,'gu'    :1},
     ('C₂','a')  :{'Λ':1,'S':1,'s'  :0,'gu'    :-1},
