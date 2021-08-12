@@ -1235,18 +1235,39 @@ class Model(Optimiser):
         ## add to y
         self.y[i] *= spline.y  
 
-    def auto_scale_by_piecewise_sinusoid(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
+
+    def auto_scale_by_piecewise_sinusoid(
+            self,
+            xjoin=10, # specified interval join points or distance separating them
+            xbeg=None,xend=None, # limit to this range
+            vary=True,Avary= True, # vary phase, frequencey and/or amplitude
+            Aspline= True,          # amplitude is splined, else pieces wise constant
+    ):
         """Automatically find regions for use in
         scale_by_piecewise_sinusoid."""
-        ## get join points between regions
-        i = (self.x>=xbeg)&(self.x<=xend)
-        xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
+        ## get join points between regions and begining and ending points
+        if np.isscalar(xjoin):
+            if xbeg is None:
+                xbeg = self.x[0]
+            if xend is None:
+                xend = self.x[-1]
+            i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+            xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xjoin),self.x[i][-1:]))
+        else:
+            if xbeg is None:
+                xbeg = xjoin[0]
+            else:
+                xbeg = max(xbeg,xjoin[0])
+            if xend is None:
+                xend = xjoin[-1]
+            else:
+                xend = max(xend,xjoin[-1])
         ## loop over all regions, gettin dominant frequency and phase
         ## from the residual error power spectrum
         regions = []
         for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
-            i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-            ## i = (self.x>=xbegi)&(self.x<=xendi)
+            i = slice(*np.searchsorted(self.x,[xbegi,xendi]))
+            # i = (self.x>=xbegi)&(self.x<=xendi)
             residual = self.yexp[i] - self.y[i]
             FT = fft.fft(residual)
             imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
@@ -1256,77 +1277,126 @@ class Model(Optimiser):
             dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
             frequency = 1/dx*imax/len(FT)
             amplitude = tools.rms(residual)/self.y[i].mean()
+            # amplitude = tools.rms(residual)
             regions.append([
                 xbegi,xendi,
-                P(amplitude,vary,self.y[i].mean()*1e-3),
+                P(amplitude,Avary,amplitude*1e-3),
                 P(frequency,vary,frequency*1e-3),
                 P(phase,vary,2*π*1e-3),])
-        self.scale_by_piecewise_sinusoid(regions)
+        self.scale_by_piecewise_sinusoid(regions,Aspline=Aspline)
         return regions
-        
+
+    # def auto_scale_by_piecewise_sinusoid(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
+        # """Automatically find regions for use in
+        # scale_by_piecewise_sinusoid."""
+        # ## get join points between regions
+        # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+        # xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
+        # ## loop over all regions, gettin dominant frequency and phase
+        # ## from the residual error power spectrum
+        # regions = []
+        # for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
+            # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+            # ## i = (self.x>=xbegi)&(self.x<=xendi)
+            # residual = self.yexp[i] - self.y[i]
+            # FT = fft.fft(residual)
+            # imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
+            # phase = np.arctan(FT.imag[imax]/FT.real[imax])
+            # if FT.real[imax]<0:
+                # phase += π
+            # dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
+            # frequency = 1/dx*imax/len(FT)
+            # amplitude = tools.rms(residual)/self.y[i].mean()
+            # regions.append([
+                # xbegi,xendi,
+                # P(amplitude,vary,self.y[i].mean()*1e-3),
+                # P(frequency,vary,frequency*1e-3),
+                # P(phase,vary,2*π*1e-3),])
+        # self.scale_by_piecewise_sinusoid(regions)
+        # return regions
+       #  
     @optimise_method()
-    def scale_by_piecewise_sinusoid(self,regions,_cache=None):
+    def scale_by_piecewise_sinusoid(self,regions,Aspline=True,_cache=None,_parameters=None):
         """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
-        for xbeg,xend,amplitude,frequency,phase in regions:
-            i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-            self.y[i] *= 1+float(amplitude)*np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
-
-    def auto_scale_by_piecewise_sinusoid_spline(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
-        """Automatically find regions for use in
-        scale_by_piecewise_sinusoid."""
-        ## get join points between regions
-        i = (self.x>=xbeg)&(self.x<=xend)
-        if np.isscalar(xstep):
-            xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
+        if Aspline:
+            ## spline interpolated amplitudes
+            if (self._clean_construct
+                or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])):
+                sinusoid = np.full(self.y.shape,0.0)
+                xmid = []
+                As = []
+                for xbeg,xend,amplitude,frequency,phase in regions:
+                    i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+                    sinusoid[i] = np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
+                    xmid.append((xbeg+xend)/2)
+                    As.append(amplitude)
+                A = tools.spline(xmid,As,self.x,set_out_of_bounds_to_zero=False,check_bounds=False)
+                scale = 1 + A*sinusoid
+                _cache['scale'] = scale
+            scale = _cache['scale']
+            self.y *= scale
         else:
-            xjoin = xstep
-        ## loop over all regions, gettin dominant frequency and phase
-        ## from the residual error power spectrum
-        regions = []
-        for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
-            i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-            ## i = (self.x>=xbegi)&(self.x<=xendi)
-            residual = self.yexp[i] - self.y[i]
-            FT = fft.fft(residual)
-            imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
-            phase = np.arctan(FT.imag[imax]/FT.real[imax])
-            if FT.real[imax]<0:
-                phase += π
-            dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
-            frequency = 1/dx*imax/len(FT)
-            amplitude = tools.rms(residual)/self.y[i].mean()
-            regions.append([
-                xbegi,xendi,
-                P(amplitude,vary,self.y[i].mean()*1e-3),
-                P(frequency,vary,frequency*1e-3),
-                P(phase,vary,2*π*1e-3),])
-        self.scale_by_piecewise_sinusoid_spline(regions)
-        return regions
-        
-    @optimise_method()
-    def scale_by_piecewise_sinusoid_spline(self,regions,_cache=None,_parameters=None):
-        """Scale by a piecewise function 1+A(x)*sin(2πf(x-xa)+φ) for a set
-        regions = [(xa,xb,A,f,φ),...].  A(x) is a spline interpolation
-        with one knot defined at the center of each (xa,xb)
-        region.Probably should initialise with
-        auto_scale_by_piecewise_sinusoid_spline."""
-        if (self._clean_construct
-            or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])):
-            sinusoid = np.full(self.y.shape,0.0)
-            xmid = []
-            As = []
+            ## piecewise constant amplitudes
             for xbeg,xend,amplitude,frequency,phase in regions:
                 i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-                sinusoid[i] = np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
-                xmid.append((xbeg+xend)/2)
-                As.append(amplitude)
-            A = tools.spline(xmid,As,self.x,set_out_of_bounds_to_zero=False,check_bounds=False)
-            scale = 1 + A*sinusoid
-            _cache['scale'] = scale
-        scale = _cache['scale']
-        self.y *= scale
+                self.y[i] *= 1+float(amplitude)*np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
+
+    # def auto_scale_by_piecewise_sinusoid_spline(self,xstep=10,xbeg=-inf,xend=inf,vary=True,Avary=False):
+        # """Automatically find regions for use in
+        # scale_by_piecewise_sinusoid."""
+        # ## get join points between regions
+        # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+        # if np.isscalar(xstep):
+            # xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
+        # else:
+            # xjoin = xstep
+        # ## loop over all regions, gettin dominant frequency and phase
+        # ## from the residual error power spectrum
+        # regions = []
+        # for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
+            # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+            # ## i = (self.x>=xbegi)&(self.x<=xendi)
+            # residual = self.yexp[i] - self.y[i]
+            # FT = fft.fft(residual)
+            # imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
+            # phase = np.arctan(FT.imag[imax]/FT.real[imax])
+            # if FT.real[imax]<0:
+                # phase += π
+            # dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
+            # frequency = 1/dx*imax/len(FT)
+            # amplitude = tools.rms(residual)/self.y[i].mean()
+            # regions.append([
+                # xbegi,xendi,
+                # P(amplitude,Avary,self.y[i].mean()*1e-3),
+                # P(frequency,vary,frequency*1e-3),
+                # P(phase,vary,2*π*1e-3),])
+        # self.scale_by_piecewise_sinusoid_spline(regions)
+        # return regions
+       #  
+    # @optimise_method()
+    # def scale_by_piecewise_sinusoid_spline(self,regions,_cache=None,_parameters=None):
+        # """Scale by a piecewise function 1+A(x)*sin(2πf(x-xa)+φ) for a set
+        # regions = [(xa,xb,A,f,φ),...].  A(x) is a spline interpolation
+        # with one knot defined at the center of each (xa,xb)
+        # region.Probably should initialise with
+        # auto_scale_by_piecewise_sinusoid_spline."""
+        # if (self._clean_construct
+            # or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])):
+            # sinusoid = np.full(self.y.shape,0.0)
+            # xmid = []
+            # As = []
+            # for xbeg,xend,amplitude,frequency,phase in regions:
+                # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+                # sinusoid[i] = np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
+                # xmid.append((xbeg+xend)/2)
+                # As.append(amplitude)
+            # A = tools.spline(xmid,As,self.x,set_out_of_bounds_to_zero=False,check_bounds=False)
+            # scale = 1 + A*sinusoid
+            # _cache['scale'] = scale
+        # scale = _cache['scale']
+        # self.y *= scale
 
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
         # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
