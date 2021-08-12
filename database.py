@@ -142,7 +142,7 @@ def get_level(species):
         # retval = retval.matches(match)
     return retval
 
-@tools.vectorise(cache=True)
+@tools.vectorise(cache=True,dtype=float)
 def get_level_energy(species,Eref=0,**match_qn):
     """Get uniquely matching level energies."""
     species = normalise_species(species)
@@ -160,7 +160,7 @@ def get_level_energy(species,Eref=0,**match_qn):
 
     
 
-@tools.vectorise(cache=True)
+@tools.vectorise(cache=True,dtype=float)
 def get_partition_function(
         species,     # molecular species
         Tex,         # K

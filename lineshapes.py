@@ -182,17 +182,16 @@ def voigt(x,
             y = np.zeros(x.shape,dtype=float)
         else:
             y = yin
+        ## find limits of Voigt core and Lorentzian wings
         t0,t1 = nfwhmG*ΓG,nfwhmL*ΓL
         i0 = bisect.bisect(x,x0-(t0+t1))
         i1 = bisect.bisect(x,x0+(t0+t1))
         j0 = bisect.bisect(x,x0-t0)
         j1 = bisect.bisect(x,x0+t0)
-
-
+        ## compute
         lorentzian(x[i0:j0],x0,S,ΓL,yin=y[i0:j0])
         y[j0:j1] += voigt(x[j0:j1],x0,S,ΓL,ΓG)
         lorentzian(x[j1:i1],x0,S,ΓL,yin=y[j1:i1])
-
     else:
         raise Exception(f'Not implemented: nfwhmL={repr(nfwhmL)} and nfwhmG={repr(nfwhmG)}')
     return y
@@ -478,40 +477,42 @@ def hartmann_tran(
         # y[ibi] += (1.-ca)*Si/dx
     # return(y)
 
-# def voigt_spectrum_with_gaussian_doppler_width(
-        # x,                      # frequency scale (cm-1)
-        # x0,                     # line centers (cm-1)
-        # S,                      # line strengths
-        # ΓL,                     # Natural (Lorentzian) linewidth (cm-1 FWHM)
-        # mass,                   # Mass for Doppler width (scalar) (amu)
-        # temperature=None,       # Temperature for Doppler width (scalar) (K)
-        # nfwhmL=np.inf,              # Number of Lorentzian full-width half-maxima to compute (zero for infinite)
-        # nfwhmG=10.,             # Number of Gaussian full-width half-maxima to compute, if set np.inf then actually maxes out at 100
-        # Smin=None,              # do not include lines weaker than this
-# ):
-    # """Convert some lines into a spectrum."""
-    # if Smin is not None:
-        # i = np.abs(S)>Smin
-        # x0,S,ΓL = x0[i],S[i],ΓL[i]
-    # ## compute Lorentzian spectrum
-    # if np.isinf(nfwhmL): nfwhmL = 0
-    # if np.isinf(nfwhmG): nfwhmG = 100
-    # if len(x0)==0: return(np.zeros(x.shape,dtype=float))
-    # ## 'fortran' computes Lorentzians and then convolves with
-    # ## a common Gaussian for speed. 'fortran_stepwise' does
-    # ## this also but uses a precomputed definite integral for
-    # ## the Loretnzian line centre if it is unresolved, to
-    # ## preserve the integrated value of the line. The Gaussian
-    # ## convolution also explicitly conserves the
-    # ## integral. Both these methods require a
-    # ## monotonically-increasing regular x grid.
-    # yL = np.zeros(x.shape,dtype=float)
-    # _fortran_tools.calculate_stepwise_lorentzian_spectrum(x0,S,ΓL,x.astype(float),yL,float(nfwhmL))
-    # assert np.isscalar(mass),"Mass must be scalar."
-    # assert np.isscalar(temperature),"Temperature must be scalar."
-    # yV = np.zeros(x.shape)      # Voigt spectrum
-    # _fortran_tools.convolve_with_doppler(mass,temperature,nfwhmG,x,yL,yV)
-    # return(yV)
+def voigt_spectrum_with_gaussian_doppler_width(
+        x,                      # frequency scale (cm-1)
+        x0,                     # line centers (cm-1)
+        S,                      # line strengths
+        ΓL,                     # Natural (Lorentzian) linewidth (cm-1 FWHM)
+        mass,                   # Mass for Doppler width (scalar) (amu)
+        temperature=None,       # Temperature for Doppler width (scalar) (K)
+        nfwhmL=np.inf,              # Number of Lorentzian full-width half-maxima to compute (zero for infinite)
+        nfwhmG=10.,             # Number of Gaussian full-width half-maxima to compute, if set np.inf then actually maxes out at 100
+        Smin=None,              # do not include lines weaker than this
+):
+    """Convert some lines into a spectrum."""
+    if Smin is not None:
+        i = np.abs(S)>Smin
+        x0,S,ΓL = x0[i],S[i],ΓL[i]
+    ## compute Lorentzian spectrum
+    if np.isinf(nfwhmL): 
+        nfwhmL = 0
+    if np.isinf(nfwhmG):
+        nfwhmG = 100
+    if len(x0)==0: return(np.zeros(x.shape,dtype=float))
+    ## 'fortran' computes Lorentzians and then convolves with
+    ## a common Gaussian for speed. 'fortran_stepwise' does
+    ## this also but uses a precomputed definite integral for
+    ## the Loretnzian line centre if it is unresolved, to
+    ## preserve the integrated value of the line. The Gaussian
+    ## convolution also explicitly conserves the
+    ## integral. Both these methods require a
+    ## monotonically-increasing regular x grid.
+    yL = np.zeros(x.shape,dtype=float)
+    _fortran_tools.calculate_stepwise_lorentzian_spectrum(x0,S,ΓL,x.astype(float),yL,float(nfwhmL))
+    assert np.isscalar(mass),"Mass must be scalar."
+    assert np.isscalar(temperature),"Temperature must be scalar."
+    yV = np.zeros(x.shape)      # Voigt spectrum
+    _fortran_tools.convolve_with_doppler(mass,temperature,nfwhmG,x,yL,yV)
+    return(yV)
 
 # def gaussian_spectrum(
         # x,                      # frequency scale (cm-1)

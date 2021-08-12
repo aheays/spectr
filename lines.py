@@ -222,7 +222,7 @@ prototypes['ΓL'] = dict(description="Total Lorentzian linewidth of transition" 
 ])
 
 ## Gaussian linewidth
-prototypes['ΓD'] = dict(description="Gaussian Doppler width",units="cm-1.FWHM",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,)])
+prototypes['ΓD'] = dict(description="Gaussian Doppler width",units="cm-1.FWHM",kind='f',fmt='<10.5g', infer=[(('mass','Ttr','ν'), lambda self,mass,Ttr,ν:2.*6.331e-8*np.sqrt(Ttr*32./mass)*ν,),])
 prototypes['ΓG'] = dict(description="Total Gaussian linewidth of transition",units="cm-1.FWHM",kind='f',fmt='<10.5g', infer=[('ΓD',lambda self,Γ:Γ),])
 
 ## line frequencies
@@ -554,7 +554,7 @@ class Generic(levels.Base):
                 return np.array([]),np.array([])
             else:
                 return x,np.zeros(x.shape)
-        ## guess a default lineshape
+        # ## guess a default lineshape
         if lineshape is None:
             if self.is_known('ΓG') and self.is_known('ΓL') and np.any(self['ΓL']!=0) and np.any(self['ΓG']!=0):
                 lineshape = 'voigt'
@@ -651,6 +651,7 @@ class Generic(levels.Base):
             ncpus=ncpus,
             multiprocess_divide='lines',)
         return x,y
+
 
     def calculate_transmission_spectrum(
             self,

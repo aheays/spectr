@@ -553,6 +553,8 @@ class Model(Optimiser):
                 x,y = line.calculate_spectrum(
                     x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     ymin=ymin, ncpus=ncpus, lineshape=lineshape,index=index)
+                if kind == 'absorption':
+                    y = np.exp(-y)
                 return y
             y = _calculate_spectrum(line_copy,None)
             ## important data — only update spectrum if these have changed
@@ -622,7 +624,11 @@ class Model(Optimiser):
                         warnings.warn(f'Scaling spectrum uniformly but ymin is set to a nonzero value, {repr(ymin)}.  This could lead to lines appearing in subsequent model constructions.')
                     if verbose:
                         print('add_line: constant factor scaling all lines')
-                    y *= np.mean(line_copy[ykey]/data[ykey])
+                    scale = np.mean(line_copy[ykey]/data[ykey])
+                    if kind == 'absorption':
+                        y = y**scale
+                    else:
+                        y = y*scale
                 elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
                     ## recalculation
@@ -640,13 +646,19 @@ class Model(Optimiser):
                     yold = _calculate_spectrum(line_old,None)
                     ## partial recalculation
                     ynew = _calculate_spectrum(line_copy,ichanged)
-                    y += ynew - yold
+                    if kind == 'absorption':
+                        y = y * ynew / yold
+                    else:
+                        y = y + ynew - yold
+
+
             else:
                 ## nothing changed keep old spectrum
                 pass
         ## apply to model
         if kind == 'absorption':
-            self.y *= np.exp(-y)
+            # self.y *= np.exp(-y)
+            self.y *= y
         else:
             self.y += y
         _cache['y'] = y
@@ -1094,16 +1106,23 @@ class Model(Optimiser):
         self.y += float(intensity)
 
     def auto_add_intensity_spline(self,xstep=1000.,y=1.):
-        """Quickly add an evenly-spaced intensity spline."""
+        """Quickly add an evenly-spaced intensity spline. If xstep is a vector
+        then define spline at those points."""
         self.experiment.construct()
         xbeg,xend = self.x[0]-xstep/2,self.x[-1]+xstep+2 # boundaries to cater to instrument convolution
-        knots = [[x,P(y,True)] for x in linspace(xbeg,xend,max(2,int((xend-xbeg)/xstep)))]
+        if np.isscalar(xstep):
+            xstep = linspace(xbeg,xend,max(2,int((xend-xbeg)/xstep)))
+        knots = [[x,P(y,True)] for x in xstep]
         self.add_intensity_spline(knots=knots)
         return knots
 
     @optimise_method()
-    def add_intensity_spline(self,knots=None,order=3,_cache=None):
+    def add_intensity_spline(self,knots=None,order=3,_cache=None,_parameters=None):
         """Add intensity points defined by a spline."""
+        # if (self._clean_construct
+            # or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])
+            # ):
+        
         x = np.array([float(xi) for xi,yi in knots])
         y = np.array([float(yi) for xi,yi in knots])
         i = (self.x>=np.min(x))&(self.x<=np.max(x))
@@ -1155,7 +1174,61 @@ class Model(Optimiser):
         for xbeg,xend,amplitude,frequency,phase in regions:
             i = (self.x>=xbeg)&(self.x<=xend)
             self.y[i] *= 1+float(amplitude)*np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
+
+    def auto_scale_by_piecewise_sinusoid_spline(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
+        """Automatically find regions for use in
+        scale_by_piecewise_sinusoid."""
+        ## get join points between regions
+        i = (self.x>=xbeg)&(self.x<=xend)
+        if np.isscalar(xstep):
+            xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
+        else:
+            xjoin = xstep
+        ## loop over all regions, gettin dominant frequency and phase
+        ## from the residual error power spectrum
+        regions = []
+        for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
+            i = (self.x>=xbegi)&(self.x<=xendi)
+            residual = self.yexp[i] - self.y[i]
+            FT = fft.fft(residual)
+            imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
+            phase = np.arctan(FT.imag[imax]/FT.real[imax])
+            if FT.real[imax]<0:
+                phase += π
+            dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
+            frequency = 1/dx*imax/len(FT)
+            amplitude = tools.rms(residual)/self.y[i].mean()
+            regions.append([
+                xbegi,xendi,
+                P(amplitude,vary,self.y[i].mean()*1e-3),
+                P(frequency,vary,frequency*1e-3),
+                P(phase,vary,2*π*1e-3),])
+        self.scale_by_piecewise_sinusoid_spline(regions)
+        return regions
         
+    @optimise_method()
+    def scale_by_piecewise_sinusoid_spline(self,regions,_cache=None,_parameters=None):
+        """Scale by a piecewise function 1+A(x)*sin(2πf(x-xa)+φ) for a set
+        regions = [(xa,xb,A,f,φ),...].  A(x) is a spline interpolation
+        with one knot defined at the center of each (xa,xb)
+        region.Probably should initialise with
+        auto_scale_by_piecewise_sinusoid_spline."""
+        if (self._clean_construct
+            or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])):
+            sinusoid = np.full(self.y.shape,0.0)
+            xmid = []
+            As = []
+            for xbeg,xend,amplitude,frequency,phase in regions:
+                i = (self.x>=xbeg)&(self.x<=xend)
+                sinusoid[i] = np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
+                xmid.append((xbeg+xend)/2)
+                As.append(amplitude)
+            A = tools.spline(xmid,As,self.x,set_out_of_bounds_to_zero=False,check_bounds=False)
+            scale = 1 + A*sinusoid
+            _cache['scale'] = scale
+        scale = _cache['scale']
+        self.y *= scale
+
     # def scale_by_source_from_file(self,filename,scale_factor=1.):
         # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
         # self.add_format_input_function(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
@@ -1170,7 +1243,7 @@ class Model(Optimiser):
         self.y += float(shift)
 
     @optimise_method()
-    def convolve_with_gaussian(self,width=1,fwhms_to_include=100):
+    def convolve_with_gaussian(self,width=1,fwhms_to_include=20):
         """Convolve with gaussian."""
         ## get x-grid -- skip whole convolution if it does not exist
         if len(self.x) == 0:
@@ -1200,6 +1273,8 @@ class Model(Optimiser):
         yconv = yconv/yconv.sum() # sum normalised
         ## convolve and return, discarding padding
         self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        ## self.y = signal.fftconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        ## self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
     @optimise_method()
     def convolve_with_gaussian_sum(self,widths_areas_offsets,fwhms_to_include=10):

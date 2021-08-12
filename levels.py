@@ -38,15 +38,9 @@ def _f0(self,species):
 prototypes['chemical_species'] = dict(description="Chemical species without isotope specification" ,kind='U' ,infer=[('species',_f0)])
 prototypes['point_group']  = dict(description="Symmetry point group of species.", kind='U',fmt='s', infer=[(('species',),lambda self,species:database.get_species_property(species,'point_group'))])
 
-@vectorise(vargs=(1,),cache=True)
+@vectorise(vargs=(1,),dtype=float)
 def _f0(self,species):
     return kinetics.get_species(species)['mass']
-@vectorise(vargs=(1,),cache=True)
-def _f1(self,species):
-    try:
-        return database.get_species_property(species,'mass')
-    except DatabaseException as err:
-        raise InferException(str(err))
 prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species',), _f0),])
 prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
 

@@ -1,9 +1,10 @@
 import functools
 
 import numpy as np
-
+from hapi import hapi
 
 from . import lines
+from . import plotting
 from . import tools
 from .tools import *
 from . import kinetics
@@ -12,11 +13,11 @@ from . import database
 from .dataset import Dataset
 from. exceptions import DatabaseException
 
-@tools.vectorise(cache=True)
+
+@tools.vectorise(cache=True,dtype=float)
 def get_partition_function(species_or_isotopologue,temperature):
     """Use hapi to get a partition function.  Uses main isotopologue if
     not given."""
-    from hapi import hapi
     Mol,Iso = translate_species_to_codes(species_or_isotopologue)
     return hapi.partitionSum(Mol,Iso,temperature)
 
@@ -71,7 +72,6 @@ def download_linelist(
         data_directory='td',
         table_name=None,        # defaults to species
 ):
-    from hapi import hapi
     if table_name is None:
         table_name = species
     MOL,ISO = translate_species_to_codes(species)
@@ -88,7 +88,6 @@ def calc_spectrum(
         make_plot= True,
 ):
     """Plot data. Must be already downloaded with download_linelist."""
-    from hapi import hapi
     if table_name is None:
         table_name = species
     MOL,ISO = translate_species_to_codes(species)
@@ -100,7 +99,6 @@ def calc_spectrum(
         WavenumberStep=νstep,
         Environment={"T":T,"p":p},)
     if make_plot:
-        from . import plotting
         ax = plotting.gca()
         ax.plot(ν,coef,label=species)
         ax.set_yscale('log')
