@@ -203,6 +203,10 @@ class Optimiser:
         key = list(self._format_input_functions.keys())[-1]
         return self._format_input_functions.pop(key)
 
+    def clear_format_input_functions(self):
+        """Delete last format input function added."""
+        self._format_input_functions.clear()
+
     def automatic_format_input_function(self,limit_to_args=None,multiline=False):
         """Try to figure one out from any non None variables. Could
             easily fail."""
