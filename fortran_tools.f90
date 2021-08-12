@@ -1501,5 +1501,30 @@ contains
   end subroutine cross_correlate
 
 
+  !! Used in spectrum.py.  Take array yin which is interpolated but
+  !! not extrapolated by an odd factor.  Compute the average of the
+  !! window of points around each interpolated point.  Reversing the
+  !! interpolation with averaging.
+  subroutine uninterpolate_with_averaging(yin,yout,factor,nin,nout)
+    implicit none
+    real*8, intent(in),dimension(nin) :: yin
+    real*8, intent(inout),dimension(nout) :: yout
+    integer, intent(in) :: nin,nout,factor
+    integer :: i,j,k,l,m
+    k = (factor-1)/2            !factor must be odd
+    do i = 1,nout
+       yout(i) = 0
+       l = 0                    !number of summed points
+       m = 1+(i-1)*factor       !fancy indexing
+       do j = max(1,m-k),min(nin,m+k)
+          yout(i) = yout(i) + yin(j)
+          l = l + 1
+       end do
+       yout(i) = yout(i) / l
+    end do
+  end subroutine uninterpolate_with_averaging
+  
+    
+
 end module fortran_tools
 

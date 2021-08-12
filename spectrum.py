@@ -25,6 +25,7 @@ from . import levels
 from . import exceptions
 from . import dataset
 from . import database
+from . import fortran_tools
 from .dataset import Dataset
 
 class Experiment(Optimiser):
@@ -310,7 +311,7 @@ class Model(Optimiser):
             self.add_suboptimiser(self.experiment)
             self.pop_format_input_function()
         self._initialise()
-        self.add_post_construct_function(self._get_residual,self._remove_interpolation)
+        self.add_post_construct_function(self._get_residual)
         self.add_save_to_directory_function(self.output_data_to_directory)
         self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
@@ -368,6 +369,9 @@ class Model(Optimiser):
 
     def _get_residual(self):
         """Compute residual error."""
+        if self._interpolate_factor is not None:
+            self.uninterpolate(average=False)
+        
         if self.experiment is None:
             return []
         residual = self.yexp - self.y
@@ -375,21 +379,53 @@ class Model(Optimiser):
             residual *= self.residual_weighting
         return residual
 
-    @optimise_method(execute_now=False)
-    def interpolate(self,dx):
+    @optimise_method()
+    def interpolate(self,dx,_cache=None):
         """When calculating model set to dx grid (or less to achieve
-        overlap with experimental points. DELETES CURRENT Y!"""
-        xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
-        self._interpolate_factor = int(np.ceil(xstep/dx))
-        self.x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*self._interpolate_factor)
-        self.y = np.zeros(self.x.shape,dtype=float) # delete current y!!
+        overlap with experimental points. Always an odd number of
+        intervals / even number of interstitial points. DELETES
+        CURRENT Y!"""
+        if self._clean_construct or self._xchanged:
+            xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
+            interpolate_factor = int(np.ceil(xstep/dx))
+            if interpolate_factor%2 == 0:
+                interpolate_factor += 1
+            _cache['x'] = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*interpolate_factor)
+            _cache['y'] = np.zeros(_cache['x'].shape,dtype=float)
+            _cache['interpolate_factor'] = interpolate_factor
+        self._interpolate_factor = _cache['interpolate_factor']
+        self.x = _cache['x']
+        self.y = _cache['y'].copy() # delete current y!!
 
-    def _remove_interpolation(self):
-        """If the model has been interpolated then restore it to original
-        grid."""
+    @optimise_method()
+    def uninterpolate(self,average=None):
+        """If the model has been interpolated then restore it to
+        original grid. If average=True then average the values in each
+        interpolated interval."""
         if self._interpolate_factor is not None:
             self.x = self.x[::self._interpolate_factor]
-            self.y = self.y[::self._interpolate_factor]
+            if average:
+                ## ## reduce to non-interpolated points -- using python
+                ## half = int(self._interpolate_factor/2)
+                ## shifts = np.arange(1, half+1, dtype=int)
+                ## y = self.y[::self._interpolate_factor]
+                ## ## add points to right
+                ## y[:-1] += np.sum([self.y[shift::self._interpolate_factor] for shift in shifts],0)
+                ## ## add points to left
+                ## y[1:] += np.sum([self.y[shift+half::self._interpolate_factor] for shift in shifts],0)
+                ## ## convert sum to mean
+                ## y[0] = y[0] / (self._interpolate_factor/2+1)
+                ## y[-1] = y[-1] / (self._interpolate_factor/2+1)
+                ## y[1:-1] = y[1:-1] / self._interpolate_factor
+                ## self.y = y
+                ## reduce to non-interpolated points -- using python
+                y = np.empty(self.x.shape,dtype=float)
+                fortran_tools.uninterpolate_with_averaging(self.y,y,self._interpolate_factor)
+                self.y = y
+            else:
+                ## reduce to non-interpolated points
+                self.y = self.y[::self._interpolate_factor]
+            self._interpolate_factor = None
 
     def add_absorption_cross_section_from_file(
             self,
@@ -650,8 +686,6 @@ class Model(Optimiser):
                         y = y * ynew / yold
                     else:
                         y = y + ynew - yold
-
-
             else:
                 ## nothing changed keep old spectrum
                 pass
@@ -1105,38 +1139,101 @@ class Model(Optimiser):
         """Shift by a spline defined function."""
         self.y += float(intensity)
 
-    def auto_add_intensity_spline(self,xstep=1000.,y=1.):
-        """Quickly add an evenly-spaced intensity spline. If xstep is a vector
+    def auto_add_spline(self,x=1000.,y=None,vary=True):
+        """Quickly add an evenly-spaced intensity spline. If x is a vector
         then define spline at those points."""
         self.experiment.construct()
-        xbeg,xend = self.x[0]-xstep/2,self.x[-1]+xstep+2 # boundaries to cater to instrument convolution
-        if np.isscalar(xstep):
-            xstep = linspace(xbeg,xend,max(2,int((xend-xbeg)/xstep)))
-        knots = [[x,P(y,True)] for x in xstep]
-        self.add_intensity_spline(knots=knots)
+        xbeg,xend = self.x[0]-x/2,self.x[-1]+x+2 # boundaries to cater to instrument convolution
+        if np.isscalar(x):
+            x = linspace(xbeg,xend,max(2,int((xend-xbeg)/x)))
+        ## make knots
+        knots = []
+        for xi in x:
+            if y is None:
+                ## get current value of model as y
+                i = min(np.searchsorted(self.x,xi),len(self.y)-1)
+                yi = self.yexp[i]/self.y[i]
+                if yi !=0:
+                    ystep = yi/1e3
+                else:
+                    ystep = None
+            else:
+                ## fixed y
+                yi = y
+                ystep = None
+            knots.append([xi,P(yi,vary,ystep)])
+        self.add_spline(knots=knots)
         return knots
 
+    auto_add_intensity_spline = auto_add_spline # deprecated
+
     @optimise_method()
-    def add_intensity_spline(self,knots=None,order=3,_cache=None,_parameters=None):
-        """Add intensity points defined by a spline."""
-        # if (self._clean_construct
-            # or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])
-            # ):
-        
-        x = np.array([float(xi) for xi,yi in knots])
-        y = np.array([float(yi) for xi,yi in knots])
-        i = (self.x>=np.min(x))&(self.x<=np.max(x))
-        ## calculate spline -- get cached version if inputs have not
-        ## changed
-        if ('s' not in _cache
-            or np.any(_cache['x'] != x)
-            or np.any(_cache['y'] != y)
-            or np.any(_cache['i'] != i)):
-            s = tools.spline(x,y,self.x[i],order=order)
-        else:
-            s = _cache['s']
-        _cache['s'],_cache['x'],_cache['y'],_cache['i'] = s,x,y,i
-        self.y[i] += s
+    def add_spline(self,knots=None,order=3,_cache=None,_parameters=None):
+        """Multiple y by a spline function."""
+        ## make the spline if necessary
+        if 'spline' not in _cache:
+            spline = Spline(f'{self.name}_multiply_spline',knots,order)
+            spline.clear_format_input_functions()
+            self.add_suboptimiser(spline)
+            self.pop_format_input_function()
+            _cache['spline'] = spline
+        spline = _cache['spline'] 
+        ## compute the  spline if necessary
+        if self._clean_construct or self._xchanged:
+            i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
+            spline.clear_format_input_functions()
+            spline.set_x(self.x[i])
+            _cache['i'] = i
+        i = _cache['i']
+        ## add to y
+        self.y[i] += spline.y  
+
+    add_intensity_spline = add_spline # deprecated
+
+    def auto_multiply_spline(self,x=1000.,y=None,vary=True):
+        """Quickly add an evenly-spaced spline to multiply . If x is a vector
+        then define spline at those points. If y is not given then fit to the experiment."""
+        self.experiment.construct()
+        xbeg,xend = self.x[0]-x/2,self.x[-1]+x+2 # boundaries to cater to instrument convolution
+        if np.isscalar(x):
+            x = linspace(xbeg,xend,max(2,int((xend-xbeg)/x)))
+        ## make knots
+        knots = []
+        for xi in x:
+            if y is None:
+                ## get current value of model as y
+                i = min(np.searchsorted(self.x,xi),len(self.y)-1)
+                yi = self.yexp[i]/self.y[i]
+                ystep = (yi/1e3 if yi !=0 else None)
+            else:
+                ## fixed y
+                yi = y
+                ystep = None
+            knots.append([xi,P(yi,vary,ystep)])
+        self.multiply_spline(knots=knots)
+        return knots
+
+    
+    @optimise_method()
+    def multiply_spline(self,knots=None,order=3,_cache=None,_parameters=None):
+        """Multiple y by a spline function."""
+        ## make the spline if necessary
+        if 'spline' not in _cache:
+            spline = Spline(f'{self.name}_multiply_spline',knots,order)
+            self.add_suboptimiser(spline)
+            self.pop_format_input_function()
+            spline.clear_format_input_functions()
+            _cache['spline'] = spline
+        spline = _cache['spline'] 
+        ## compute the  spline if necessary
+        if self._clean_construct or self._xchanged:
+            i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
+            spline.set_x(self.x[i])
+            spline.clear_format_input_functions()
+            _cache['i'] = i
+        i = _cache['i']
+        ## add to y
+        self.y[i] *= spline.y  
 
     def auto_scale_by_piecewise_sinusoid(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
         """Automatically find regions for use in
@@ -1148,7 +1245,8 @@ class Model(Optimiser):
         ## from the residual error power spectrum
         regions = []
         for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
-            i = (self.x>=xbegi)&(self.x<=xendi)
+            i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+            ## i = (self.x>=xbegi)&(self.x<=xendi)
             residual = self.yexp[i] - self.y[i]
             FT = fft.fft(residual)
             imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
@@ -1172,7 +1270,7 @@ class Model(Optimiser):
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
         for xbeg,xend,amplitude,frequency,phase in regions:
-            i = (self.x>=xbeg)&(self.x<=xend)
+            i = slice(*np.searchsorted(self.x,[xbeg,xend]))
             self.y[i] *= 1+float(amplitude)*np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
 
     def auto_scale_by_piecewise_sinusoid_spline(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
@@ -1188,7 +1286,8 @@ class Model(Optimiser):
         ## from the residual error power spectrum
         regions = []
         for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
-            i = (self.x>=xbegi)&(self.x<=xendi)
+            i = slice(*np.searchsorted(self.x,[xbeg,xend]))
+            ## i = (self.x>=xbegi)&(self.x<=xendi)
             residual = self.yexp[i] - self.y[i]
             FT = fft.fft(residual)
             imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
@@ -1219,7 +1318,7 @@ class Model(Optimiser):
             xmid = []
             As = []
             for xbeg,xend,amplitude,frequency,phase in regions:
-                i = (self.x>=xbeg)&(self.x<=xend)
+                i = slice(*np.searchsorted(self.x,[xbeg,xend]))
                 sinusoid[i] = np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
                 xmid.append((xbeg+xend)/2)
                 As.append(amplitude)
@@ -2196,9 +2295,56 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
     return (x,y,header)
         
+
+class Spline(Optimiser):
+    """A spline curve with optimisable knots.  Internally stores last
+    calculated x and y."""
+
+    def __init__(self,name='spline',knots=None,order=3):
+        optimise.Optimiser.__init__(self,name)
+        self.clear_format_input_functions()
+        self.automatic_format_input_function()
+        self.order = order
+        ## spline knots
+        self.xs = []
+        self.ys = []
+        self.set_knots(knots)
+        ## spline domain and value
+        self.x = None
+        self.y = None
+
+    @optimise_method()
+    def add_knot(self,x,y):
+        """Add one spline knot."""
+        self.xs.append(x)
+        self.ys.append(y)
+
+    @optimise_method()
+    def set_knots(self,knots):
+        """Add multiple spline knots."""
+        self.xs.clear()
+        self.ys.clear()
+        for x,y in knots:
+            self.xs.append(x)
+            self.ys.append(y)
+
+    @optimise_method()
+    def set_x(self,x):
+        """Compute spline at x. Store internally."""
+        xs = np.array([float(t) for t in self.xs])
+        ys = np.array([float(t) for t in self.ys])
+        self.x = x
+        self.y = tools.spline(xs,ys,x,order=self.order)
+
+    def __getitem__(self,x):
+        self.set_x(x)
+        return self.y
+
+
 def load_spectrum(filename,**kwargs):
     """Use a heuristic method to load a directory output by
     Spectrum."""
+
     x = Spectrum()
     x.load_from_directory(filename,**kwargs)
     return(x)
