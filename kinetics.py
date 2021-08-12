@@ -677,8 +677,6 @@ class Mixture():
 ## Chemical reactions ##
 ########################
 
-
-
 def decode_reaction(reaction,encoding='standard'):
     """Decode a reaction into a list of reactants and products, and other
     information. Encoding is for species names. Encoding of reaction
@@ -778,7 +776,6 @@ def _test(c,p):
     # k2rev
     # print('DEBUG:',nt,T,Gproducts,Greactants,k2,k2reversed)
     print('DEBUG:',
-          
           format(Greactants,'12.3e'),
           format(Gproducts,'12.3e'),
           format(T,'12.3e'),

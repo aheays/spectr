@@ -24,7 +24,7 @@ for i,(a,b) in enumerate(model.get_surface_mixing_ratio().items()):
 ax = qax(1)
 model.plot_vertical('z(km)', 'n(NO)','n(NO2)','n(N2O)',ax=ax)
 
-## compare with another modle
+## compare with another model
 model2 = atmosphere.AtmosphericChemistry()
 model2.load_argo('data/ARGO_early_earth_with_impacts')
 model2.reaction_network.calc_rates()

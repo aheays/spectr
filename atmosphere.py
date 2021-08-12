@@ -13,16 +13,12 @@ from . import tools
 from . import database
 from .exceptions import InferException
 from . import plotting
-
+from .plotting import *
 
 
 class OneDimensionalAtmosphere(Dataset):
 
     default_prototypes = {}
-    # default_prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,infer=[])
-    # default_prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
-    # default_prototypes['reference'] = dict(description="Published reference" ,kind='U' ,infer=[])
-    # default_prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
     default_prototypes['z'] = dict(description="Height above surface",units='cm',fmt='0.5e',kind='f' ,infer=[])
     default_prototypes['z(km)'] = dict(description="Height above surface",units='km',kind='f' ,infer=[('z',lambda self,z: z*1e-5,),])
     default_prototypes['Ttr'] = dict(description="Translational temperature",units='K',kind='f' ,infer=[('T',lambda self,T:T),])
@@ -182,11 +178,11 @@ class AtmosphericChemistry():
         return len(self.state)
 
     def set_density(self,species,density):
-        # self.density[species] = density
-        self.density.set(
-            species,'value',density,
-            description=f'Number density of {species}',
-            units='cm-3', fmt='10.5e',)
+        key = species
+        self.density.set_prototype(
+            key,'f',description=f'Number density of {species}',
+            units='cm-3',fmt='10.5e',)
+        self.density[key] = density
 
     def get_density(self,species):
         return self.density[species]
@@ -221,10 +217,11 @@ class AtmosphericChemistry():
             plot_legend=True,
             **plot_kwargs,
     ):
+        """Plot profiles of xkeys. ykey='z' might be a good choice."""
         if ax is None:
-            ax = plotting.plt.gca()
+            ax = plt.gca()
         for ixkey,xkey in enumerate(xkeys):
-            kw = {'color':plotting.newcolor(ixkey),}
+            kw = {'color':newcolor(ixkey),}
             kw.update(plot_kwargs)
             ax.plot(self[xkey],self[ykey],label=xkey,**kw)
         if 'T' in xkeys:
@@ -234,12 +231,12 @@ class AtmosphericChemistry():
         ax.set_ylim(self[ykey].min(),self[ykey].max())
         ax.set_ylabel(ykey)
         if plot_legend:
-            plotting.legend(ax=ax,allow_multiple_axes=True)
+            legend(ax=ax,allow_multiple_axes=True)
 
     def plot_density(self,xkeys=5,ykey='z(km)',ax=None):
         """Plot density of species. If xkeys is an integer then plot that many
-        most abundant anywhere species. Or else give a list of species
-        names."""
+        most abundant anywhere species. Or else xkeys must be a list
+        of species names."""
         if isinstance(xkeys,int):
             ## get most abundance species anywhere
             all_keys = np.array(self.density.keys())
@@ -249,7 +246,7 @@ class AtmosphericChemistry():
                 xkeys.extend(all_keys[j[:5]])
             xkeys = tools.unique(xkeys)
         if ax is None:
-            ax = plotting.gca()
+            ax = gca()
         ## plot total density
         ax.plot(self['nt'],self[ykey],label='nt',color='black',alpha=0.3,linewidth=6)
         ## plot individual species
@@ -259,17 +256,17 @@ class AtmosphericChemistry():
         ax.set_ylim(self[ykey].min(),self[ykey].max())
         ax.set_ylabel(ykey)
         ax.set_xlabel('Density (cm-3)')
-        plotting.legend(ax=ax)
+        legend(ax=ax)
         
     def plot(self):
-        """A default plot."""
-        fig = plotting.gcf()
+        """A default plot of htis atmosphere."""
+        fig = gcf()
         fig.clf()
-        plotting.subplot()
+        subplot()
         self.plot_vertical('z','p')
-        plotting.subplot()
+        subplot()
         self.plot_vertical('z','T')
-        plotting.subplot()
+        subplot()
         self.plot_density()
         
     def get_rates(
@@ -314,7 +311,7 @@ class AtmosphericChemistry():
     ):
         """Plot rates matching kwargs_get_rates."""
         if ax is None:
-            ax = plotting.plt.gca()
+            ax = plt.gca()
             ax.cla()
         if plot_kwargs is None:
             plot_kwargs = {}
@@ -347,7 +344,7 @@ class AtmosphericChemistry():
         ax.set_xlabel(xlabel)
         ax.set_xscale('log')
         ax.set_ylim(y.min(),y.max())
-        plotting.legend()
+        legend()
         return ax
 
     def summarise_species(self,species,doprint=True):
@@ -364,12 +361,12 @@ class AtmosphericChemistry():
         destruction_mean_loss_rate = destruction_column_rate/integrate.trapz(self.get_density(species),self['z'])
         destruction_mean_lifetime = 1/destruction_mean_loss_rate
         lines = [
-            f'species                                 : {species}',
+            f'species                                 : {species:>10s}',
             f'column mixing ratio             (number): {column_mixing_ratio:10.3e}',
             f'total column production rate  (s-1.cm-2): {production_column_rate:10.3e}',
             f'total column destruction rate (s-1.cm-2): {destruction_column_rate:10.3e}',
             f'mean destruction rate              (s-1): {destruction_mean_loss_rate:10.3e}',
-            f'mean destruction lifetime           (year): {convert.units(destruction_mean_lifetime,"s","year"):10.3e}',
+            f'mean destruction lifetime         (days): {convert.units(destruction_mean_lifetime,"s","day"):10.3e}',
             ]
         print('\n'.join(lines))
 
@@ -383,7 +380,7 @@ class AtmosphericChemistry():
     ):
         """Plot destruction and production rates of on especies."""
         if ax is None:
-            ax = plotting.plt.gca()
+            ax = plt.gca()
             ax.cla()
         y = self[ykey]
         ## production rates
@@ -402,7 +399,7 @@ class AtmosphericChemistry():
             normalise_to_species=(species if normalise else None),
             nsort=nsort
         )
-        plotting.legend(show_style=True,title=f'Production and destruction rates of {species}')
+        legend(show_style=True,title=f'Production and destruction rates of {species}')
         # ax.set_title(f'Production and destruction rates of {species}')
         return ax
 

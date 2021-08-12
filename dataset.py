@@ -161,7 +161,6 @@ class Dataset(optimise.Optimiser):
             match=None,         # set these matches only
             set_changed_only=False, # only set data if it differs from value
             kind=None,
-            **match_kwargs
     ):
         """Set value of key or (key,data)"""
         ## check for invalid key
@@ -175,7 +174,7 @@ class Dataset(optimise.Optimiser):
             self._data[key][subkey] = value
         elif subkey in self.vector_subkinds:
             ## combine indices -- might need to sort value if an index array is given
-            combined_index = self._get_combined_index(index,match,**match_kwargs)
+            combined_index = self._get_combined_index(index,match)
             ## reduce index and value to changed data only
             if set_changed_only and self.is_set(key,subkey):
                 index_changed = self[key,subkey,combined_index] != value
@@ -416,16 +415,6 @@ class Dataset(optimise.Optimiser):
             return retval
         else:
             raise Exception(f'Invalid subkey: {repr(subkey)}')
-
-    def set_default(self,key=None,value=None,**more_keys_values):
-        """Set default value for key, and set existing data to this value if
-        not already set."""
-        if key is not None:
-            more_keys_values[key] = value
-        for key,value in more_keys_values.items():
-            if key not in self:
-                self[key] = value
-            self._data[key]['default'] = value
 
     def set_prototype(self,key,kind,infer=None,**kwargs):
         """Set prototype data."""
