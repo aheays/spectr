@@ -1950,22 +1950,27 @@ class Dataset(optimise.Optimiser):
                         plotting.annotate_line(line=line)
                 if xlim is not None:
                     ax.set_xlim(*xlim)
-                if ylim is not None:
+                ax.set_xscale(xscale)
+                ax.set_yscale(yscale)
+                ax.grid(True,color='gray',zorder=-5)
+                if self[xkey,'kind'] == 'U':
+                    plotting.set_tick_labels_text(xkey_unique_strings,axis='x',ax=ax,rotation=70,fontsize='x-small')
+            ## set ylim for all axes
+            if ylim is not None:
+                for ax in fig.axes:
                     if ylim == 'data':
                         t,t,ybeg,yend = plotting.get_data_range(ax)
                         ax.set_ylim(ybeg,yend)
                     elif tools.isiterable(ylim) and len(ylim) == 2:
                         ybeg,yend = ylim
-                        if ybeg == 'data':
-                            t,t,ybeg,t = plotting.get_data_range(ax)
-                        if yend == 'data':
-                            t,t,t,yend = plotting.get_data_range(ax)
-                    ax.set_ylim(ybeg,yend)
-                ax.set_xscale(xscale)
-                ax.set_yscale(yscale)
-                ax.grid(True,color='gray',zorder=-5)
-                if self[xkey,'kind'] == 'U':
-                    plotting.set_tick_labels_text(xkey_unique_strings,axis='x',ax=ax,rotation=70,)
+                        if ybeg is not None:
+                            if ybeg == 'data':
+                                t,t,ybeg,t = plotting.get_data_range(ax)
+                            ax.set_ylim(ymin=ybeg)
+                        if yend is not None:
+                            if yend == 'data':
+                                t,t,t,yend = plotting.get_data_range(ax)
+                            ax.set_ylim(ymax=yend)
         if show:
             plotting.show()
         return fig
