@@ -134,6 +134,7 @@ groups = {
         'm':   (lambda m: constants.c/m,lambda Hz: constants.c/Hz),
         'μm':  (lambda μm: constants.c/(μm*1e-6),lambda Hz: 1e6*constants.c/Hz),
         'nm':  (lambda nm: constants.c/(nm*1e-9),lambda Hz: 1e9*constants.c/Hz),
+        'Å':   (lambda Å: constants.c/(Å*1e-10),lambda Hz: 1e10*constants.c/Hz),
         'm-1': (lambda m: m*constants.c,lambda Hz: Hz/constants.c,),
         'cm-1':(lambda invcm: constants.c*(1e2*invcm),lambda Hz: 1e-2/(constants.c/Hz)),
     },
