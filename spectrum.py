@@ -156,10 +156,14 @@ class Experiment(Optimiser):
         self.x = xnew
 
     @optimise_method()
-    def subsample(self,xskip,_cache=None):
-        """Only retain every xskipth datapoint."""
-        self.x = self.x[::xskip]
-        self.y = self.y[::xskip]
+    def bin_data(self,n=None,width=None,mean=False,_cache=None):
+        """Bin to every nth datapoint computing the 'mean' or 'sum' of y
+        (according to out) and mean of x."""
+        if width is not None:
+            dx = (self.x[-1]-self.x[0])/len(self.x)
+            n = max(1,np.ceil(width/dx))
+        self.x = tools.bin_data(self.x,n,mean=True)
+        self.y = tools.bin_data(self.y,n,mean=mean)
 
     @optimise_method()
     def convolve_with_gaussian(self,width):
@@ -350,7 +354,7 @@ class Model(Optimiser):
             ## reload x if experimental
             iexp = _cache['iexp']
             if (len(self.x) != len(self.experiment.x[iexp])
-                or np.any(self.x != self.experiment.x[iexp])):
+                or not tools.approximately_equal(self.x,self.experiment.x[iexp])):
                 self._xchanged = True
             else:
                 self._xchanged = False
@@ -506,40 +510,6 @@ class Model(Optimiser):
             self.y *= cache['transmission'] # add to model
         self.add_construct_function(f)
 
-    # def add_absorption_cross_section(
-            # self,
-            # cross_section_object,
-            # column_density=1e16,
-    # ):
-        # """Load a cross section from a file. Interpolate this to experimental
-        # grid. Add absorption according to given column density, which
-        # can be optimised."""
-        # p = self.add_parameter_set(
-            # note=f'add_absorption_cross_section {cross_section_object.name} in {self.name}',
-            # column_density=column_density,# xshift=xshift, xscale=xscale,
-            # step_scale_default={'column_density':0.01, 'xshift':1e-3, 'xscale':1e-8,})
-        # def f():
-            # retval = f'{self.name}.add_absorption_cross_section({cross_section_object.name}'
-            # if len(p)>0:
-                # retval += f',{p.format_input()}'
-            # retval += ')'
-            # return(retval)
-        # self.add_format_input_function(f)
-        # self.add_suboptimisers(cross_section_object)
-        # cache = {}
-        # def f():
-            # ## update if necessary
-            # if ('transmission' not in cache 
-                # or (p.timestamp>self.timestamp)
-                # or (cross_section_object.timestamp>self.timestamp)):
-                # cache['transmission'] = np.exp(-p['column_density']*cross_section_object.σ(self.x))
-                # for key in p.keys():
-                    # cache[key] = p[key]
-            # ## add to model
-            # self.y *= cache['transmission']
-        # self.add_construct_function(f)
-    # add_cross_section = add_absorption_cross_section # deprecated name
-
     @optimise_method()
     def add_line(
             self,
@@ -637,7 +607,7 @@ class Model(Optimiser):
             ## x grid has changed, full recalculation
             if self._xchanged:
                 if verbose:
-                    print('add_line: x grid has changhed, full recalculation')
+                    print('add_line: x grid has changed, full recalculation')
                 y = _calculate_spectrum(line_copy,None)
             ## else find all changed lines and update those only
             elif line_copy.global_modify_time > self._last_construct_time:
@@ -700,200 +670,7 @@ class Model(Optimiser):
         _cache['set_keys_vals'] = {key:(val.value if isinstance(val,Parameter) else val) for key,val in set_keys_vals.items()}
 
 
-    # @optimise_method()
-    # def add_absorption_lines(
-            # self,
-            # line=None,
-            # nfwhmL=20,
-            # nfwhmG=10,
-            # τmin=None,
-            # lineshape=None,
-            # ncpus=1,
-            # match=idict(),
-            # _cache=None,
-            # **set_keys_vals
-    # ):
-        # ## nothing to be done
-        # if len(self.x) == 0 or len(line) == 0:
-            # return
-        # if self._clean_construct:
-            # ## first run — initalise local copy of lines data and
-            # imatch = line.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
-            # nmatch = np.sum(imatch)
-            # line_copy = line.copy(index=imatch)
-            # ## keys that might possibly change
-            # variable_keys = [key for key in line_copy.keys() if line_copy.get_kind(key)=='f']
-            # ## set parameter data
-            # for key,val in set_keys_vals.items():
-                # line_copy[key] = float(val)
-            # ## cache
-            # (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['line_copy']) = (
-                # variable_keys,imatch,nmatch,line_copy)
-            # ## calculate spectrum
-            # x,τ = line_copy.calculate_spectrum(
-                # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                # ymin=τmin,ncpus=ncpus,lineshape=lineshape)
-            # transmittance = np.exp(-τ)
-        # else:
-            # ## subsequent runs -- maybe only recompute a few line
-            # (variable_keys,imatch,nmatch,line_copy,transmittance) = (
-                # _cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
-                # _cache['line_copy'],_cache['transmittance'])
-            # full_recalculation = False
-            # lines_changed = False
-            # ## nothing to be done
-            # if nmatch == 0:
-                # return
-            # ## x grid has changed
-            # if self._xchanged:
-                # full_recalculation = True
-            # ## set_keys_vals has modified parameters
-            # for key,val in set_keys_vals.items():
-                # if (isinstance(val,Parameter) and
-                    # self._last_construct_time < val._last_modify_value_time):
-                    # line_copy.set(key,val)
-                    # full_recalculation = True
-            # ## line spectrum has changed -- find changed lines
-            # if self._last_construct_time < line._last_construct_time:
-                # ichanged = np.full(len(line_copy),False)
-                # changed_keys = []
-                # for key in variable_keys:
-                    # i = line[key][imatch] != line_copy[key]
-                    # if np.any(i):
-                        # changed_keys.append(key)
-                        # ichanged |= i
-                # nchanged = np.sum(ichanged)
-                # if nchanged > (len(line_copy)/2):
-                    # ## most lines change — just recompute everything
-                    # full_recalculation = True
-                # lines_changed = True
-            # ## recalculate
-            # if full_recalculation:
-                # if lines_changed:
-                    # for key in changed_keys:
-                        # line_copy.set(key,line[key][imatch])
-                # x,τ = line_copy.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=τmin,ncpus=ncpus,lineshape=lineshape,)
-                # transmittance = np.exp(-τ)
-            # elif lines_changed:
-                # ## recompute old version of lines that have changed
-                # xold,τold = line_copy.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=τmin,ncpus=ncpus,lineshape=lineshape,index=ichanged)
-                # ## update data in line_copy and compute new version
-                # ## of changed line
-                # for key in changed_keys:
-                    # line_copy.set(key,line[key][imatch])
-                # xnew,τnew = line_copy.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='τ',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=τmin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
-                # ## update transmittance
-                # transmittance *= np.exp(τold-τnew)
-            # else:
-                # ## re-use previous transmittance
-                # pass
-        # ## set absorbance in self
-        # self.y *= transmittance
-        # _cache['transmittance'] = transmittance
-
-    # @optimise_method()
-    # def add_emission_lines(
-            # self,
-            # line=None,
-            # nfwhmL=20,
-            # nfwhmG=10,
-            # Imin=None,
-            # lineshape=None,
-            # ncpus=1,
-            # match=idict(),
-            # _cache=None,
-            # **set_keys_vals
-    # ):
-        # ## nothing to be done
-        # if len(self.x) == 0 or len(line) == 0:
-            # return
-        # if self._clean_construct:
-            # ## first run — initalise local copy of line data and
-            # imatch = line.match(ν_min=(self.x[0]-1),ν_max=(self.x[-1]+1),**match)
-            # nmatch = np.sum(imatch)
-            # line_copy = line.copy(index=imatch)
-            # ## keys that might possibly change
-            # variable_keys = [key for key in line_copy.keys() if line_copy.get_kind(key)=='f']
-            # ## set parameter data
-            # for key,val in set_keys_vals.items():
-                # line_copy[key] = float(val)
-            # ## cache
-            # (_cache['variable_keys'],_cache['imatch'],_cache['nmatch'],_cache['line_copy']) = (
-                # variable_keys,imatch,nmatch,line_copy)
-            # ## calculate spectrum
-            # x,I = line_copy.calculate_spectrum(
-                # x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                # ymin=Imin,ncpus=ncpus,lineshape=lineshape)
-        # else:
-            # ## subsequent runs -- maybe only recompute a few lines
-            # (variable_keys,imatch,nmatch,line_copy,I) = (
-                # _cache['variable_keys'],_cache['imatch'],_cache['nmatch'],
-                # _cache['line_copy'],_cache['I'])
-            # full_recalculation = False
-            # line_changed = False
-            # ## nothing to be done
-            # if nmatch == 0:
-                # return
-            # ## x grid has changed
-            # if self._xchanged:
-                # full_recalculation = True
-            # ## set_keys_vals has modified parameters
-            # for key,val in set_keys_vals.items():
-                # if (isinstance(val,Parameter) and
-                    # self._last_construct_time < val._last_modify_value_time):
-                    # line_copy.set(key,val)
-                    # full_recalculation = True
-            # ## line spectrum has changed -- find changed lines
-            # if self._last_construct_time < line._last_construct_time:
-                # ichanged = np.full(len(line_copy),False)
-                # changed_keys = []
-                # for key in variable_keys:
-                    # i = line[key][imatch] != line_copy[key]
-                    # if np.any(i):
-                        # changed_keys.append(key)
-                        # ichanged |= i
-                # nchanged = np.sum(ichanged)
-                # if nchanged > (len(line_copy)/2):
-                    # ## most lines change — just recompute everything
-                    # full_recalculation = True
-                # line_changed = True
-            # ## recalculate
-            # if full_recalculation:
-                # if line_changed:
-                    # for key in changed_keys:
-                        # line_copy.set(key,line[key][imatch])
-                # x,I = line_copy.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=Imin,ncpus=ncpus,lineshape=lineshape,)
-            # elif line_changed:
-                # ## recompute old version of lines that have changed
-                # xold,Iold = line_copy.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=Imin,ncpus=ncpus,lineshape=lineshape,index=ichanged)
-                # ## update data in lines_copy and compute new version
-                # ## of changed lines
-                # for key in changed_keys:
-                    # line_copy.set(key,line[key][imatch])
-                # xnew,Inew = line_copy.calculate_spectrum(
-                    # x=self.x,xkey='ν',ykey='I',nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    # ymin=Imin, ncpus=ncpus, lineshape=lineshape,index=ichanged)
-                # ## update transmittance
-                # I = I - Iold + Inew
-            # else:
-                # ## re-use previous transmittance
-                # pass
-        # ## set absorbance in self
-        # self.y += I
-        # _cache['I'] = I
-
     @optimise_method()
-
     def add_absorption_cross_section(self,x,y,N=1,_cache=None):
         if self._clean_construct:
             _cache['ys'] = tools.spline(x,y,self.x)
@@ -1068,71 +845,6 @@ class Model(Optimiser):
             i = (self.x>=np.min(ν))&(self.x<=np.max(ν))
             self.y[i] = self.y[i]*interpolate.UnivariateSpline(ν,p.plist,k=min(order,len(ν)-1),s=0)(self.x[i])
         self.add_construct_function(f) # multiply spline during construct
-
-
-    # def modulate_by_spline(
-            # self,
-            # ν=None,
-            # amplitude=None,
-            # phase=None,         # if constant then will be used as a frequency in cm-1
-            # step_amplitude=1e-3,
-            # vary_amplitude=False,
-            # step_phase=1e-3,
-            # vary_phase=False,
-            # verbose=False,
-            # fbeg=-np.inf, fend=-np.inf, # estimate range of frequency for auto fitting
-    # ):
-        # """Modulate by 1 + sinusoid."""
-        # ## if scalar then use as stepsize of a regular grid
-        # if ν is None:
-            # ν = np.linspace(self.xexp[0],self.xexp[-1],10)
-        # elif np.isscalar(ν):
-            # ν = np.arange(self.xexp[0]-ν/2,self.xexp[-1]+ν/2+1,ν)
-        # else:
-            # ν = np.array(ν)
-        # ## if no amplitude given default to 1%
-        # if amplitude is None:
-            # amplitude = np.full(ν.shape,1e-2)
-        # elif np.isscalar(amplitude):
-            # amplitude = np.full(ν.shape,amplitude)
-        # ## if no phase default to frequency of 1 cm-1 if scalar use as
-        # ## frequency 
-        # if phase is None:
-            # if verbose:
-                # ax = tools.fig(880).gca()
-            # phase = np.zeros(ν.shape,dtype=float)
-            # for i in range(len(ν)-1):
-                # νbeg,νend = ν[i],ν[i+1]
-                # j = tools.inrange(self.xexp,νbeg,νend)
-                # tf,tF,r = tools.power_spectrum(
-                    # self.xexp[j],self.yexp[j],
-                    # fit_peaks=True,
-                    # xbeg=fbeg,xend=fend)
-                # f0 = r['f0'][np.argmax(r['S'])]
-                # phase[i+1] = phase[i] + 2*constants.pi*f0*(ν[i+1]-ν[i])
-                # if verbose:
-                    # print(f'{ν[i]:10.2f} {ν[i+1]:10.2f} {f0:10.4f}')
-                    # ax.plot([νbeg,νend],[f0,f0],color=plotting.newcolor(0),marker='o')
-                    # ax.set_xlabel('ν')
-                    # ax.set_ylabel('f')
-        # elif np.isscalar(phase):
-            # phase = 2*constants.pi*(ν-self.xexp[0])/phase
-        # amplitude = self.add_parameter_list('amplitude', amplitude, vary_amplitude, step_amplitude,note='modulate_by_spline')
-        # phase = self.add_parameter_list('phase', phase, vary_phase, step_phase,note='modulate_by_spline')
-        # def format_input_function():
-            # retval = f"{self.name}.modulate_by_spline("
-            # retval += f"vary_amplitude={repr(vary_amplitude)}"
-            # retval += f",vary_phase={repr(vary_phase)}"
-            # retval += f",ν=["+','.join([format(t,'0.4f') for t in ν])+']'
-            # retval += f",amplitude=["+','.join([format(p.p,'0.4f') for p in amplitude])+']'
-            # retval += f",phase=["+','.join([format(p.p,'0.4f') for p in phase])+']'
-            # retval += f",step_amplitude={repr(step_amplitude)}"
-            # retval += f",step_phase={repr(step_phase)}"
-            # return(retval+')')
-        # self.add_format_input_function(format_input_function)
-        # def f():
-            # self.y *= 1. + tools.spline(ν,amplitude.plist,self.x)*np.sin(tools.spline(ν,phase.plist,self.x))
-        # self.add_construct_function(f)
 
     @optimise_method()
     def add_intensity(self,intensity=1):
@@ -1342,69 +1054,6 @@ class Model(Optimiser):
             for xbeg,xend,amplitude,frequency,phase in regions:
                 i = slice(*np.searchsorted(self.x,[xbeg,xend]))
                 self.y[i] *= 1+float(amplitude)*np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
-
-    # def auto_scale_by_piecewise_sinusoid_spline(self,xstep=10,xbeg=-inf,xend=inf,vary=True,Avary=False):
-        # """Automatically find regions for use in
-        # scale_by_piecewise_sinusoid."""
-        # ## get join points between regions
-        # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-        # if np.isscalar(xstep):
-            # xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
-        # else:
-            # xjoin = xstep
-        # ## loop over all regions, gettin dominant frequency and phase
-        # ## from the residual error power spectrum
-        # regions = []
-        # for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
-            # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-            # ## i = (self.x>=xbegi)&(self.x<=xendi)
-            # residual = self.yexp[i] - self.y[i]
-            # FT = fft.fft(residual)
-            # imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
-            # phase = np.arctan(FT.imag[imax]/FT.real[imax])
-            # if FT.real[imax]<0:
-                # phase += π
-            # dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
-            # frequency = 1/dx*imax/len(FT)
-            # amplitude = tools.rms(residual)/self.y[i].mean()
-            # regions.append([
-                # xbegi,xendi,
-                # P(amplitude,Avary,self.y[i].mean()*1e-3),
-                # P(frequency,vary,frequency*1e-3),
-                # P(phase,vary,2*π*1e-3),])
-        # self.scale_by_piecewise_sinusoid_spline(regions)
-        # return regions
-       #  
-    # @optimise_method()
-    # def scale_by_piecewise_sinusoid_spline(self,regions,_cache=None,_parameters=None):
-        # """Scale by a piecewise function 1+A(x)*sin(2πf(x-xa)+φ) for a set
-        # regions = [(xa,xb,A,f,φ),...].  A(x) is a spline interpolation
-        # with one knot defined at the center of each (xa,xb)
-        # region.Probably should initialise with
-        # auto_scale_by_piecewise_sinusoid_spline."""
-        # if (self._clean_construct
-            # or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])):
-            # sinusoid = np.full(self.y.shape,0.0)
-            # xmid = []
-            # As = []
-            # for xbeg,xend,amplitude,frequency,phase in regions:
-                # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-                # sinusoid[i] = np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
-                # xmid.append((xbeg+xend)/2)
-                # As.append(amplitude)
-            # A = tools.spline(xmid,As,self.x,set_out_of_bounds_to_zero=False,check_bounds=False)
-            # scale = 1 + A*sinusoid
-            # _cache['scale'] = scale
-        # scale = _cache['scale']
-        # self.y *= scale
-
-    # def scale_by_source_from_file(self,filename,scale_factor=1.):
-        # p = self.add_parameter_set('scale_by_source_from_file',scale_factor=scale_factor,step_scale_default=1e-4)
-        # self.add_format_input_function(lambda: f"{self.name}.scale_by_source_from_file({repr(filename)},{p.format_input()})")
-        # x,y = tools.file_to_array_unpack(filename)
-        # scale = tools.spline(x,y,self.xexp)
-        # def f(): self.y *= scale*p['scale_factor']
-        # self.add_construct_function(f)
 
     @optimise_method()
     def shift_by_constant(self,shift):
@@ -2146,106 +1795,6 @@ class Model(Optimiser):
             for transition in self.absorption_transitions:
                 transition.save_to_file(directory+'/transitions/'+transition.name+'.h5')
 
-    # def load_from_directory(self,directory):
-        # """Load internal data from a previous "output_to_directory" model."""
-        # self.experimental_parameters['filename'] = directory
-        # directory = tools.expand_path(directory)
-        # assert os.path.exists(directory) and os.path.isdir(directory),f'Directory does not exist or is not a directory: {repr(directory)}'
-        # for filename in (
-                # directory+'/experimental_spectrum', # text file
-                # directory+'/experimental_spectrum.gz', # in case compressed
-                # directory+'/experimental_spectrum.h5', # in case compressed
-                # directory+'/exp',                      # deprecated
-        # ):
-            # if os.path.exists(filename):
-                # self.xexp,self.yexp = tools.file_to_array_unpack(filename)
-                # break
-        # for filename in (
-                # directory+'/model_spectrum',
-                # directory+'/model_spectrum.gz', 
-                # directory+'/model_spectrum.h5', 
-                # directory+'/mod',
-        # ):
-            # if os.path.exists(filename):
-                # self.x,self.y = tools.file_to_array_unpack(filename)
-                # break
-        # for filename in (
-                # directory+'/model_residual',
-                # directory+'/model_residual.gz',
-                # directory+'/model_residual.h5',
-                # directory+'/residual',
-        # ):
-            # if os.path.exists(filename):
-                # # t,self.residual = tools.file_to_array_unpack(filename)
-                # t = tools.file_to_array(filename)
-                # if t.ndim==1:
-                    # self.residual = t
-                # elif t.ndim==2:
-                    # self.residual = t[:,1]
-                # break
-        # # for filename in (
-                # # directory+'/optical_depth',
-                # # directory+'/optical_depth.gz',
-                # # directory+'/optical_depth.h5',
-        # # ):
-            # # if os.path.exists(filename):
-                # # t,self.optical_depths['total'] = t
-                # # break
-        # # for filename in tools.myglob(directory+'/optical_depths/*'):
-            # # self.optical_depths[tools.basename(filename)] = tools.file_to_array_unpack(filename)[1]
-        # # for filename in tools.myglob(directory+'/transitions/*'):
-            # # self.transitions.append(load_transition(
-                # # filename,
-                # # Name=tools.basename(filename),
-                # # decode_names=False,
-                # # permit_new_keys=True,
-                # # # error_on_unknown_key=False, # fault tolerant
-            # # ))
-
-    # def show(self):
-        # """Show plots."""
-        # self.add_format_input_function(f'{self.name}.show()')
-        # plt.show()
-
-
-# class Fit(Optimiser):
-    # def __init__(
-            # self,
-            # experiment,
-            # model,
-            # name=None,
-            # residual_weighting=None,
-            # verbose=None,
-            # xbeg=None,
-            # xend=None,
-    # ):
-        # self.experiment = experiment
-        # self.model = model
-        # self.xbeg = xbeg
-        # self.xend = xend
-        # self.residual = None
-        # if name is None:
-                # name = f'fit_{model.name}_{experiment.name}'
-        # self.residual_weighting = residual_weighting
-        # optimise.Optimiser.__init__(self,name)
-        # self.pop_format_input_function()
-        # self.add_suboptimiser(self.model)
-        # self.add_suboptimiser(self.experiment)
-        # self.add_construct_function(self.get_residual)
-
-    # def get_residual(self):
-        # ## limit to xbeg → xend
-        # i = np.full(True,self.experiment.x.shape)
-        # if self.xbeg is not None:
-            # i &= self.experiment.x>=self.xbeg
-        # if self.xend is not None:
-            # i &= self.experiment.x<=self.xend
-        # ymod = self.model.get_spectrum(self.experiment.x[i])
-        # self.residual = self.experiment.yexp - ymod
-        # if self.residual_weighting is not None:
-            # self.residual *= self.residual_weighting
-        # return self.residual
-
 def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     """ Load soleil spectrum from file with given path."""
     ## resolve soleil filename
@@ -2364,7 +1913,6 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     header['xmin'],header['xmax'] = x.min(),x.max()
     header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
     return (x,y,header)
-        
 
 class Spline(Optimiser):
     """A spline curve with optimisable knots.  Internally stores last

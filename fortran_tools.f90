@@ -1524,7 +1524,22 @@ contains
     end do
   end subroutine uninterpolate_with_averaging
   
-    
+  !! bin data in xin into bins of width nbin, save in xout
+  subroutine bin_data(xin,xout,nbin,nin,nout)
+    implicit none
+    real*8, intent(in),dimension(nin) :: xin
+    real*8, intent(inout),dimension(nout) :: xout
+    integer, intent(in) :: nbin,nin,nout
+    integer :: i,j,k
+    do i = 1,nout
+       xout(i) = 0
+       k = 1+(i-1)*nbin      
+       do j = k,k+(nbin-1)
+          xout(i) = xout(i) + xin(j)
+       end do
+    end do
+  end subroutine bin_data
+  
 
 end module fortran_tools
 

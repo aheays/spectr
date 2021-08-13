@@ -18,6 +18,7 @@ import h5py
 from sympy.printing.pycode import pycode
 
 from . import plotting
+from . import fortran_tools
 from .plotting import *
 
 
@@ -443,29 +444,19 @@ def randn(shape=None):
         return np.random.standard_normal(shape)
 
 
-###########################
-## convenience functions ##
-###########################
+#####################
+## array functions ##
+#####################
 
-def uniquify_strings(strings):
-    repeats = {}
-    for s in strings:
-        if s in repeats:
-            repeats[s] +=1
-        else:
-            repeats[s] = 1
-    retval = []
-    counts = {}
-    for s in strings:
-        if s in counts:
-            counts[s] += 1
-        else:
-            counts[s] = 1
-        if repeats[s] == 1:
-            retval.append(s)
-        else:
-            retval.append(s+'_'+str(counts[s]))
-    return retval
+def approximately_equal(x,y,abstol=None,fractol=1e-15):
+    """The maximum difference between x and y is less than a given
+    absolute tolerance or fractional tolerance."""
+    if abstol is not None:
+        d = np.max(np.abs(x-y))
+        return d < abstol
+    else:
+        d = np.max(np.abs(x-y)/(x+y))*2
+        return d < fractol
 
 def convert_to_bool_vector_array(x):
     retval = array(x,ndmin=1)
@@ -490,6 +481,31 @@ def convert_to_bool_vector_array(x):
             return np.asarray(x,dtype=bool,ndmin=1)
         except:
             return array([bool(t) for t in tools.ensure_iterable(x)],dtype=bool)
+
+    
+###########################
+## convenience functions ##
+###########################
+
+def uniquify_strings(strings):
+    repeats = {}
+    for s in strings:
+        if s in repeats:
+            repeats[s] +=1
+        else:
+            repeats[s] = 1
+    retval = []
+    counts = {}
+    for s in strings:
+        if s in counts:
+            counts[s] += 1
+        else:
+            counts[s] = 1
+        if repeats[s] == 1:
+            retval.append(s)
+        else:
+            retval.append(s+'_'+str(counts[s]))
+    return retval
 
 def warnings_off():
     warnings.simplefilter("ignore")
@@ -4984,16 +5000,19 @@ def fit_spline_to_extrema(
             # ygrid[i] = y[j].sum()/j.sum()
     # return ygrid
 
-def bin_data(y,n,x=None):
-    """Reduce the number of points in y by factor, summing
-    n-neighbours. Any remaining data for len(y) not a multiple of n is
-    discarded. If x is given, returns the mean value for each bin, and
-    return (y,x)."""
-    if x is None:
-        return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
-    else:
-        return np.array(
-            [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
+def bin_data(x,n,mean=False):
+    """Reduce the number of points in y by factor n, either summing or computing the mean of 
+    n neighbouring points. Any data remaining after the last complete bin is discarded."""
+    if n == 1:
+        return x
+    x = np.asarray(x,dtype=float)
+    n = np.asarray(n,dtype=int)
+    
+    retval = np.empty(len(x)//n)
+    fortran_tools.bin_data(x,retval,n,len(x),len(retval))
+    if mean:
+        retval /= n
+    return retval
 
 def resample(xin,yin,xout):
     """One particular way to spline or bin (as appropriate) (x,y) data to
@@ -5026,98 +5045,6 @@ def resample_out_of_bounds_to_zero(xin,yin,xout):
     if sum(i)>0:
         yout[i] = resample(xin,yin,xout[i])
     return yout
-
-# def locate_peaks(
-        # y,x=None,
-        # minX=0.,
-        # minY=0.,
-        # fitMaxima=True, fitMinima=False,
-        # plotResult=False,
-        # fitSpline=False,
-        # search_width=1,
-        # convolve_with_gaussian_of_width=None,
-# ):
-    # """Find the maxima, minima, or both of a data series. If x is not
-    # specified, then replace with indices.\n
-    # Points closer than minX will be reduced to one extremum, points
-    # less than minY*noise above the mean will be rejected. The mean is
-    # determined from a tensioned spline, unless fitSpline=False.\n
-    # If plotResult then issue matplotlib commands on the current axis.\n\n
-    # """
-    # ## x defaults to indices
-    # if x is None: x = np.arange(len(y))
-    # ## sort by x
-    # x = np.array(x)
-    # y = np.array(y)
-    # i = np.argsort(x)
-    # x,y = x[i],y[i]
-    # ## smooth with gaussianconvolution if requested
-    # if convolve_with_gaussian_of_width is not None:
-        # y = convolve_with_gaussian(x,y,convolve_with_gaussian_of_width,regrid_if_necessary=True)
-    # ## fit smoothed spline if required
-    # if fitSpline:
-        # fs = spline(x,y,x,s=1)
-        # ys = y-fs
-    # else:
-        # fs = np.zeros(y.shape)
-        # ys = y
-    # ## fit up or down, or both
-    # if fitMaxima and fitMinima:
-        # ys = np.abs(ys)
-    # elif fitMinima:
-        # ys = -ys
-    # ## if miny!=0 reject those too close to the noise
-    # # if minY!=0:
-        # # minY = minY*np.std(ys)
-        # # i =  ys>minY
-        # # # ys[i] = 0.
-        # # x,y,ys,fs = x[i],y[i],ys[i],fs[i]
-        # # # x,ys = x[i],ys[i]
-    # ## find local maxima
-    # i =  list(find( (ys[1:-1]>ys[0:-2]) & (ys[1:-1]>ys[2:]) )+1)
-    # ## find equal neighbouring points that make a local maximum
-    # # j = list(np.argwhere(ys[1:]==ys[:-1]).squeeze())
-    # j = list(find(ys[1:]==ys[:-1]))
-    # while len(j)>0:
-        # jj = j.pop(0)
-        # kk = jj + 1
-        # if kk+1>=len(ys): break
-        # while ys[kk+1]==ys[jj]:
-            # j.pop(0)
-            # kk = kk+1
-            # if kk+1>=len(ys):break
-        # if jj==0: continue
-        # if kk+1>=len(ys): continue
-        # if (ys[jj]>ys[jj-1])&(ys[kk]>ys[kk+1]):
-            # i.append(int((jj+kk)/2.))
-    # i = np.sort(np.array(i))
-    # ## if minx!=0 reject one of each pair which are too close to one
-    # ## if miny!=0 reject those too close to the noise
-    # if minY!=0:
-        # minY = minY*np.std(ys)
-        # i = [ii for ii in i if ys[ii]>minY]
-    # ## another, taking the highest
-    # if minX!=0:
-        # while True:
-            # jj = find(np.diff(x[i]) < minX)
-            # if len(jj)==0: break
-            # for j in jj:
-                # if ys[j]>ys[j+1]:
-                    # i[j+1] = -1
-                # else:
-                    # i[j] = -1
-            # i = [ii for ii in i if ii!=-1]
-    # ## plot
-    # if plotResult:
-        # fig = plt.gcf()
-        # ax = fig.gca()
-        # ax.plot(x,y,color='red')
-        # if minY!=0:
-            # ax.plot(x,fs+minY,color='lightgreen')
-            # ax.plot(x,fs-minY,color='lightgreen')
-        # ax.plot(x[i],y[i],marker='o',ls='',color='blue',mew=2)
-    # ## return
-    # return np.array(i,dtype=int)
 
 def find_peaks(
         y,
