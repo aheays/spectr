@@ -31,14 +31,19 @@ model2.reaction_network.calc_rates()
 model2.plot_vertical('z(km)', 'n(NO)','n(NO2)','n(N2O)',linestyle=':',ax=ax)
 
 qfig()
-for ispecies,species in enumerate(('NO','NO2','N2O')):
+for ispecies,species in enumerate((
+        'NO',
+        'NO2',
+        # 'N2O',
+)):
     model.plot_production_destruction(
         species, 
         ykey='z(km)',
         normalise=False,
-        nsort=5,
+        nsort=2,
         ax=subplot(),
     )
+    xlim(1e-20,1e4)
     print('\nsummarise species:')
     model.summarise_species(species,doprint=True )
 
