@@ -615,7 +615,6 @@ class Model(Optimiser):
                 ichanged = line_copy.row_modify_time > self._last_construct_time
                 nchanged = np.sum(ichanged)
                 if (
-                        # False and # HACK deactivate
                         ## all lines have changed
                         (nchanged == len(ichanged))
                         ## ykey has changed
@@ -661,8 +660,8 @@ class Model(Optimiser):
                 pass
         ## apply to model
         if kind == 'absorption':
-            # self.y *= np.exp(-y)
             self.y *= y
+            ## fortran_tools.in_place_array_multiplication(self.y,y)
         else:
             self.y += y
         _cache['y'] = y

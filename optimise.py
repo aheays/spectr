@@ -579,7 +579,7 @@ class Optimiser:
         ## print rms
         current_time = timestamp()
         if self._monitor_iterations:
-            print(f'call: {self._number_of_optimisation_function_calls:>6d} time: {current_time-self._previous_time:<7.2e} rms: {rms:<12.8e} nparams: {len(p)}')
+            print(f'call: {self._number_of_optimisation_function_calls:>6d}    time: {current_time-self._previous_time:<7.2e}    rms: {rms:<12.8e}    nparams: {len(p)}')
         self._previous_time = current_time
         if rms < self._rms_minimum:
             self._rms_minimum = rms
@@ -759,7 +759,7 @@ class Optimiser:
                 else:
                     message = ''
                 if self._monitor_iterations:
-                    print(f'jcbn: {i:>6d} time: {timestamp()-timer:>7.2e} rms: {rmsnew:>12.8e} {message}')
+                    print(f'jcbn: {i:>3d} of {len(p):>3d}   time: {timestamp()-timer:>7.2e}    rms: {rmsnew:>12.8e} {message}')
             jacobian = np.transpose(jacobian)
         else:
             ## multiprocessing, requires serialisation
