@@ -10,6 +10,11 @@ libraries lapack and openmp.
 
 
 * Bugs / improvements
+** Dataset
+*** Also store scalar (or nd?) data in Dataset.data
+*** Add classname and description to this scalar data
+*** Add min/max to prototypes for optimisation
+*** Add 'af' kind absolute 'f', with automatic cast and min values
 ** viblevel.py
 *** Implement general Λ-doubling formula of brown1979
 Currently the o/p/q Λ-doubling is handled with effective
