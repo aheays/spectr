@@ -499,7 +499,9 @@ class Optimiser:
     construct_functions = property(lambda self: list(self._construct_functions.values()) + list(self._post_construct_functions.values())[::-1])
 
     def construct(self,clean_construct=False):
-        """Run all construct functions and return collected residuals."""
+        """Run all construct functions and return collected residuals. If
+        clean_construct is True then discard all cached data and completely
+        rebuild the model."""
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
         ## collect residuals from suboptimisers and self
         combined_residual = []  # from self and suboptimisers
@@ -594,15 +596,14 @@ class Optimiser:
             # normalise_suboptimiser_residuals=False,
             method=None,
             least_squares_options=idict(),
-            ncpus=1,            # Controls the use of multiprocessing of the Jacobian
+            ncpus=1, # Controls the use of multiprocessing of the Jacobian
             monitor_iterations=True, # print rms evey iteration
             monitor_parameters=False, # print parameters every iteration
             monitor_frequency='significant rms decrease', # run monitor functions 'never', 'end', 'every iteration', 'rms decrease', 'significant rms decrease'
     ):
         """Optimise parameters."""
+        ## multiprocessing cpus
         self._ncpus = ncpus
-        ## full reconstruct -- then set to efficient partial reconstruct
-        self.construct(clean_construct=True)
         ## get initial values and reset uncertainties
         self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
         ## some communication variables between methods to do with
@@ -619,8 +620,11 @@ class Optimiser:
         if verbose or self.verbose:
             print(f'\n{self.name}: optimising')
             print(f'number of varied parameters: {len(self._initial_p)}')
-        ## the optimisation
-        if len(self._initial_p)>0:
+        ## perform the optimisation if anyh parameters are are to be
+        ## varied, otherwise just construct the model
+        if len(self._initial_p) == 0:
+            self.construct()
+        else:
             least_squares_options = {
                 'fun':self._optimisation_function,
                 'x0':[0. for t in self._initial_p],
@@ -655,15 +659,14 @@ class Optimiser:
                     least_squares_options['tr_solver'] = 'lsmr'
             else:
                 raise Exception(f'Unknown optimsiation method: {repr(least_squares_options["method"])}')
-            # least_squares_options['jac'] = self._calculate_jacobian
-            # if self._ncpus > 1:
-                # least_squares_options['jac'] = self._calculate_jacobian
+            ## use custom Jacobian calculation (for parallel computation)
+            ## # least_squares_options['jac'] = self._calculate_jacobian
+            ## # if self._ncpus > 1:
+            ##     # least_squares_options['jac'] = self._calculate_jacobian
             ## call optimisation routine -- KeyboardInterrupt possible
             try:
                 if verbose or self.verbose:
                     print('method:',least_squares_options['method'])
-                    # print("Optimisation parameters:")
-                    # print('    '+pformat(least_squares_options).replace('\n','\n    '))
                 result = optimize.least_squares(**least_squares_options)
                 self._optimisation_function(result['x'])
                 if verbose or self.verbose:
@@ -676,7 +679,7 @@ class Optimiser:
                 pass
             ## calculate uncertainties -- KeyboardInterrupt possible
             try:
-                self.calculate_uncertainty(clean_construct=False)
+                self.calculate_uncertainty()
             except KeyboardInterrupt:
                 pass
         ## recalculate final solution
@@ -790,23 +793,13 @@ class Optimiser:
                     raise err
                 jacobian = np.empty((len(p),len(residual)))
                 for n in range(self._ncpus):
-                    # i = range(n,len(p),self._ncpus) 
+                    ## i = range(n,len(p),self._ncpus) 
                     i = ishuffle[n::self._ncpus]
                     jacobian[i,:] = results[n].get()
                 jacobian = np.transpose(jacobian)
-        ## set back to best fit
+        ## set state of model to best fit parameters
         self._set_parameters(p,rescale=True) # set param
         self.construct()
-        # ## set zeros/nans to very small to prevent matrix inversion problems
-        # i = (jacobian == 0)
-        # if np.any(i):
-            # print('Some parameters have no effect on the model' )
-            # jacobian[i] = 1e-50
-        # i = np.isnan(jacobian)
-        # if np.any(i):
-            # print('Some parameters nan' )
-            # jacobian[i] = 1e-50
-        ## return
         return jacobian
 
     def calculate_uncertainty(
@@ -814,15 +807,14 @@ class Optimiser:
             rms_noise=None,
             verbose=True,
             ncpus=None,
-            clean_construct=True,
     ):
         """Compute 1σ uncertainty by first computing forward-difference
         Jacobian.  Only accurate for a well-optimised model."""
         ## whether or not to multiprocess
         if ncpus is not None:
             self._ncpus = ncpus
-        ## get residual at current solugion
-        self.construct(clean_construct=clean_construct)
+        ## get residual at current solution
+        self.construct()
         residual = self.combined_residual
         ## get current parameter
         self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
