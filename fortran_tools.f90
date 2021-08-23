@@ -1539,6 +1539,15 @@ contains
        end do
     end do
   end subroutine bin_data
+
+  !! a little bit faster than x = np.multiply(x,y)
+  subroutine in_place_array_multiplication(x,y,n)
+    implicit none
+    real*8, intent(inout),dimension(n) :: x
+    real*8, intent(inout),dimension(n) :: y
+    integer, intent(in) :: n
+    x = x*y
+  end subroutine in_place_array_multiplication
   
 
 end module fortran_tools
