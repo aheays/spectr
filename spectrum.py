@@ -901,12 +901,12 @@ class Model(Optimiser):
 
     add_intensity_spline = add_spline # deprecated
 
-    def auto_multiply_spline(self,x=1000.,y=None,vary=True):
+    def auto_multiply_spline(self,x=1000.,y=None,vary=True,order=3):
         """Quickly add an evenly-spaced spline to multiply . If x is a vector
         then define spline at those points. If y is not given then fit to the experiment."""
         self.experiment.construct()
-        xbeg,xend = self.x[0]-x/2,self.x[-1]+x+2 # boundaries to cater to instrument convolution
         if np.isscalar(x):
+            xbeg,xend = self.x[0]-x/2,self.x[-1]+x+2 # boundaries to cater to instrument convolution
             x = linspace(xbeg,xend,max(2,int((xend-xbeg)/x)))
         ## make knots
         knots = []
@@ -914,16 +914,18 @@ class Model(Optimiser):
             if y is None:
                 ## get current value of model as y
                 i = min(np.searchsorted(self.x,xi),len(self.y)-1)
-                yi = self.yexp[i]/self.y[i]
-                ystep = (yi/1e3 if yi !=0 else None)
+                if self.y[i] != 0:
+                    yi = self.yexp[i]/self.y[i]
+                else:
+                    yi = 1
+                ystep = (yi*1e-3 if yi !=0 else 1e-4)
             else:
                 ## fixed y
                 yi = y
                 ystep = None
             knots.append([xi,P(yi,vary,ystep)])
-        self.multiply_spline(knots=knots)
+        self.multiply_spline(knots=knots,order=order)
         return knots
-
     
     @optimise_method()
     def multiply_spline(self,knots=None,order=3,_cache=None,_parameters=None):
