@@ -4854,48 +4854,74 @@ def fit_noise_level(x,y,order=3,plot=False,fig=None):
     return nrms
 
 def fit_background(
-        x, y,
-        fit_min_or_max='max',           # 'max' to fit absorption data, 'min' for emission
-        x1=3, # spline points for initial fit maximum value fit -- or an interval for evenly spaced
-        x2=None, # spline points for final least squares fit -- or an interval for evenly spaced, None to skip
-        trim=(0,1), # fractional interval of data to keep ordered by initial fit residual
-        figure=None,            # a Figure to plot
+        x,                      # x data, probably should be ordered
+        y,                      # y data, same length as x
+        fit_min_or_max='max', # 'max' to fit absorption data, 'min' for emission
+        x1=3, # spline x-points (or interval) for initial fit of the local maximum/minimum y-values
+        auto_trim_half=True,    # refit keeping half of the data to hopefully recover the mean
+        x2=None, # spline x-points for a following fit of all data encompassed by trim
+        trim=(0,1), # fractional interval of data to keep ordered by initial fit residual. (0,1) = all points, (0.9,1) points with the highest 10% y-value
+        figure=None,    # plot in this Figure object, None for no plot
         spline_order=3,
 ):
-    """Initially fit background of a noisy spectrum to a spline fixed to
-    maximum (minimum) values in an interval around points x1.  Then
-    select data in trim interval based on the resulting residual
-    error. Then least-squares spline-fit trimmed data at points x2 (or
-    uniform grid if this is an interval)."""
-    ## first estimate remove polynomial and discard points
-    yfit = fit_spline_to_extrema(x,y,'max',x1,1/4,order=spline_order)
+    """Initially fit background of a noisy spectrum to a spline fixed
+    to maximum (minimum) values in an interval around points x1.  The,
+    optionally cut off half of the data and refit the min (max) values
+    of the remainder, perhaps finding the centre of scatter. Then
+    optionally (if x2 is set) least-squares spline-fit data with
+    y-data in the fractional interval "trim"."""
+    ## fit a spline to max or min points near x1
+    xspline,yspline,yfit = fit_spline_to_extrema(x,y,fit_min_or_max,x1,1/4,order=spline_order)
     yresidual = y-yfit
-    ## trim residual maxima and minima 
-    itrim = np.full(x.shape,False)
-    itrim[int(len(x)*trim[0]):int(len(x)*trim[1])] = True
-    itrim = itrim[np.argsort(np.argsort(yresidual))] # put in x-order
-    itrim[0] = itrim[-1] = True                      # do not trim endpoints
-    ## get fitted statistics
-    μ,σ = fit_normal_distribution(yresidual[itrim])
+    ## if auto_trim_half then find the upper 50% of data and fit hte
+    ## bottom edge (hopefully given a line through the mean of the
+    ## local noise
+    if auto_trim_half:
+        if fit_min_or_max == 'min':
+            t_fit_min_or_max = 'max'
+            t_trim = (0,0.5)
+        else:
+            t_fit_min_or_max = 'min'
+            t_trim = (0.5,1)
+        itrim = np.full(x.shape,False)
+        itrim[int(len(x)*t_trim[0]):int(len(x)*t_trim[1])] = True
+        itrim = itrim[np.argsort(np.argsort(yresidual))] # put in x-order
+        itrim[0] = itrim[-1] = True                      # do not trim endpoints
+        xtrim,ytrim = x[itrim],y[itrim]
+        xspline,yspline,ytrimfit = fit_spline_to_extrema(
+            xtrim,ytrim,t_fit_min_or_max,x1,1/4,order=spline_order)
+        yfit = spline(xspline,yspline,x)
+        yresidual = y-yfit
+    # ## get fitted statistics
+    # μ,σ = fit_normal_distribution(yresidual[itrim])
     ## refit trimmed data
     if x2 is not None:
+        ## another trim of residual maxima and minima 
+        itrim = np.full(x.shape,False)
+        itrim[int(len(x)*trim[0]):int(len(x)*trim[1])] = True
+        itrim = itrim[np.argsort(np.argsort(yresidual))] # put in x-order
+        itrim[0] = itrim[-1] = True                      # do not trim endpoints
+        ## fit splien to full trimmed data
         xspline,yspline = fit_least_squares_spline(x[itrim],y[itrim],x2)
         yfit = spline(xspline,yspline,x,order=spline_order)
-    ## adjust for missing noise due to trimming
-    yfit += μ
+    # ## adjust for missing noise due to trimming
+    # if not np.isnan(μ):
+        # yfit += μ
     if figure is not None:
         ## plot somem stuff
         ax0 = subplot(0,fig=figure)
-        ax0.plot(x,y)
-        ax0.plot(x[itrim],y[itrim])
-        ax0.plot(x,yfit,lw=3)
-        ax1 = subplot(1,fig=figure)
-        n,b,p = ax1.hist(yresidual[itrim],max(10,int(len(y)/200)),density=True)
-        b = (b[1:]+b[:-1])/2
-        t = normal_distribution(b,μ,σ)
-        ax1.plot(b,t/np.mean(t)*np.mean(n))
-        ax1.set_title('Fitted normal distribution')
-    return yfit
+        ax0.plot(x,y,label='data')
+        ax0.plot(x[itrim],y[itrim],label='trimmed data')
+        ax0.plot(xtrim,ytrimfit,label='refit trimmed data')
+        ax0.plot(x,yfit,lw=3,label='yfit')
+        legend(ax=ax0)
+        # ax1 = subplot(1,fig=figure)
+        # n,b,p = ax1.hist(yresidual[itrim],max(10,int(len(y)/200)),density=True)
+        # b = (b[1:]+b[:-1])/2
+        # t = normal_distribution(b,μ,σ)
+        # ax1.plot(b,t/np.mean(t)*np.mean(n))
+        # ax1.set_title('Fitted normal distribution')
+    return xspline,yspline,yfit
 
 def fit_least_squares_spline(
         x,                      # x data in spetrum -- sorted
@@ -4911,7 +4937,7 @@ def fit_least_squares_spline(
     xspline = np.asarray(xspline,dtype=float)
     ## get initial y spline points
     yspline = np.array([y[np.argmin(np.abs(x-xsplinei))] for xsplinei in xspline])
-    print( f'optimising {len(yspline)} spline points...')
+    print( f'optimising {len(yspline)} spline points onto {len(y)} data points')
     yspline,dyspline = leastsq(lambda yspline:y-spline(xspline,yspline,x), yspline, yspline*1e-5,)
     return xspline,yspline
 
@@ -4951,7 +4977,7 @@ def fit_spline_to_extrema(
     # xspline,yspline = np.array(xspline),np.array(yspline)
     xspline[0],xspline[-1] = x[0],x[-1] # ensure endpoints are included
     yf = spline(xspline,yspline,x,order=order,s=s,check_bounds=False)
-    return yf
+    return xspline,yspline,yf
 
 # def localmax(x):
     # """Return array indices of all local (internal) maxima. The first point is returned
