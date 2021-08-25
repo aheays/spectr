@@ -38,7 +38,7 @@ Fixed = CustomBool('Fixed',False)
 def _collect_parameters_and_optimisers(x):
     """Iteratively and recursively collect Parameter and Optimiser objects
     from x descending into any iterable children."""
-    maximum_length_for_searching = 1000
+    maximum_length_for_searching = 10000
     parameters,optimisers = [],[]
     if isinstance(x,Parameter):
         parameters.append(x)
@@ -55,6 +55,7 @@ def _collect_parameters_and_optimisers(x):
             parameters.extend(tp)
             optimisers.extend(to)
     return parameters,optimisers
+
 
 def optimise_method(
         add_construct_function=True,
@@ -585,6 +586,34 @@ class Optimiser:
         self._previous_time = current_time
         if rms < self._rms_minimum:
             self._rms_minimum = rms
+        ## update plot of rms
+        if self._plot_progress is not None:
+            n = self._plot_progress['n']
+            fig = self._plot_progress['fig']
+            ax = self._plot_progress['ax']
+            line = self._plot_progress['line']
+            if (
+                    n == 0
+                    or n > ax.get_xlim()[1]
+                    or rms < ax.get_ylim()[0]
+                    or rms > ax.get_ylim()[1]
+            ):
+                xdata = line.get_xdata()
+                ydata = line.get_ydata()
+                if len(xdata) == 0:
+                    ax.set_xlim(0,1)
+                    ax.set_ylim(0,1)
+                else:
+                    ax.set_xlim(xdata[0],xdata[-1]*2)
+                    ax.set_ylim(np.min(ydata)/(1+1e-5),np.max(ydata)*(1+1e-5))
+                plotting.update_figure_without_raising()
+            line.set_xdata(np.concatenate((line.get_xdata(),[n])))
+            line.set_ydata(np.concatenate((line.get_ydata(),[rms])))
+            ax.draw_artist(ax.patch)
+            ax.draw_artist(line)
+            fig.canvas.update()
+            fig.canvas.flush_events()
+            self._plot_progress['n'] += 1
         return residuals
 
     @optimise_method(add_construct_function=False)
@@ -600,6 +629,7 @@ class Optimiser:
             monitor_iterations=True, # print rms evey iteration
             monitor_parameters=False, # print parameters every iteration
             monitor_frequency='significant rms decrease', # run monitor functions 'never', 'end', 'every iteration', 'rms decrease', 'significant rms decrease'
+            plot_progress=False,
     ):
         """Optimise parameters."""
         ## multiprocessing cpus
@@ -620,11 +650,27 @@ class Optimiser:
         if verbose or self.verbose:
             print(f'\n{self.name}: optimising')
             print(f'number of varied parameters: {len(self._initial_p)}')
-        ## perform the optimisation if anyh parameters are are to be
-        ## varied, otherwise just construct the model
-        if len(self._initial_p) == 0:
-            self.construct()
-        else:
+        ## construct once to get a clean start
+        self.construct()
+        ## perform the optimisation if any parameters are are to be
+        ## varied
+        if len(self._initial_p) > 0:
+
+            ## monitor decreasing RMS on a plot
+            if plot_progress:
+                fig = plotting.plt.figure(999)
+                fig.clf()
+                # fig = plotting.qfig(999,figsize=(600,300))
+                ax = fig.gca()
+                ax.set_title(f'nparams: {len(self._initial_p)}')
+                line, = ax.plot([],[])
+                plotting.plt.show(block=False)
+                plotting.plt.pause(0.001)
+                self._plot_progress = {'n':0,'fig':fig,'ax':ax,'line':line}
+            else:
+                self._plot_progress = None    
+
+
             least_squares_options = {
                 'fun':self._optimisation_function,
                 'x0':[0. for t in self._initial_p],

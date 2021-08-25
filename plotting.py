@@ -407,6 +407,8 @@ def qfig(
     # extra_interaction()
     if figsize=='full screen':
         set_figsize_fullscreen(fig=fig)
+    elif figsize=='quarter screen':
+        set_figsize_fullscreen(fig=fig,scale=0.25)
     elif figsize is not None:
         set_figsize_in_pixels(*figsize,fig=fig)
     # if hide_toolbar:
@@ -446,11 +448,19 @@ def get_screensize():
     x,y = output.split()
     return(int(x),int(y))
 
-def set_figsize_fullscreen(fig=None):
+def update_figure_without_raising(fig=None):
+    """A hack to redraw a figure without raising the window. From this stack overflow: https://stackoverflow.com/questions/45729092/make-interactive-matplotlib-window-not-pop-to-front-on-each-update-windows-7"""
+    if fig is None:
+        fig = plt.gcf()
+    fig.canvas.draw_idle()
+    fig.canvas.start_event_loop(0.001)
+
+def set_figsize_fullscreen(fig=None,scale=1):
     """Set figsize in pixels for screen display aiming for full
     screen."""
     try:
         x,y = get_screensize()
+        x,y = x*scale,y*scale
         return(set_figsize_in_pixels(
             x=x,
             # y=y-55,        # a bit less to fit in toolbar
