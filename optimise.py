@@ -447,33 +447,39 @@ class Optimiser:
         self.parameters, in self._data if this is also a Dataset or found in
         suboptimiser."""
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
-        value,unc,step = [],[],[]
-        unique_parameters = []  # to prevent the same parmeter being loaded twice from suboptimisers
+        retval = {}
+        for key in ('value','unc','step','upper_bound','lower_bound'):
+            retval[key] = []
+        unique_parameters = []  # to prevent the same parameter being loaded twice from suboptimisers
+        # value,unc,step = [],[],[]
+        # upper_bound,lower_bound = [],[]
+        # unique_parameters = []  # to prevent the same parameter being loaded twice from suboptimisers
         for optimiser in self.get_all_suboptimisers():
             for parameter in optimiser.parameters:
                 if id(parameter) not in unique_parameters and parameter.vary:
-                    value.append(parameter.value)
-                    unc.append(parameter.step)
-                    step.append(parameter.step)
+                    retval['value'].append(parameter.value)
+                    retval['unc'].append(parameter.step)
+                    retval['step'].append(parameter.step)
+                    retval['lower_bound'].append(parameter.bounds[0])
+                    retval['upper_bound'].append(parameter.bounds[1])
                     unique_parameters.append(id(parameter))
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get(key,'vary')
-                    value.extend(optimiser[key][vary])
-                    unc.extend(optimiser.get(key,'unc',index=vary))
-                    step.extend(optimiser.get(key,'step',index=vary))
-        return value,step,unc
+                    retval['value'].extend(optimiser[key][vary])
+                    retval['unc'].extend(optimiser.get(key,'unc',index=vary))
+                    retval['step'].extend(optimiser.get(key,'step',index=vary))
+                    retval['lower_bound'].append(-np.inf) # not implemented
+                    retval['upper_bound'].append(np.inf)  # not implemented
+        # return value,step,unc,upper_bound,lower_bound
+        number_of_parameters = len(retval['value'])
+        return retval,number_of_parameters
 
-    def _set_parameters(self,p,dp=None,rescale=False):
+    def _set_parameters(self,p,dp=None):
         """Set assign elements of p and dp from optimiser to the
         correct Parameters."""
         from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
         p = list(p)
-        ## shift and scale optimised parameter back to its original scale
-        if rescale:
-            p = [tp*tsi/1e-8+tpi for tp,tpi,tsi in zip(p,self._initial_p,self._initial_step)]
-            if dp is not None:
-                dp = [tdp*tsi/1e-8 for tdp,tsi in zip(dp,self._initial_step)]
         ## print parameters
         if self._monitor_parameters:
             print('    monitor parameters:  ['+' ,'.join([format(t,'+#15.13e') for t in p])+' ]')
@@ -554,12 +560,12 @@ class Optimiser:
         self.combined_residual = combined_residual # this includes residuals from construct_functions combined with suboptimisers
         return combined_residual
 
-    def _optimisation_function(self,p,rescale=True):
+    def _optimisation_function(self,p):
         """Internal function used by optimise routine. p is a list of varied
         parameters."""
         self._number_of_optimisation_function_calls += 1
         ## update parameters in internal model
-        self._set_parameters(p,rescale=rescale)
+        self._set_parameters(p)
         ## rebuild model and calculate residuals
         residuals = self.construct()
         if len(residuals) == 0:
@@ -604,7 +610,7 @@ class Optimiser:
                     ax.set_xlim(0,1)
                     ax.set_ylim(0,1)
                 else:
-                    ax.set_xlim(xdata[0],xdata[-1]*2)
+                    ax.set_xlim(xdata[0],xdata[-1]*2+1)
                     ax.set_ylim(np.min(ydata)/(1+1e-5),np.max(ydata)*(1+1e-5))
                 plotting.update_figure_without_raising()
             line.set_xdata(np.concatenate((line.get_xdata(),[n])))
@@ -624,7 +630,7 @@ class Optimiser:
             verbose=True,
             # normalise_suboptimiser_residuals=False,
             method=None,
-            least_squares_options=idict(),
+            options=None,       # for least squares optimises
             ncpus=1, # Controls the use of multiprocessing of the Jacobian
             monitor_iterations=True, # print rms evey iteration
             monitor_parameters=False, # print parameters every iteration
@@ -634,8 +640,8 @@ class Optimiser:
         """Optimise parameters."""
         ## multiprocessing cpus
         self._ncpus = ncpus
-        ## get initial values and reset uncertainties
-        self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
+        ## get initial values or parameters
+        parameters,number_of_parameters = self._get_parameters()
         ## some communication variables between methods to do with
         ## monitoring the optimisation
         self._monitor_frequency = monitor_frequency
@@ -649,32 +655,38 @@ class Optimiser:
         ## describe the upcoming optimisation
         if verbose or self.verbose:
             print(f'\n{self.name}: optimising')
-            print(f'number of varied parameters: {len(self._initial_p)}')
+            print(f'number of varied parameters: {number_of_parameters}')
         ## construct once to get a clean start
         self.construct()
         ## perform the optimisation if any parameters are are to be
         ## varied
-        if len(self._initial_p) > 0:
-
+        if number_of_parameters > 0:
             ## monitor decreasing RMS on a plot
             if plot_progress:
                 fig = plotting.plt.figure(999)
                 fig.clf()
                 # fig = plotting.qfig(999,figsize=(600,300))
                 ax = fig.gca()
-                ax.set_title(f'nparams: {len(self._initial_p)}')
+                ax.set_title(f'nparams: {number_of_parameters}')
                 line, = ax.plot([],[])
                 plotting.plt.show(block=False)
                 plotting.plt.pause(0.001)
                 self._plot_progress = {'n':0,'fig':fig,'ax':ax,'line':line}
             else:
                 self._plot_progress = None    
-
-
+            ## collect options for  least squares fit
+            x0,diff_step = [],[]
+            for pi,stepi in zip(parameters['value'],parameters['step']):
+                if pi==0:
+                    pi = stepi
+                x0.append(pi)
+                diff_step.append(stepi/abs(pi))
             least_squares_options = {
                 'fun':self._optimisation_function,
-                'x0':[0. for t in self._initial_p],
-                'diff_step':np.full(len(self._initial_p),1e-8),
+                'x0':x0,
+                'diff_step':diff_step,
+                # 'x0':np.full(number_of_parameters,0),
+                # 'diff_step':np.full(number_of_parameters,1),
                 ## 'x0':copy(self._initial_p),
                 ## 'diff_step':copy(self._initial_step),
                 ## 'diff_step':1e-8,
@@ -684,10 +696,14 @@ class Optimiser:
                 # 'max_nfev':max_nfev,
                 'method':None,
                 'jac':'2-point',
-                } | least_squares_options
+                }
+            
+            ## update with any input options
+            if options is not None:
+                least_squares_options |= options
+            ## get a default method
             if least_squares_options['method'] is None:
-                ## get a default method
-                if len(self._initial_p) == 1:
+                if number_of_parameters == 1:
                     # least_squares_options['method'] = 'lm'
                     least_squares_options['method'] = 'trf'
                 else:
@@ -699,10 +715,12 @@ class Optimiser:
                 ## use 'trf' -- trust region
                 least_squares_options['x_scale'] = 'jac'
                 least_squares_options['loss'] = 'linear'
-                if len(self._initial_p) < 5:
+                if number_of_parameters < 5:
                     least_squares_options['tr_solver'] = 'exact'
                 else:
                     least_squares_options['tr_solver'] = 'lsmr'
+                ## set bounds
+                least_squares_options['bounds'] = (parameters['lower_bound'], parameters['upper_bound'])
             else:
                 raise Exception(f'Unknown optimsiation method: {repr(least_squares_options["method"])}')
             ## use custom Jacobian calculation (for parallel computation)
@@ -776,11 +794,11 @@ class Optimiser:
             # self._post_construct_functions[key] = _deepcopy_function(function,translate_defaults)
         return retval
 
-    def _calculate_jacobian(self,p,rescale=True):
+    def _calculate_jacobian(self,p,step):
         """Compute 1σ uncertainty by first computing forward-difference
         Jacobian.  Only accurate for a well-optimised model."""
         ## compute model at p
-        self._set_parameters(p,rescale=True)
+        self._set_parameters(p)
         residual = self.construct()
         rms = tools.rms(residual)
         ## compute Jacobian by forward finite differencing, if a
@@ -793,14 +811,13 @@ class Optimiser:
             ## single thread
             jacobian = [] # jacobian columns and which parameter they correspond to
             pnew = list(p)
-            step = 1e-8 # must agree with optimise
             for i in range(len(p)):
                 timer = timestamp()
-                pnew[i] += step
-                self._set_parameters(pnew,rescale=True)
+                pnew[i] += step[i]
+                self._set_parameters(pnew)
                 residualnew = self.construct()
                 dresidual = (residualnew-residual)
-                jacobian.append(dresidual/step)
+                jacobian.append(dresidual)
                 pnew[i] = p[i] # change it back
                 rmsnew = tools.rms(residualnew)
                 if rms == rmsnew:
@@ -844,7 +861,7 @@ class Optimiser:
                     jacobian[i,:] = results[n].get()
                 jacobian = np.transpose(jacobian)
         ## set state of model to best fit parameters
-        self._set_parameters(p,rescale=True) # set param
+        self._set_parameters(p) # set param
         self.construct()
         return jacobian
 
@@ -863,13 +880,11 @@ class Optimiser:
         self.construct()
         residual = self.combined_residual
         ## get current parameter
-        self._initial_p,self._initial_step,self._initial_dp = self._get_parameters()
-        ## get rescaled parameters -- all zero
-        p = np.full(len(self._initial_p),0.0) 
+        parameters,number_of_parameters = self._get_parameters()
         if verbose or self.verbose:
-            print(f'{self.name}: computing uncertainty for {len(p)} parameters')
-        ## get jacobian using rescaled parameters
-        jacobian = self._calculate_jacobian(p)
+            print(f'{self.name}: computing uncertainty for {number_of_parameters} parameters')
+        ## get jacobian
+        jacobian = self._calculate_jacobian(parameters['value'],parameters['step'])
         min_valid = 0
         while True:
             try: 
@@ -878,7 +893,7 @@ class Optimiser:
                 if t>0:
                     print(f'Jacobian is not invertible so discarding {t} our of {len(inonzero)} columns with no values greater than {min_valid:0.0e}.')
                 ## compute 1σ uncertainty from Jacobian
-                unc = np.full(len(p),nan)
+                unc = np.full(number_of_parameters,nan)
                 if len(jacobian) == 0 or np.sum(inonzero) == 0:
                     print('All parameters have no effect, uncertainties not calculated')
                 else:
@@ -886,7 +901,7 @@ class Optimiser:
                     covariance = linalg.inv(np.dot(t.T,t))
                     if rms_noise is None:
                         chisq = np.sum(residual**2)
-                        dof = len(residual)-len(p)+1
+                        dof = len(residual)-number_of_parameters+1
                         rms_noise = np.sqrt(chisq/dof)
                     unc[inonzero] = np.sqrt(covariance.diagonal())*rms_noise
                 break
@@ -895,7 +910,7 @@ class Optimiser:
                     min_valid = 1e-10
                 else:
                     min_valid *= 10
-        self._set_parameters(p,unc,rescale=True)
+        self._set_parameters(parameters['value'],unc)
         self.construct()
 
     def _get_rms(self):
@@ -920,6 +935,7 @@ class Parameter():
             vary=False,
             step=None,
             unc=0.0,
+            bounds=None,
             fmt='0.12g',
             description='parameter',
     ):
@@ -927,14 +943,19 @@ class Parameter():
         self.vary = vary
         self.fmt = fmt
         self.unc = float(unc)
-        self.description = description
+        if bounds is None:
+            self._bounds_specified = False
+            self.bounds = (-np.inf,np.inf)
+        else:
+            self._bounds_specified = True
+            self.bounds = bounds
         if step is not None:
             self.step = abs(float(step))
+        elif self.value != 0:
+            self.step = self.value*_default_stepsize
         else:
-            if self.value != 0:
-                self.step = self.value*_default_stepsize
-            else:
-                self.step = _default_stepsize
+            self.step = _default_stepsize
+        self.description = description
         self._last_modify_value_time = timestamp()
 
     def _get_value(self):
@@ -951,11 +972,14 @@ class Parameter():
     value = property(_get_value,_set_value)
 
     def __repr__(self):
-        return ('P(' +format(self.value,self.fmt)
-                +','+repr(self.vary)
-                +','+format(self.step,'0.2g')
-                +','+format(self.unc,'0.2g')
-                +')')
+        retval = 'P('+format(self.value,self.fmt)
+        retval += ','+repr(self.vary)
+        retval += ','+format(self.step,'0.2g')
+        retval += ','+format(self.unc,'0.2g')
+        if self._bounds_specified:
+            retval += f', ({self.bounds[0]:0.2g},{self.bounds[1]:0.2g})'
+        retval += ')'
+        return retval
 
     def __str__(self):
         return repr(self)
@@ -1036,30 +1060,29 @@ def _deepcopy_function(function,translate_defaults=None):
     fnew.__qualname__= function.__name__
     return fnew
 
-def _calculate_jacobian_multiprocessing_worker(shared_namespace,p,i):
-    """Calculate part of a jacobian."""
-    import dill
-    from time import perf_counter as timestamp
-    import numpy as np
-    optimiser = dill.loads(shared_namespace.dill_pickle)
-    residual = shared_namespace.residual
-    rms = np.sqrt(np.mean(residual**2))
-    pnew = copy(p)
-    jacobian = []
-    step = 1e-8                 # nmust be consistent abovce
-    for ii in i:
-        timer = timestamp()
-        pnew[ii] += step
-        optimiser._set_parameters(pnew,rescale=True)
-        residualnew = optimiser.construct()
-        rmsnew = np.sqrt(np.mean(residualnew**2))
-        dresidual = (residualnew-residual)
-        jacobian.append((residualnew-residual)/step)
-        pnew[ii] = p[ii]
-        if rms == rmsnew:
-            message = 'parameter has no effect'
-        else:
-            message = ''    
-        print(f'jcbn: {ii:>6d} time: {timestamp()-timer:>7.2e} rms: {rmsnew:>12.8e} {message}')
-    return jacobian
+##def _calculate_jacobian_multiprocessing_worker(shared_namespace,p,i):
+##    """Calculate part of a jacobian."""
+##    import dill
+##    from time import perf_counter as timestamp
+##    import numpy as np
+##    optimiser = dill.loads(shared_namespace.dill_pickle)
+##    residual = shared_namespace.residual
+##    rms = np.sqrt(np.mean(residual**2))
+##    pnew = copy(p)
+##    jacobian = []
+##    for ii in i:
+##        timer = timestamp()
+##        pnew[ii] += 1
+##        optimiser._set_parameters(pnew)
+##        residualnew = optimiser.construct()
+##        rmsnew = np.sqrt(np.mean(residualnew**2))
+##        dresidual = (residualnew-residual)
+##        jacobian.append((residualnew-residual))
+##        pnew[ii] = p[ii]
+##        if rms == rmsnew:
+##            message = 'parameter has no effect'
+##        else:
+##            message = ''    
+##        print(f'jcbn: {ii:>6d} time: {timestamp()-timer:>7.2e} rms: {rmsnew:>12.8e} {message}')
+##    return jacobian
 
