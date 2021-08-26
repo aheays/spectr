@@ -315,7 +315,7 @@ class Model(Optimiser):
             self.add_suboptimiser(self.experiment)
             self.pop_format_input_function()
         self._initialise()
-        self.add_post_construct_function(self._get_residual)
+        self.add_post_construct_function(self.get_residual)
         self.add_save_to_directory_function(self.output_data_to_directory)
         self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
@@ -371,11 +371,10 @@ class Model(Optimiser):
         self._xin = None        # might be needed in next _initialise
         return self.y
 
-    def _get_residual(self):
+    def get_residual(self):
         """Compute residual error."""
         if self._interpolate_factor is not None:
             self.uninterpolate(average=False)
-        
         if self.experiment is None:
             return []
         residual = self.yexp - self.y
@@ -1027,7 +1026,7 @@ class Model(Optimiser):
                 # P(phase,vary,2*π*1e-3),])
         # self.scale_by_piecewise_sinusoid(regions)
         # return regions
-       #  
+
     @optimise_method()
     def scale_by_piecewise_sinusoid(self,regions,Aspline=True,_cache=None,_parameters=None):
         """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
@@ -1673,7 +1672,8 @@ class Model(Optimiser):
             if invert_model:
                 self.y *= -1
         if plot_residual and self.y is not None and self.experiment.y is not None:
-            yres = self.experiment.y[self._iexp]-self.y
+            # yres = self.experiment.y[self._iexp]-self.y
+            yres = self.yexp - self.y
             if self.residual_weighting is not None:
                 yres *= self.residual_weighting
             ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
