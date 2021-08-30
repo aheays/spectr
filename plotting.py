@@ -121,6 +121,31 @@ def presetRcParams(
         'path.simplify_threshold' :1, # how much to do so
         'agg.path.chunksize': 10000,  # antialisin speed up -- does not seem to do anything over path.simplify
     })
+    ## screen without axes or text
+    presets['fast']=deepcopy(presets['screen'])
+    presets['fast'].update({
+        'lines.antialiased' : False,
+        'patch.antialiased' : False,
+        'figure.subplot.left':0,
+        'figure.subplot.right':1,
+        'figure.subplot.bottom':0,
+        'figure.subplot.top':1,
+        'figure.subplot.wspace':0.02,
+        'figure.subplot.hspace':0.02,
+        'figure.frameon':False,
+        'grid.linestyle'     : '',
+        'legend.fontsize'    :0,
+        'axes.titlesize'     :0,
+        'axes.labelsize'     :0,
+        'xtick.labelsize'    :0,
+        'ytick.labelsize'    :0,
+        'font.size'          :0,
+        'axes.prop_cycle'    : cycler('color',linecolors_screen),
+        'path.simplify'      :True , # whether or not to speed up plots by joining line segments
+        'path.simplify_threshold' :1, # how much to do so
+        'agg.path.chunksize': 10000,  # antialisin speed up -- does not seem to do anything over path.simplify
+    })
+    ## single column figure in a journal artile
     presets['article_single_column']=deepcopy(presets['base'])
     presets['article_single_column'].update({
         'text.usetex'          :False,
@@ -383,15 +408,14 @@ def newfig():
     
 def qfig(
         n=None,
-        preset_rcparams='screen',
+        preset='screen',
         figsize=None,
         hide_toolbar=True,
-        # tight_layout=True,
         clear_figure=True,
         fullscreen=False,
-        **preset_rcparams_kwargs):
+        **preset_kwargs):
     """quick figure preparation."""
-    presetRcParams(preset_rcparams,**preset_rcparams_kwargs)
+    presetRcParams(preset,**preset_kwargs)
     if n is None:
         fig = plt.figure()
     else:
@@ -670,20 +694,26 @@ def _extra_interaction_on_key(event):
             axes.set_ylim(ymin=ymin)
         if not np.isinf(ymax):
             axes.set_ylim(ymax=ymax)
+    ## zoom to full yscale
     elif event.key=='y':
-        ## zoom to full yscale
-        lines  = (axes.get_lines()
-                  if axes._my_extra_interaction['selected_line'] is None
-                  else [axes._my_extra_interaction['selected_line']])  # use all lines if not selected
+        ## use all lines if none selected
+        if axes._my_extra_interaction['selected_line'] is None:
+            lines  = axes.get_lines()
+        else:
+             lines = [axes._my_extra_interaction['selected_line']]
         xmin,xmax = axes.get_xlim()
         ymin,ymax = np.inf,-np.inf
         for line in lines:
-            if not line.get_visible(): continue
-            if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
+            if not line.get_visible():
+                continue
+            if not isinstance(line.get_xdata(),np.ndarray):
+                ## hack to avoid things I dont know what they are
+                continue
             i = np.argwhere((line.get_xdata()>=xmin)&(line.get_xdata()<=xmax))
-            if not any(i): continue
+            if not any(i):
+                continue
             ymin = min(ymin,(line.get_ydata()[i]).min())
-            ymax = max(ymin,(line.get_ydata()[i]).max())
+            ymax = max(ymax,(line.get_ydata()[i]).max())
         if not np.isinf(ymin):
             axes.set_ylim(ymin=ymin)
         if not np.isinf(ymax):
@@ -696,10 +726,15 @@ def _extra_interaction_on_key(event):
         xmin,xmax = np.inf,-np.inf
         ymin,ymax = axes.get_ylim()
         for line in lines:
-            if not line.get_visible(): continue
-            if not isinstance(line.get_xdata(),np.ndarray): continue # hack to avoid things I dont know what they are
-            i = (line.get_ydata()>=ymin)&(line.get_ydata()<=ymax) # get only data in current ylim
-            if not any(i): continue
+            if not line.get_visible():
+                continue
+            if not isinstance(line.get_xdata(),np.ndarray):
+                ## hack to avoid things I dont know what they are
+                continue
+            ## get only data in current ylim
+            i = (line.get_ydata()>=ymin)&(line.get_ydata()<=ymax) 
+            if not any(i):
+                continue
             xmin = min(xmin,np.min(line.get_xdata()[i])) # get new limits
             xmax = max(xmax,np.max(line.get_xdata()[i]))
         if not np.isinf(xmin):
