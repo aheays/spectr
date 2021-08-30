@@ -992,7 +992,7 @@ class Model(Optimiser):
             # amplitude = tools.rms(residual)
             regions.append([
                 xbegi,xendi,
-                P(amplitude,Avary,amplitude*1e-3),
+                P(amplitude,Avary,1e-5),
                 P(frequency,vary,frequency*1e-3),
                 P(phase,vary,2*π*1e-3),])
         self.scale_by_piecewise_sinusoid(regions,Aspline=Aspline)
