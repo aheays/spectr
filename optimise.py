@@ -505,7 +505,7 @@ class Optimiser:
 
     construct_functions = property(lambda self: list(self._construct_functions.values()) + list(self._post_construct_functions.values())[::-1])
 
-    def construct(self,clean_construct=False):
+    def construct(self,clean=False):
         """Run all construct functions and return collected residuals. If
         clean_construct is True then discard all cached data and completely
         rebuild the model."""
@@ -513,7 +513,7 @@ class Optimiser:
         ## collect residuals from suboptimisers and self
         combined_residual = []  # from self and suboptimisers
         for o in self.get_all_suboptimisers():
-            if clean_construct:
+            if clean:
                 o._clean_construct = True
             ## construct optimiser for one of the following reasons
             if (

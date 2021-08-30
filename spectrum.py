@@ -657,6 +657,9 @@ class Model(Optimiser):
             else:
                 ## nothing changed keep old spectrum
                 pass
+        ## nothing to be done
+        if nmatch == 0:
+            return
         ## apply to model
         if kind == 'absorption':
             self.y *= y
@@ -1617,10 +1620,10 @@ class Model(Optimiser):
             plot_kwargs=None,
             xticks=None,
             yticks=None,
-            remove_all_text=False,
+            plot_text=False,
     ):
         """Plot experimental and model spectra."""
-        if remove_all_text:
+        if not plot_text:
             plot_labels=False
             plot_title=False
             plot_legend=False
@@ -1754,9 +1757,7 @@ class Model(Optimiser):
             t = ax.set_title(title,fontsize='x-small')
             t.set_in_layout(False)
         if plot_legend:
-            # tools.legend_colored_text(loc='lower right')
             tools.legend_colored_text(loc='upper left')
-            # tools.legend_colored_text(loc='best')
         ax.set_xlim(xmin,xmax)
         ax.set_ylim(ymin,ymax)
         ax.grid(True,color='gray')

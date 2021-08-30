@@ -124,14 +124,15 @@ def presetRcParams(
     ## screen without axes or text
     presets['fast']=deepcopy(presets['screen'])
     presets['fast'].update({
+        'figure.autolayout'  :False,
         'lines.antialiased' : False,
         'patch.antialiased' : False,
         'figure.subplot.left':0,
         'figure.subplot.right':1,
         'figure.subplot.bottom':0,
         'figure.subplot.top':1,
-        'figure.subplot.wspace':0.02,
-        'figure.subplot.hspace':0.02,
+        'figure.subplot.wspace':0.01,
+        'figure.subplot.hspace':0.01,
         'figure.frameon':False,
         'grid.linestyle'     : '',
         'legend.fontsize'    :0,
