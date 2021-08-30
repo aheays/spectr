@@ -727,51 +727,60 @@ def _extra_interaction_on_key(event):
     elif event.key=='Y':
         ## select y points and save to clipboard, enter to quit
         clginput('y')
+    ## move with arrow keys
     elif event.key=='right':
-        ## move with arrow keys
         xmin,xmax = axes.get_xlim()
         shift = (xmax-xmin)*move_factor
         axes.set_xlim(xmin+shift,xmax+shift)
     elif event.key=='left':
-        ## move with arrow keys
         xmin,xmax = axes.get_xlim()
         shift = (xmax-xmin)*move_factor
         axes.set_xlim(xmin-shift,xmax-shift)
     elif event.key=='up':
-        ## move with arrow keys
         ymin,ymax = axes.get_ylim()
         shift = (ymax-ymin)*move_factor
         axes.set_ylim(ymin+shift,ymax+shift)
     elif event.key=='down':
-        ## move with arrow keys
         ymin,ymax = axes.get_ylim()
         shift = (ymax-ymin)*move_factor
         axes.set_ylim(ymin-shift,ymax-shift)
+    ## move with arrow keys one entire range
+    elif event.key=='ctrl+right':
+        xmin,xmax = axes.get_xlim()
+        shift = (xmax-xmin)
+        axes.set_xlim(xmin+shift,xmax+shift)
+    elif event.key=='ctrl+left':
+        xmin,xmax = axes.get_xlim()
+        shift = (xmax-xmin)
+        axes.set_xlim(xmin-shift,xmax-shift)
+    elif event.key=='ctrol+up':
+        ymin,ymax = axes.get_ylim()
+        shift = (ymax-ymin)
+        axes.set_ylim(ymin+shift,ymax+shift)
+    elif event.key=='ctrl+down':
+        ymin,ymax = axes.get_ylim()
+        shift = (ymax-ymin)
+        axes.set_ylim(ymin-shift,ymax-shift)
+    ## zoom with arrow keys
     elif event.key=='shift+right':
-        ## zoom with arrow keys
         _extra_interaction_zoom_out('x',axes)
     elif event.key=='shift+left':
-        ## zoom with arrow keys
         _extra_interaction_zoom_in('x',axes)
     elif event.key=='shift+up':
-        ## zoom with arrow keys
         _extra_interaction_zoom_out('y',axes)
     elif event.key=='shift+down':
-        ## zoom with arrow keys
         _extra_interaction_zoom_in('y',axes)
+    ## zoom with +/=/- keys
     elif event.key=='+' or event.key=='=':
-        ## zoom with +/=/- keys
         _extra_interaction_zoom_in('x',axes)
         _extra_interaction_zoom_in('y',axes)
     elif event.key=='-':
-        ## zoom with +/=/- keys
         _extra_interaction_zoom_out('x',axes)
         _extra_interaction_zoom_out('y',axes)
+    ## toggle x or y log -- preserve limits
     elif event.key=='l':
-        ## toggle y log -- preserve limits
         _extra_interaction_toggle_log('y',axes)
     elif event.key=='L':
-        ## toggle x log -- preserve limits
         _extra_interaction_toggle_log('x',axes)
     ## redraw
     plt.draw()
