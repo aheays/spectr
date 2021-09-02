@@ -102,7 +102,7 @@ def presetRcParams(
         'figure.subplot.wspace':0.2,
         'figure.subplot.hspace':0.2,
         'figure.autolayout'  : True, # reset tight_layout everytime figure is redrawn -- seems to cause problems with long title and label strings
-        ## 'toolbar'  :'none' , # hides toolbar but also disables keyboard shortcuts
+        # 'toolbar'  :'none' , # hides toolbar but also disables keyboard shortcuts
         'legend.handlelength':4,
         'text.usetex'        :False,
         'lines.linewidth'    : 2,
@@ -110,12 +110,12 @@ def presetRcParams(
         'grid.alpha'         : 1.0,
         'grid.color'         : 'gray',
         'grid.linestyle'     : ':',
-        'legend.fontsize'    :9.,
-        'axes.titlesize'     :14.,
-        'axes.labelsize'     :14.,
-        'xtick.labelsize'    :14.,
-        'ytick.labelsize'    :14.,
-        'font.size'          :14.,
+        'legend.fontsize'    :9,
+        'axes.titlesize'     :9,
+        'axes.labelsize'     :9,
+        'xtick.labelsize'    :9,
+        'ytick.labelsize'    :9,
+        'font.size'          :9,
         'axes.prop_cycle'    : cycler('color',linecolors_screen),
         'path.simplify'      :True , # whether or not to speed up plots by joining line segments
         'path.simplify_threshold' :1, # how much to do so
@@ -131,8 +131,8 @@ def presetRcParams(
         'figure.subplot.right':1,
         'figure.subplot.bottom':0,
         'figure.subplot.top':1,
-        'figure.subplot.wspace':0.01,
-        'figure.subplot.hspace':0.01,
+        'figure.subplot.wspace':0,
+        'figure.subplot.hspace':0,
         'figure.frameon':False,
         'grid.linestyle'     : '',
         'legend.fontsize'    :0,
@@ -400,36 +400,30 @@ def set_rcparam(params):
             else:
                 raise Exception(f"Could not interpret abbreviated rcParam: {repr(key)}")
 
-def newfig():
-    """Make a new figure"""
-    n = 1
-    while plt.fignum_exists(n):
-        n = n+1
-    fig(n=n)
-    
 def qfig(
         n=None,
         preset='screen',
         figsize=None,
         hide_toolbar=True,
-        clear_figure=True,
         fullscreen=False,
+        show=True,
         **preset_kwargs):
     """quick figure preparation."""
+    figure_exists = plt.fignum_exists(n)
     presetRcParams(preset,**preset_kwargs)
+    ## get / make figure
     if n is None:
         fig = plt.figure()
     else:
         fig = plt.figure(n);
-    if fullscreen:
+    if fullscreen and not figure_exists:
         set_figsize_fullscreen()
-    if clear_figure:
-        fig.clf()
-    fig._my_fig = True          # use this as a marker that this figure was created by this function 
+    ## use this as a marker that this figure was created by this function 
+    fig._my_fig = True        
     newcolor(reset=True)
     newlinestyle(reset=True)
     newmarker(reset=True)
-    # extra_interaction()
+    extra_interaction()
     if figsize=='full screen':
         set_figsize_fullscreen(fig=fig)
     elif figsize=='quarter screen':
@@ -445,17 +439,44 @@ def qfig(
             # win = fig.canvas.window()
         # # toolbar = win.findChild(QtWidgets.QToolBar)
         # # toolbar.setVisible(False)
-    # ax = fig.gca()
     def format_coord(x,y):
-        if x<1e-5 or x>1e5: xstr = f'{x:0.18e}'
-        else:               xstr = f'{x:0.18f}'
-        if y<1e-5 or y>1e5: ystr = f'{y:0.18e}'
-        else:               ystr = f'{y:0.18f}'
-        return(f'x={xstr:<25s} y={ystr:<25s}')
-    # ax.format_coord = format_coord
-    # if preset_rcparams=='screen':
-        # ax.grid(True,color='gray')
+        if x<1e-5 or x>1e5:
+            xstr = f'{x:0.18e}'
+        else:
+            xstr = f'{x:0.18f}'
+        if y<1e-5 or y>1e5:
+            ystr = f'{y:0.18e}'
+        else:
+            ystr = f'{y:0.18f}'
+        return f'x={xstr:<25s} y={ystr:<25s}'
+    ## show or update the figure
+    if show:
+        if figure_exists:
+            qupdate(fig)
+        else:
+            plt.show(block=False)
+            plt.pause(1e-10)
+    fig.clf()
     return fig
+
+def qupdate(fig=None):
+    """Exisint figures will be updated figure without blocking or
+raising. New figures non-blocking show and be raised."""
+    if fig is None:
+        ## update all figures
+        for fig in plt.get_fignums():
+            qupdate(fig)
+    elif isinstance(fig,int):
+        if not plt.fignum_exists(fig):
+            ## new figure
+            qfig(fig,show=True)
+        else:
+            ## get figure from number and update
+            qupdate(plt.figure(fig))
+    else:
+        ## update existing figure
+        fig.canvas.draw()
+        fig.canvas.start_event_loop(1e-10)
 
 def qax(*qfig_args,**qfig_kwargs):
     return qfig(*qfig_args,**qfig_kwargs).gca()
@@ -492,8 +513,8 @@ def set_figsize_fullscreen(fig=None,scale=1):
             y=y-400,        # a bit less to fit in toolbar
             fig=fig))
     except:
-        # pass
-        warnings.warn('set_figsize_fullscreen failed')
+        pass
+        # warnings.warn('set_figsize_fullscreen failed')
         
 
 def set_figsize_in_pixels(x,y,fig=None):
@@ -532,7 +553,7 @@ def extra_interaction(fig=None,pickradius=5):
         fig._my_extra_interaction = {
             'pickradius':pickradius,
         }
-        _extra_interaction_select_axes(fig.gca())
+        # _extra_interaction_select_axes(fig.gca())
     ## watch for events
     fig.canvas.mpl_connect('key_press_event', _extra_interaction_on_key)
     fig.canvas.mpl_connect('pick_event', _extra_interaction_on_pick)
@@ -1201,6 +1222,7 @@ def subplot(
         n=None,                 # subplot index, begins at 1, if None adds a new subplot
         ncolumns=None,          # how many colums (otherwise adaptive)
         nrows=None,          # how many colums (otherwise adaptive)
+        ntotal=None,         # how many to draw in total (at least)
         fig=None,               
         **add_subplot_kwargs
 ):
@@ -1210,22 +1232,28 @@ def subplot(
     return that. If ncolumns is specified then use that value,
     otherwise use internal heuristics.  n IS ZERO INDEXED"""
     if fig is None:
-        fig=plt.gcf() # if figure object not provided use this
+        ## default to current fkgure
+        fig = plt.gcf() 
     old_axes = fig.axes           # list of axes originally in figure
     old_nsubplots = len(fig.axes) # number of subplots originally in figure
     if n is None:
+        ## new subplot
         n = old_nsubplots+1
     else:
-        n = n+1                           #set to 1-indexed in convention of subplots
-    ## indexes an already existing subplot - return that axes
-    if n<=old_nsubplots:
+        ## set to 1-indexed in convention of subplots
+        n = n+1
+    if ntotal is not None and ntotal > old_nsubplots and ntotal > (n+1):
+        ## current number of subplot is below ntotal, make empty subplots up to this number
+        ax = subplot(ntotal-1,ncolumns,nrows,fig=fig,**add_subplot_kwargs)
+    if n <= old_nsubplots:
+        ## indexes an already existing subplot - return that axes
         ax = fig.axes[n-1]
-    ## higher than existing subplots, creating empty intervening axes then add ths new one
-    elif n>old_nsubplots+1:
+    elif n > old_nsubplots+1:
+        ## higher than existing subplots, creating empty intervening axes then add ths new one
         for i in range(old_nsubplots,n):
-            ax = subplot(i,ncolumns,nrows,fig,**add_subplot_kwargs)
-    ## need to add a new subplot
+            ax = subplot(i,ncolumns,nrows,fig=fig,**add_subplot_kwargs)
     else:
+        ## need to add a new subplot
         nsubplots = old_nsubplots+1
         if ncolumns is not None and nrows is not None:
             columns,rows = ncolumns,nrows
@@ -1248,8 +1276,9 @@ def subplot(
         gridspec = matplotlib.gridspec.GridSpec(rows,columns)
         for axi,gridspeci in zip(fig.axes,gridspec):
             axi.set_subplotspec(gridspeci)
-    fig.sca(ax)      # set to current axes
-    ## set some other things if a quick figure
+    ## set to current axes
+    fig.sca(ax)  
+    ## set some other things to do if this is a qfig
     if hasattr(fig,'_my_fig') and fig._my_fig is True:
         ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter('%0.10g'))
         ax.grid(True)
@@ -2206,8 +2235,7 @@ def set_tick_spacing(
             ((beg+minor_spacing*0.9999)//minor_spacing)*minor_spacing,
             end, minor_spacing),minor=True)
 
-
-def show(show_in_ipython=False):
+def show(show_in_ipython=False,block=True):
     """ Show current plot in a customised way."""
     ## do nothing if in an ipython shell
     for n in plt.get_fignums():
@@ -2222,7 +2250,8 @@ def show(show_in_ipython=False):
             plt.show()
         return
     except NameError:
-        plt.show()
+        qupdate()
+        plt.show(block=block)
 
 
 # def show(fmt='x',fig=None):

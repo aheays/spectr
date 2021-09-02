@@ -27,6 +27,7 @@ class Dataset(optimise.Optimiser):
     ## The kind of data that 'value' contains.  Influences which subkinds are relevant.
     data_kinds = {
         'f':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','description':'float' },
+        'a':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','description':'positive float' },
         'i':    {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt':'d'     ,'description':'int'   },
         'b':    {'cast':convert_to_bool_vector_array       ,'fmt':''      ,'description':'bool'  },
         'U':    {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt':'s'     ,'description':'str'   },

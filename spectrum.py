@@ -272,7 +272,6 @@ class Experiment(Optimiser):
             ax.format_coord = format_coord
             ax.grid(True,color='gray')
             plotting.simple_tick_labels(ax=ax)
-
         ax.plot(self.x,self.y,label=self.name)
         plotting.legend(ax=ax,loc='upper left')
         return ax
@@ -950,12 +949,11 @@ class Model(Optimiser):
         ## add to y
         self.y[i] *= spline.y  
 
-
     def auto_scale_by_piecewise_sinusoid(
             self,
             xjoin=10, # specified interval join points or distance separating them
             xbeg=None,xend=None, # limit to this range
-            vary=True,Avary= True, # vary phase, frequencey and/or amplitude
+            vary=False,Avary=False, # vary phase, frequencey and/or amplitude
             Aspline= True,          # amplitude is splined, else pieces wise constant
     ):
         """Automatically find regions for use in
@@ -1001,62 +999,27 @@ class Model(Optimiser):
         self.scale_by_piecewise_sinusoid(regions,Aspline=Aspline)
         return regions
 
-    # def auto_scale_by_piecewise_sinusoid(self,xstep=10,xbeg=-inf,xend=inf,vary=True):
-        # """Automatically find regions for use in
-        # scale_by_piecewise_sinusoid."""
-        # ## get join points between regions
-        # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-        # xjoin = np.concatenate((arange(self.x[i][0],self.x[i][-1],xstep),self.x[i][-1:]))
-        # ## loop over all regions, gettin dominant frequency and phase
-        # ## from the residual error power spectrum
-        # regions = []
-        # for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
-            # i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-            # ## i = (self.x>=xbegi)&(self.x<=xendi)
-            # residual = self.yexp[i] - self.y[i]
-            # FT = fft.fft(residual)
-            # imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
-            # phase = np.arctan(FT.imag[imax]/FT.real[imax])
-            # if FT.real[imax]<0:
-                # phase += π
-            # dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
-            # frequency = 1/dx*imax/len(FT)
-            # amplitude = tools.rms(residual)/self.y[i].mean()
-            # regions.append([
-                # xbegi,xendi,
-                # P(amplitude,vary,self.y[i].mean()*1e-3),
-                # P(frequency,vary,frequency*1e-3),
-                # P(phase,vary,2*π*1e-3),])
-        # self.scale_by_piecewise_sinusoid(regions)
-        # return regions
-
     @optimise_method()
-    def scale_by_piecewise_sinusoid(self,regions,Aspline=True,_cache=None,_parameters=None):
+    def scale_by_piecewise_sinusoid(self,regions,_cache=None,_parameters=None):
         """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
-        if Aspline:
-            ## spline interpolated amplitudes
-            if (self._clean_construct
-                or np.any([t._last_modify_value_time > self._last_construct_time for t in _parameters])):
-                sinusoid = np.full(self.y.shape,0.0)
-                xmid = []
-                As = []
-                for xbeg,xend,amplitude,frequency,phase in regions:
-                    i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-                    sinusoid[i] = np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
-                    xmid.append((xbeg+xend)/2)
-                    As.append(amplitude)
-                A = tools.spline(xmid,As,self.x,set_out_of_bounds_to_zero=False,check_bounds=False)
-                scale = 1 + A*sinusoid
-                _cache['scale'] = scale
-            scale = _cache['scale']
-            self.y *= scale
-        else:
-            ## piecewise constant amplitudes
-            for xbeg,xend,amplitude,frequency,phase in regions:
-                i = slice(*np.searchsorted(self.x,[xbeg,xend]))
-                self.y[i] *= 1+float(amplitude)*np.cos(2*π*(self.x[i]-xbeg)*float(frequency)+float(phase))
+        ## spline interpolated amplitudes
+        if (
+                self._clean_construct
+                or np.any([t._last_modify_value_time > self._last_construct_time
+                           for t in _parameters])
+        ):
+            i = (self.x >= regions[0][0]) & (self.x <= regions[-1][1]) # x-indices defined by regions
+            sinusoid = tools.piecewise_sinusoid(self.x[i],regions)
+            # scale = 1 + sinusoid
+            scale = sinusoid
+            _cache['scale'] = scale
+            _cache['i'] = i
+        scale = _cache['scale']
+        i = _cache['i']
+        # self.y[i] *= scale
+        self.y[i] += scale
 
     @optimise_method()
     def shift_by_constant(self,shift):
@@ -1960,7 +1923,6 @@ class Spline(Optimiser):
         self.set_x(x)
         return self.y
 
-
 def load_spectrum(filename,**kwargs):
     """Use a heuristic method to load a directory output by
     Spectrum."""
@@ -1968,3 +1930,396 @@ def load_spectrum(filename,**kwargs):
     x = Spectrum()
     x.load_from_directory(filename,**kwargs)
     return(x)
+
+
+class FitReferenceAbsorption():
+
+    def __init__(
+            self,
+            name='fit_reference_absorption',
+            parameters={},
+            verbose=True,
+            plot_progress=True,
+            plot_models=True,
+            max_nfev=5,
+    ):
+        ## get parameters in order
+        self.name = name
+        self.p = parameters
+        for key,val in {
+                'filename':None,
+                'species':{},
+                'xbeg':600,
+                'xend':6000,
+                'Teq':P(298,None,1,nan,(290,300)),
+                'instrument_gaussian':P(0.02, None,1e-5,nan,(0,inf)),
+                'bin_experiment':None,
+                'interpolate_model':0.001,
+                'scalex':None,
+                'S296K_min':1e-23,
+                'noise':{'xbeg':5951.26,'xend':5959.4},
+                'intensity_spline':None,
+                'scale_by_sinusoid':None,
+        }.items():
+            self.p.setdefault(key,val)
+        ## prepare other variables
+        self.line = {}
+        self.verbose = verbose
+        self.plot_models = plot_models
+        self.plot_progress =  plot_progress
+        ## prepare experiment
+        self.load_experiment()
+        
+
+    characteristic_bands = {
+        'H2O':[[1400,1750],[3800,4000],],
+        'CO2':[[625,725], [2200,2400],[3550,3750],[4800,5150]] ,
+        'CO':[[2050,2225], [4150,4350],],
+        'C2H2':[[600,850], [3200,3400],],
+        'HCN':[[600,850],[3200,3400],],
+        'NH3':[[800,1200],],
+        'SO2':[[1050,1400], [2450,2550],],
+        'NO2':[[1540,1660],],
+        'NO':[[1850,1950],],
+        'N2O':[[2175,2270],],
+        'CH4':[[2850,3150],],
+        'CS2':[[1500,1560],],
+        'OCS':[[2000,2100],],
+        'CH3Cl':[[2750,3500],],
+        'CS':[[1200,1350],],
+        'H2S':[[1000,1600],[3500,4100]],
+        'C2H6':[[2850,3100]],
+    }
+
+    characteristic_lines = {
+        'H2O':[[1550,1580],],
+        'CO2':[[2310,2330],],
+        'CO':[[2160,2180],],
+        ## 'NH3':[[920,980],],
+        'NH3':[[950,970],],
+        'HCN':[[710,730],],
+        ## 'SO2':[[1350,1370],[1100,1150],],
+        'SO2':[[1350,1370],],
+        'NO2':[[1590,1610],],
+        'NO':[[1830,1850],],
+        'N2O':[[2199,2210],],
+        ##'CH4':[[3000,3030],],
+        'CH4':[[3010,3020],],
+        ## 'H2S':[[1250,1300],[3700,3750],],
+        'H2S':[[1275,1300],],
+        'CS2':[[1530,1550],],
+        'C2H2':[[3255,3260],],
+        'OCS':[[2070,2080],],
+        'C2H6':[[2975,2995]],
+    }
+
+    def verbose_print(self,*args,**kwargs):
+        if self.verbose:
+            print(*args,**kwargs)
+
+    def load_experiment(self):
+        p = self.p
+        ## load exp data
+        self.experiment = Experiment('experiment')
+        self.experiment.set_spectrum_from_opus_file(p['filename'])
+        ## fit frequency scale
+        if p['scalex'] is not None:
+            experiment.scalex(p['scalex'])
+        ## fit noise level
+        if 'rms' not in p['noise']:
+            p['noise']['rms'] = self.experiment.fit_noise(xbeg=5951.26,xend=5959.4,n=1,make_plot=False)
+        self.experiment.experimental_parameters['noise_rms'] = p['noise']['rms']
+        self.experiment.residual_scale_factor = 1/p['noise']['rms']
+        ## bin data for speed
+        if p['bin_experiment'] is not None:
+            self.experiment.bin_data(width=p['bin_experiment'],mean=True)
+        ## fit background if needed
+        if p['intensity_spline'] is None:
+            self.auto_intensity_spline()
+
+    def auto_intensity_spline(self,figure_number=None):
+        """Automatic background. Not optimised."""
+        if figure_number is not None:
+            plotting.qfig(figure_number)
+            make_plot = True
+        else:
+            make_plot =False
+        ## get good spline points from median of experimental data
+        i = tools.inrange(self.experiment.x,self.p['xbeg'],self.p['xend'])
+        x = self.experiment.x[i]
+        y = self.experiment.y[i]
+        xs,ys,yf = tools.fit_spline_to_extrema_or_median(
+            x,y,
+            xi=5,
+            make_plot=make_plot)
+        ## ensure end points in included
+        if xs[0] > x[0]:
+            xs = np.concatenate((x[0:1],xs))
+            ys = np.concatenate((yf[0:1],ys))
+        if xs[-1] < x[-1]:
+            xs = np.concatenate((xs,x[-1:]))
+            ys = np.concatenate((ys,yf[-1:]))
+        self.p['intensity_spline'] = [[xsi,P(ysi,False,1e-6)] for (xsi,ysi) in zip(xs,ys)]
+
+    def auto_scale_by_sinusoid(self,xi=10,figure_number=None):
+        """Automatic background. Not optimised."""
+        print('auto_scale_by_sinusoid')
+        ## plot or not
+        if figure_number is not None:
+            plotting.qfig(figure_number)
+            make_plot = True
+        else:
+            make_plot =False
+        ## refit scale_by_sinusoid
+        self.p['scale_by_sinusoid'] = None
+        model = self.make_model(xbeg=self.p['xbeg'],xend=self.p['xend'])
+        model.construct()
+        regions = tools.fit_piecewise_sinusoid(
+            model.x,
+            # model.yexp/model.y,
+            model.yexp-model.y,
+            xi=xi,
+            make_plot=make_plot)
+        self.p['scale_by_sinusoid'] = [
+            [xbeg,xend,
+             P(amplitude,False,1e-5),
+             P(frequency,False,frequency*1e-3),
+             P(phase,False,2*π*1e-3),]
+            for (xbeg,xend,amplitude,frequency,phase) in regions]
+
+    def full_model(self,figure_number=None,plot_text=True,max_nfev=20,**make_model_kwargs):
+        """Full model."""
+        print('full_model')
+        model = self.make_model(xbeg=self.p['xbeg'],xend=self.p['xend'],**make_model_kwargs)
+        model_no_absorption = self.make_model(self.p['xbeg'],self.p['xend'],list(self.p['species']),neglect_species_to_fit=True)
+        model.optimise(plot_progress=self.plot_progress,monitor_frequency='rms decrease',verbose=self.verbose,max_nfev=max_nfev)
+        if figure_number is not None:
+            self.plot(plotting.qfig(figure_number),model,model_no_absorption,plot_text=plot_text)
+        return model
+
+    def fit_regions(self,width=500,overlap=0.9,figure_number=None,max_nfev=5,**make_model_kwargs):
+        """Full model."""
+        print('fit_regions')
+        p = self.p
+        xbeg = p['xbeg']
+        while xbeg < p['xend']:
+            xend = min(xbeg+width,p['xend'])
+            model = self.make_model(xbeg,xend,**make_model_kwargs)
+            model.optimise(plot_progress=self.plot_progress,verbose=self.verbose,max_nfev=max_nfev)
+            if figure_number is not None:
+                self.plot(plotting.qfig(figure_number),model)
+            xbeg += overlap*width
+
+    def fit_species(self,*species_to_fit,figure_number=None,regions='lines',max_nfev=20,**make_model_kwargs):
+        """Fit species_to_fit individually using their 'lines' or 'bands'
+        preset regions, or the 'full' region."""
+        print('fit_species',regions,species_to_fit)
+        p = self.p
+        ## get species list
+        if len(species_to_fit) == 0:
+            species_to_fit = list(p['species'])
+        species_to_fit = tools.ensure_iterable(species_to_fit)
+        if figure_number is not None:
+            fig = plotting.qfig(figure_number)
+        ## fit species individually to all regions
+        for species in species_to_fit:
+            ## get region list
+            if regions == 'lines':
+                regions_to_fit = self.characteristic_lines[species]
+            elif regions == 'bands':
+                regions_to_fit = self.characteristic_bands[species]
+            elif regions == 'full':
+                regions_to_fit = [[p['xbeg'],p['end']]]
+            else:
+                assert False
+            self.verbose_print(f'fit_species: {species:10} ',end='')
+            main = Optimiser(name=species)
+            models = []
+            for (xbeg,xend) in regions_to_fit:
+                ## get xbeg,xend in scan ragne
+                xbeg = max(xbeg,p['xbeg'])
+                xend = min(xend,p['xend'])
+                if xend - xbeg <= 0:
+                    continue
+                ## make optimise model
+                model = self.make_model(xbeg,xend,[species],**make_model_kwargs)
+                main.add_suboptimiser(model)
+                model_no_absorption = self.make_model(xbeg,xend,[species],neglect_species_to_fit=True)
+                models.append((model,model_no_absorption))
+            residual = main.optimise(plot_progress=self.plot_progress,max_nfev=max_nfev,verbose=self.verbose)
+            # print(f'{species:10} RMS: {tools.rms(residual):0.3e}')
+            ## plot models
+            if figure_number is not None:
+                for model,model_no_absorption in models:
+                    self.plot(fig,model,model_no_absorption)
+    
+    def auto_fit(
+            self,
+            species_to_fit,
+            ncycles=1,
+            fit_sinusoid=False,
+            fit_instrument_function_to_species='H2O',
+    ):
+        
+        """Fit spectrum in a standardised way."""
+        print('auto_fit')
+        ## first fit background and species roughly
+        self.auto_intensity_spline(figure_number=1)
+        self.fit_species(fit_instrument_function_to_species,regions='lines',fit_instrument_gaussian=True,fit_temperature=True,fit_species=True,fit_intensity=True,figure_number=2,)
+        self.fit_species(*species_to_fit,regions='lines',figure_number=2,fit_species=True,fit_intensity=True,)
+        self.fit_species(*species_to_fit,regions='lines',figure_number=2,fit_species=True,fit_intensity=True,)
+        ## then cycle on careful fit
+        for n in range(ncycles):
+            ## refit background
+            if fit_sinusoid:
+                self.auto_scale_by_sinusoid(figure_number=1)
+            self.fit_regions(width=300,figure_number=2,fit_intensity=True,fit_sinusoid=fit_sinusoid,)
+            ## refit instrument function
+            self.fit_species(fit_instrument_function_to_species,regions='bands',fit_instrument_gaussian=True,fit_temperature=True,fit_species=True,fit_intensity=True,fit_sinusoid=fit_sinusoid,figure_number=2,)
+            ## fit all species to bands
+            self.fit_species(*species_to_fit,regions='bands',figure_number=2,fit_species=True,fit_intensity=True,fit_sinusoid=fit_sinusoid,)
+        ## make final model
+        self.full_model(figure_number=1,plot_text=False)
+                    
+    def plot(
+            self,
+            fig,
+            model,
+            model_no_absorption=None,
+            **plot_kwargs
+    ):
+        """Plot the results of some models on individual subplots. Residuals
+        from models_no_absorption will be underplotted."""
+        if not self.plot_models:
+            return
+        plot_kwargs = dict(
+            plot_legend=False,
+            plot_title= True,
+            plot_text= True,
+            ) | plot_kwargs
+        ax = plotting.subplot(fig=fig)
+        model.plot(ax=ax,**plot_kwargs)
+        if model_no_absorption is not None:
+            ax.plot(
+                model_no_absorption.x,
+                model_no_absorption.get_residual(),
+                color='orange',
+                label=f'model_no_absorption: full/noabs={tools.rms(model.get_residual()):0.3e}/{tools.rms(model_no_absorption.get_residual()):0.3e}',
+                zorder=-2)
+        fig.suptitle(self.name)
+        plotting.qupdate(fig)
+
+    def get_line(self,species,verbose=False):
+        """Load HITRAN linelist."""
+        S296K_min = self.p['S296K_min']
+        if species in ('CO2','H2O'):
+            S296K_min *= 1e-2
+        elif species in ('CO','NH3'):
+            S296K_min *= 1e-1
+        if species not in self.line:
+            if verbose: 
+                print(f'loading hitran data for {species:6} with S296K_min: {S296K_min:0.0e}',end=' ')
+            line = database.get_hitran_lines(species,S296K_min=S296K_min)
+            if verbose:
+                print('length:',len(line))
+            self.line[species] = line
+        return self.line[species]
+
+    def make_model(
+            self,
+            xbeg,xend,
+            species_to_fit=[],
+            fit_intensity=False,
+            fit_species=False,
+            fit_scalex=False,
+            fit_sinusoid=False,
+            fit_instrument_gaussian=False,
+            fit_temperature=False,
+            neglect_species_to_fit=False,
+            verbose=False,
+    ):
+        ## get parameters — protect form change if necessary
+        p = self.p
+        if neglect_species_to_fit:
+            p = deepcopy(p)
+        ## start model
+        model = Model(
+            name='_'.join(species_to_fit),
+            experiment=self.experiment,
+            xbeg=xbeg,
+            xend=xend
+        )
+        ## set interpolated model grid
+        if p['interpolate_model'] is not None:
+            model.interpolate(p['interpolate_model'])
+        ## add unit intensity
+        model.add_intensity(1)
+        ## add species if necessary
+        p.setdefault('species',{})
+        for species in species_to_fit:
+            p['species'].setdefault(species,{})
+        ## add absorption lines
+        # self.verbose_print( f'        adding species: ')
+        p['Teq'].vary = fit_temperature
+        for species in p['species']:
+            if neglect_species_to_fit and species in species_to_fit:
+                continue
+            # self.verbose_print( f' {species}',end='')
+            ## load column desnity and effective air-broadening
+            ## pressure species-by-species and perhaps optimise them
+            p['species'][species].setdefault('pair',P(500, False,1e0,nan,(50,10000),))
+            p['species'][species].setdefault('N',P(1e13, False,1e13 ,nan,(0,np.inf)))
+            if fit_species and species in species_to_fit:
+                p['species'][species]['N'].vary = True
+                p['species'][species]['pair'].vary = True
+            else:
+                p['species'][species]['N'].vary =False
+                p['species'][species]['pair'].vary =False
+            ## add lines
+            model.add_line(
+                self.get_line(species),
+                Teq=p['Teq'],
+                Nself=p['species'][species]['N'],
+                pair=p['species'][species]['pair'],
+                ymin=None,
+                ncpus=1,
+                nfwhmL=3000,
+                lineshape='voigt',
+                verbose=False,
+            )
+        # self.verbose_print()
+        ## uninterpolate model grid
+        if p['interpolate_model'] is not None:
+            model.uninterpolate(average=True)
+        ## scale to correct background intensity — set vary to True
+        ## for spline points in domain and the immediate neighbours
+        for i,(xi,yi) in enumerate(p['intensity_spline']):
+            yi.vary = False
+            if fit_intensity:
+                if xi >= xbeg and  xi <= xend:
+                    yi.vary = True
+                if i > 0:
+                    xprev,yprev = p['intensity_spline'][i-1]
+                    if xi > xbeg and xprev < xbeg:
+                        yprev.vary = True
+                    if xi > xend and xprev < xend:
+                        yi.vary = True
+        model.multiply_spline(p['intensity_spline'],order=3)
+        ## scale by sinusoidal background
+        if p['scale_by_sinusoid'] is not None:
+            for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['scale_by_sinusoid']):
+                freqi.vary = phasei.vary = amplitudei.vary = False
+                # if (fit_sinusoid
+                #     and (xbegi >= xbeg
+                #           or (i < (len(p['scale_by_sinusoid'])-1) and p['scale_by_sinusoid'][i+1][0] > xbeg))
+                #     and (xendi <= xend
+                #          or (i > 0 and p['scale_by_sinusoid'][i-1][1] < xend))):
+                if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
+                    freqi.vary = phasei.vary = amplitudei.vary =  True
+            model.scale_by_piecewise_sinusoid(p['scale_by_sinusoid'])
+        ## instrument broadening
+        p['instrument_gaussian'].vary = fit_instrument_gaussian
+        model.convolve_with_gaussian(p['instrument_gaussian'])
+        return model
+        
+

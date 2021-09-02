@@ -9,11 +9,11 @@ import itertools
 import io
 import inspect
 
-from scipy import interpolate,constants,integrate,linalg,stats,signal
+from scipy import interpolate,constants,integrate,linalg,stats,signal,fft
 import csv
 import glob as glob_module
 import numpy as np
-from numpy import array,arange
+from numpy import array,arange,nan,inf
 import h5py
 from sympy.printing.pycode import pycode
 
@@ -2567,6 +2567,12 @@ def cumtrapz(y,
 #     if not np.iterable(x): return([x])
 #     return(list(set(x)))
 
+def argmedian(x):
+    """Return index of median point."""
+    isorted = np.argsort(x)
+    imedian = isorted[int(len(isorted)/2)]
+    return imedian
+
 def unique(x,preserve_ordering=False):
     """Returns unique elements. preserve_ordering is likely slower"""
     if preserve_ordering:
@@ -2577,6 +2583,7 @@ def unique(x,preserve_ordering=False):
         return(x)
     else:
         return(list(set(x)))
+
 
 # def argunique(x):
     # """Find indices of unique elements of x. Picks first such
@@ -2947,7 +2954,10 @@ def limit_to_range(beg,end,x,*other_arrays):
 def total_fractional_range(x):
     """Compute  total fractional range of x."""
     xmax,xmin = np.max(x),np.min(x)
-    total_fractional_range = (xmax-xmin)/abs(xmin)
+    if xmax == 0 and xmin == 0:
+        total_fractional_range = 0
+    else:
+        total_fractional_range = abs((xmax-xmin)/((xmax+xmin)/2))
     return total_fractional_range
 
 # def common_range(x,y):
@@ -4861,8 +4871,8 @@ def fit_background(
         auto_trim_half=True,    # refit keeping half of the data to hopefully recover the mean
         x2=None, # spline x-points for a following fit of all data encompassed by trim
         trim=(0,1), # fractional interval of data to keep ordered by initial fit residual. (0,1) = all points, (0.9,1) points with the highest 10% y-value
-        figure=None,    # plot in this Figure object, None for no plot
-        spline_order=3,
+        make_plot=True,
+        order=3,         # spline order
 ):
     """Initially fit background of a noisy spectrum to a spline fixed
     to maximum (minimum) values in an interval around points x1.  The,
@@ -4871,7 +4881,7 @@ def fit_background(
     optionally (if x2 is set) least-squares spline-fit data with
     y-data in the fractional interval "trim"."""
     ## fit a spline to max or min points near x1
-    xspline,yspline,yfit = fit_spline_to_extrema(x,y,fit_min_or_max,x1,1/4,order=spline_order)
+    xspline,yspline,yfit = fit_spline_to_extrema(x,y,fit_min_or_max,x1,1/4,order=order)
     yresidual = y-yfit
     ## if auto_trim_half then find the upper 50% of data and fit hte
     ## bottom edge (hopefully given a line through the mean of the
@@ -4889,11 +4899,11 @@ def fit_background(
         itrim[0] = itrim[-1] = True                      # do not trim endpoints
         xtrim,ytrim = x[itrim],y[itrim]
         xspline,yspline,ytrimfit = fit_spline_to_extrema(
-            xtrim,ytrim,t_fit_min_or_max,x1,1/4,order=spline_order)
+            xtrim,ytrim,t_fit_min_or_max,x1,1/4,order=order)
         yfit = spline(xspline,yspline,x)
         yresidual = y-yfit
-    # ## get fitted statistics
-    # μ,σ = fit_normal_distribution(yresidual[itrim])
+    ## get fitted statistics
+    ## μ,σ = fit_normal_distribution(yresidual[itrim])
     ## refit trimmed data
     if x2 is not None:
         ## another trim of residual maxima and minima 
@@ -4903,18 +4913,20 @@ def fit_background(
         itrim[0] = itrim[-1] = True                      # do not trim endpoints
         ## fit splien to full trimmed data
         xspline,yspline = fit_least_squares_spline(x[itrim],y[itrim],x2)
-        yfit = spline(xspline,yspline,x,order=spline_order)
+        yfit = spline(xspline,yspline,x,order=order)
     # ## adjust for missing noise due to trimming
     # if not np.isnan(μ):
         # yfit += μ
-    if figure is not None:
-        ## plot somem stuff
-        ax0 = subplot(0,fig=figure)
-        ax0.plot(x,y,label='data')
-        ax0.plot(x[itrim],y[itrim],label='trimmed data')
-        ax0.plot(xtrim,ytrimfit,label='refit trimmed data')
-        ax0.plot(x,yfit,lw=3,label='yfit')
-        legend(ax=ax0)
+    if make_plot:
+        ## plot some stuff
+        ax = plotting.gca()
+        ax.cla()
+        ax.plot(x,y,label='data')
+        ax.plot(x[itrim],y[itrim],label='trimmed data')
+        ax.plot(xtrim,ytrimfit,label='refit trimmed data')
+        ax.plot(x,yfit,lw=3,label='yfit')
+        ax.plot(x,yresidual,lw=3,label='yresidual')
+        legend(ax=ax)
         # ax1 = subplot(1,fig=figure)
         # n,b,p = ax1.hist(yresidual[itrim],max(10,int(len(y)/200)),density=True)
         # b = (b[1:]+b[:-1])/2
@@ -4978,6 +4990,125 @@ def fit_spline_to_extrema(
     xspline[0],xspline[-1] = x[0],x[-1] # ensure endpoints are included
     yf = spline(xspline,yspline,x,order=order,s=s,check_bounds=False)
     return xspline,yspline,yf
+
+def fit_spline_to_extrema_or_median(
+        x,                      # x data (sorted)
+        y,                      # y data 
+        fit='median',           # 'median', 'min', or 'max'
+        xi=5, # x values to fit spline points, or interval for evenly spaced points
+        interval_fraction=0.4,  # select a value from this half-interval around xi
+        refit_median =  True,
+        order=3,            # spline order
+        make_plot=True,     # show what was done
+):
+    """Fit a spline to (x,y) with knots in intervals around points
+    xi. Knots are at either the maximum or minimum y value in each
+    interval, or the median point. If refit_median then find the median of
+    residual error of first fit and fit to that."""
+    ## get xi spline points
+    xbeg,xend = x[0],x[-1]
+    if np.isscalar(xi):
+        xi = np.linspace(xbeg,xend,max(2,int((xend-xbeg)/xi)))
+    xi = np.asarray(xi,dtype=float)
+    assert np.all(np.sort(xi)==xi),'Spline points not monotonically increasing'
+    ## find intervals to fit get spline points in
+    xbeg = np.concatenate((xi[0:1], xi[1:]-(xi[1:]-xi[:-1])*interval_fraction))
+    xend = np.concatenate(((xi[:-1]+(xi[1:]-xi[:-1])*interval_fraction,x[-1:])))
+    ibeg,iend = [],[]
+    for xbegi,xendi in zip(xbeg,xend):
+        i = find((x>=xbegi)&(x<=xendi))
+        if len(i) == 0:
+            ## out of bounds of data
+            continue
+        ibeg.append(i[0])
+        iend.append(i[-1])
+    ## get y spline points at min or max
+    xspline,yspline = [],[]
+    for ibegi,iendi in zip(ibeg,iend):
+        xi = x[ibegi:iendi]
+        yi = y[ibegi:iendi]
+        if fit == 'min':
+            j = np.argmin(yi)
+        elif fit == 'max':
+            j = np.argmax(yi)
+        elif fit == 'median':
+            j = argmedian(yi)
+        else:
+            raise Exception(f'Invalid value {fit=}, expecint "min", "max", or "median"')
+        xspline.append(xi[j])
+        yspline.append(yi[j])
+    yf = spline(xspline,yspline,x,order=order,check_bounds=False,set_out_of_bounds_to_zero=False,)
+    if refit_median:
+        ## refit data to the median of each 
+        xspline,yspline = [],[]
+        for ibegi,iendi in zip(ibeg,iend):
+            ## data for this interval
+            xi = x[ibegi:iendi]
+            yi = y[ibegi:iendi]
+            yresiduali = y[ibegi:iendi]-yf[ibegi:iendi]
+            ## find median data point
+            j = argmedian(yresiduali)
+            xspline.append(xi[j])
+            yspline.append(yi[j])
+        yf = spline(xspline,yspline,x,order=order,check_bounds=False,set_out_of_bounds_to_zero=False,)
+    if make_plot:
+        ## summarise the results
+        gca().plot(x,y,label='data')
+        gca().plot(xspline,yspline,marker='o',ls='',label='spline points')
+        gca().plot(x,yf,label='fit')
+        ## plot intervals
+        ## for ibegi,iendi in zip(ibeg,iend):
+        ##     gca().plot(x[ibegi:iendi],y[ibegi:iendi],color='black')
+        legend()
+    return xspline,yspline,yf
+
+def piecewise_sinusoid(x,regions,order=3):
+    """"""
+    sinusoid = np.full(x.shape,0.0)
+    xmid = []
+    As = []
+    for xbeg,xend,amplitude,frequency,phase in regions:
+        i = slice(*np.searchsorted(x,[xbeg,xend]))
+        sinusoid[i] = np.cos(2*constants.pi*(x[i]-xbeg)*float(frequency)+float(phase))
+        xmid.append((xbeg+xend)/2)
+        As.append(amplitude)
+    A = tools.spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
+    retval = A*sinusoid
+    return retval
+
+def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True):
+    """Define piecewise sinusoids for regions joined by points xi (or on
+    grid with interval xi)."""
+    ## get join points between regions and begining and ending points
+    if np.isscalar(xi):
+        xi = np.linspace(x[0],x[-1],max(2,int(np.ceil((x[-1]-x[0])/xi))))
+    ## loop over all regions, gettin dominant frequency and phase
+    ## from the residual error power spectrum
+    regions = []
+    shift = np.full(x.shape,0.0)
+    for xbegi,xendi in zip(xi[:-1],xi[1:]):
+        i = slice(*np.searchsorted(x,[xbegi,xendi]))
+        shift[i] = np.mean(y[i])
+        xi = x[i]
+        yi = y[i] - shift[i]
+        FT = fft.fft(yi)
+        imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
+        phase = np.arctan(FT.imag[imax]/FT.real[imax])
+        if FT.real[imax]<0:
+            phase += constants.pi
+        dx = (xi[-1]-xi[0])/(len(xi)-1)
+        frequency = 1/dx*imax/len(FT)
+        amplitude = rms(yi)
+        regions.append((xbegi,xendi,amplitude,frequency,phase))
+    yf = piecewise_sinusoid(x,regions) + shift
+    if make_plot:
+        ax = plotting.gca()
+        ax.plot(x,y,label='data')
+        ax.plot(x,yf,label='fit')
+        ax.plot(x,y-yf,label='residual')
+        plotting.legend()
+        plotting.show()
+    return regions
 
 # def localmax(x):
     # """Return array indices of all local (internal) maxima. The first point is returned

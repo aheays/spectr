@@ -594,14 +594,13 @@ class Optimiser:
             self._rms_minimum = rms
         ## update plot of rms
         if self._plot_progress is not None:
-            n = self._plot_progress['n']
+            n = self._number_of_optimisation_function_calls
             fig = self._plot_progress['fig']
             ax = self._plot_progress['ax']
             line = self._plot_progress['line']
             if (
-                    n == 0
+                    n == 1
                     or n > ax.get_xlim()[1]
-                    or rms < ax.get_ylim()[0]
                     or rms > ax.get_ylim()[1]
             ):
                 xdata = line.get_xdata()
@@ -610,32 +609,30 @@ class Optimiser:
                     ax.set_xlim(0,1)
                     ax.set_ylim(0,1)
                 else:
-                    ax.set_xlim(xdata[0],xdata[-1]*2+1)
-                    ax.set_ylim(np.min(ydata)/(1+1e-5),np.max(ydata)*(1+1e-5))
-                plotting.update_figure_without_raising()
+                    ax.set_xlim(0,n*2)
+                    ax.set_ylim(0,np.max(ydata)*1.01)
+                plotting.qupdate(fig)
+                # fig.canvas.update()
             line.set_xdata(np.concatenate((line.get_xdata(),[n])))
             line.set_ydata(np.concatenate((line.get_ydata(),[rms])))
             ax.draw_artist(ax.patch)
             ax.draw_artist(line)
-            fig.canvas.update()
             fig.canvas.flush_events()
-            self._plot_progress['n'] += 1
+            fig.canvas.update()
         return residuals
+
+    number_of_parameters = property(lambda self:self._get_parameters()[1])
 
     @optimise_method(add_construct_function=False)
     def optimise(
             self,
-            # compute_unc_only=False, # do not optimise -- just compute uncertainty at current position, actually does one iteration
-            # rms_noise=None,
             verbose=True,
-            # normalise_suboptimiser_residuals=False,
             method=None,
-            options=None,       # for least squares optimises
             ncpus=1, # Controls the use of multiprocessing of the Jacobian
-            monitor_iterations=True, # print rms evey iteration
             monitor_parameters=False, # print parameters every iteration
             monitor_frequency='significant rms decrease', # run monitor functions 'never', 'end', 'every iteration', 'rms decrease', 'significant rms decrease'
             plot_progress=False,
+            **least_squares_options
     ):
         """Optimise parameters."""
         ## multiprocessing cpus
@@ -646,7 +643,8 @@ class Optimiser:
         ## monitoring the optimisation
         self._monitor_frequency = monitor_frequency
         self._monitor_parameters = monitor_parameters
-        self._monitor_iterations = monitor_iterations
+        # self._monitor_iterations = monitor_iterations
+        self._monitor_iterations = verbose
         valid_monitor_frequency = ('never','end','every iteration','rms decrease','significant rms decrease')
         if monitor_frequency not in valid_monitor_frequency:
             raise Exception(f'Invalid monitor_frequency, choose from: {repr(valid_monitor_frequency)}')
@@ -663,14 +661,11 @@ class Optimiser:
         if number_of_parameters > 0:
             ## monitor decreasing RMS on a plot
             if plot_progress:
-                fig = plotting.plt.figure(999)
-                fig.clf()
-                # fig = plotting.qfig(999,figsize=(600,300))
+                fig = plotting.qfig(9999,preset='screen',figsize='quarter screen')
                 ax = fig.gca()
-                ax.set_title(f'nparams: {number_of_parameters}')
+                ax.set_title(f'optimiser: {self.name} nparams: {number_of_parameters}')
                 line, = ax.plot([],[])
-                plotting.plt.show(block=False)
-                plotting.plt.pause(0.001)
+                plotting.qupdate(fig)
                 self._plot_progress = {'n':0,'fig':fig,'ax':ax,'line':line}
             else:
                 self._plot_progress = None    
@@ -681,7 +676,7 @@ class Optimiser:
                     pi = stepi
                 x0.append(pi)
                 diff_step.append(stepi/abs(pi))
-            least_squares_options = {
+            least_squares_options |= {
                 'fun':self._optimisation_function,
                 'x0':x0,
                 'diff_step':diff_step,
@@ -693,14 +688,14 @@ class Optimiser:
                 # 'xtol':(1e-10 if xtol is None else xtol),
                 # 'ftol':(1e-10 if ftol is None else ftol),
                 # 'gtol':(1e-10 if gtol is None else gtol),
+                'gtol':None,
                 # 'max_nfev':max_nfev,
                 'method':None,
                 'jac':'2-point',
                 }
-            
-            ## update with any input options
-            if options is not None:
-                least_squares_options |= options
+            ## maximum number of iterations -- approx
+            # if maxiter is not None:
+                # least_squares_options['max_nfev'] = maxiter 
             ## get a default method
             if least_squares_options['method'] is None:
                 if number_of_parameters == 1:
@@ -743,11 +738,12 @@ class Optimiser:
                 pass
             ## calculate uncertainties -- KeyboardInterrupt possible
             try:
-                self.calculate_uncertainty()
+                self.calculate_uncertainty(verbose=verbose)
             except KeyboardInterrupt:
                 pass
         ## recalculate final solution
         residual = self.construct()
+        ## monitor
         if self._monitor_frequency != 'never':
             self.monitor() 
         ## describe result
@@ -825,7 +821,7 @@ class Optimiser:
                 else:
                     message = ''
                 if self._monitor_iterations:
-                    print(f'jcbn: {i:>3d} of {len(p):>3d}   time: {timestamp()-timer:>7.2e}    rms: {rmsnew:>12.8e} {message}')
+                    print(f'jcbn: {i+1:>3d} of {len(p):>3d}   time: {timestamp()-timer:>7.2e}    rms: {rmsnew:>12.8e} {message}')
             jacobian = np.transpose(jacobian)
         else:
             ## multiprocessing, requires serialisation
@@ -890,12 +886,13 @@ class Optimiser:
             try: 
                 inonzero = np.any(np.abs(jacobian)>min_valid,axis=0)
                 t = np.sum(~inonzero)
-                if t>0:
+                if verbose and t > 0:
                     print(f'Jacobian is not invertible so discarding {t} our of {len(inonzero)} columns with no values greater than {min_valid:0.0e}.')
                 ## compute 1σ uncertainty from Jacobian
                 unc = np.full(number_of_parameters,nan)
                 if len(jacobian) == 0 or np.sum(inonzero) == 0:
-                    print('All parameters have no effect, uncertainties not calculated')
+                    if verbose:
+                        print('All parameters have no effect, uncertainties not calculated')
                 else:
                     t = jacobian[:,inonzero]
                     covariance = linalg.inv(np.dot(t.T,t))
@@ -957,6 +954,22 @@ class Parameter():
             self.step = _default_stepsize
         self.description = description
         self._last_modify_value_time = timestamp()
+
+    def _get_bounds(self):
+        return self._bounds
+
+    def _set_bounds(self,bounds):
+        """Set bound and deal with errant value."""
+        self._bounds = bounds
+        if self.value < self._bounds[0] or self.value > self._bounds[1]:
+            if np.isinf(self.bounds[0]):
+                self.value = self.bounds[0]
+            elif np.isinf(self.bounds[1]):
+                self.value = self.bounds[1]
+            else:
+                self.value = 0.5*(self.bounds[0]+self.bounds[1])
+    
+    bounds = property(_get_bounds,_set_bounds)
 
     def _get_value(self):
         return self._value

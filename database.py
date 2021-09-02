@@ -218,6 +218,7 @@ def get_hitran_lines(species,**match):
     line = dataset.load(path)
     if len(match) > 0:
         line = line.matches(match)
+    line['Zsource'] = 'HITRAN'
     return line
 
 electronic_states={
