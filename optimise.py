@@ -624,7 +624,7 @@ class Optimiser:
 
     number_of_parameters = property(lambda self:self._get_parameters()[1])
 
-    @optimise_method(add_construct_function=False)
+    # @optimise_method(add_construct_function=False)
     def optimise(
             self,
             verbose=True,
@@ -922,7 +922,7 @@ class Optimiser:
 
 
 
-_default_stepsize = 1e-4
+_default_stepsize = 1e-5
 
 class Parameter():
     """An adjustable parameter."""

@@ -192,7 +192,14 @@ class Dataset(optimise.Optimiser):
                 self._set_subdata(key,subkey,value,combined_index)
         else:
             raise Exception('Invalid subkey: {repr(subkey)}')
-            
+
+    def set_default(self,key,val):
+        """Set a default value if not already set."""
+        if key not in self:
+            self[key] = val
+            self[key,'default'] = val
+    
+
     @optimise_method(format_multi_line=99)
     def set_spline(self,xkey,ykey,knots,order=3,default=None,
                    match=None,index=None,_cache=None,**match_kwargs):
@@ -1070,7 +1077,7 @@ class Dataset(optimise.Optimiser):
                 if self.is_set(key,subkey):
                     retval[key][subkey] = self.get(key,subkey)
         return retval
-        
+     
     def row(self,index,keys=None):
         """Iterate value data row by row, returns as a dictionary of
         scalar values."""
@@ -1311,18 +1318,19 @@ class Dataset(optimise.Optimiser):
     def load(
             self,
             filename,
-            comment='',
-            keys=None,          # load only this data
-            table_name=None,
             fmt=None,
-            translate_keys=None, # from key in file to key in self, None for skip
-            return_classname_only=False, # do not load the file -- just try and load the classname and return it
-            labels_commented=False,
-            delimiter=None,
-            subkeys = None,     # what to load, None for all
-            txt_to_dict_kwargs=None,
-            translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
-            **set_keys_vals   # set this data after loading is done
+            # comment='',
+            # keys=None,          # load only this data
+            # table_name=None,
+            # translate_keys=None, # from key in file to key in self, None for skip
+            # return_classname_only=False, # do not load the file -- just try and load the classname and return it
+            # labels_commented=False,
+            # delimiter=None,
+            # subkeys = None,     # what to load, None for all
+            # txt_to_dict_kwargs=None,
+            # translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
+            # **set_keys_vals   # set this data after loading is done
+            **kwargs
     ):
         '''Load data from a file.'''
         if fmt is None:
@@ -1332,45 +1340,30 @@ class Dataset(optimise.Optimiser):
             if fmt == None:
                 fmt = 'text'
         if fmt == 'hdf5':
-            ## hdf5 archive, load data then top-level attributes
-            data = tools.hdf5_to_dict(filename)
-            ## hack to get flat data or not
-            for val in data.values():
-                if isinstance(val,dict):
-                    data_is_flat = False
-                    break
-            else:
-                data_is_flat = True
+            self.load_from_hdf5(filename,**kwargs)
         elif fmt == 'directory':
-            ## hdf5 archive, load data then top-level attributes
-            data = tools.directory_to_dict(filename)
-            data_is_flat = False
+            self.load_from_directory(filename,**kwargs)
         elif fmt == 'npz':
-            ## numpy npz archive.  get as scalar rather than
-            ## zero-dimensional numpy array
-            data = {}
-            for key,val in np.load(filename).items():
-                if val.ndim == 0:
-                    val = val.item()
-                data[key] = val
-            data_is_flat = True
+            self.load_from_npz(filename,**kwargs)
         elif fmt == 'org':
-            ## org to dict -- no header
-            data = tools.org_table_to_dict(filename,table_name)
-            data_is_flat = True
+            self.load_from_org(filename,**kwargs)
         elif fmt == 'text':
-            data = self.load_from_text(
-                filename=filename,
-                comment=comment,
-                labels_commented=labels_commented,
-                delimiter=delimiter,
-                txt_to_dict_kwargs=txt_to_dict_kwargs,
-            )
-            data_is_flat = True
+            self.load_from_text(filename,**kwargs)
         else:
-            assert False
+            raise Exception(f"Unrecognised data format: {filename=} {fmt=}")
+
+    def load_from_dict(
+            self,
+            data,
+            keys=None,          # load only this data
+            flat=False,
+            translate_keys=None, # from key in file to key in self, None for skip
+            translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
+            load_classname_only=False,
+    ):
+        """Load from a structured dictionary."""
         ## build structured data from flat data 
-        if data_is_flat:
+        if flat:
             flat_data = data
             data = {}
             for key,val in flat_data.items():
@@ -1416,11 +1409,10 @@ class Dataset(optimise.Optimiser):
                     data[to_key] = data.pop(from_key)
         ## test for a matching classname, return if requested or make
         ## sure it matches self
-        if return_classname_only:
+        if load_classname_only:
             if 'classname' in data:
-                return data['classname']
-            else:
-                return None
+                self.classname = data['classname']
+            return
         if 'classname' in data:
             if data['classname'] != self.classname:
                 warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
@@ -1462,6 +1454,78 @@ class Dataset(optimise.Optimiser):
             for subkey in scalar_data[key]:
                 self[key,subkey] = scalar_data[key][subkey]
 
+    def load_from_parameters_dict(self,parameters):
+        """Load a dict recursively into a flat scalar list. Only some scalars,
+            Parmaters, and dictionaries with string keys are added. Everything
+            else is ignored."""
+        def recursively_flatten_scalar_dict(data,prefix=''):
+            from .optimise import Parameter
+            retval = {}
+            for key,val in data.items():
+                if isinstance(key,str):
+                    key = prefix + key
+                    if np.isscalar(val):
+                        retval[key] = val
+                    elif isinstance(val,Parameter):
+                        retval[key] = val.value
+                        retval[key+':unc'] = val.unc
+                    elif isinstance(val,dict):
+                        tdata = recursively_flatten_scalar_dict(val,prefix=key+'_')
+                        for tkey,tval in tdata.items():
+                            retval[tkey] = tval
+            return retval
+        ## load columns
+        data = {}
+        for i,(namei,datai) in enumerate(parameters.items()):
+            ## new data point
+            datai = recursively_flatten_scalar_dict(datai)
+            datai['name'] = namei
+            ## ensure key consistency
+            for key in datai:
+                if key not in data:
+                    if i==0:
+                        data[key] = []
+                    else:
+                        data[key] = [nan for i in range(i)]
+            for key in data:
+                if key not in datai:
+                    datai[key] = nan
+            for key,val in datai.items():
+                data[key].append(val)
+        self.load_from_dict(data,flat=True)
+
+    def load_from_directory(self,filename,**load_from_dict_kwargs):
+        """Load data stored in a structured directory tree."""
+        data = tools.directory_to_dict(filename)
+        self.load_from_dict(data,**load_from_dict_kwargs)
+
+    def load_from_hdf5(self,filename,**load_from_dict_kwargs):
+        """Load data stored in a structured or unstructured hdf5 file."""
+        data = tools.hdf5_to_dict(filename)
+        ## hack to get flat data or not
+        for val in data.values():
+            if isinstance(val,dict):
+                flat = False
+                break
+        else:
+            flat = True
+        self.load_from_dict(data,flat=flat,**load_from_dict_kwargs)
+
+    def load_from_npz(self,filename,**load_from_dict_kwargs):
+        """numpy npz archive.  get as scalar rather than
+        zero-dimensional numpy array"""
+        data = {}
+        for key,val in np.load(filename).items():
+            if val.ndim == 0:
+                val = val.item()
+            data[key] = val
+        self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
+
+    def load_from_org(self,filename,**load_from_dict_kwargs):
+        """Load form org table"""
+        data = tools.org_table_to_dict(filename,table_name)
+        self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
+
     def load_from_text(
             self,
             filename,
@@ -1469,6 +1533,7 @@ class Dataset(optimise.Optimiser):
             labels_commented=False,
             delimiter=None,
             txt_to_dict_kwargs=None,
+            **load_from_dict_kwargs
     ):
         """Load data from a text-formatted file."""
         ## text table to dict with header
@@ -1548,11 +1613,14 @@ class Dataset(optimise.Optimiser):
                     break
         ## load array data
         data.update(tools.txt_to_dict(filename,skiprows=iline,**txt_to_dict_kwargs))
+        ## a blank key with all nan data indicates a leading or trailing delimiter -- delete it
+        if '' in data and np.all(np.isnan(data[''])):
+            data.pop('')
         if classname is not None:
             data['classname'] = classname
         if description is not None:
             data['description'] = description
-        return data
+        self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
 
     def load_from_string(
             self,
@@ -1566,7 +1634,7 @@ class Dataset(optimise.Optimiser):
         tmpfile.write(string.encode())
         tmpfile.flush()
         tmpfile.seek(0)
-        self.load(tmpfile.name,delimiter=delimiter,**load_kwargs)
+        self.load_from_text(tmpfile.name,delimiter=delimiter,**load_kwargs)
 
     def load_from_lists(self,keys,*values):
         """Add many lines of data efficiently, with values possible
@@ -2101,9 +2169,8 @@ def load(
     loading the file twice."""
     if classname is None:
         d = Dataset()
-        classname = d.load(filename,return_classname_only=True,**load_kwargs)
-        if classname is None:
-            classname = 'dataset.Dataset'
+        d.load(filename,load_classname_only=True,**load_kwargs)
+        classname = d.classname
     retval = make(classname,prototypes=prototypes)
     retval.load(filename,**load_kwargs)
     return retval
@@ -2114,3 +2181,5 @@ def copy_from(dataset,*args,**kwargs):
     classname = dataset.classname # use the same class as dataset
     retval = make(classname,*args,copy_from=dataset,**kwargs)
     return retval
+
+

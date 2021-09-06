@@ -110,12 +110,12 @@ def presetRcParams(
         'grid.alpha'         : 1.0,
         'grid.color'         : 'gray',
         'grid.linestyle'     : ':',
-        'legend.fontsize'    :9,
-        'axes.titlesize'     :9,
-        'axes.labelsize'     :9,
-        'xtick.labelsize'    :9,
-        'ytick.labelsize'    :9,
-        'font.size'          :9,
+        'legend.fontsize'    :12,
+        'axes.titlesize'     :12,
+        'axes.labelsize'     :12,
+        'xtick.labelsize'    :12,
+        'ytick.labelsize'    :12,
+        'font.size'          :12,
         'axes.prop_cycle'    : cycler('color',linecolors_screen),
         'path.simplify'      :True , # whether or not to speed up plots by joining line segments
         'path.simplify_threshold' :1, # how much to do so
@@ -406,7 +406,7 @@ def qfig(
         figsize=None,
         hide_toolbar=True,
         fullscreen=False,
-        show=True,
+        show=False,
         **preset_kwargs):
     """quick figure preparation."""
     figure_exists = plt.fignum_exists(n)

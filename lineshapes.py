@@ -79,8 +79,9 @@ def calculate_spectrum(
         raise Exception('Unknown {multiprocess_divide=}')
 
 def sinc(x,x0=0,S=1,Γ=1):
-    """Lorentzian profile.""" 
-    return(S*np.sinc((x-x0)/Γ*1.2)*1.2/Γ)
+    """Lorentzian profile. Γ is FWHM."""
+    Γnode = Γ/1.2
+    return(S*np.sinc((x-x0)/Γnode)/Γnode)
 
 _lorentzian_k = 2*constants.pi
 def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None): 

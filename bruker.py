@@ -10,9 +10,13 @@ class OpusData:
         """Load a binary Bruker Opus file into a dictionary."""
         self.filename = filename
         self.data = brukeropusreader.read_file(expand_path(filename))
+        ##pprint(self.data)       #  DEBUG
 
     def has_spectrum(self):
         return 'ScSm' in self.data
+
+    def has_interferogram(self):
+        return 'IgSm' in self.data
 
     def has_background(self):
         return 'ScRf' in self.data
@@ -25,6 +29,14 @@ class OpusData:
         x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
         y = self.data['ScSm'][:parameters['NPT']] # for some reason the data in the datablock can be too long
         return x,y
+
+    def get_interferogram(self):
+        if not self.has_interferogram():
+            raise Exception('No interferogram (IgSm) found.')
+            return self.get_background()
+        parameters = self.data[f'IgSm Data Parameter']
+        y = self.data['IgSm'][:parameters['NPT']] 
+        return y
 
     def set_spectrum(self,y):
         assert self.has_spectrum(),'No spectrum (ScSm) found.'

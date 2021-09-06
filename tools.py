@@ -3104,7 +3104,7 @@ def gaussian(x,fwhm=1.,mean=0.,norm='area'):
         raise Exception('normalisation method '+norm+' not known')
 
 def convolve_with_padding(x,y,xconv,yconv):
-    """Convolve function (x,y) with (xconv,yconv) returning length of (x,y). M"""
+    """Convolve function (x,y) with (xconv,yconv) returning length of (x,y)."""
     dxorig = (x[-1]-x[0])/(len(x)-1)
     width = xconv[-1]-xconv[0]
     dx = width/(len(xconv)-1)
@@ -4249,7 +4249,8 @@ def txt_to_dict(
     for i,line in enumerate(filename.readlines()):
         if i<skiprows:
             continue
-        line = line.strip()     # remove leading/trailing whitespace
+        ## remove leading/trailing whitespace
+        line = line.strip() 
         if ignore_blank_lines and len(line)==0:
             continue
         if filter_function is not None:
