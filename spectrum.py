@@ -2367,8 +2367,6 @@ class FitReferenceAbsorption():
                     freqi.vary = phasei.vary = amplitudei.vary =  True
             model.add_piecewise_sinusoid(p['add_sinusoid'])
         ## instrument broadening
-        # p['instrument_gaussian'].vary = fit_instrument
-        # model.convolve_with_gaussian(p['instrument_gaussian'])
         model.convolve_with_blackman_harris()
         ## build it now
         model.construct()
