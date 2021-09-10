@@ -180,6 +180,7 @@ def get_lines(species_or_isotopologue):
         raise DatabaseException(f"could not determine HITRAN linelist filename for {repr(species_or_isotopologue)}")
     l.load(filename)
     l['Zsource'] = 'HITRAN'
+    l['mass']
     return l
 
 
