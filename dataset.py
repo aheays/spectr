@@ -5,6 +5,7 @@ from copy import copy,deepcopy
 from pprint import pprint,pformat
 import importlib
 import warnings
+import ast
 
 import numpy as np
 from numpy import nan,arange,linspace,array
@@ -12,7 +13,6 @@ from immutabledict import immutabledict as idict
 import h5py
 
 from . import tools
-from .tools import AutoDict,convert_to_bool_vector_array
 from .exceptions import InferException
 from . import convert
 from . import optimise
@@ -29,7 +29,7 @@ class Dataset(optimise.Optimiser):
         'f':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','description':'float' },
         'a':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','description':'positive float' },
         'i':    {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt':'d'     ,'description':'int'   },
-        'b':    {'cast':convert_to_bool_vector_array       ,'fmt':''      ,'description':'bool'  },
+        'b':    {'cast':tools.convert_to_bool_vector_array       ,'fmt':''      ,'description':'bool'  },
         'U':    {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt':'s'     ,'description':'str'   },
         'O':    {'cast':lambda x:np.asarray(x,dtype=object),'fmt':''      ,'description':'object'},
         'h':    {'cast':lambda x:np.asarray(x,dtype='S20') ,'fmt':''      ,'description':'SHA1 hash'},
@@ -40,7 +40,7 @@ class Dataset(optimise.Optimiser):
         'value'        : {'description' : 'Value of this data'},
         'unc'          : {'description' : 'Uncertainty'                         , 'kind'         : 'f' , 'valid_kinds'                : ('f',), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 0.0   ,},
         'step'         : {'description' : 'Default numerical differentiation step size' , 'kind' : 'f' , 'valid_kinds'                : ('f',), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 1e-8  ,},
-        'vary'         : {'description' : 'Whether to vary during optimisation' , 'kind'         : 'b' , 'valid_kinds'                : ('f',), 'cast' : convert_to_bool_vector_array       ,'fmt' : ''      ,'default'               : False ,},
+        'vary'         : {'description' : 'Whether to vary during optimisation' , 'kind'         : 'b' , 'valid_kinds'                : ('f',), 'cast' : tools.convert_to_bool_vector_array       ,'fmt' : ''      ,'default'               : False ,},
         'ref'          : {'description' : 'Source reference'                    , 'kind'         : 'U' ,                       'cast' : lambda x       : np.asarray(x,dtype='U20') ,'fmt'          : 's'     ,'default'               : nan   ,},
     }
 
@@ -192,13 +192,36 @@ class Dataset(optimise.Optimiser):
                 self._set_subdata(key,subkey,value,combined_index)
         else:
             raise Exception('Invalid subkey: {repr(subkey)}')
+    
+    def set_new(self,key,value,kind=None,**other_metadata):
+        """Set key to value with other kinds of subkey metadata also set. Will
+        create a prototype first."""
+        if key in self:
+            raise Exception(f"set_new but key already exists: {repr(key)}")
+        if key in self.prototypes:
+            raise Exception(f"set_new but key already in prototypes: {repr(key)}")
+        self.set_prototype(key,kind=kind,**other_metadata)
+        self.set(key,'value',value)
 
-    def set_default(self,key,val):
+    def set_default(self,key,val,kind=None):
         """Set a default value if not already set."""
         if key not in self:
-            self[key] = val
-            self[key,'default'] = val
-    
+            self.set_new(key,val,kind)
+        self[key,'default'] = val
+
+    def set_prototype(self,key,kind,infer=None,**kwargs):
+        """Set a prototype."""
+        if kind is str:
+            kind = 'U'
+        elif kind is float:
+            kind = 'f'
+        elif kind is bool:
+            kind = 'b'
+        elif kind is object:
+            kind = 'O'
+        self.prototypes[key] = dict(kind=kind,**kwargs)
+        for tkey,tval in self.data_kinds[kind].items():
+            self.prototypes[key].setdefault(tkey,tval)
 
     @optimise_method(format_multi_line=99)
     def set_spline(self,xkey,ykey,knots,order=3,default=None,
@@ -380,7 +403,8 @@ class Dataset(optimise.Optimiser):
     global_modify_time = property(lambda self:self._global_modify_time)
 
     def get(self,key,subkey='value',index=None,units=None,match=None,**match_kwargs):
-        """Get value for key or (key,subkey)."""
+        """Get value for key or (key,subkey). This is the data in place, not a
+        copy."""
         index = self._get_combined_index(index,match,**match_kwargs)
         ## ensure data is known
         if key not in self._data:
@@ -423,20 +447,6 @@ class Dataset(optimise.Optimiser):
             return retval
         else:
             raise Exception(f'Invalid subkey: {repr(subkey)}')
-
-    def set_prototype(self,key,kind,infer=None,**kwargs):
-        """Set prototype data."""
-        if kind is str:
-            kind = 'U'
-        elif kind is float:
-            kind = 'f'
-        elif kind is bool:
-            kind = 'b'
-        elif kind is object:
-            kind = 'O'
-        self.prototypes[key] = dict(kind=kind,**kwargs)
-        for tkey,tval in self.data_kinds[kind].items():
-            self.prototypes[key].setdefault(tkey,tval)
             
     def get_kind(self,key):
         return self._data[key]['kind']
@@ -511,12 +521,13 @@ class Dataset(optimise.Optimiser):
             _cache=None,
             **match_kwargs
     ):
-        """Set a value and it will be updated every construction and possible
-        optimised."""
+        """Set a value and it will be updated every construction and may be a
+        Parameter for optimisation."""
+        ## cache matching indices
         if self._clean_construct:
-            ## cache matching indices
             _cache['index'] = self._get_combined_index(index,match,**match_kwargs)
         index = _cache['index']
+        ## set the data
         self.set(key,'value',value,index=index,set_changed_only= True)
         if self._clean_construct and isinstance(value,Parameter):
             self.set(key,'unc',value.unc,index=index)
@@ -526,8 +537,6 @@ class Dataset(optimise.Optimiser):
             if 'vary' in self._data[key]:
                 self.set(key,'vary',False,index=index)
             _cache['not_first_execution'] = True
-
-    set_and_optimise = set_value
 
     def keys(self):
         return list(self._data.keys())
@@ -548,6 +557,17 @@ class Dataset(optimise.Optimiser):
     def explicitly_set_keys(self):
         return [key for key in self if not self.is_inferred(key)]
 
+    def match_keys(self,regex=None,beg=None,end=None,):
+        """Return a list of keys matching any of regex or beginning/ending string beg/end."""
+        keys = []
+        if regex is not None:
+            keys += [key for key in self if re.match(regex,key)]
+        if beg is not None:
+            keys += [key for key in self if len(key)>=len(beg) and key[:len(beg)] == beg]
+        if end is not None:
+            keys += [key for key in self if len(key)>=len(end) and key[-len(end):] == end]
+        return keys
+            
     def __iter__(self):
         for key in self._data:
             yield key
@@ -835,23 +855,33 @@ class Dataset(optimise.Optimiser):
 
     def match(self,keys_vals=None,**kwarg_keys_vals):
         """Return boolean array of data matching all key==val.\n\nIf key has
-        suffix '_min' or '_max' then match anything greater/lesser
-        or equal to this value"""
+        suffix '_min' or '_max' then match anything greater/lesser or
+        equal to this value.  If key has suffix _not then match not
+        equal."""
+        ## combine all match keys/vals
         if keys_vals is None:
             keys_vals = {}
         keys_vals = keys_vals | kwarg_keys_vals
+        ## update match by key/val
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
             if len(key) > 4 and key[-4:] == '_min':
+                ## find all larger values
                 i &= (self[key[:-4]] >= val)
             elif len(key) > 4 and key[-4:] == '_max':
+                ## find all smaller values
                 i &= (self[key[:-4]] <= val)
+            elif len(key) > 4 and key[-4:] == '_not':
+                ## recursively get reverse match for this key
+                i &= ~self.match({key[:-4]:val})
             elif np.ndim(val)==0:
+                ## match scalar equality, special case for nan
                 if val is np.nan:
                     i &= np.isnan(self[key])
                 else:
                     i &= (self[key]==val)
             else:
+                ## match if in a list
                 i &= np.any([
                     (np.isnan(self[key]) if vali is np.nan else self[key]==vali)
                             for vali in val],axis=0)
@@ -861,37 +891,6 @@ class Dataset(optimise.Optimiser):
         """Return as a array of matching indices."""
         i = tools.find(self.match(*match_args,**match_kwargs))
         return i
-    
-    # def find(self,**keys_vals):
-        # """Find unique indices matching keys_vals which contains one or more
-        # vector matches or the same length."""
-        # ## SLOW IMPLEMENTATION -- REPLACE WITH HASH MATCHING?
-        # ## separate vector and scalar match data
-        # vector_keysvals = {}
-        # scalar_keysvals = {}
-        # vector_length = None
-        # for key,val in keys_vals.items():
-            # if np.isscalar(val):
-                # scalar_keysvals[key] = val
-            # else:
-                # vector_keysvals[key] = val
-                # if vector_length == None:
-                    # vector_length = len(val)
-                # elif vector_length != len(val):
-                    # raise Exception('All vector matching data must be the same length')
-        # ## get data matching scalar keys_vals
-        # iscalar = tools.find(self.match(**scalar_keysvals))
-        # ## find vector_key matches one by one
-        # i = np.empty(vector_length,dtype=int)
-        # for ii in range(vector_length):
-            # ti = np.all([self[key][iscalar]==val[ii] for key,val in vector_keysvals.items()],0)
-            # ti = tools.find(ti)
-            # if len(ti) == 0:
-                # raise Exception("No match: {vector_key}={repr(vector_vali)} and {repr(keys_vals)}")
-            # if len(ti) > 1:
-                # raise Exception("Non-unique match: {vector_key}={repr(vector_vali)} and {repr(keys_vals)}")
-            # i[ii] = iscalar[ti]
-        # return i
 
     def matches(self,*args,**kwargs):
         """Returns a copy reduced to matching values."""
@@ -963,6 +962,7 @@ class Dataset(optimise.Optimiser):
         if key not in self.prototypes:
             raise InferException(f"No prototype for key: {repr(key)}")
         ## loop through possible methods of inferences.
+        self.prototypes[key].setdefault('infer',[])
         for dependencies,function in self.prototypes[key]['infer']:
             ## if function is a tuple of two functions then the second
             ## is for computing uncertainties
@@ -1148,6 +1148,7 @@ class Dataset(optimise.Optimiser):
             include_description=True,
             include_classname=True,
             include_key_description=True,
+            include_key_metadata=True,
             include_keys_with_leading_underscore=False,
             quote_strings=False,
             quote_keys=False,
@@ -1200,11 +1201,26 @@ class Dataset(optimise.Optimiser):
                 if key in header_values:
                     line += f' = {repr(header_values[key]):20}'
                 else:
-                    line += f'{"":23}'    
-                line += f' # '+self._data[key]['description']
-                if ('units' in self._data[key]
-                    and (units:=self._data[key]['units']) is not None):
-                    line += f' [{units}]'
+                    line += f'{"":23}'
+                if include_key_metadata:
+                    ## include much metadata in description
+                    metadata = {}
+                    for tkey,ttype in (
+                            ('description',str),
+                            ('units',str),
+                            ('kind',str),
+                            ('fmt',str),
+                    ):
+                        if self.is_set(key,tkey) and isinstance(self[key,tkey],ttype):
+                            metadata[tkey] = self[key,tkey]
+                    if len(metadata) > 0:
+                        line += ' # '+repr(metadata)
+                else:
+                    ## only include description and units
+                    line += f' # '+self._data[key]['description']
+                    if ('units' in self._data[key]
+                        and (units:=self._data[key]['units']) is not None):
+                        line += f' [{units}]'
                 header.append(line)
         else:
             for key,val in header_values.items():
@@ -1276,32 +1292,32 @@ class Dataset(optimise.Optimiser):
             filename,
             keys=None,
             subkeys=None,
-            fmt=None,           # 'text' (default), 'hdf5', 'directory'
+            filetype=None,           # 'text' (default), 'hdf5', 'directory'
             **format_kwargs,
     ):
         """Save some or all data to a file."""
-        if fmt is None:
+        if filetype is None:
             ## if not provided as an input argument then get save
             ## format form filename, or default to text
-            fmt = tools.infer_filetype(filename)
-            if fmt == None:
-                fmt = 'text'
+            filetype = tools.infer_filetype(filename)
+            if filetype == None:
+                filetype = 'text'
         if keys is None:
             keys = self.keys()
         if subkeys is None:
             ## get a list of default subkeys, ignore those beginning
             ## with "_"
             subkeys = [subkey for subkey in self.vector_subkinds if subkey[0] != '_']
-        if fmt == 'hdf5':
+        if filetype == 'hdf5':
             ## hdf5 file
             tools.dict_to_hdf5(filename,self.as_dict(keys=keys,subkeys=subkeys),verbose=False)
-        elif fmt == 'npz':
+        elif filetype == 'npz':
             ## numpy archive
             np.savez(filename,self.as_dict(keys=keys,subkeys=subkeys))
-        elif fmt == 'directory':
+        elif filetype == 'directory':
             ## directory of npy files
             tools.dict_to_directory(filename,self.as_dict(keys=keys,subkeys=subkeys))
-        elif fmt == 'text':
+        elif filetype == 'text':
             ## text file
             if re.match(r'.*\.csv',filename):
                 format_kwargs.setdefault('delimiter',', ')
@@ -1315,75 +1331,40 @@ class Dataset(optimise.Optimiser):
         else:
             assert False
             
-    def load(
-            self,
-            filename,
-            fmt=None,
-            # comment='',
-            # keys=None,          # load only this data
-            # table_name=None,
-            # translate_keys=None, # from key in file to key in self, None for skip
-            # return_classname_only=False, # do not load the file -- just try and load the classname and return it
-            # labels_commented=False,
-            # delimiter=None,
-            # subkeys = None,     # what to load, None for all
-            # txt_to_dict_kwargs=None,
-            # translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
-            # **set_keys_vals   # set this data after loading is done
-            **kwargs
-    ):
+    def load(self,filename,filetype=None,**load_method_kwargs):
         '''Load data from a file.'''
-        if fmt is None:
+        if filetype is None:
             ## if not provided as an input argument then get save
             ## format form filename, or default to text
-            fmt = tools.infer_filetype(filename)
-            if fmt == None:
-                fmt = 'text'
-        if fmt == 'hdf5':
-            self.load_from_hdf5(filename,**kwargs)
-        elif fmt == 'directory':
-            self.load_from_directory(filename,**kwargs)
-        elif fmt == 'npz':
-            self.load_from_npz(filename,**kwargs)
-        elif fmt == 'org':
-            self.load_from_org(filename,**kwargs)
-        elif fmt == 'text':
-            self.load_from_text(filename,**kwargs)
+            filetype = tools.infer_filetype(filename)
+            if filetype == None:
+                filetype = 'text'
+        if filetype == 'hdf5':
+            self.load_from_hdf5(filename,**load_method_kwargs)
+        elif filetype == 'directory':
+            self.load_from_directory(filename,**load_method_kwargs)
+        elif filetype == 'npz':
+            self.load_from_npz(filename,**load_method_kwargs)
+        elif filetype == 'org':
+            self.load_from_org(filename,**load_method_kwargs)
+        elif filetype == 'text':
+            self.load_from_text(filename,**load_method_kwargs)
         else:
-            raise Exception(f"Unrecognised data format: {filename=} {fmt=}")
+            raise Exception(f"Unrecognised data filetype: {filename=} {filetype=}")
 
     def load_from_dict(
             self,
             data,
             keys=None,          # load only this data
             flat=False,
+            metadata=None,
             translate_keys=None, # from key in file to key in self, None for skip
+            translate_keys_regexps=None, # a list of (regexp,subs) pairs to translate keys -- operate successively on each key
             translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
             load_classname_only=False,
     ):
         """Load from a structured dictionary."""
-        ## build structured data from flat data 
-        if flat:
-            flat_data = data
-            data = {}
-            for key,val in flat_data.items():
-                if key == 'classname':
-                    ## classname attribute
-                    data['classname'] = val
-                    # self.classname = val
-                elif key == 'description':
-                    ## description attribute
-                    self.description = val
-                else:
-                    ## if r:=re.match(r'([^:]+)[:]([^:]+)',key): # proper regexp
-                    if r:=re.match(r'([^:,]+)[:,]([^:,]+)',key): # HACK TO INCLUDE , SEPARATOR, REMOVE THIS ONE DAY 2021-06-22
-                        key,subkey = r.groups()
-                    else:
-                        subkey = 'value'
-                    if key not in data:
-                        data[key] = {}
-                    data[key][subkey] = val
-        ## translate keys
+        ## translate key with direct substitutions
         if translate_keys is None:
             translate_keys = {}
         if translate_from_anh_spectrum:
@@ -1407,6 +1388,14 @@ class Dataset(optimise.Optimiser):
                     data.pop(from_key)
                 else:
                     data[to_key] = data.pop(from_key)
+        ## translate keys with regexps
+        if translate_keys_regexps is not None:
+            for key in list(data.keys()):
+                original_key = key
+                for match_re,sub_re in translate_keys_regexps:
+                    key = re.sub(match_re,sub_re,key)
+                if key != original_key:
+                    data[key] = data.pop(original_key)
         ## test for a matching classname, return if requested or make
         ## sure it matches self
         if load_classname_only:
@@ -1417,6 +1406,32 @@ class Dataset(optimise.Optimiser):
             if data['classname'] != self.classname:
                 warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
             data.pop('classname')
+        ## build structured data from flat data 
+        if flat:
+            flat_data = data
+            data = {}
+            for key,val in flat_data.items():
+                if key == 'classname':
+                    ## classname attribute
+                    data['classname'] = val
+                    # self.classname = val
+                elif key == 'description':
+                    ## description attribute
+                    self.description = val
+                else:
+                    ## if r:=re.match(r'([^:]+)[:]([^:]+)',key): # proper regexp
+                    if r:=re.match(r'([^:,]+)[:,]([^:,]+)',key): # HACK TO INCLUDE , SEPARATOR, REMOVE THIS ONE DAY 2021-06-22
+                        key,subkey = r.groups()
+                    else:
+                        subkey = 'value'
+                    if key not in data:
+                        data[key] = {}
+                    data[key][subkey] = val
+        ## update metadata
+        if metadata is not None:
+            for key,info in metadata.items():
+                for subkey,val in info.items():
+                    data[key][subkey] = val
         ## 2021-06-11 HACK TO ACCOUNT FOR DEPRECATED ATTRIBUTES DELETE ONE DAY
         if 'default_step' in data: # HACK
             data.pop('default_step') # HACK
@@ -1437,13 +1452,20 @@ class Dataset(optimise.Optimiser):
             ## only load requested keys
             if keys is not None and key not in keys:
                 continue
+            ## no data
+            if 'value' not in data[key]:
+                raise Exception
+            ## if kind is then add a prototype (or replace
+            ## existing if the kinds do not match)
+            if 'kind' in data[key]:
+                kind = data[key].pop('kind')
+                if key not in self.prototypes or self.prototypes[key]['kind'] != kind:
+                    self.set_prototype(key,kind)
             ## vector data but given as a scalar -- defer loading
             ## until after vector data so the length of data is known
-            elif 'value' not in data[key]:
-                raise Exception
-            elif np.isscalar(data[key]['value']):
+            if np.isscalar(data[key]['value']):
                 scalar_data[key] = data[key]
-            ## vector data
+            ## vector data -- add value and subkeys
             else:
                 self[key,'value'] = data[key].pop('value')
                 for subkey in data[key]:
@@ -1476,10 +1498,10 @@ class Dataset(optimise.Optimiser):
             return retval
         ## load columns
         data = {}
-        for i,(namei,datai) in enumerate(parameters.items()):
+        for i,(keyi,datai) in enumerate(parameters.items()):
             ## new data point
             datai = recursively_flatten_scalar_dict(datai)
-            datai['name'] = namei
+            datai['key'] = keyi
             ## ensure key consistency
             for key in datai:
                 if key not in data:
@@ -1499,9 +1521,9 @@ class Dataset(optimise.Optimiser):
         data = tools.directory_to_dict(filename)
         self.load_from_dict(data,**load_from_dict_kwargs)
 
-    def load_from_hdf5(self,filename,**load_from_dict_kwargs):
+    def load_from_hdf5(self,filename,load_attributes=True,**load_from_dict_kwargs):
         """Load data stored in a structured or unstructured hdf5 file."""
-        data = tools.hdf5_to_dict(filename)
+        data = tools.hdf5_to_dict(filename,load_attributes=load_attributes)
         ## hack to get flat data or not
         for val in data.values():
             if isinstance(val,dict):
@@ -1551,6 +1573,7 @@ class Dataset(optimise.Optimiser):
                 txt_to_dict_kwargs['delimiter'] = '\t'
         filename = tools.expand_path(filename)
         data = {}
+        metadata = {}
         ## load header
         escaped_comment = re.escape(comment)
         blank_line_re = re.compile(r'^ *$')
@@ -1602,17 +1625,45 @@ class Dataset(optimise.Optimiser):
                     ## add to description
                     description += '\n'+line
                 elif current_section == 'keys':
-                    ## add value of key if value given
-                    if r:=re.match(key_line_without_value_re,line):
-                        continue
-                    elif r:=re.match(key_line_with_value_re,line):
-                        data[r.group(1)] = ast.literal_eval(r.group(2))
+                    ## decode key line getting key, value, and any metadata
+                    r = re.match(
+                        # f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #])',
+                        f'^ *{escaped_comment} *([^#= ]+) *(?:= *([^ #]+))? *(?:# *(.* *))?',
+                        line)
+                    key = None
+                    value = None
+                    info = None
+                    if r:
+                        if r.group(1) is not None:
+                            key = r.group(1)
+                        if r.group(2) is not None:
+                            value = ast.literal_eval(r.group(2))
+                        if r.group(3) is not None:
+                            try:
+                                info = ast.literal_eval(r.group(3))
+                                if not isinstance(info,dict):
+                                    info = {'description':r.group(3)}
+                            except:
+                                info = {'description':r.group(3)}
+                        if value is not None:
+                            data[key] = value
+                        if info is not None:
+                            metadata[key] = info
+                    # if r:=re.match(key_line_without_value_re,line):
+                        # continue
+                    # elif r:=re.match(key_line_with_value_re,line):
+                        # data[r.group(1)] = ast.literal_eval(r.group(2))
                 elif current_section == 'data':
                     ## remainder of data is data, no more header to
                     ## process
                     break
         ## load array data
-        data.update(tools.txt_to_dict(filename,skiprows=iline,**txt_to_dict_kwargs))
+        data.update(
+            tools.txt_to_dict(
+                filename,
+                skiprows=iline,
+                try_cast_numeric=False,
+                **txt_to_dict_kwargs))
         ## a blank key with all nan data indicates a leading or trailing delimiter -- delete it
         if '' in data and np.all(np.isnan(data[''])):
             data.pop('')
@@ -1620,7 +1671,7 @@ class Dataset(optimise.Optimiser):
             data['classname'] = classname
         if description is not None:
             data['description'] = description
-        self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
+        self.load_from_dict(data,metadata=metadata,flat=True,**load_from_dict_kwargs)
 
     def load_from_string(
             self,
@@ -1854,8 +1905,9 @@ class Dataset(optimise.Optimiser):
     def plot(
             self,
             xkey,               # key to use for x-axis data
-            ykeys,              # list of keys to use for y-axis data
+            ykeys=None,              # list of keys to use for y-axis data
             zkeys=None,         # plot x-y data separately for unique combinations of zkeys
+            ykeys_re=None,
             fig=None,           # otherwise automatic
             ax=None,            # otherwise automatic
             ynewaxes=True,      # plot y-keys on separates axes -- else as different lines
@@ -1889,6 +1941,10 @@ class Dataset(optimise.Optimiser):
             fig = plt.gcf()
             fig.clf()
         ## xkey, ykeys, zkeys
+        if ykeys is None:
+            ykeys = []
+        if ykeys_re is not None:
+            ykeys += [key for key in self if re.match(ykeys_re,key)]
         if zkeys is None:
             zkeys = self.default_zkeys
         zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
@@ -1903,10 +1959,11 @@ class Dataset(optimise.Optimiser):
         ymin = {}
         auto_title = None
         for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
-            ylabel = ykey
-            if self.is_known(ykey,'units'):
-                ylabel += ' ('+self[ykey,'units']+')'
             for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
+                ## get ylabel -- may be deleted below
+                ylabel = ykey
+                if self.is_known(ykey,'units'):
+                    ylabel += ' ('+self[ykey,'units']+')'
                 ## sort data
                 if xsort == True:
                     z.sort(xkey)
@@ -2003,7 +2060,7 @@ class Dataset(optimise.Optimiser):
                     ax.set_xlabel(xlabel)
                 if 'label' in kwargs:
                     if legend:
-                        plotting.legend(fontsize='x-small',loc=legend_loc)
+                        plotting.legend(fontsize='x-small',loc=legend_loc,show_style=True)
                     if annotate_lines:
                         plotting.annotate_line(line=line)
                 if xlim is not None:
@@ -2154,24 +2211,33 @@ def _get_class(classname):
             return getattr(levels,subclass)
     raise Exception(f'Could not find a class matching {classname=}')
     
-def make(classname='dataset.Dataset',*args,**kwargs):
+def make(classname='dataset.Dataset',*init_args,**init_kwargs):
     """Make an instance of the this classname."""
-    return _get_class(classname)(*args,**kwargs)
+    class_object = _get_class(classname)
+    dataset = class_object(*init_args,**init_kwargs)
+    return dataset
 
 def load(
         filename,
         classname=None,
         prototypes=None,
-        **load_kwargs,
-):
+        permit_nonprototyped_data=None,
+        **load_kwargs):
     """Load a Dataset.  Attempts to automatically find the correct
     subclass if it is not provided as an argument, but this requires
     loading the file twice."""
+    ## get classname
     if classname is None:
         d = Dataset()
         d.load(filename,load_classname_only=True,**load_kwargs)
         classname = d.classname
-    retval = make(classname,prototypes=prototypes)
+    ## make Dataset
+    init_kwargs = {}
+    if prototypes is not None:
+        init_kwargs['prototypes'] = prototypes
+    if permit_nonprototyped_data is not None:
+        init_kwargs['permit_nonprototyped_data'] = permit_nonprototyped_data
+    retval = make(classname,**init_kwargs)
     retval.load(filename,**load_kwargs)
     return retval
 

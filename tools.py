@@ -2036,7 +2036,8 @@ def spline(
     if check_bounds:
         assert x[0]>=xi[0],'Splined lower limit outside data range: '+str(x[0])+' < '+str(xi[0])
         assert x[-1]<=xi[-1],'Splined upper limit outside data range: '+format(x[-1],'0.10g')+' > '+format(xi[-1],'0.10g')
-    return interpolate.UnivariateSpline(xi,yi,k=order,s=s)(x)
+    ys = interpolate.UnivariateSpline(xi, yi, k=min(order,len(xi)-1), s=s)(x)
+    return ys
 
 # def splinef(xi,yi,s=0,order=3,sort_data=True):
     # """Return spline function for points (xi,yi). Will return order
@@ -2526,36 +2527,54 @@ def cumtrapz(y,
     # return(integrate.cumtrapz(y[-1::-1],-x[-1::-1])[-1::-1])
 
 
-# def power_spectrum(x,y,make_plot=False,fit_peaks=False,fit_radius=1,**find_peaks_kwargs):
-    # """Return (frequency,power) after spectral analysis of y. Must be on a
-    # uniform x grid."""
-    # dx = np.diff(x)
-    # assert np.abs(dx.max()/dx.min()-1)<1e-5,'Uniform grid required.'
-    # dx = dx[0]
-    # F = np.fft.fft(y)          # Fourier transform
-    # F = np.real(F*np.conj(F))         # power spectrum
-    # F = F[:int((len(F-1))/2+1)] # keep up to Nyquist frequency
-    # f = np.linspace(0,1/dx/2.,len(F)+1)[:-1] # frequency scale
-    # if make_plot:
-        # ax = plt.gca()
-        # ax.plot(f,F,color=newcolor(0))
-        # ax.set_xlabel('f')
-        # ax.set_ylabel('F')
-        # ax.set_yscale('log')
-    # if not fit_peaks:
-        # return(f,F)
-    # else:
-        # import spectra
-        # resonances = spectra.data_structures.Dynamic_Recarray()
-        # for i in find_peaks(F,f,**find_peaks_kwargs):
-            # ibeg = max(0,i-fit_radius)
-            # iend = min(i+fit_radius+1,len(f))
-            # ft,Ft = f[ibeg:iend],F[ibeg:iend]
-            # p,yf = spectra.lineshapes.fit_lorentzian(ft,Ft,x0=f[i],S=F[i],Γ=dx)
-            # resonances.append(f0=p['x0'], λ0=1/p['x0'], S=p['S'],Γ=p['Γ'])
+def power_spectrum(
+        x,y,
+        make_plot=False,
+        fit_radius=1,
+        return_peaks=False,
+        **find_peaks_kwargs
+):
+    """Return (frequency,power) after spectral analysis of y. Must be on a
+    uniform x grid."""
+    dx = np.diff(x)
+    assert np.abs(dx.max()/dx.min()-1)<1e-5,'Uniform grid required.'
+    dx = dx[0]
+    F = np.fft.fft(y)          # Fourier transform
+    F = np.real(F*np.conj(F))         # power spectrum
+    F = F[:int((len(F-1))/2+1)] # keep up to Nyquist frequency
+    f = np.linspace(0,1/dx/2.,len(F)+1)[:-1] # frequency scale
+    if make_plot:
+        fig = plotting.gcf()
+        fig.clf()
+        ax = fig.gca()
+        ax.cla()
+        ax.plot(f,F,color=newcolor(0))
+        ax.set_xlabel('f')
+        ax.set_ylabel('F')
+        ax.set_yscale('log')
+    if return_peaks:
+        from . import dataset
+        from . import lineshapes
+        resonances = dataset.Dataset()
+        find_peaks_kwargs.setdefault('peak_min',0.9)
+        find_peaks_kwargs.setdefault('x_minimimum_separation',fit_radius)
+        ipeaks = find_peaks(F,f,**find_peaks_kwargs)
+        if make_plot:
+            ax.plot(f[ipeaks],F[ipeaks],marker='o',ls='',color=newcolor(1))
+        return f,F,ipeaks
+        # print(f'{len(ipeaks)} peaks found')
+        # for ipeak in ipeaks:
+            # i = slice(max(0,ipeak-int(fit_radius/dx)),min(ipeak+int(fit_radius/dx)+1,len(f)))
+            # fit = lineshapes.fit_lorentzian(f[i],F[i],x0=f[ipeak],S=F[ipeak],Γ=dx)
+            # pprint(fit)
+            # resonances.append(f0=fit['p']['x0'], λ0=1/fit['p']['x0'], S=fit['p']['S'],Γ=fit['p']['Γ'])
+            # print( resonances)
             # if make_plot:
-                # ax.plot(ft,yf,color=newcolor(1))
-        # return(f,F,resonances)
+                # ax.plot(fit['x'],fit['yf'],color=newcolor(2))
+        # return f,F,resonances
+    else:
+        return(f,F)
+
 
 # def find_in_recarray(recarray,**key_value):
     # """Find elements of recarray which match (key,value) pairs."""
@@ -3961,7 +3980,7 @@ def file_to_dict(filename,*args,filetype=None,**kwargs):
     else:
         ## fall back try text
         d = txt_to_dict(filename,*args,**kwargs)
-    return(d)
+    return d
 
 def infer_filetype(filename):
     """Determine type of datafile from the name or possibly its
@@ -4223,7 +4242,8 @@ def txt_to_dict(
         filter_function=None,
         filter_regexp=None,
         ignore_blank_lines=True,
-        replacement_for_blank_elements='nan'
+        replacement_for_blank_elements='nan',
+        try_cast_numeric=True,
 ):
     """Convert text file to dictionary. Keys are taken from the first
     uncommented record, or the last commented record if
@@ -4294,8 +4314,9 @@ def txt_to_dict(
     ## get data from rest of file, and convert to arrays
     data = dict()
     for key,column in zip(labels,zip(*lines)):
-        column = [(t.strip() if len(t.strip())>0 else replacement_for_blank_elements) for t in column]
-        data[key] = try_cast_to_numerical_array(column)
+        data[key] = [(t.strip() if len(t.strip())>0 else replacement_for_blank_elements) for t in column]
+        if try_cast_numeric:
+            data[key] = try_cast_to_numerical_array(data[key])
     return data 
             
 # def txt_to_array_unpack(filename,skiprows=0,comment='#'):
@@ -5103,7 +5124,7 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True):
         regions.append((xbegi,xendi,amplitude,frequency,phase))
     yf = piecewise_sinusoid(x,regions) + shift
     if make_plot:
-        ax = plotting.gca()
+        ax = plotting.qax()
         ax.plot(x,y,label='data')
         ax.plot(x,yf,label='fit')
         ax.plot(x,y-yf,label='residual')
@@ -5280,7 +5301,7 @@ part of the algorithm to work. """
             jj = find(np.diff(x[ipeak]) < x_minimimum_separation)
             if len(jj)==0: break
             for j in jj:
-                if y[j]>y[j+1]:
+                if y[ipeak[j]]>y[ipeak[j+1]]:
                     ipeak[j+1] = -1
                 else:
                     ipeak[j] = -1

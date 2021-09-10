@@ -7,6 +7,8 @@ import bisect
 
 from . import tools
 from . import convert
+from . import optimise
+from .optimise import Parameter,P
 from . import fortran_tools
 
 def calculate_spectrum(
@@ -14,7 +16,11 @@ def calculate_spectrum(
         line_function,
         *line_args,
         ncpus=1,
-        multiprocess_divide='lines', # 'lines' or 'x'
+        # multiprocess_divide='lines', # 'lines' or 'x','xshared'
+        multiprocess_divide='lines_shared', # 'lines' or 'x','xshared'
+        # multiprocess_divide='x', # 'lines' or 'x','xshared'
+        # multiprocess_divide='xshared', # 'lines' or 'x','xshared'
+        yin = None,
         **line_kwargs,
 ):
     """Compute a spectrum of lines using line_function which is applied to
@@ -23,25 +29,29 @@ def calculate_spectrum(
     ncpus = min(ncpus,multiprocessing.cpu_count())
     ## run as a single process
     if ncpus == 1:
-        y = np.zeros(x.shape,dtype=float)
+        if yin is None:
+            yin = np.zeros(x.shape,dtype=float)
         for args in zip(*line_args):
-            line_function(x,*args,**line_kwargs,yin=y)
-        return y
+            line_function(x,*args,**line_kwargs,yin=yin)
+        return yin
     ## multiprocessing version  -- divide lines between processes
     elif multiprocess_divide == 'lines':
-        y = np.zeros(x.shape,dtype=float)
         ## get indices to divide lines
-        nlines = len(line_args[0])
-        js = [int(t) for t in linspace(0,nlines,ncpus)]
-        with multiprocessing.Pool(ncpus) as p:
+        with multiprocessing.Pool(ncpus,) as p:
             y = []
-            for jbeg,jend in zip(js[:-1],js[1:]):
+            n = len(line_args[0])
+            jstep = int(n/ncpus) + 1
+            jbeg = 0
+            while jbeg < n:
                 ## start async processes
+                jend = min(jbeg+jstep,n)
                 y.append(
                     p.apply_async(
                         calculate_spectrum,
                         args=(x,line_function,*[t[jbeg:jend] for t in line_args]),
-                        kwds=line_kwargs,))
+                        kwds=line_kwargs,)
+                )
+                jbeg = jend
             ## run proceses, tidy keyboard interrupt, sum to give full spectrum
             try:
                 p.close()
@@ -55,16 +65,21 @@ def calculate_spectrum(
     ## multiprocessing version  -- divide x-range between processes
     elif multiprocess_divide == 'x':
         ## get indices to divide lines
-        js = [int(t) for t in linspace(0,len(x),ncpus)]
+        # print('Timing initiated x') ; import time ; timer = time.time() # DEBUG
         with multiprocessing.Pool(ncpus) as p:
             y = []
-            for jbeg,jend in zip(js[:-1],js[1:]):
+            n = len(x)
+            jstep = int(n/ncpus) + 1
+            jbeg = 0
+            while jbeg < n:
                 ## start async processes
+                jend = min(jbeg+jstep,n)
                 y.append(
                     p.apply_async(
                         calculate_spectrum,
                         args=(x[jbeg:jend],line_function,*line_args),
                         kwds=line_kwargs,))
+                jbeg = jend
             ## run proceses, tidy keyboard interrupt, sum to give full spectrum
             try:
                 p.close()
@@ -74,9 +89,105 @@ def calculate_spectrum(
                 p.join()
                 raise err
             y = np.concatenate([t.get() for t in y])
+        # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+        # print('DEBUG:', y.min(),y.max())
         return y
+
+    elif multiprocess_divide == 'xshared':
+        ## get indices to divide lines
+        # print('Timing initiated xshared') ; import time ; timer = time.time() # DEBUG
+        n = len(x)
+        jstep = int(n/ncpus) + 1
+        jbeg = 0
+        ## a writable shared memory array -- no lock
+        yraw = multiprocessing.RawArray('d',n)
+        y = np.frombuffer(yraw,dtype=np.float64).reshape((n,))
+        y[:] = 0.0
+        with multiprocessing.Pool(
+                ncpus,
+                initializer=_calculate_spectrum_init_worker,
+                initargs=(x,y,line_function,line_args,line_kwargs),
+        ) as p:
+            while jbeg < n:
+                ## start async processes
+                jend = min(jbeg+jstep,n)
+                p.apply_async(_calculate_spectrum_worker,args=(jbeg,jend) )
+                jbeg = jend
+            ## run proceses, tidy keyboard interrupt, sum to give full spectrum
+            try:
+                p.close()
+                p.join()
+            except KeyboardInterrupt as err:
+                p.terminate()
+                p.join()
+                raise err
+        # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+        # print('DEBUG:', y.min(),y.max())
+        return y
+
+    elif multiprocess_divide == 'lines_shared':
+        ## get indices to divide lines
+        # import time ; timer = time.time() # DEBUG
+        # print('Timing initiated xshared') ; import time ; timer = time.time() # DEBUG
+        n = len(line_args[0])
+        jstep = int(n/ncpus) + 1
+        jbeg = 0
+        ## a writable shared memory array -- no lock
+        yraw = multiprocessing.Array('d',len(x))
+        y = np.frombuffer(yraw.get_obj(),dtype=np.float64).reshape((len(x),))
+        y[:] = 0.0
+        with multiprocessing.Pool(
+                ncpus,
+                initializer=_calculate_spectrum_init_worker,
+                initargs=(x,y,line_function,line_args,line_kwargs),
+        ) as p:
+            while jbeg < n:
+                ## start async processes
+                jend = min(jbeg+jstep,n)
+                p.apply_async(_calculate_spectrum_worker_lines,args=(jbeg,jend) )
+                jbeg = jend
+            ## run proceses, tidy keyboard interrupt, sum to give full spectrum
+            try:
+                p.close()
+                p.join()
+            except KeyboardInterrupt as err:
+                p.terminate()
+                p.join()
+                raise err
+        # print('Time elapsed ddd:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+        # print('DEBUG:', y.min(),y.max())
+        # print('sub:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
+        return y
+
     else:
         raise Exception('Unknown {multiprocess_divide=}')
+
+_calculate_spectrum_var_dict = {}
+def _calculate_spectrum_init_worker(x,y,line_function,line_args,line_kwargs):
+    """Used multiprocessing by calculate_spectrum"""
+    _calculate_spectrum_var_dict['x'] = x
+    _calculate_spectrum_var_dict['y'] = y
+    _calculate_spectrum_var_dict['line_function'] = line_function
+    _calculate_spectrum_var_dict['line_args'] = line_args
+    _calculate_spectrum_var_dict['line_kwargs'] = line_kwargs
+
+def _calculate_spectrum_worker(jbeg,jend):
+    """Used multiprocessing by calculate_spectrum"""
+    calculate_spectrum(
+        _calculate_spectrum_var_dict['x'][jbeg:jend],
+        _calculate_spectrum_var_dict['line_function'],
+        *_calculate_spectrum_var_dict['line_args'],
+        yin=_calculate_spectrum_var_dict['y'][jbeg:jend],
+        **_calculate_spectrum_var_dict['line_kwargs'],)
+
+def _calculate_spectrum_worker_lines(jbeg,jend):
+    """Used multiprocessing by calculate_spectrum"""
+    calculate_spectrum(
+        _calculate_spectrum_var_dict['x'],
+        _calculate_spectrum_var_dict['line_function'],
+        *[t[jbeg:jend] for t in _calculate_spectrum_var_dict['line_args']],
+        yin=_calculate_spectrum_var_dict['y'],
+        **_calculate_spectrum_var_dict['line_kwargs'],)
 
 def sinc(x,x0=0,S=1,Γ=1):
     """Lorentzian profile. Γ is FWHM."""
@@ -84,12 +195,14 @@ def sinc(x,x0=0,S=1,Γ=1):
     return(S*np.sinc((x-x0)/Γnode)/Γnode)
 
 _lorentzian_k = 2*constants.pi
-def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None): 
+def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None,method='fortran'): 
     """Lorentzian profile."""
+    if method == 'fortran' and fortran_tools is None:
+        method = 'python'
     if nfwhm is None:
         ## whole domain
         if yin is None:
-            if fortran_tools is None:
+            if method == 'python':
                 return S*Γ/_lorentzian_k/((x-x0)**2+Γ**2/4.)
             else:
                 retval = np.empty(len(x),dtype=float)
@@ -97,7 +210,7 @@ def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None):
                 return retval
         else:
             if len(yin) > 0:
-                if fortran_tools is None:
+                if method == 'python':
                     yin += S*Γ/_lorentzian_k/((x-x0)**2+Γ**2/4.)
                 else:
                     fortran_tools.add_lorentzian_line(x,x0,Γ,S,yin)
@@ -639,25 +752,24 @@ def voigt_spectrum_with_gaussian_doppler_width(
     # ## return data
     # return dict(xmean=xmean,yint=yint,width=width,fcn=fcn,yf=yf,residual=residual)
 
-# def fit_lorentzian(x,y,x0=None,S=None,Γ=None,nfwhm=np.inf):
-    # ## guess initial parameter values
-    # i=np.argmax(y)
-    # if x0 is None:
-        # x0 = x[i]
-    # if Γ is None:
-        # Γ = my.fwhm(x,y,return_None_on_error=True)
-        # if Γ is None:
-            # Γ = 1
-    # if S is None:
-        # S = y[i]*Γ/2
-    # o = Optimiser()
-    # o.monitor_frequency = 'never'
-    # p = o.add_parameter_set(x0=(x0,True,1e-3), Γ=(Γ,True,Γ*1e-2), S=(S,True,S*1e-2),)
-    # def f():
-        # return(lorentzian(x,p['x0'],p['S'],p['Γ'],nfwhm=nfwhm))
-    # o.construct_functions.append(lambda:y-f())
-    # o.optimise(monitor_frequency='never',verbose=False)
-    # return(p,f())
+def fit_lorentzian(x,y,x0=None,S=None,Γ=None,nfwhm=np.inf):
+    ## guess initial parameter values
+    i=np.argmax(y)
+    if x0 is None:
+        x0 = x[i]
+    if Γ is None:
+        Γ = my.fwhm(x,y,return_None_on_error=True)
+        if Γ is None:
+            Γ = 1
+    if S is None:
+        S = y[i]*Γ/2
+    o = optimise.Optimiser(x0=P(x0,True,1e-3), Γ=P(Γ,True,Γ*1e-2), S=P(S,True,S*1e-2),)
+    def f():
+        return lorentzian(x,o['x0'],o['S'],o['Γ'],nfwhm=nfwhm)
+    o.add_construct_function(lambda:y-f())
+    o.optimise(monitor_frequency='never',verbose= True)
+    retval = {'x':x, 'y':x, 'yf':f(), 'p':dict(**o),}
+    return retval
 
 # def fit_sinc(x,y,xmean=None,yint=None,width=None,print_output=False,plot_output=False):
     # """Fit a sinc line shape. Attempts to guess good initial values.

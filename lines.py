@@ -36,7 +36,8 @@ prototypes = {}
 ## copy prototypes directly from levels
 for key in (
         'reference','qnhash',
-        'species','point_group',
+        'species', '_species_hash',
+        'point_group',
         'Zsource',
         'mass','reduced_mass',
         'Eref',
@@ -93,6 +94,7 @@ prototypes['f'] = dict(description="Line f-value",units="dimensionless",kind='f'
     (('Sij','ν','J_l'), lambda self,Sij,ν,J_l: 3.038e-6*ν*Sij/(2*J_l+1)), 
     (('σ','α_l'),lambda self,σ,α_l: σ*1.1296e12/α_l,),
     (('fv','SJ','J_l','Λ_u','Λ_l'),_f1),
+    (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K),
 ])
 
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section.",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[
@@ -107,16 +109,12 @@ def _f0(self,S296K,species,Z,E_l,Tex,ν):
     return (S296K
             *((np.exp(-E_l/(c*Tex))/Z)*(1-np.exp(-c*ν/Tex)))
             /((np.exp(-E_l/(c*296))/Z296K)*(1-np.exp(-c*ν/296))))
-prototypes['S'] = dict(description="Spectral line intensity ",units="cm or cm-1/(molecular.cm-2", kind='f', fmt='<10.5e', infer=[(('S296K','species','Z_l','E_l','Tex_l','ν'),_f0,)])
-prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",units=" cm-1/(molecular.cm-2", kind='f', fmt='<10.5e', infer=[],cast=tools.cast_abs_float_array)
+prototypes['S'] = dict(description="Spectral line intensity ",units="cm-1.cm2", kind='f', fmt='<10.5e', infer=[(('S296K','species','Z_l','E_l','Tex_l','ν'),_f0,)])
+prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",units="cm-1.cm2", kind='f', fmt='<10.5e', infer=[],cast=tools.cast_abs_float_array)
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
 ## former considers the effect of stimulated emission.
-prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission",units="cm-1", kind='f', fmt='<10.5e',
-                       infer=[
-                           (('S','Nself_l'),lambda self,S,Nself_l: S*Nself_l,),
-                           (('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,),
-                       ],)
+prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission",units="cm-1", kind='f', fmt='<10.5e', infer=[(('S','Nself_l'),lambda self,S,Nself_l: S*Nself_l,), (('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,),],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
 prototypes['σd'] = dict(description="Photodissociation cross section.",units="cm2.cm-1",kind='f',fmt='<10.5e',infer=[(('σ','ηd_u'),lambda self,σ,ηd_u: σ*ηd_u,)],)
@@ -131,7 +129,7 @@ for key in ('J','N','S','Λ','Ω','Σ','v'):
 
 ## column 
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
-prototypes['Nself'] = dict(description="Column density",units="cm-2",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),)])
+prototypes['Nself'] = dict(description="Column density",units="cm-2",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),),])
 
 
 ####################################
@@ -367,13 +365,13 @@ class Generic(levels.Base):
         base_class=levels.Base,
         new_keys=(
             'reference','qnhash','qn',
-            'species', 'point_group','mass','Zsource',
+            'species', 'point_group','mass','Zsource','_species_hash',
             'Eref',
             'ν','ν0', # 'λ',
             'ΔJ', 'branch',
             'ΔJ',
             'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
-            'Nself',
+            'Nself','L',
             'Teq','Tex','Ttr',
             # 'Γ','ΓD',
             'Γ','Γp','ΓD','ΓL','ΓG',
@@ -554,7 +552,7 @@ class Generic(levels.Base):
                 return np.array([]),np.array([])
             else:
                 return x,np.zeros(x.shape)
-        # ## guess a default lineshape
+        ## guess a default lineshape
         if lineshape is None:
             if self.is_known('ΓG') and self.is_known('ΓL') and np.any(self['ΓL']!=0) and np.any(self['ΓG']!=0):
                 lineshape = 'voigt'
@@ -602,15 +600,15 @@ class Generic(levels.Base):
         if ymin is not None:
             i &= self[ykey] > ymin
         ## get line function and arguments
-        if lineshape is None:
-            if self.is_known('ΓL','ΓG'):
-                lineshape = 'voigt'
-            elif self.is_known('ΓL'):
-                lineshape = 'lorentzian'
-            elif self.is_known('ΓG'):
-                lineshape = 'gaussian'
-            else:
-                raise Exception("No lineshape has computable widths.") 
+        # if lineshape is None:
+            # if self.is_known('ΓL','ΓG'):
+                # lineshape = 'voigt'
+            # elif self.is_known('ΓL'):
+                # lineshape = 'lorentzian'
+            # elif self.is_known('ΓG'):
+                # lineshape = 'gaussian'
+            # else:
+                # raise Exception("No lineshape has computable widths.") 
         if lineshape == 'voigt':
             line_function = lineshapes.voigt
             line_args = (self[xkey][i],self[ykey][i],self['ΓL'][i],self['ΓG'][i])
@@ -648,10 +646,8 @@ class Generic(levels.Base):
             line_function,
             *line_args,
             **line_kwargs,
-            ncpus=ncpus,
-            multiprocess_divide='lines',)
+            ncpus=ncpus)
         return x,y
-
 
     def calculate_transmission_spectrum(
             self,
@@ -746,7 +742,7 @@ class Generic(levels.Base):
         for key in ('term_i','term_k'):
             for regexp in (
                     '^nan$',
-                    '^\(.*\)\*?$',
+                    r'^\(.*\)\*?$',
                     ):
                 i = data.match_re({key:regexp})
                 if np.any(i):
@@ -976,8 +972,7 @@ class Generic(levels.Base):
                 # ichanged = np.any(val != self[key][ilines])
                 # self.set(key,val[ichanged],index=ilines[ichanged])
 
-    @optimise_method(add_construct_function=False)
-
+    @optimise_method()
     def generate_from_levels(
             self,
             levelu,levell,      # upper and lower level objects
@@ -985,12 +980,16 @@ class Generic(levels.Base):
             matchu=None,     # only use matching upper levels
             matchl=None,     # only use matching lower levels
             add_duplicate=False, # whether to add a duplicate if line is already present
-            _cache=(),
+            _cache=None,
             optimise=False,
             **defaults
     ):
         """Combine upper and lower levels into a line list, only including
         dipole-allowed transitions. SLOW IMPLEMENTATION"""
+        if 'has_run' in cache:
+            ## only run once
+            return
+        cache['has_run'] = True
         if isinstance(levell,str):
             qn = quantum_numbers.decode_linear_level(levell)
             levell = database.get_level(qn['species'])

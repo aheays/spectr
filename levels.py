@@ -29,7 +29,10 @@ prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,i
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
-prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U' , infer=[])
+prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U',infer=[],
+                             cast=database.normalise_species
+                             )
+prototypes['_species_hash'] = dict(description="Hash of species", kind='i',infer=[('species',lambda self,species:[hash(t) for t in species]),])
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,species):
@@ -41,7 +44,13 @@ prototypes['point_group']  = dict(description="Symmetry point group of species."
 @vectorise(vargs=(1,),dtype=float)
 def _f0(self,species):
     return kinetics.get_species(species)['mass']
-prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species',), _f0),])
+def _f1(self,species,_species_hash):
+    mass = np.empty(len(species),dtype=float)
+    for t,i in zip(*np.unique(_species_hash,return_index=True)):
+        j = _species_hash == t
+        mass[j] = kinetics.get_species(species[i])['mass']
+    return mass
+prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species','_species_hash',), _f1), (('species',), _f0),])
 prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
 
 ## level energies
@@ -271,7 +280,18 @@ def _f0(self,Zrot,Tv,E,g,Trot):
     αrot = g*np.exp(-(E-Tv)/(kB*Trot))/Zrot
     return αrot
 prototypes['αrot'] = dict(description="Rotational state population", kind='f', fmt='<11.4e', infer=[(('Zrot','Tv','E','g','Trot',), _f0),])
-
+def _f0(self,species,E,Eref,g,Zsource):
+    """Get level populations at 296K assuming a single excitation
+    temperature. CURRENTLY ONLY IMPLEMENTED FOR ZSOURCE=HITRAN."""
+    if np.any(Zsource != 'HITRAN'):
+        raise InferException(f'Can only compute α296K if Zsource all "HITRAN"')
+    Tex = 296
+    from . import hitran
+    Z = hitran.get_partition_function(species,Tex)
+    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    α = g*np.exp(-(E-Eref)/(kB*Tex))/Z
+    return α
+prototypes['α296K'] = dict(description="Equilibrium level population at 296K.",units="dimensionless", kind='f', fmt='<10.5e',cast=tools.cast_abs_float_array,infer=[(('species','E','Eref','g','Zsource'),_f0),])
 prototypes['Nself'] = dict(description="Column density",units="cm2",kind='f',fmt='<11.3e', infer=[])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
@@ -429,8 +449,6 @@ prototypes['SR'] = dict(description="Signed projection of spin angular momentum 
 prototypes['qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[])
 prototypes['qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[])
 
-
-
 ## Effective Hamiltonian parameters
 prototypes['Tv']  = dict(description='Term origin' ,units='cm-1',kind='f',fmt='0.6f',default=0,infer=[])
 prototypes['Tv']  = dict(description='Electronic-vibrational energy.' ,units='cm-1',kind='f',fmt='0.6f',default=0,infer=[])
@@ -519,6 +537,9 @@ def _collect_prototypes(*keys,defining_qn=()):
     for key in defining_qn:
         default_prototypes[key]['infer'].append(
             ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
+    ## and a separate species has
+    if 'species' in default_prototypes and '_species_hash' not in default_prototypes:
+        default_prototypes['_species_hash'] = deepcopy(prototypes['_species_hash'])
     return default_prototypes
 
 class Base(Dataset):
@@ -633,6 +654,7 @@ class Generic(Base):
     default_zkeys = ('species','label','ef')
     default_prototypes = _collect_prototypes(
         'species','label','ef','J',
+        '_species_hash',
         'reference','qnhash',
         'chemical_species',
         'point_group',
@@ -641,8 +663,8 @@ class Generic(Base):
         'N','S',
         'g','gnuclear','Inuclear',
         'Teq','Tex',
-        'Zsource','Z','α',
-        'Nself',
+        'Zsource','Z','α','α296K',
+        'Nself','L',
         'At','Ae','Ad','ηd','ηe','Γe','Γd',         # destruction rates and branching
         defining_qn=defining_qn)
     Ereduced_common_polynomial = (1,0)
