@@ -1,8 +1,9 @@
 #!/usr/bin/env python3 
 
 import argparse,warnings,os,signal,sys,collections,re
-from spectr import tools,plotting
+from spectr import tools,plotting,dataset
 from spectr.convert import units
+from spectr.dataset import Dataset
 import numpy as np
 import matplotlib as mpl
 from copy import deepcopy
@@ -44,8 +45,8 @@ parser.add_argument('--xaltaxis', dest='xaltaxis',type=str,default=None, help='D
 parser.add_argument('--linestyle', dest='linestyle',type=str,default=None, help='Use this linestyle, else adjust for uniqueness.')
 parser.add_argument('--color', dest='color',type=str,default=None, help='Use this color, else adjust for uniqueness.')
 parser.add_argument('--contaminants', dest='contaminants_to_plot',type=str,default=None, help='Plot contaminant spectral lines, comma separated list of species, or "default". Requires cm-1 units.')
-parser.add_argument('--labels-commented', dest='labels_commented',default="True",action="store_true",help='Label line is commented.')
-parser.add_argument('--labels-uncommented', dest='labels_commented',default="True",action="store_false",help='Label line is not commented.')
+parser.add_argument('--labels-commented', dest='labels_commented',default=None,action="store_true",help='Label line is commented.')
+parser.add_argument('--labels-uncommented', dest='labels_commented',default=None,action="store_false",help='Label line is not commented.')
 parser.add_argument('--hitran', dest='hitran',default=False,action="store_true",help='Plot HITRAN spetrum for this species')
 parser.add_argument('filenames', metavar='file', type=str, nargs='*',help='name of a band data file')
 args = parser.parse_args()
@@ -100,26 +101,35 @@ if args.verbose:
 ## loop through each file, plotting as best one can
 plot_count = 0
 original_args = deepcopy(args)  # cache args because they can be changed below, and each file should begin the same
-for f in args.filenames:
+for filename in args.filenames:
     args = deepcopy(original_args)
 
     ## include filename in label if multiple files plotted
     label_prefix = ''
     if len(args.filenames)>1:
-        label_prefix = f+' -- '
+        label_prefix = filename+' -- '
 
     ## if only one file use title
     if len(args.filenames)==1:
         if args.plot_library=='matplotlib':
-            t = ax.set_title(f)
+            t = ax.set_title(filename)
             t.set_in_layout(False)
 
-
-
     ## load data into a dictionary of arrays
-    if args.xkey is not None or (len(f)>3 and f[-3:]=='.h5'):
+    if args.xkey is not None or (len(filename)>3 and filename[-3:]=='.h5'):
         ## load as dictionary
-        data = tools.file_to_dict(f,labels_commented=args.labels_commented,filetype=args.filetype)
+        # data = tools.file_to_dict(filename,labels_commented=args.labels_commented,filetype=args.filetype)
+        kwargs = {}
+        if args.labels_commented is not None:
+            kwargs['labels_commented'] = args.labels_commented
+        if args.filetype is not None:
+            kwargs['filetype'] = args.filetype
+        else:
+            kwargs['filetype'] = tools.infer_filetype(filename)
+        if kwargs['filetype'] == 'hdf5':
+            kwargs.setdefault('load_attributes',False)
+        data = Dataset()
+        data.load(filename,**kwargs)
         ## special cases one data series only 'data' which must be a
         ## 1- or 2-dimensional array then load columns a 'column0' etc
         if len(list(data.keys()))==1 and 'data' in data:
@@ -130,7 +140,7 @@ for f in args.filenames:
         file_to_array_kwargs = dict(unpack=True, awkscript=args.awkscript, skip_header=args.skip_header)
         if args.delimiter is not None:
             file_to_array_kwargs['delimiter'] = args.delimiter
-        t = tools.file_to_array(f,**file_to_array_kwargs)
+        t = tools.file_to_array(filename,**file_to_array_kwargs)
         if t.ndim==0:
             data = {'column0':np.array(float(t))}
         elif t.ndim==1:
