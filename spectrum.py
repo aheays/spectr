@@ -2265,6 +2265,8 @@ class FitReferenceAbsorption():
             cycles=2,
             fit_intensity=True,
             fit_sinusoid=True,
+            regions='bands',
+            full_model=True,
     ):
         """Fit spectrum in a standardised way."""
         print('auto_fit')
@@ -2309,7 +2311,7 @@ class FitReferenceAbsorption():
             ## instrument function
             self.fit_species(
                 'H2O',
-                regions='bands',
+                regions=regions,
                 fit_species=True,
                 fit_scalex=True,
                 fit_instrument=True,
@@ -2320,14 +2322,15 @@ class FitReferenceAbsorption():
             ## all species
             self.fit_species(
                 *species_to_fit,
-                regions='bands',
+                regions=regions,
                 fit_species=True,
                 fit_intensity=fit_intensity,
                 fit_sinusoid=fit_sinusoid,
                 max_nfev=5,
             )
         ## make final model
-        self.full_model()
+        if full_model:
+            self.full_model()
         print('Time elapsed:',format(timestamp()-time,'12.6f'))
                     
     def plot(
@@ -2429,7 +2432,7 @@ class FitReferenceAbsorption():
         for species in species_to_model:
             if neglect_species_to_fit and species in species_to_fit:
                 continue
-            # self.verbose_print( f' {species}',end='')
+            # self.verbose_printrint( f' {species}',end='')
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
             p['N'].setdefault(species,P(1e13, False,1e13 ,nan,(0,np.inf)))
