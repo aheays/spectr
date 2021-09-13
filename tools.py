@@ -269,8 +269,8 @@ def compute_matrix_of_function(A,*args,**kwargs):
     return retval
 
 def load_data_dict(filename,*keys):
-    """Import filename namespace as a dciontary and return.  Progressively
-index this dictionary by each given key."""
+    """Import filename namespace as a dictionary and return.  Progressively
+    index this dictionary by each given key."""
     import runpy
     data = runpy.run_path(expand_path(filename))
     for key in keys:
