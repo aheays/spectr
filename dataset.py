@@ -193,6 +193,13 @@ class Dataset(optimise.Optimiser):
         else:
             raise Exception('Invalid subkey: {repr(subkey)}')
     
+    def _guess_kind_from_value(self,value):
+        """Guess what kind of data this is from a provided scalar or
+        vector value."""
+        dtype = np.asarray(value).dtype
+        kind = dtype.kind
+        return kind
+
     def set_new(self,key,value,kind=None,**other_metadata):
         """Set key to value with other kinds of subkey metadata also set. Will
         create a prototype first."""
@@ -200,6 +207,8 @@ class Dataset(optimise.Optimiser):
             raise Exception(f"set_new but key already exists: {repr(key)}")
         if key in self.prototypes:
             raise Exception(f"set_new but key already in prototypes: {repr(key)}")
+        if kind is None:
+            kind = self._guess_kind_from_value(value)
         self.set_prototype(key,kind=kind,**other_metadata)
         self.set(key,'value',value)
 
@@ -315,7 +324,8 @@ class Dataset(optimise.Optimiser):
                 data['kind'] = kind
             if 'kind' not in data:
                 value = np.asarray(value)
-                data['kind'] = value.dtype.kind
+                data['kind'] = self._guess_kind_from_value(value)
+                # data['kind'] = value.dtype.kind
             ## convert bytes string to unicode
             if data['kind'] == 'S':
                 data['kind'] = 'U'
@@ -1477,9 +1487,9 @@ class Dataset(optimise.Optimiser):
                 self[key,subkey] = scalar_data[key][subkey]
 
     def load_from_parameters_dict(self,parameters):
-        """Load a dict recursively into a flat scalar list. Only some scalars,
-            Parmaters, and dictionaries with string keys are added. Everything
-            else is ignored."""
+        """Load a dict recursively into a flat scalar list. Only scalars,
+            Parameters, and dictionaries with string keys are
+            added. Everything else is ignored."""
         def recursively_flatten_scalar_dict(data,prefix=''):
             from .optimise import Parameter
             retval = {}
