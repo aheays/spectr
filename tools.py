@@ -219,6 +219,10 @@ def vectorise_arguments(function):
         # retval += ','.join([str(key)+'='+repr(val) for key,val in kwargs.items()])+','
     # return(retval)
 
+#############################
+## things for dictionaries ##
+#############################
+
 def combine_dicts(*input_dicts):
     """Combine input dicts into one, ignoring any that are None."""
     retval = {}
@@ -264,6 +268,14 @@ def compute_matrix_of_function(A,*args,**kwargs):
     retval = np.matrix([[Aij(*args,**kwargs) for Aij in Ai] for Ai in A])
     return retval
 
+def load_data_dict(filename,*keys):
+    """Import filename namespace as a dciontary and return.  Progressively
+index this dictionary by each given key."""
+    import runpy
+    data = runpy.run_path(expand_path(filename))
+    for key in keys:
+        data = data[key]
+    return data
 
 ############################
 ## mathematical functions ##
