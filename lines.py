@@ -600,15 +600,6 @@ class Generic(levels.Base):
         if ymin is not None:
             i &= self[ykey] > ymin
         ## get line function and arguments
-        # if lineshape is None:
-            # if self.is_known('ΓL','ΓG'):
-                # lineshape = 'voigt'
-            # elif self.is_known('ΓL'):
-                # lineshape = 'lorentzian'
-            # elif self.is_known('ΓG'):
-                # lineshape = 'gaussian'
-            # else:
-                # raise Exception("No lineshape has computable widths.") 
         if lineshape == 'voigt':
             line_function = lineshapes.voigt
             line_args = (self[xkey][i],self[ykey][i],self['ΓL'][i],self['ΓG'][i])
@@ -708,23 +699,26 @@ class Generic(levels.Base):
         """Load HITRAN .data."""
         data = hitran.load(filename)
         ## interpret into transition quantities common to all transitions
-        new = {
-            'ν0':data['ν'],
-            # 'Ae':data['A'],  # Ae data is incomplete but S296K will be complete
-            'S296K':data['S'],
-            'E_l':data['E_l'],
-            'g_u':data['g_u'],
-            'g_l':data['g_l'],
-            'γ0air':data['γair'], 
-            'nγ0air':data['nair'],
-            'δ0air':data['δair'],
-            'γ0self':data['γself'],
-        }
-        ## get species
-        i = hitran.get_molparam().find_unique(species_ID=data['Mol'],local_isotopologue_ID=data['Iso'])
-        new['species'] =  hitran.get_molparam()['isotopologue'][i]
+        new = Dataset(
+            ν0=data['ν'],
+            # Ae=data['A'],  # Ae data is incomplete but S296K will be complete
+            S296K=data['S'],
+            E_l=data['E_l'],
+            g_u=data['g_u'],
+            g_l=data['g_l'],
+            γ0air=data['γair'], 
+            nγ0air=data['nair'],
+            δ0air=data['δair'],
+            γ0self=data['γself'],
+        )
+        ## get species and remove natural abundance scaling of S296K
+        new['species'] = np.full(len(data),'')
+        for d,i in data.unique_dicts_match('Mol','Iso'):
+            di = hitran.get_molparam(species_ID=d['Mol'],local_isotopologue_ID=d['Iso'])
+            assert len(di) == 1,f'Should be unique mol/iso combination {d["Mol"]},{d["Iso"]}'
+            new['species',i] =  di['isotopologue',0]
+            new['S296K',i] =  new['S296K',i]/di['natural_abundance',0]
         ## remove natural abundance weighting
-        new['S296K'] /=  hitran.get_molparam()['natural_abundance'][i]
         self.extend(**new)
         return data             # return raw HITRAN data
         

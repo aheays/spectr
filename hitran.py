@@ -140,6 +140,7 @@ def load(filename):
                      '8':8, '9':9, '0':10, 'A':11, 'B':12, 'C':13, 'D':14, 'E':15,
                      'F':16, 'G':17, 'H':18, 'I':19, 'J':20,}
     retval['Iso'] = [iso_translate[t] for t in retval['Iso']]
+    retval = Dataset(**retval)
     return retval
 
 # def get_spectrum(
