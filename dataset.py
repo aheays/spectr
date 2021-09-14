@@ -1153,6 +1153,7 @@ class Dataset(optimise.Optimiser):
             self,
             keys=None,
             delimiter=' | ',
+            simple=False,
             unique_values_in_header=True,
             subkeys=('value','unc','vary','step','ref','description','units'),
             include_description=True,
@@ -1164,6 +1165,13 @@ class Dataset(optimise.Optimiser):
             quote_keys=False,
     ):
         """Format data into a string representation."""
+        if simple:
+            unique_values_in_header = False
+            include_description = False
+            include_classname = False
+            include_key_description = False
+            include_key_metadata = False
+            include_keys_with_leading_underscore = False
         if keys is None:
             keys = self.keys()
             if not include_keys_with_leading_underscore:
@@ -1592,7 +1600,7 @@ class Dataset(optimise.Optimiser):
         key_line_without_value_re = re.compile(f'^ *{escaped_comment} *([^# ]+) *# *(.+) *') # no value in line
         key_line_with_value_re = re.compile(f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #])') # may also contain description
         current_section = 'data'
-        valid_sections = ('classname','description','keys','data')
+        valid_sections = ('classname','description','keys','data','metadata')
         section_iline = 0       # how many lines read in this section
         classname = None
         description = None
@@ -1637,8 +1645,7 @@ class Dataset(optimise.Optimiser):
                 elif current_section == 'keys':
                     ## decode key line getting key, value, and any metadata
                     r = re.match(
-                        # f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #])',
-                        f'^ *{escaped_comment} *([^#= ]+) *(?:= *([^ #]+))? *(?:# *(.* *))?',
+                        f'^(?:{escaped_comment}| )*([^#= ]+) *(?:= *([^ #]+))? *(?:# *(.* *))?',
                         line)
                     key = None
                     value = None
@@ -1659,10 +1666,26 @@ class Dataset(optimise.Optimiser):
                             data[key] = value
                         if info is not None:
                             metadata[key] = info
-                    # if r:=re.match(key_line_without_value_re,line):
-                        # continue
-                    # elif r:=re.match(key_line_with_value_re,line):
-                        # data[r.group(1)] = ast.literal_eval(r.group(2))
+                elif current_section == 'metadata': 
+                    ## decode key line getting key, value, and any
+                    ## metadata from an python-encoded dictionary e.g.,
+                    ## key={'description':"abd",kind='f',value=5.0,...}.
+                    ## Or key=description_string.
+                    r = re.match(f'^(?:{escaped_comment}| )*([^= ]+)(?: *= *(.+))?',line) 
+                    if r:
+                        key = r.group(1)
+                        if r.group(2) is None:
+                            key_metadata = None
+                        else:
+                            try:
+                                key_metadata = ast.literal_eval(r.group(2))
+                                if not isinstance(key_metadata,dict):
+                                    key_metadata = {'description':r.group(2)}
+                            except:
+                                key_metadata = {'description':r.group(2)}
+                            if 'value' in key_metadata:
+                                data[key] = key_metadata.pop('value')
+                            metadata[key] = key_metadata
                 elif current_section == 'data':
                     ## remainder of data is data, no more header to
                     ## process
@@ -1914,8 +1937,9 @@ class Dataset(optimise.Optimiser):
 
     def plot(
             self,
-            xkey,               # key to use for x-axis data
-            ykeys=None,              # list of keys to use for y-axis data
+            # xkey=None,               # key to use for x-axis data
+            xkeys=None,         # key to use for x-axis data
+            ykeys=None,         # list of keys to use for y-axis data
             zkeys=None,         # plot x-y data separately for unique combinations of zkeys
             ykeys_re=None,
             fig=None,           # otherwise automatic
@@ -1951,151 +1975,162 @@ class Dataset(optimise.Optimiser):
             fig = plt.gcf()
             fig.clf()
         ## xkey, ykeys, zkeys
+        xkeys = list(tools.ensure_iterable(xkeys))
         if ykeys is None:
             ykeys = []
+        ykeys = list(tools.ensure_iterable(ykeys))
         if ykeys_re is not None:
             ykeys += [key for key in self if re.match(ykeys_re,key)]
         if zkeys is None:
             zkeys = self.default_zkeys
-        zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
-        ykeys = [key for key in tools.ensure_iterable(ykeys) if key not in [xkey]+zkeys]
-        for t in [xkey,*ykeys,*zkeys]:
+        zkeys = list(tools.ensure_iterable(zkeys))
+        ykeys = [key for key in ykeys if key not in xkeys+zkeys]
+        # zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
+        zkeys = [key for key in zkeys if key not in xkeys+ykeys and self.is_known(key)] # remove xkey and ykeys from zkeys
+        for t in xkeys+ykeys+zkeys:
             self.assert_known(t)
-        ## set xlabel
-        xlabel = xkey
-        if self.is_known(xkey,'units'):
-            xlabel += ' ('+self[xkey,'units']+')'
-        ## plot each 
-        ymin = {}
-        auto_title = None
-        for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
-            for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
-                ## get ylabel -- may be deleted below
-                ylabel = ykey
-                if self.is_known(ykey,'units'):
-                    ylabel += ' ('+self[ykey,'units']+')'
-                ## sort data
-                if xsort == True:
-                    z.sort(xkey)
-                elif xsort == False:
-                    pass
-                else:
-                    z.sort(xsort)
-                ## get zlabel
-                if zlabel_format_function is None:
-                    # zlabel_format_function = self.default_zlabel_format_function
-                    zlabel_format_function = tools.dict_to_kwargs
-                zlabel = zlabel_format_function(dz)
-                if ynewaxes and znewaxes:
-                    ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns)
-                    color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
-                    label = None
-                    if title is None:
-                        auto_title = zlabel
-                elif ynewaxes and not znewaxes:
-                    ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns)
-                    color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
-                    label = (zlabel if len(zkeys)>0 else None) 
-                    if title is None:
-                        auto_title = ylabel
-                elif not ynewaxes and znewaxes:
-                    ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns)
-                    color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
-                    label = ylabel
-                    ylabel = None
-                    if title is None:
-                        auto_title = zlabel
-                elif not ynewaxes and not znewaxes:
-                    ax = fig.gca()
-                    color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
-                    label = ylabel+' '+zlabel
-                    ylabel = None
-                ## plotting kwargs
-                kwargs = copy(plot_kwargs)
-                kwargs.setdefault('marker',marker)
-                kwargs.setdefault('ls',linestyle)
-                kwargs.setdefault('mew',1)
-                kwargs.setdefault('markersize',7)
-                kwargs.setdefault('color',color)
-                kwargs.setdefault('mec',kwargs['color'])
-                if label is not None:
-                    kwargs.setdefault('label',label_prefix+label)
-                ## plotting data
-                if self[xkey,'kind'] == 'U':
-                    ## if string xkey then ensure different plots are aligned on the axis
-                    xkey_unique_strings = self.unique(xkey)
-                    x = tools.findin(z[xkey],xkey_unique_strings)
-                else:
-                    x = z[xkey]
-                y = z[ykey]
-                if plot_errorbars and (z.is_set(ykey,'unc') or z.is_set(xkey,'unc')):
-                    ## get uncertainties if they are known
-                    if z.is_set(xkey,'unc'):
-                        dx = z.get(xkey,'unc')
-                        dx[np.isnan(dx)] = 0.
+        ## total number of subplots in figure
+        nsubplots = len(xkeys)
+        if ynewaxes:
+            nsubplots *= len(ykeys)
+        if znewaxes:
+            nsubplots *= len(zkeys)
+        ## plot each xkey/ykey/zkey combination
+        for ix,xkey in enumerate(xkeys):
+            ## set xlabel
+            xlabel = xkey
+            if self.is_known(xkey,'units'):
+                xlabel += ' ('+self[xkey,'units']+')'
+            ymin = {}
+            auto_title = None
+            for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
+                for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
+                    ## get ylabel -- may be deleted below
+                    ylabel = ykey
+                    if self.is_known(ykey,'units'):
+                        ylabel += ' ('+self[ykey,'units']+')'
+                    ## sort data
+                    if xsort == True:
+                        z.sort(xkey)
+                    elif xsort == False:
+                        pass
                     else:
-                        dx = np.full(len(z),0.)
-                    if z.is_set(ykey,'unc'):
-                        dy = z.get(ykey,'unc')
-                        dy[np.isnan(dy)] = 0.
+                        z.sort(xsort)
+                    ## get zlabel
+                    if zlabel_format_function is None:
+                        # zlabel_format_function = self.default_zlabel_format_function
+                        zlabel_format_function = tools.dict_to_kwargs
+                    zlabel = zlabel_format_function(dz)
+                    if ynewaxes and znewaxes:
+                        ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                        color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
+                        label = None
+                        if title is None:
+                            auto_title = zlabel
+                    elif ynewaxes and not znewaxes:
+                        ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                        color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
+                        label = (zlabel if len(zkeys)>0 else None) 
+                        if title is None:
+                            auto_title = ylabel
+                    elif not ynewaxes and znewaxes:
+                        ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                        color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
+                        label = ylabel
+                        ylabel = None
+                        if title is None:
+                            auto_title = zlabel
+                    elif not ynewaxes and not znewaxes:
+                        ax = plotting.subplot(n=ix,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                        color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
+                        label = ylabel+' '+zlabel
+                        ylabel = None
+                    ## plotting kwargs
+                    kwargs = copy(plot_kwargs)
+                    kwargs.setdefault('marker',marker)
+                    kwargs.setdefault('ls',linestyle)
+                    kwargs.setdefault('mew',1)
+                    kwargs.setdefault('markersize',7)
+                    kwargs.setdefault('color',color)
+                    kwargs.setdefault('mec',kwargs['color'])
+                    if label is not None:
+                        kwargs.setdefault('label',label_prefix+label)
+                    ## plotting data
+                    if self[xkey,'kind'] == 'U':
+                        ## if string xkey then ensure different plots are aligned on the axis
+                        xkey_unique_strings = self.unique(xkey)
+                        x = tools.findin(z[xkey],xkey_unique_strings)
                     else:
-                        dy = np.full(len(z),0.)
-                    ## plot errorbars
-                    kwargs.setdefault('mfc','none')
-                    i = ~np.isnan(x) & ~np.isnan(y)
-                    ax.errorbar(x[i],y[i],dy[i],dx[i],**kwargs)
-                    ## plot zero/undefined uncertainty data as filled symbols
-                    i = np.isnan(dy)|(dy==0)
-                    if np.any(i):
-                        kwargs['mfc'] = kwargs['color']
-                        if 'fillstyle' not in kwargs:
-                            kwargs['fillstyle'] = 'full'
-                        if 'ls' in kwargs:
-                            kwargs['ls'] = ''
+                        x = z[xkey]
+                    y = z[ykey]
+                    if plot_errorbars and (z.is_set(ykey,'unc') or z.is_set(xkey,'unc')):
+                        ## get uncertainties if they are known
+                        if z.is_set(xkey,'unc'):
+                            dx = z.get(xkey,'unc')
+                            dx[np.isnan(dx)] = 0.
                         else:
-                            kwargs['linestyle'] = ''
-                        kwargs['label'] = None
-                        line = ax.plot(x[i],z[ykey][i],**kwargs)
-                else:
-                    kwargs.setdefault('mfc',kwargs['color'])
-                    kwargs.setdefault('fillstyle','full')
-                    line = ax.plot(x,y,**kwargs)
-                if title is not None:
-                    ax.set_title(title)
-                elif auto_title is not None:
-                    ax.set_title(auto_title)
-                if ylabel is not None:
-                    ax.set_ylabel(ylabel)
-                if xlabel is not None:
-                    ax.set_xlabel(xlabel)
-                if 'label' in kwargs:
-                    if legend:
-                        plotting.legend(fontsize='x-small',loc=legend_loc,show_style=True)
-                    if annotate_lines:
-                        plotting.annotate_line(line=line)
-                if xlim is not None:
-                    ax.set_xlim(*xlim)
-                ax.set_xscale(xscale)
-                ax.set_yscale(yscale)
-                ax.grid(True,color='gray',zorder=-5)
-                if self[xkey,'kind'] == 'U':
-                    plotting.set_tick_labels_text(xkey_unique_strings,axis='x',ax=ax,rotation=70,fontsize='x-small')
-            ## set ylim for all axes
-            if ylim is not None:
-                for ax in fig.axes:
-                    if ylim == 'data':
-                        t,t,ybeg,yend = plotting.get_data_range(ax)
-                        ax.set_ylim(ybeg,yend)
-                    elif tools.isiterable(ylim) and len(ylim) == 2:
-                        ybeg,yend = ylim
-                        if ybeg is not None:
-                            if ybeg == 'data':
-                                t,t,ybeg,t = plotting.get_data_range(ax)
-                            ax.set_ylim(ymin=ybeg)
-                        if yend is not None:
-                            if yend == 'data':
-                                t,t,t,yend = plotting.get_data_range(ax)
-                            ax.set_ylim(ymax=yend)
+                            dx = np.full(len(z),0.)
+                        if z.is_set(ykey,'unc'):
+                            dy = z.get(ykey,'unc')
+                            dy[np.isnan(dy)] = 0.
+                        else:
+                            dy = np.full(len(z),0.)
+                        ## plot errorbars
+                        kwargs.setdefault('mfc','none')
+                        i = ~np.isnan(x) & ~np.isnan(y)
+                        ax.errorbar(x[i],y[i],dy[i],dx[i],**kwargs)
+                        ## plot zero/undefined uncertainty data as filled symbols
+                        i = np.isnan(dy)|(dy==0)
+                        if np.any(i):
+                            kwargs['mfc'] = kwargs['color']
+                            if 'fillstyle' not in kwargs:
+                                kwargs['fillstyle'] = 'full'
+                            if 'ls' in kwargs:
+                                kwargs['ls'] = ''
+                            else:
+                                kwargs['linestyle'] = ''
+                            kwargs['label'] = None
+                            line = ax.plot(x[i],z[ykey][i],**kwargs)
+                    else:
+                        kwargs.setdefault('mfc',kwargs['color'])
+                        kwargs.setdefault('fillstyle','full')
+                        line = ax.plot(x,y,**kwargs)
+                    if title is not None:
+                        ax.set_title(title)
+                    elif auto_title is not None:
+                        ax.set_title(auto_title)
+                    if ylabel is not None:
+                        ax.set_ylabel(ylabel)
+                    if xlabel is not None:
+                        ax.set_xlabel(xlabel)
+                    if 'label' in kwargs:
+                        if legend:
+                            plotting.legend(fontsize='x-small',loc=legend_loc,show_style=True)
+                        if annotate_lines:
+                            plotting.annotate_line(line=line)
+                    if xlim is not None:
+                        ax.set_xlim(*xlim)
+                    ax.set_xscale(xscale)
+                    ax.set_yscale(yscale)
+                    ax.grid(True,color='gray',zorder=-5)
+                    if self[xkey,'kind'] == 'U':
+                        plotting.set_tick_labels_text(xkey_unique_strings,axis='x',ax=ax,rotation=70,fontsize='x-small')
+                ## set ylim for all axes
+                if ylim is not None:
+                    for ax in fig.axes:
+                        if ylim == 'data':
+                            t,t,ybeg,yend = plotting.get_data_range(ax)
+                            ax.set_ylim(ybeg,yend)
+                        elif tools.isiterable(ylim) and len(ylim) == 2:
+                            ybeg,yend = ylim
+                            if ybeg is not None:
+                                if ybeg == 'data':
+                                    t,t,ybeg,t = plotting.get_data_range(ax)
+                                ax.set_ylim(ymin=ybeg)
+                            if yend is not None:
+                                if yend == 'data':
+                                    t,t,t,yend = plotting.get_data_range(ax)
+                                ax.set_ylim(ymax=yend)
         if show:
             plotting.show()
         return fig
