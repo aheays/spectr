@@ -2048,7 +2048,7 @@ def spline(
     if check_bounds:
         assert x[0]>=xi[0],'Splined lower limit outside data range: '+str(x[0])+' < '+str(xi[0])
         assert x[-1]<=xi[-1],'Splined upper limit outside data range: '+format(x[-1],'0.10g')+' > '+format(xi[-1],'0.10g')
-    ys = interpolate.UnivariateSpline(xi, yi, k=min(order,len(xi)-1), s=s)(x)
+    ys = interpolate.UnivariateSpline(xi, yi, k=order, s=s)(x)
     return ys
 
 # def splinef(xi,yi,s=0,order=3,sort_data=True):
@@ -5096,21 +5096,58 @@ def fit_spline_to_extrema_or_median(
         legend()
     return xspline,yspline,yf
 
+# def piecewise_sinusoid(x,regions,order=3):
+    # """"""
+    # sinusoid = np.full(x.shape,0.0)
+    # xmid = []
+    # As = []
+    # for iregion,(xbeg,xend,amplitude,frequency,phase) in enumerate(regions):
+        # if iregion <= len(regions):
+            # i = slice(*np.searchsorted(x,[xbeg,xend]))
+        # else:
+            # i = slice(*np.searchsorted(x,[xbeg,np.inf]))
+        # sinusoid[i] = np.cos(2*constants.pi*(x[i]-xbeg)*float(frequency)+float(phase))
+        # xmid.append((xbeg+xend)/2)
+        # As.append(amplitude)
+    # if len(As) == 1:
+        # ## no spline -- one value only
+        # A = np.full(x.shape,float(As[0]))
+    # else:
+        # A = tools.spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
+    # retval = A*sinusoid
+    # return retval
+
 def piecewise_sinusoid(x,regions,order=3):
     """"""
-    sinusoid = np.full(x.shape,0.0)
+    # sinusoid = np.full(x.shape,0.0)
     xmid = []
     As = []
-    for xbeg,xend,amplitude,frequency,phase in regions:
+    fs = []
+    p = np.full(x.shape,0.0)
+    xs = []
+    for iregion,(xbeg,xend,amplitude,frequency,phase) in enumerate(regions):
         i = slice(*np.searchsorted(x,[xbeg,xend]))
-        sinusoid[i] = np.cos(2*constants.pi*(x[i]-xbeg)*float(frequency)+float(phase))
+        if iregion == len(regions)-1:
+            i = slice(*np.searchsorted(x,[xbeg,xend+np.inf]))
+        p[i] = float(phase)
+        xs.append(x[i]-xbeg)
         xmid.append((xbeg+xend)/2)
-        As.append(amplitude)
-    A = tools.spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
-    retval = A*sinusoid
+        fs.append(float(frequency))
+        As.append(float(amplitude))
+    xs = np.concatenate(xs)     # phase adjusted x scale
+    ## spline interpolate amplitude and frequency. Phase is kept
+    ## pieciewise-constant
+    if len(As) == 1:
+        ## no spline -- one value only
+        A = np.full(x.shape,float(As[0]))
+        f = np.full(x.shape,float(fs[0]))
+    else:
+        A = tools.spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
+        f = tools.spline(xmid,fs,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=1)
+    retval = A*np.cos(2*constants.pi*xs*f+p)
     return retval
 
-def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True):
+def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
     """Define piecewise sinusoids for regions joined by points xi (or on
     grid with interval xi)."""
     ## get join points between regions and begining and ending points
@@ -5123,18 +5160,34 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True):
     for xbegi,xendi in zip(xi[:-1],xi[1:]):
         i = slice(*np.searchsorted(x,[xbegi,xendi]))
         shift[i] = np.mean(y[i])
-        xi = x[i]
+        xti = x[i]
         yi = y[i] - shift[i]
         FT = fft.fft(yi)
         imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
         phase = np.arctan(FT.imag[imax]/FT.real[imax])
         if FT.real[imax]<0:
             phase += constants.pi
-        dx = (xi[-1]-xi[0])/(len(xi)-1)
+        dx = (xti[-1]-xti[0])/(len(xti)-1)
         frequency = 1/dx*imax/len(FT)
         amplitude = rms(yi)
         regions.append((xbegi,xendi,amplitude,frequency,phase))
     yf = piecewise_sinusoid(x,regions) + shift
+    
+    ## nonlinear optimisation of  sinusoid parameters 
+    if make_optimisation:
+        from .optimise import Optimiser,P,_collect_parameters_and_optimisers
+        optimiser = Optimiser()
+        region_parameters = [[xbeg,xend,P(amplitude,True),P(frequency,True),P(phase,True,2*constants.pi*1e-5),]
+                             for (xbeg,xend,amplitude,frequency,phase) in regions]
+        for parameter in _collect_parameters_and_optimisers(region_parameters)[0]:
+            optimiser.add_parameter(parameter)
+        def f():
+            return y - (piecewise_sinusoid(x,region_parameters) + shift)
+        optimiser.add_construct_function(f)
+        optimiser.optimise()
+        regions = [[xbeg,xend,float(amplitude),float(frequency),float(phase)]
+                   for (xbeg,xend,amplitude,frequency,phase) in region_parameters]
+    ## plot result
     if make_plot:
         ax = plotting.qax()
         ax.plot(x,y,label='data')
@@ -5142,6 +5195,7 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True):
         ax.plot(x,y-yf,label='residual')
         plotting.legend()
         plotting.show()
+
     return regions
 
 # def localmax(x):

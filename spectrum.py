@@ -999,6 +999,13 @@ class Model(Optimiser):
         ## compute the  spline if necessary
         if self._clean_construct or self._xchanged:
             i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
+            ## a quick hack to prevent round off errors missing the
+            ## first or last points of the splined domain
+            if not i[0] and i[1]:
+                i[0] = True
+            if not i[-1] and i[-2]:
+                i[-1] = True
+            ## end of hack
             spline.set_x(self.x[i])
             spline.clear_format_input_functions()
             _cache['i'] = i
@@ -1076,7 +1083,7 @@ class Model(Optimiser):
         i = _cache['i']
         self.y[i] *= scale
 
-    def auto_add_piecewise_sinusoid(self,xi=10,make_plot=False):
+    def auto_add_piecewise_sinusoid(self,xi=10,make_plot=False,vary=False,optimise=False):
         """Fit a spline interpolated sinusoid to current model residual, and
         add it to the model."""
         ## refit intensity_sinusoid
@@ -1085,8 +1092,9 @@ class Model(Optimiser):
             self.get_residual(),
             xi=xi,
             make_plot=make_plot,
+            make_optimisation=optimise,
         )
-        region_parameters = [[xbeg,xend,P(amplitude,False),P(frequency,False),P(phase,False,2*π*1e-5),]
+        region_parameters = [[xbeg,xend,P(amplitude,vary),P(frequency,vary),P(phase,vary,2*π*1e-5),]
                              for (xbeg,xend,amplitude,frequency,phase) in regions]
         self.add_piecewise_sinusoid(region_parameters)
         return region_parameters
@@ -1404,12 +1412,6 @@ class Model(Optimiser):
         if self._clean_construct:
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
             width = self.experiment.experimental_parameters['resolution']/2*1.2 # distance between sinc peak and first zero
-            # width = dx*self.experiment.experimental_parameters['interpolation_factor'] # distance between sinc peak and first zero
-            # print('DEBUG:', dx)
-            # print('DEBUG:', self.experiment.experimental_parameters['resolution'])
-            # print('DEBUG:', self.experiment.experimental_parameters['interpolation_factor'])
-            # print('DEBUG:', dx*self.experiment.experimental_parameters['interpolation_factor']*2/1.2)
-            # width = width 
             xconv = np.arange(0,fwhms_to_include*width,dx)
             xconv = np.concatenate((-xconv[-1:0:-1],xconv))
             if terms == 3:
@@ -2068,6 +2070,7 @@ class FitReferenceAbsorption():
         'CS':[[1200,1350],],
         'H2S':[[1000,1600],[3500,4100]],
         'C2H6':[[2850,3100]],
+        'HCOOH':[[1000,1200],[1690,1850]],
     }
 
     characteristic_lines = {
@@ -2092,6 +2095,7 @@ class FitReferenceAbsorption():
         'C2H2':[[3255,3260],],
         'OCS':[[2070,2080],],
         'C2H6':[[2975,2995]],
+        'HCOOH':[[1770,1780]],
     }
 
     def verbose_print(self,*args,**kwargs):
@@ -2119,14 +2123,14 @@ class FitReferenceAbsorption():
         if 'intensity_spline' not in p:
             self.auto_intensity_spline()
 
-    def auto_intensity_spline(self):
+    def auto_intensity_spline(self,xi=5):
         """Automatic background. Not optimised."""
         print('auto_intensity_spline')
         ## get good spline points from median of experimental data
         i = tools.inrange(self.experiment.x,self.p['xbeg'],self.p['xend'])
         x = self.experiment.x[i]
         y = self.experiment.y[i]
-        xs,ys,yf = tools.fit_spline_to_extrema_or_median(x,y,xi=5,make_plot=False)
+        xs,ys,yf = tools.fit_spline_to_extrema_or_median(x,y,xi=xi,make_plot=False)
         ## ensure end points in included
         if xs[0] > x[0]:
             xs = np.concatenate((x[0:1],xs))
@@ -2144,11 +2148,7 @@ class FitReferenceAbsorption():
             self.p.pop('intensity_sinusoid')
         model = self.make_model(xbeg=self.p['xbeg'],xend=self.p['xend'])
         model.construct()
-        regions = tools.fit_piecewise_sinusoid(
-            model.x,model.yexp-model.y,xi=xi,make_plot=False)
-        self.p['intensity_sinusoid'] = [
-            [xbeg,xend,P(amplitude,False),P(frequency,False),P(phase,False,2*π*1e-5),]
-                    for (xbeg,xend,amplitude,frequency,phase) in regions]
+        self.p['intensity_sinusoid'] = model.auto_add_piecewise_sinusoid(xi=xi,make_plot=False,vary=False)
 
     def full_model(self,xbeg=None,xend=None,max_nfev=20,**make_model_kwargs):
         """Full model."""
@@ -2162,6 +2162,13 @@ class FitReferenceAbsorption():
         model_no_absorption = self.make_model(xbeg,xend,list(self.p['N']),neglect_species_to_fit=True)
         self.plot(model,model_no_absorption)
         return model,model_no_absorption
+
+    def fit_region(self,xbeg,xend,max_nfev=5,**make_model_kwargs):
+        """Full model."""
+        print('fit_region',xbeg,xend)
+        model = self.make_model(xbeg,xend,**make_model_kwargs)
+        model.optimise(plot_progress=self.plot_progress,verbose=self.verbose,max_nfev=max_nfev)
+        self.plot(model)
 
     def fit_regions(self,width=100,overlap=0.9,max_nfev=5,**make_model_kwargs):
         """Full model."""
@@ -2249,7 +2256,7 @@ class FitReferenceAbsorption():
                     continue
                 ## make optimise model
                 model = self.make_model(xbeg,xend,species_to_fit,**make_model_kwargs)
-                add_suboptimiser(model)
+                main.add_suboptimiser(model)
                 model_no_absorption = self.make_model(xbeg,xend,species_to_fit,neglect_species_to_fit=True)
                 models.append((model,model_no_absorption))
             ## optimise plot indiviudal speciesmodels
@@ -2260,7 +2267,12 @@ class FitReferenceAbsorption():
 
     def auto_fit(
             self,
-            species_to_fit=('H2O','CO','CO2','NH3','SO2','H2S','CH4','CS2','HCN','N2O','NO','NO2','OCS','C2H2','C2H6'),
+            species_to_fit=(
+                'H2O','CO','CO2','NH3',
+                'SO2','H2S','CH4','CS2',
+                'HCN','N2O','NO','NO2',
+                'OCS','C2H2','C2H6','HCOOH',
+            ),
             prefit=True,
             cycles=2,
             fit_intensity=True,
@@ -2287,6 +2299,7 @@ class FitReferenceAbsorption():
                 'H2O',
                 regions='lines',
                 fit_species=True,
+                fit_instrument=True,
                 fit_intensity=fit_intensity,
                 max_nfev=30)
             self.fit_species(
@@ -2415,7 +2428,7 @@ class FitReferenceAbsorption():
             name='_'.join(species_to_fit),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
-        model.construct_on_add = False
+        model.permit_construct_on_add = False
         ## set interpolated model grid
         if p['interpolate_model'] is not None:
             model.interpolate(p['interpolate_model'])
@@ -2443,21 +2456,29 @@ class FitReferenceAbsorption():
             else:
                 p['N'][species].vary =False
                 p['pair'][species].vary =False
+            ## if species is not being fit then trim to lines above a
+            ## certain τ
+            if species in species_to_fit:
+                ymin = None
+            else:
+                ymin = 1e-5
             ## add lines
             model.add_line(
                 self.get_line(species),
                 Teq=p['Teq'],
                 Nself=p['N'][species],
                 pair=p['pair'][species],
-                ymin=None,
+                ymin=ymin,
                 ncpus=self.ncpus,
                 nfwhmL=3000,
                 lineshape='voigt',
                 verbose=False,
             )
+
         ## uninterpolate model grid
         if p['interpolate_model'] is not None:
             model.uninterpolate(average=True)
+
         ## scale to correct background intensity — vary points in range and neighbouring
         for i,(xi,yi) in enumerate(p['intensity_spline']):
             yi.vary = False
@@ -2471,6 +2492,7 @@ class FitReferenceAbsorption():
                     if xi >= xend and xprev < xend:
                         yi.vary = True
         model.multiply_spline(p['intensity_spline'],order=3)
+
         ## scale by sinusoidal background, vary points completely within range
         if 'intensity_sinusoid' in p:
             for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['intensity_sinusoid']):
@@ -2478,6 +2500,7 @@ class FitReferenceAbsorption():
                 if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
                     freqi.vary = phasei.vary = amplitudei.vary =  True
             model.add_piecewise_sinusoid(p['intensity_sinusoid'])
+
         ## instrument broadening
         if 'instrument_gaussian' in p or fit_instrument:
             p.setdefault('instrument_gaussian',P(0.02,True,1e-4,nan,(0.01,0.1)))
@@ -2485,6 +2508,7 @@ class FitReferenceAbsorption():
             model.convolve_with_gaussian(p['instrument_gaussian'])
         else:
             model.convolve_with_blackman_harris()
+
         ## build it now
         model.construct()
         return model
