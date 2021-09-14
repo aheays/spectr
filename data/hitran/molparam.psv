@@ -1,5 +1,19 @@
-## downloaded from https://hitran.org/docs/iso-meta/ 2020-10-15
-## I also added my own classname row -- which lines class should be used
+[description]
+downloaded from https://hitran.org/docs/iso-meta/ 2020-10-15
+I also added my own row -- which lines class should be used
+[metadata]
+species_ID             = {'kind':'i'}
+global_isotopologue_ID = {'kind':'i'}
+local_isotopologue_ID  = {'kind':'i'}
+chemical_species       = {'kind':'U'}
+isotopologue           = {'kind':'U'}
+AFGL_code              = {'kind':'i'}
+natural_abundance      = {'kind':'f'}
+molar_mass             = {'kind':'f'}
+Q_296K                 = {'kind':'f'}
+gi                     = {'kind':'i'}
+dataset_classname      = {'kind':'U'}
+[data]
 species_ID | global_isotopologue_ID | local_isotopologue_ID | chemical_species | isotopologue   | AFGL_code | natural_abundance | molar_mass    | Q_296K   | gi | dataset_classname
 1          | 1                      | 1                     | H₂O              | ¹H₂¹⁶O         | 161       | 0.997317          | 18.010565     | 174.58   | 1  | lines.Generic
 1          | 2                      | 2                     | H₂O              | ¹H₂¹⁸O         | 181       | 0.002000          | 20.014811     | 176.05   | 1  | lines.Generic
