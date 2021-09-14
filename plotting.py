@@ -1219,7 +1219,7 @@ def newcolormarker(reset=None):
 # mySubplot=subplot
 
 def subplot(
-        n=None,                 # subplot index, begins at 1, if None adds a new subplot
+        n=None,                 # subplot index, begins at 0, if None adds a new subplot
         ncolumns=None,          # how many colums (otherwise adaptive)
         nrows=None,          # how many colums (otherwise adaptive)
         ntotal=None,         # how many to draw in total (at least)
@@ -1238,22 +1238,20 @@ def subplot(
     old_nsubplots = len(fig.axes) # number of subplots originally in figure
     if n is None:
         ## new subplot
-        n = old_nsubplots+1
-    else:
-        ## set to 1-indexed in convention of subplots
-        n = n+1
-    if ntotal is not None and ntotal > old_nsubplots and ntotal > (n+1):
+        n = old_nsubplots
+    if ntotal is not None and ntotal > old_nsubplots:
         ## current number of subplot is below ntotal, make empty subplots up to this number
         ax = subplot(ntotal-1,ncolumns,nrows,fig=fig,**add_subplot_kwargs)
-    if n <= old_nsubplots:
+        old_nsubplots = len(fig.axes) # number of subplots originally in figure
+    if n < old_nsubplots:
         ## indexes an already existing subplot - return that axes
-        ax = fig.axes[n-1]
-    elif n > old_nsubplots+1:
-        ## higher than existing subplots, creating empty intervening axes then add ths new one
+        ax = fig.axes[n]
+    elif n > old_nsubplots:
+        ## creating empty intervening subplot then add the requested new one
         for i in range(old_nsubplots,n):
             ax = subplot(i,ncolumns,nrows,fig=fig,**add_subplot_kwargs)
     else:
-        ## need to add a new subplot
+        ## add the nenew subplot 
         nsubplots = old_nsubplots+1
         if ncolumns is not None and nrows is not None:
             columns,rows = ncolumns,nrows
