@@ -1153,25 +1153,13 @@ class Dataset(optimise.Optimiser):
             self,
             keys=None,
             delimiter=' | ',
-            simple=False,
-            unique_values_in_header=True,
-            subkeys=('value','unc','vary','step','ref','description','units'),
-            include_description=True,
-            include_classname=True,
-            include_key_description=True,
-            include_key_metadata=True,
+            include_metadata= True,
+            unique_values_in_header=False,
+            subkeys=('value','unc','vary','step','ref','description','units','fmt','kind'),
             include_keys_with_leading_underscore=False,
-            quote_strings=False,
-            quote_keys=False,
+            use_quotes=False,
     ):
         """Format data into a string representation."""
-        if simple:
-            unique_values_in_header = False
-            include_description = False
-            include_classname = False
-            include_key_description = False
-            include_key_metadata = False
-            include_keys_with_leading_underscore = False
         if keys is None:
             keys = self.keys()
             if not include_keys_with_leading_underscore:
@@ -1179,7 +1167,6 @@ class Dataset(optimise.Optimiser):
         ##
         for key in keys:
             self.assert_known(key)
-        ## data to store in header
         ## collect columns of data -- maybe reducing to unique values
         columns = []
         header_values = {}
@@ -1187,10 +1174,12 @@ class Dataset(optimise.Optimiser):
             self.assert_known(key)
             if len(self) == 0:
                 break
-            formatted_key = ( "'"+key+"'" if quote_keys else key )
-            if (unique_values_in_header # input parameter switch
-                and not np.any([self.is_set(key,subkey) for subkey in subkeys]) # no other subdata 
-                and len((tval:=self.unique(key)) == 1)): # value is unique
+            formatted_key = ( "'"+key+"'" if use_quotes else key )
+            if (
+                    include_metadata and unique_values_in_header # input parameter switch
+                    and not np.any([self.is_set(key,subkey) for subkey in subkeys if subkey in self.vector_subkinds and subkey != 'value']) # no other vector subdata 
+                    and len((tval:=self.unique(key))) == 1 # q unique value
+            ): # value is unique
                 ## format value for header
                 header_values[key] = tval[0]
             else:
@@ -1198,12 +1187,12 @@ class Dataset(optimise.Optimiser):
                 for subkey in subkeys:
                     if self.is_set(key,subkey) and subkey in self.vector_subkinds:
                         if subkey == 'value':
-                            formatted_key = (f'"{key}"' if quote_keys else f'{key}')
+                            formatted_key = (f'"{key}"' if use_quotes else f'{key}')
                         else:
-                            formatted_key = (f'"{key}:{subkey}"' if quote_keys else f'{key}:{subkey}')
+                            formatted_key = (f'"{key}:{subkey}"' if use_quotes else f'{key}:{subkey}')
                         fmt = self._get_attribute(key,subkey,'fmt')
                         kind = self._get_attribute(key,subkey,'kind')
-                        if quote_strings and kind == 'U':
+                        if use_quotes and kind == 'U':
                             vals = ['"'+format(t,fmt)+'"' for t in self[key,subkey]]
                         else:
                             vals = [format(t,fmt) for t in self[key,subkey]]
@@ -1211,46 +1200,26 @@ class Dataset(optimise.Optimiser):
                         columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
         ## construct header before table
         header = []
-        ## add attributes to header
-        if include_key_description:
+        if include_metadata:
             ## include description of keys
             for key in self:
-                line = f'{key:12}'
+                metadata = {}
                 if key in header_values:
-                    line += f' = {repr(header_values[key]):20}'
-                else:
-                    line += f'{"":23}'
-                if include_key_metadata:
-                    ## include much metadata in description
-                    metadata = {}
-                    for tkey,ttype in (
-                            ('description',str),
-                            ('units',str),
-                            ('kind',str),
-                            ('fmt',str),
-                    ):
-                        if self.is_set(key,tkey) and isinstance(self[key,tkey],ttype):
-                            metadata[tkey] = self[key,tkey]
-                    if len(metadata) > 0:
-                        line += ' # '+repr(metadata)
-                else:
-                    ## only include description and units
-                    line += f' # '+self._data[key]['description']
-                    if ('units' in self._data[key]
-                        and (units:=self._data[key]['units']) is not None):
-                        line += f' [{units}]'
+                    metadata['value'] = header_values[key]
+                ## include much metadata in description
+                for subkey in subkeys:
+                    if subkey in self.scalar_subkinds and self.is_set(key,subkey):
+                        metadata[subkey] = self[key,subkey]
+                line = f'{key:20} = {repr(metadata)}'
                 header.append(line)
-        else:
-            for key,val in header_values.items():
-                header.append(f'{key:12} = {repr(val)}')
         ## make full formatted string
         retval = ''
-        if include_classname:
+        if include_metadata:
             retval += f'[classname]\n{self.classname}\n'
-        if include_description and self.description is not None:
+        if include_metadata and self.description is not None:
             retval += f'[description]\n{self.description}\n'
         if header != []:
-            retval += '[keys]\n'+'\n'.join(header)
+            retval += '[metadata]\n'+'\n'.join(header)
         if columns != []:
             if len(retval) > 0:
                 retval += '\n[data]\n'
@@ -1291,12 +1260,7 @@ class Dataset(optimise.Optimiser):
         return self.format(
             delimiter=' | ',
             unique_values_in_header= True,
-            include_description= True,
-            include_classname=False,
-            include_key_description=False,
-            include_keys_with_leading_underscore=False,
-            quote_strings=False,
-            quote_keys=False,
+            include_metadata=False,
         )
         # return self.format_flat()
 
