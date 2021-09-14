@@ -196,10 +196,25 @@ def _f(name):
         return(r'\ce{'+name.strip()+r'}')
 _species_name_translation_functions[('standard','latex')] = _f
 
+_name_to_inchikey = {
+    'NH₃':  'QGZKDVFQNNGYKY-UHFFFAOYSA-N',
+}
+
+_inchikey_to_name = {
+    'QGZKDVFQNNGYKY-UHFFFAOYSA-N':'NH₃',
+}
+
+_chemical_name_hacks = {
+    'HCO₂H':'HCOOH',
+}
 
 @cache
-def get_species(name):
-    return Species(name)
+def get_inchikey(name):
+    return Species(name)['inchikey']
+
+@cache
+def get_species(name=None,inchikey=None):
+    return Species(name=name,inchikey=inchikey)
 
 @cache
 def get_chemical_name(name):
@@ -209,7 +224,13 @@ def get_chemical_name(name):
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
 
-    def __init__(self,name):
+    def __init__(self,name=None,inchikey=None):
+        if inchikey is not None:
+            if name is None:
+                name = _inchikey_to_name[inchikey]
+            else:
+                if name != _inchikey_to_name[inchikey]:
+                    raise Exception(f'Inconsistent {name=} and {inchikey=}')
         self.decode_name(name)
         self.encode_name(self._isotopes,self._charge)
 
@@ -347,6 +368,10 @@ class Species:
         for simple caching.  -- move other get_ methods to here someday"""
         if key == 'name':
             return self._name
+        elif key == 'inchikey':
+            if not hasattr(self,'_inchikey'):
+                self._inchikey = _name_to_inchikey[self._name]
+            return self._inchikey
         elif key == 'charge':
             return self._charge
         elif key == 'elements':
@@ -378,10 +403,11 @@ class Species:
                 self._reduced_mass = m1*m2/(m1+m2)
             return self._reduced_mass
         elif key == 'chemical_name':
+            ## Get a name that is common to all isotopologues
             if not hasattr(self,'_chemical_name'):
                 ## loop throush isotopes, combine common isotopes into
                 ## a common element, e.g, ¹⁴N¹⁵N becomes N₂
-                tokens = []     # indiviudal element multiples e.g., X₄
+                tokens = []     # individual element multiples e.g., X₄
                 element,multiplicity = None,0
                 for elementi,mass_numberi,multiplicityi in self._isotopes:
                     if element is None:
@@ -400,10 +426,14 @@ class Species:
                 if multiplicity > 1:
                     tokens.append(tools.subscript_numerals(str(multiplicity)))
                 self._chemical_name = ''.join(tokens)
+                ## the above algorithm is imperfect, and might never
+                ## be perfect, this is a translation dictionary to
+                ## correct some errors that arise
+                if self._chemical_name in _chemical_name_hacks:
+                    self._chemical_name =  _chemical_name_hacks[self._chemical_name]
             return self._chemical_name
-        # elif key == 'isotopologue':
-            # return ''.join([f'[{t[1]}{t[0]}]' for t in self['isotopes']])
         elif key == 'point_group':
+            ## deduce point group
             if len(self.elements) == 1:
                 ## atoms
                 return "K"
@@ -426,6 +456,7 @@ class Species:
             return True
     
     name = property(lambda self: self['name'])
+    inchikey = property(lambda self: self['inchikey'])
     elements = property(lambda self: self['elements'])
     isotopes = property(lambda self: self['isotopes'])
     chemical_name = property(lambda self: self['chemical_name'])
