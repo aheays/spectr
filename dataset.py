@@ -1636,10 +1636,14 @@ class Dataset(optimise.Optimiser):
                         else:
                             try:
                                 key_metadata = ast.literal_eval(r.group(2))
-                                if not isinstance(key_metadata,dict):
-                                    key_metadata = {'description':r.group(2)}
                             except:
-                                key_metadata = {'description':r.group(2)}
+                                raise Exception(f"Invalid metadata encoding for {repr(key)}: {repr(r.group(2))}")
+                            if isinstance(key_metadata,dict):
+                                pass
+                            elif isinstance(key_metadata,str):
+                                key_metadata = {'description':key_metadata}
+                            else:
+                                raise Exception(f'Could not decode key metadata for {key}: {repr(key_metadata)}')
                             if 'value' in key_metadata:
                                 data[key] = key_metadata.pop('value')
                             metadata[key] = key_metadata
@@ -1820,7 +1824,10 @@ class Dataset(optimise.Optimiser):
         ## ensure new data includes all explicitly set keys in self
         for key in self.explicitly_set_keys():
             if key not in keys:
-                raise Exception(f'Extending data missing key: {repr(key)}')
+                if self.is_set(key,'default'):
+                    keys_vals[key] = self[key,'default']
+                else:
+                    raise Exception(f'Extending data missing key: {repr(key)}')
         ## Ensure all new keys are existing data, unless the current
         ## Dataset is zero length, then add them.
         for key in keys:
