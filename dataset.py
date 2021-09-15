@@ -1153,11 +1153,11 @@ class Dataset(optimise.Optimiser):
             self,
             keys=None,
             delimiter=' | ',
-            include_metadata= True,
+            simple= True,       # if True then just print data in a table, no metadata
             unique_values_in_header=False,
             subkeys=('value','unc','vary','step','ref','description','units','fmt','kind'),
             include_keys_with_leading_underscore=False,
-            use_quotes=False,
+            quote=False,
     ):
         """Format data into a string representation."""
         if keys is None:
@@ -1174,9 +1174,9 @@ class Dataset(optimise.Optimiser):
             self.assert_known(key)
             if len(self) == 0:
                 break
-            formatted_key = ( "'"+key+"'" if use_quotes else key )
+            formatted_key = ( "'"+key+"'" if quote else key )
             if (
-                    include_metadata and unique_values_in_header # input parameter switch
+                    not simple and unique_values_in_header # input parameter switch
                     and not np.any([self.is_set(key,subkey) for subkey in subkeys if subkey in self.vector_subkinds and subkey != 'value']) # no other vector subdata 
                     and len((tval:=self.unique(key))) == 1 # q unique value
             ): # value is unique
@@ -1187,12 +1187,12 @@ class Dataset(optimise.Optimiser):
                 for subkey in subkeys:
                     if self.is_set(key,subkey) and subkey in self.vector_subkinds:
                         if subkey == 'value':
-                            formatted_key = (f'"{key}"' if use_quotes else f'{key}')
+                            formatted_key = (f'"{key}"' if quote else f'{key}')
                         else:
-                            formatted_key = (f'"{key}:{subkey}"' if use_quotes else f'{key}:{subkey}')
+                            formatted_key = (f'"{key}:{subkey}"' if quote else f'{key}:{subkey}')
                         fmt = self._get_attribute(key,subkey,'fmt')
                         kind = self._get_attribute(key,subkey,'kind')
-                        if use_quotes and kind == 'U':
+                        if quote and kind == 'U':
                             vals = ['"'+format(t,fmt)+'"' for t in self[key,subkey]]
                         else:
                             vals = [format(t,fmt) for t in self[key,subkey]]
@@ -1200,7 +1200,7 @@ class Dataset(optimise.Optimiser):
                         columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
         ## construct header before table
         header = []
-        if include_metadata:
+        if not simple:
             ## include description of keys
             for key in self:
                 metadata = {}
@@ -1214,9 +1214,9 @@ class Dataset(optimise.Optimiser):
                 header.append(line)
         ## make full formatted string
         retval = ''
-        if include_metadata:
+        if not simple:
             retval += f'[classname]\n{self.classname}\n'
-        if include_metadata and self.description is not None:
+        if not simple and self.description is not None:
             retval += f'[description]\n{self.description}\n'
         if header != []:
             retval += '[metadata]\n'+'\n'.join(header)
@@ -1231,10 +1231,8 @@ class Dataset(optimise.Optimiser):
         retval = f'[ \n'
         data = self.format(
             delimiter=' , ',
-            unique_values_in_header=False,
-            include_description=False,
-            quote_strings=True,
-            quote_keys=True,
+            simple=True,
+            quote=True,
         )
         for line in data.split('\n'):
             if len(line)==0:
@@ -1243,26 +1241,21 @@ class Dataset(optimise.Optimiser):
         retval += ']'
         return retval
 
-    def format_flat(self,delimiter=' | '):
-        """Print flat data"""
-        return self.format(
-            delimiter=delimiter,
-            unique_values_in_header=False,
-            include_description=False,
-            include_keys_with_leading_underscore=False,
-            include_key_description=False,
-            include_classname=False,
-            quote_strings=False,
-            quote_keys=False,
-        )
+    # def format_flat(self,delimiter=' | '):
+        # """Print flat data"""
+        # return self.format(
+            # delimiter=delimiter,
+            # unique_values_in_header=False,
+            # include_description=False,
+            # include_keys_with_leading_underscore=False,
+            # include_key_description=False,
+            # include_classname=False,
+            # quote_strings=False,
+            # quote_keys=False,
+        # )
 
     def __str__(self):
-        return self.format(
-            delimiter=' | ',
-            unique_values_in_header= True,
-            include_metadata=False,
-        )
-        # return self.format_flat()
+        return self.format(simple=True)
 
     def __repr__(self):
         if len(self)>50:
@@ -1345,7 +1338,7 @@ class Dataset(optimise.Optimiser):
             translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
             load_classname_only=False,
     ):
-        """Load from a structured dictionary."""
+        """Load from a structured dictionary as produced by as_dict."""
         ## translate key with direct substitutions
         if translate_keys is None:
             translate_keys = {}
