@@ -129,7 +129,8 @@ for key in ('J','N','S','Λ','Ω','Σ','v'):
 
 ## column 
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
-prototypes['Nself'] = dict(description="Column density",units="cm-2",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),),])
+prototypes['Nself'] = dict(description="Column density",units="cm-2",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(
+    ('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),),])
 
 
 ####################################
@@ -171,22 +172,22 @@ prototypes['ΔνX'] = dict(description="Pressure shift due to species X",units="
 ## line broadening and shifting coefficients
 prototypes['HITRAN_HT_X'] = dict(description='Broadening species for a HITRAN-encoded Hartmann-Tran profile',kind='U')
 prototypes['HITRAN_HT_pX'] = dict(description='Pressure HITRAN-encoded Hartmann-Tran profile',kind='f',units='atm',cast=tools.cast_abs_float_array,infer=[('pX',lambda self,pX:convert.units(pX,'Pa','atm'))])
-prototypes['HITRAN_HT_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f')
-prototypes['HITRAN_HT_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
-prototypes['HITRAN_HT_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
-prototypes['HITRAN_HT_γ2'] = dict(description='Speed-dependence of the halfwidth in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
-prototypes['HITRAN_HT_δ0'] = dict(description='Speed-averaged line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
-prototypes['HITRAN_HT_δp'] = dict(description='Linear temperature dependence coefficient for δ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm.K-1',kind='f')
-prototypes['HITRAN_HT_δ2'] = dict(description='Speed-dependence of the line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f')
-prototypes['HITRAN_HT_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',cast=tools.cast_abs_float_array)
-prototypes['HITRAN_HT_κ'] = dict(description='Temperature dependence of νVC in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f')
+prototypes['HITRAN_HT_Tref'] = dict(description='Reference temperature for a HITRAN-encoded Hartmann-Tran profile ',units='K',kind='f',default=296)
+prototypes['HITRAN_HT_γ0'] = dict(description='Speed-averaged halfwidth in temperature range around Tref due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',default=0,cast=tools.cast_abs_float_array)
+prototypes['HITRAN_HT_n'] = dict(description='Temperature dependence exponent of γ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',default=0)
+prototypes['HITRAN_HT_γ2'] = dict(description='Speed-dependence of the halfwidth in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',default=0,cast=tools.cast_abs_float_array)
+prototypes['HITRAN_HT_δ0'] = dict(description='Speed-averaged line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',default=0)
+prototypes['HITRAN_HT_δp'] = dict(description='Linear temperature dependence coefficient for δ0 in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm.K-1',kind='f',default=0)
+prototypes['HITRAN_HT_δ2'] = dict(description='Speed-dependence of the line shift in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',default=0)
+prototypes['HITRAN_HT_νVC'] = dict(description='Frequency of velocity changing collisions in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='cm-1.atm-1',kind='f',default=0,cast=tools.cast_abs_float_array)
+prototypes['HITRAN_HT_κ'] = dict(description='Temperature dependence of νVC in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',default=0)
 ### def _f0(x):
 ##    # """Limiting values!!! Otherwise lineshape is bad -- should investigate this."""
 ##    # x = np.abs(np.asarray(x),dtype=float)
 ##    # x[x>1] = 0.99999
 ##    # return x
-prototypes['HITRAN_HT_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',cast=tools.cast_abs_float_array,default_step=1e-5)
-prototypes['HITRAN_HT_Y'] = dict(description='First-order (Rosenkranz) line coupling coefficient in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f')
+prototypes['HITRAN_HT_η'] = dict(description='Correlation parameter in HT in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile',units='dimensionless',kind='f',default=0,cast=tools.cast_abs_float_array,default_step=1e-5)
+prototypes['HITRAN_HT_Y'] = dict(description='First-order (Rosenkranz) line coupling coefficient in the Tref temperature range due to perturber X for a HITRAN-encoded Hartmann-Tran profile; air-(self-) broadened case',units='cm-1.atm-1',kind='f',default=0)
 ## coefficients of the Hartmann-Tran lineshape
 prototypes['HT_Γ0'] = dict(description='Speed-averaged halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HITRAN_HT_pX','HITRAN_HT_γ0','HITRAN_HT_Tref','Ttr','HITRAN_HT_n'),lambda self,p,γ0,Tref,T,n: γ0*p*(Tref/T)**n)])
 prototypes['HT_Γ2'] = dict(description='Speed-dependence for the halfwidth for the Hartmann-Tran profile',units='cm-1.atm-1',kind='f',infer=[(('HITRAN_HT_pX','HITRAN_HT_γ2',),lambda self,p,γ2: p*γ2),])
