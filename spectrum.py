@@ -34,8 +34,10 @@ class Experiment(Optimiser):
             self,
             name='experiment',
             filename=None,
-            x=None,y=None,
-            xbeg=None,xend=None,
+            x=None,
+            y=None,
+            xbeg=None,
+            xend=None,
             noise_rms=None,
     ):
         optimise.Optimiser.__init__(self,name)
@@ -151,7 +153,7 @@ class Experiment(Optimiser):
             self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
-        self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
+        # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
     
     @optimise_method()
     def set_spectrum_from_soleil_file(self,filename,xbeg=None,xend=None,_cache=None):
@@ -226,11 +228,13 @@ class Experiment(Optimiser):
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
         self.x *= float(scale)
+        self._clean_construct = True
+        # print('DEBUG:', 'make clean',self.name)
 
     def __len__(self):
         return len(self.x)
 
-    def fit_noise(self,xbeg=None,xend=None,xedge=None,n=1,make_plot= True,figure_number=None):
+    def fit_noise(self,xbeg=None,xend=None,xedge=None,n=1,make_plot=False,figure_number=None):
         """Estimate the noise level by fitting a polynomial of order n
         between xbeg and xend to the experimental data. Also rescale
         if the experimental data has been interpolated."""
@@ -342,6 +346,8 @@ class Model(Optimiser):
     def _initialise(self,_cache=None):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
+        # for o in self.suboptimisers: #  DEBUG
+              # print( 'model suboptim clean',o.name,o._clean_construct) #  DEBUG
         if self._clean_construct:
             ## build cache of data
             self.residual_scale_factor = 1
@@ -351,32 +357,56 @@ class Model(Optimiser):
                 self.experimental = None # used as flag throughout program
             elif self.experiment is not None:
                 ## get domain from experimental data
-                iexp = np.full(len(self.experiment.x),True)
-                self._iexp = iexp # make available this 
-                if self.xbeg is not None:
-                    iexp &= self.experiment.x >= self.xbeg
-                if self.xend is not None:
-                    iexp &= self.experiment.x <= self.xend
-                self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
-                self.x = self.xexp
-                _cache['iexp'] = iexp
+                # iexp = np.full(len(self.experiment.x),True)
+                # self._iexp = iexp # make available this 
+                # if self.xbeg is not None:
+                #     iexp &= self.experiment.x >= self.xbeg
+                # if self.xend is not None:
+                #     iexp &= self.experiment.x <= self.xend
+                # self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
+                # self.x = self.xexp
+                # _cache['iexp'] = iexp
+
+                # iexp = np.full(len(self.experiment.x),True)
+                # self._iexp = iexp # make available this
+                if 'iexp' not in _cache:
+                    if self.xbeg is None:
+                        ibeg = 0
+                    else:
+                        ibeg = np.searchsorted(self.experiment.x,self.xbeg)
+                    if self.xend is None:
+                        ibeg = len(self.experiment.x)
+                    else:
+                        iend = np.searchsorted(self.experiment.x,self.xend)
+                    # if 'iexp' in _cache:
+                        # if (iend-ibeg) < (_cache['iexp'].stop-_cache['iexp'].start):
+                        # elif (iend-ibeg) > (_cache['iexp'].stop-_cache['iexp'].start):
+                    iexp = slice(int(ibeg),int(iend))
+                    _cache['iexp'] = iexp
+                iexp = _cache['iexp']
+                self.x = self.xexp = self.experiment.x[iexp]
+                self.yexp = self.experiment.y[iexp]
                 ## if known use experimental noise RMS to normalise
                 ## residuals
                 if 'noise_rms' in self.experiment.experimental_parameters:
                     self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
             else:
                 self.x = np.array([],dtype=float,ndmin=1)
-            self._xchanged =  True
-        elif 'iexp' in _cache :
-            ## reload x if experimental
-            iexp = _cache['iexp']
-            if (len(self.x) != len(self.experiment.x[iexp])
-                or not tools.approximately_equal(self.x,self.experiment.x[iexp])):
-                self._xchanged = True
-            else:
-                self._xchanged = False
-            self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
-            self.x = self.xexp
+            # self._xchanged =  True
+        # elif 'iexp' in _cache :
+            # ## reload x if experimental
+            # iexp = _cache['iexp']
+            # if (
+                    # ## different x length
+                    # len(self.x) != len(self.experiment.x[iexp])
+                    # ## x has changed in detail
+                    # or not tools.approximately_equal(self.x,self.experiment.x[iexp],fractol=1e-15)
+            # ):
+                # self._xchanged = True
+            # else:
+                # self._xchanged = False
+            # self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
+            # self.x = self.xexp
         ## new grid
         self.y = np.zeros(self.x.shape,dtype=float)
         
@@ -405,7 +435,8 @@ class Model(Optimiser):
         overlap with experimental points. Always an odd number of
         intervals / even number of interstitial points. DELETES
         CURRENT Y!"""
-        if self._clean_construct or self._xchanged:
+        # if self._clean_construct or self._xchanged:
+        if self._clean_construct:
             xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
             interpolate_factor = int(np.ceil(xstep/dx))
             if interpolate_factor%2 == 0:
@@ -544,7 +575,7 @@ class Model(Optimiser):
         ## nothing to be done
         if len(self.x) == 0 or len(line) == 0:
             return
-        if self._clean_construct:
+        if True or self._clean_construct:
             ## first run — initalise local copy of lines data, do not
             ## set keys if they are in set_keys_vals
             tmatch = {} if match is None else copy(match)
@@ -604,7 +635,7 @@ class Model(Optimiser):
             if nmatch == 0:
                 return
             ## set modified data in set_keys_vals if they have changed
-            ## form cached values.  
+            ## from cached values.  
             for key,val in set_keys_vals.items():
                 if isinstance(val,Parameter):
                     if self._last_construct_time < val._last_modify_value_time:
@@ -620,11 +651,11 @@ class Model(Optimiser):
                 for key in line.explicitly_set_keys():
                     if line[key,'_modify_time'] > self._last_construct_time:
                         line_copy[key,ichanged] = line[key,imatch][ichanged]
-            ## x grid has changed, full recalculation
-            if self._xchanged:
-                if verbose:
-                    print('add_line: x grid has changed, full recalculation')
-                y = _calculate_spectrum(line_copy,None)
+            # ## x grid has changed, full recalculation
+            # if self._xchanged:
+                # if verbose:
+                    # print('add_line: x grid has changed, full recalculation')
+                # y = _calculate_spectrum(line_copy,None)
             ## else find all changed lines and update those only
             elif line_copy.global_modify_time > self._last_construct_time:
                 ## get indices of local lines that has been changed
@@ -639,6 +670,8 @@ class Model(Optimiser):
                         and (np.all([line_copy[key,'_modify_time'] < self._last_construct_time for key in data if key != ykey]))
                         ## ykey has changed by a near-constant factor -- RISKY!!!!
                         and tools.total_fractional_range(data[ykey]/line_copy[ykey])<1e-14
+                        ## if ymin is set then scaling is dangerous -- lines can fail to appear when scaled up
+                        and (ymin is None or ymin == 0)
                 ):
                     ## constant factor ykey -- scale saved spectrum
                     if ymin is not None and ymin != 0:
@@ -865,36 +898,27 @@ class Model(Optimiser):
         self.add_construct_function(f) # multiply spline during construct
 
     @optimise_method()
-    def add_intensity(self,intensity=1):
+    def add_constant(self,intensity=1):
         """Shift by a spline defined function."""
         self.y += float(intensity)
 
-    # def auto_add_spline(self,x=1000.,y=None,vary=True):
-    #     """Quickly add an evenly-spaced intensity spline. If x is a vector
-    #     then define spline at those points."""
-    #     self.experiment.construct()
-    #     xbeg,xend = self.x[0]-x/2,self.x[-1]+x+2 # boundaries to cater to instrument convolution
-    #     if np.isscalar(x):
-    #         x = linspace(xbeg,xend,max(2,int((xend-xbeg)/x)))
-    #     ## make knots
-    #     knots = []
-    #     for xi in x:
-    #         if y is None:
-    #             ## get current value of model as y
-    #             i = min(np.searchsorted(self.x,xi),len(self.y)-1)
-    #             yi = self.yexp[i]/self.y[i]
-    #             if yi !=0:
-    #                 ystep = yi/1e3
-    #             else:
-    #                 ystep = None
-    #         else:
-    #             ## fixed y
-    #             yi = y
-    #             ystep = None
-    #         knots.append([xi,P(yi,vary,ystep)])
-    #     self.add_spline(knots=knots)
-    #     return knots
+    def add_intensity(self,*args,**kwargs):
+        """Deprecated"""
+        self.add_constant(*args,**kwargs)
 
+    @optimise_method()
+    def add_from_file(self,filename,scale=1,_cache=None):
+        """Spline contents of file to model grid and add to spectrum."""
+        if self._clean_construct:
+            if 'x' not in _cache:
+                x,y = tools.file_to_array_unpack(filename)
+                _cache['x'],_cache['y'] = x,y
+            x,y = _cache['x'],_cache['y']
+            ys = tools.spline(x,y,self.x)
+            _cache['ys'] = ys
+        ys = _cache['ys']
+        self.y += ys * float(scale)
+    
     def auto_add_spline(self,xi=100,vary=False,make_plot=False):
         """Quickly add an evenly-spaced intensity spline. If x is a vector
         then define spline at those points."""
@@ -914,25 +938,6 @@ class Model(Optimiser):
             xs = np.concatenate((xs,x[-1:]))
             ys = np.concatenate((ys,yf[-1:]))
         knots = [[xsi,P(ysi,vary)] for (xsi,ysi) in zip(xs,ys)]
-        # xbeg,xend = self.x[0]-x/2,self.x[-1]+x+2 # boundaries to cater to instrument convolution
-        # if np.isscalar(x):
-            # x = linspace(xbeg,xend,max(2,int((xend-xbeg)/x)))
-        # ## make knots
-        # knots = []
-        # for xi in x:
-            # if y is None:
-                # ## get current value of model as y
-                # i = min(np.searchsorted(self.x,xi),len(self.y)-1)
-                # yi = self.yexp[i]/self.y[i]
-                # if yi !=0:
-                    # ystep = yi/1e3
-                # else:
-                    # ystep = None
-            # else:
-                # ## fixed y
-                # yi = y
-                # ystep = None
-            # knots.append([xi,P(yi,vary,ystep)])
         self.add_spline(knots)
         return knots
 
@@ -948,10 +953,11 @@ class Model(Optimiser):
             _cache['spline'] = spline
         spline = _cache['spline'] 
         ## compute the  spline if necessary
-        if self._clean_construct or self._xchanged:
+        # if self._clean_construct or self._xchanged:
+        if self._clean_construct:
             i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
-            spline.clear_format_input_functions()
             spline.set_x(self.x[i])
+            spline.clear_format_input_functions()
             _cache['i'] = i
         i = _cache['i']
         ## add to y
@@ -959,7 +965,7 @@ class Model(Optimiser):
 
     add_intensity_spline = add_spline # deprecated
 
-    def auto_multiply_spline(self,x=1000.,y=None,vary=True,order=3):
+    def auto_multiply_spline(self,x=1000.,y=None,vary=True,order=3,construct=True):
         """Quickly add an evenly-spaced spline to multiply . If x is a vector
         then define spline at those points. If y is not given then fit to the experiment."""
         self.experiment.construct()
@@ -982,7 +988,8 @@ class Model(Optimiser):
                 yi = y
                 ystep = None
             knots.append([xi,P(yi,vary,ystep)])
-        self.multiply_spline(knots=knots,order=order)
+        if construct:
+            self.multiply_spline(knots=knots,order=order)
         return knots
     
     @optimise_method()
@@ -997,7 +1004,8 @@ class Model(Optimiser):
             _cache['spline'] = spline
         spline = _cache['spline'] 
         ## compute the  spline if necessary
-        if self._clean_construct or self._xchanged:
+        # if self._clean_construct or self._xchanged:
+        if self._clean_construct:
             i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
             ## a quick hack to prevent round off errors missing the
             ## first or last points of the splined domain
@@ -1409,6 +1417,7 @@ class Model(Optimiser):
         multiple coefficents given for 3- and 5-Term windows. I use
         the left.  This is faster than apodisation in the
         length-domain."""
+        # if self._clean_construct or self._xchanged:
         if self._clean_construct:
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
             width = self.experiment.experimental_parameters['resolution']/2*1.2 # distance between sinc peak and first zero
@@ -1722,7 +1731,6 @@ class Model(Optimiser):
             if invert_model:
                 self.y *= -1
         if plot_residual and self.y is not None and self.experiment is not None and self.experiment.y is not None:
-            # yres = self.experiment.y[self._iexp]-self.y
             yres = self.yexp - self.y
             if self.residual_weighting is not None:
                 yres *= self.residual_weighting
@@ -2021,36 +2029,36 @@ class FitReferenceAbsorption():
     def __init__(
             self,
             name='fit_reference_absorption',
-            parameters={},
+            p=None,
             verbose=False,
             plot_progress=True,
             max_nfev=5,
             figure_number=1,
             ncpus=1,
+            **parameters
     ):
-        ## get parameters in order
         self.name = name
-        self.p = parameters
-        for key,val in {
-                'filename':None,
-                'N':{},
-                'pair':{},
-                'xbeg':600,
-                'xend':6000,
-                'interpolate_model':0.001,
-                'S296K_min':1e-23,
-                'noise':{'xbeg':5951.26,'xend':5959.4},
-        }.items():
-            self.p.setdefault(key,val)
-        ## prepare other variables
-        self.line = {}
+        ## provided parameters
+        if p is None:
+            p = {}
+        self.p = p
+        ## update with kwrags
+        self.p |= parameters
+        ## set defaults
+        # for key,val in {
+                # 'xbeg':600,
+                # 'xend':6000,
+                # 'interpolate_model':0.001,
+                # # 'S296K_min':1e-23,
+                # # 'noise':{'xbeg':5951.26,'xend':5959.4},
+        # }.items():
+            # self.p.setdefault(key,val)
+        # ## prepare other variables
         self.verbose = verbose
         self.plot_progress =  plot_progress
         self.figure_number = figure_number
         self.ncpus = ncpus
-        ## prepare experiment
-        self.load_experiment()
-        
+        self.experiment = None
 
     characteristic_bands = {
         'H2O':[[1400,1750],[3800,4000],],
@@ -2098,11 +2106,16 @@ class FitReferenceAbsorption():
         'HCOOH':[[1770,1780]],
     }
 
+    def __str__(self):
+        retval = tools.dict_expanded_repr(self.p,maxdepth=3)
+        return retval
+
     def verbose_print(self,*args,**kwargs):
         if self.verbose:
             print(*args,**kwargs)
 
     def load_experiment(self):
+        print('loading experiment')
         p = self.p
         ## load exp data
         self.experiment = Experiment('experiment')
@@ -2112,35 +2125,24 @@ class FitReferenceAbsorption():
             p['scalex'].vary = False
             self.experiment.scalex(p['scalex'])
         ## fit noise level
-        if 'rms' not in p['noise']:
-            p['noise']['rms'] = self.experiment.fit_noise(xbeg=5951.26,xend=5959.4,n=1,make_plot=False)
+        self.p.setdefault('noise',{})
+        self.p['noise'].setdefault('xbeg',self.experiment.x[-1]-20)
+        self.p['noise'].setdefault('xend',self.experiment.x[-1])
+        self.p['noise'].setdefault('rms', self.experiment.fit_noise(xbeg=self.p['noise']['xbeg'],xend=self.p['noise']['xend'],n=3,make_plot=False))
         self.experiment.experimental_parameters['noise_rms'] = p['noise']['rms']
         self.experiment.residual_scale_factor = 1/p['noise']['rms']
         ## bin data for speed
         if 'bin_experiment' in p:
             self.experiment.bin_data(width=p['bin_experiment'],mean=True)
-        ## fit background if needed
-        if 'intensity_spline' not in p:
-            self.auto_intensity_spline()
 
-    def auto_intensity_spline(self,xi=5):
+    def auto_intensity(self,xi=5):
         """Automatic background. Not optimised."""
         print('auto_intensity_spline')
-        ## get good spline points from median of experimental data
-        i = tools.inrange(self.experiment.x,self.p['xbeg'],self.p['xend'])
-        x = self.experiment.x[i]
-        y = self.experiment.y[i]
-        xs,ys,yf = tools.fit_spline_to_extrema_or_median(x,y,xi=xi,make_plot=False)
-        ## ensure end points in included
-        if xs[0] > x[0]:
-            xs = np.concatenate((x[0:1],xs))
-            ys = np.concatenate((yf[0:1],ys))
-        if xs[-1] < x[-1]:
-            xs = np.concatenate((xs,x[-1:]))
-            ys = np.concatenate((ys,yf[-1:]))
-        self.p['intensity_spline'] = [[xsi,P(ysi,False)] for (xsi,ysi) in zip(xs,ys)]
+        model = self.make_model(xbeg=self.p['xbeg'],xend=self.p['xend'])
+        model.construct()
+        self.p['intensity_spline'] = model.auto_multiply_spline(x=5,construct=False,vary=False,)
 
-    def auto_intensity_sinusoid(self,xi=10):
+    def auto_sinusoid(self,xi=10):
         """Automatic background. Not optimised."""
         print('auto_intensity_sinusoid')
         ## refit intensity_sinusoid
@@ -2150,14 +2152,20 @@ class FitReferenceAbsorption():
         model.construct()
         self.p['intensity_sinusoid'] = model.auto_add_piecewise_sinusoid(xi=xi,make_plot=False,vary=False)
 
-    def full_model(self,xbeg=None,xend=None,max_nfev=20,**make_model_kwargs):
+    def full_model(
+            self,
+            species_to_fit=None,
+            xbeg=None,xend=None,
+            max_nfev=20,
+            **make_model_kwargs
+    ):
         """Full model."""
         print('full_model')
         if xbeg is None:
             xbeg = self.p['xbeg']
         if xend is None:
             xend = self.p['xend']
-        model = self.make_model(xbeg=xbeg,xend=xend,**make_model_kwargs)
+        model = self.make_model(species_to_fit=species_to_fit,xbeg=xbeg,xend=xend,**make_model_kwargs)
         model.optimise(plot_progress=self.plot_progress,monitor_frequency='rms decrease',verbose=self.verbose,max_nfev=max_nfev)
         model_no_absorption = self.make_model(xbeg,xend,list(self.p['N']),neglect_species_to_fit=True)
         self.plot(model,model_no_absorption)
@@ -2184,10 +2192,10 @@ class FitReferenceAbsorption():
 
     def fit_species(
             self,
-            *species_to_fit,
+            species_to_fit=None,
             regions='lines',
-            max_nfev=20,
             fit_species_individually=True,
+            max_nfev=20,
             **make_model_kwargs,
     ):
         """Fit species_to_fit individually using their 'lines' or 'bands'
@@ -2267,12 +2275,7 @@ class FitReferenceAbsorption():
 
     def auto_fit(
             self,
-            species_to_fit=(
-                'H2O','CO','CO2','NH3',
-                'SO2','H2S','CH4','CS2',
-                'HCN','N2O','NO','NO2',
-                'OCS','C2H2','C2H6','HCOOH',
-            ),
+            species_to_fit=None,
             prefit=True,
             cycles=2,
             fit_intensity=True,
@@ -2381,26 +2384,10 @@ class FitReferenceAbsorption():
         ax.axhline(0,color='gray',zorder=-5)
         plotting.qupdate(fig)
 
-    def get_line(self,species,verbose=False):
-        """Load HITRAN linelist."""
-        S296K_min = self.p['S296K_min']
-        if species in ('CO2','H2O'):
-            S296K_min *= 1e-2
-        elif species in ('CO','NH3'):
-            S296K_min *= 1e-1
-        if species not in self.line:
-            if verbose: 
-                print(f'loading hitran data for {species:6} with S296K_min: {S296K_min:0.0e}',end=' ')
-            line = database.get_hitran_lines(species,S296K_min=S296K_min)
-            if verbose:
-                print('length:',len(line))
-            self.line[species] = line
-        return self.line[species]
-
     def make_model(
             self,
             xbeg,xend,
-            species_to_fit=[],
+            species_to_fit=None,
             species_to_model=None,
             fit_intensity=False,
             fit_species=False,
@@ -2411,29 +2398,39 @@ class FitReferenceAbsorption():
             neglect_species_to_fit=False,
             verbose=False,
     ):
-        ## get parameters — protect form change if necessary
+        if species_to_fit is None:
+            species_to_fit = []
+        ## get parameters — protect from if necessary
         p = self.p
         if neglect_species_to_fit:
             p = deepcopy(p)
+        ## ensure experiment loaded
+        if self.experiment is None:
+            self.load_experiment()
         ## fit experiment frequency scale
         if 'scalex' in p:
             p['scalex'].vary = False
         if fit_scalex:
             if 'scalex' not in p:
-                p['scalex'] = P(1,False,1e-9)
+                p['scalex'] = P(1,False,1e-10)
                 self.experiment.scalex(p['scalex'])
             p['scalex'].vary = True
+
         ## start model
         model = Model(
-            name='_'.join(species_to_fit),
+            name='_'.join(['make_model',*species_to_fit]),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
-        model.permit_construct_on_add = False
+        model.permit_construct_on_add =  True
+
         ## set interpolated model grid
+        self.p.setdefault('interpolate_model',0.001)
         if p['interpolate_model'] is not None:
             model.interpolate(p['interpolate_model'])
+
         ## add unit intensity
         model.add_intensity(1)
+
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(285,305)))
         p['Teq'].vary = fit_temperature
@@ -2448,8 +2445,8 @@ class FitReferenceAbsorption():
             # self.verbose_printrint( f' {species}',end='')
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
-            p['N'].setdefault(species,P(1e13, False,1e13 ,nan,(0,np.inf)))
-            p['pair'].setdefault(species,P(500, False,1e0,nan,(50,10000),))
+            p['N'].setdefault(species,P(1e16, False,1e13 ,nan,(0,np.inf)))
+            p['pair'].setdefault(species,P(500, False,1e0,nan,(1e-3,10000),))
             if fit_species and species in species_to_fit:
                 p['N'][species].vary = True
                 p['pair'][species].vary = True
@@ -2458,17 +2455,24 @@ class FitReferenceAbsorption():
                 p['pair'][species].vary =False
             ## if species is not being fit then trim to lines above a
             ## certain τ
-            if species in species_to_fit:
-                ymin = None
-            else:
-                ymin = 1e-5
+            # tline = self.get_line(species)
+            tline = database.get_hitran_lines(species)
+            if species not in species_to_fit:
+                τpeak_min = 1e-3    # approx minimum peak τ to include a line
+                # τpeak_min = 1e-5    # approx minimum peak τ to include a line
+                S296K_min = τpeak_min*1e-3/p['N'][species]    # resulting approx min S296K
+                if species in species_to_fit:
+                    ## if this species is to fitted make sure at least
+                    ## some lines are included
+                    S296K_min = min(S296K_min,np.max(tline['S296K'])/10) 
+                tline = tline.matches(S296K_min=S296K_min)
             ## add lines
             model.add_line(
-                self.get_line(species),
+                tline,
                 Teq=p['Teq'],
                 Nself=p['N'][species],
                 pair=p['pair'][species],
-                ymin=ymin,
+                ymin=None,
                 ncpus=self.ncpus,
                 nfwhmL=3000,
                 lineshape='voigt',
@@ -2477,23 +2481,29 @@ class FitReferenceAbsorption():
 
         ## uninterpolate model grid
         if p['interpolate_model'] is not None:
-            model.uninterpolate(average=True)
+            model.uninterpolate(average= True)
 
         ## scale to correct background intensity — vary points in range and neighbouring
-        for i,(xi,yi) in enumerate(p['intensity_spline']):
-            yi.vary = False
-            if fit_intensity:
-                if xi >= xbeg and  xi <= xend:
-                    yi.vary = True
-                if i > 0:
-                    xprev,yprev = p['intensity_spline'][i-1]
-                    if xi >= xbeg and xprev < xbeg:
-                        yprev.vary = True
-                    if xi >= xend and xprev < xend:
+        ## fit background if needed
+        if fit_intensity:
+            p.setdefault('intensity_spline',self.auto_intensity())
+        if 'intensity_spline' in p:
+            for i,(xi,yi) in enumerate(p['intensity_spline']):
+                yi.vary = False
+                if fit_intensity:
+                    if xi >= xbeg and  xi <= xend:
                         yi.vary = True
-        model.multiply_spline(p['intensity_spline'],order=3)
+                    if i > 0:
+                        xprev,yprev = p['intensity_spline'][i-1]
+                        if xi >= xbeg and xprev < xbeg:
+                            yprev.vary = True
+                        if xi >= xend and xprev < xend:
+                            yi.vary = True
+            model.multiply_spline(p['intensity_spline'])
 
         ## scale by sinusoidal background, vary points completely within range
+        if fit_sinusoid and 'intensity_sinusoid' not in p:
+            p['intensity_sinusoid'] = self.auto_sinusoid()
         if 'intensity_sinusoid' in p:
             for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['intensity_sinusoid']):
                 freqi.vary = phasei.vary = amplitudei.vary = False
@@ -2501,9 +2511,19 @@ class FitReferenceAbsorption():
                     freqi.vary = phasei.vary = amplitudei.vary =  True
             model.add_piecewise_sinusoid(p['intensity_sinusoid'])
 
+        # ## scale by sinusoidal background, vary points completely within range
+        # if fit_second_sinusoid:
+            # p.setdefault('second_intensity_sinusoid',self.auto_sinusoid())
+        # if 'second_intensity_sinusoid' in p:
+            # for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['second_intensity_sinusoid']):
+                # freqi.vary = phasei.vary = amplitudei.vary = False
+                # if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
+                    # freqi.vary = phasei.vary = amplitudei.vary =  True
+            # model.add_piecewise_sinusoid(p['second_intensity_sinusoid'])
+
         ## instrument broadening
         if 'instrument_gaussian' in p or fit_instrument:
-            p.setdefault('instrument_gaussian',P(0.02,True,1e-4,nan,(0.01,0.1)))
+            p.setdefault('instrument_gaussian',P(0.02,True,1e-5,nan,(0.01,0.1)))
             p['instrument_gaussian'].vary = fit_instrument
             model.convolve_with_gaussian(p['instrument_gaussian'])
         else:
