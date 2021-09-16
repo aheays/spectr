@@ -277,6 +277,24 @@ def load_data_dict(filename,*keys):
         data = data[key]
     return data
 
+def save_data_dict(filename,header=r'from spectr import *',**keys_dicts):
+    """Save dictionaires in keys_dicts to file.  With optional filename."""
+    mkdir(os.path.split(filename)[0])
+    with open(filename,'w') as fid:
+        fid.write(header)
+        fid.write('\n')
+        for key,val in keys_dicts.items():
+            fid.write(
+                f'{key} = ' + dict_expanded_repr(
+                    val,maxdepth=3,separate_with_blanks_depth=-1))
+            fid.write('\n')
+
+            # ## save full model to disk
+# m,mna = o.full_model()
+# t = Dataset(x=m.x,ymod=m.y,yexp=m.yexp,ymod_no_abs=mna.y,)
+# t.save(f'td/{label}/full_model',filetype='directory')
+
+
 ############################
 ## mathematical functions ##
 ############################
