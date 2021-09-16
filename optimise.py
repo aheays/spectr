@@ -112,10 +112,10 @@ def optimise_method(
                     kwargs_to_format = {key:val for key,val in kwargs.items() if key[0] != '_' and val is not None}
                     if len(kwargs_to_format) < format_multi_line:
                         formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
-                        return f'{self.name}.{function.__name__}({formatted_kwargs},)'
+                        return f'{self.name}.{function.__name__}({formatted_kwargs})'
                     else:
                         formatted_kwargs = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs_to_format.items()])
-                        return f'{self.name}.{function.__name__}(\n    {formatted_kwargs},\n)'
+                        return f'{self.name}.{function.__name__}(\n    {formatted_kwargs}\n)'
                 self.add_format_input_function(f)
             ## returns all args as a dictionary except added
             ## optimsation variables
@@ -242,7 +242,7 @@ class Optimiser:
     def add_parameter(self,parameter,*args,**kwargs):
         """Add one parameter. Return a reference to it. Args are as in
         pP or one are is a P."""
-        if (isinstance(parameter,Named_Parameter)
+        if (isinstance(parameter,NamedParameter)
             and parameter.optimiser not in self._suboptimisers):
             self.add_suboptimiser(parameter.optimiser)
         if not isinstance(parameter,Parameter):
@@ -250,19 +250,30 @@ class Optimiser:
         self.parameters.append(parameter)
         return parameter
 
-    def add_named_parameter(self,key,value,*args,**kwargs):
+
+    def add_named_parameter(self,key,*args,**kwargs):
         """Add one parameter. Return a reference to it. Args are as in
         Parameter."""
-        parameter = Named_Parameter(self,key,value,*args,**kwargs)
+        parameter = NamedParameter(self,key,*args,**kwargs)
         self.parameters.append(parameter)
         self._named_parameters[key] = parameter
+        def f():
+            return f'{self.name}.add_named_parameter({repr(key)},{str(parameter)[16:-2]})'
+        self.add_format_input_function(f)
         return parameter
+
+    def get_named_parameter(self,key):
+        return self._named_parameters[key]
 
     def __getitem__(self,key):
         return self._named_parameters[key]
 
     def __setitem__(self,key,val):
-        self._named_parameters[key].value = val
+        """Add a new NamedParameter or update the value of an existing one"""
+        if key in self._named_parameters:
+            self._named_parameters[key].value = val
+        else:
+            p = self.add_named_parameter(key,*tools.ensure_iterable(val))
 
     def __iter__(self):
         for key in self._named_parameters:
@@ -328,7 +339,11 @@ class Optimiser:
                     parameters.append(p)
         return parameters
 
-    def format_input(self,match_lines_regexp=None):
+    def format_input(
+            self,
+            match_lines_regexp=None,
+            extra_newlines=True
+    ):
         """Join strings which should make an exectuable python script for
         repeating this optimisation with updated parameters. Each element of
         self.format_input_functions should be a string or a function of no
@@ -341,12 +356,17 @@ class Optimiser:
             suboptimisers.extend([optimiser for t in optimiser._format_input_functions])
         ## evaluate input lines sorted by timestamp
         lines = []
-        lines.append('from spectr import *\n') # general import at beginning of formatted input
+        lines.append('from spectr import *') # general import at beginning of formatted input
+        if extra_newlines:
+            lines.append('')
         previous_suboptimiser = None
         for i in np.argsort(timestamps):
             ## separate with newlines if a new suboptimser
-            if (previous_suboptimiser is not None
-                and suboptimisers[i] is not previous_suboptimiser):
+            if (
+                    extra_newlines
+                    and previous_suboptimiser is not None
+                    and suboptimisers[i] is not previous_suboptimiser
+            ):
                 lines.append('')
             lines.append(functions[i]())
             previous_suboptimiser = suboptimisers[i]
@@ -364,9 +384,9 @@ class Optimiser:
                 if re.match(match_lines_regexp,line):
                     print(line)
 
-    def save_input(self,filename=None):
+    def save_input(self,filename=None,**format_input_kwargs):
         """Save recreated input function to a file."""
-        tools.string_to_file(filename,self.format_input())
+        tools.string_to_file(filename,self.format_input(**format_input_kwargs))
 
     def __str__(self):
         return self.format_input()
@@ -505,12 +525,21 @@ class Optimiser:
         """Run all construct functions and return collected residuals. If
         clean is True then discard all cached data and completely
         rebuild the model."""
-        from .dataset import Dataset # import here to avoid a circular import when loading this model with dataset.py
-        ## collect residuals from suboptimisers and self
-        combined_residual = []  # from self and suboptimisers
+        ## import here to avoid a circular import when loading this
+        ## model with dataset.py
+        from .dataset import Dataset 
+        ## construct suboptimisers and self
         for o in self.get_all_suboptimisers():
+            ## if clean argument given, or any suboptimiser is marked
+            ## for clean construct, then clean construct this
+            ## optimiser
             if clean:
                 o._clean_construct = True
+            for t in o.get_all_suboptimisers():
+                if t._clean_construct:
+                    o._clean_construct = True
+            # print('DEBUG:', 'construct is clean',o.name, o._clean_construct)
+
             ## construct optimiser for one of the following reasons
             if (
                     ## clean construct
@@ -546,11 +575,11 @@ class Optimiser:
                 o.residual = o.residual_scale_factor*np.array(o.residual)
                 ## record time of construction
                 o._last_construct_time = timestamp()
-            ## remove any clean construct mark
+        ## collect residual of all suboptimiser and mark clean constructed
+        combined_residual = []  # from self and suboptimisers
+        for o in self.get_all_suboptimisers():
             o._clean_construct = False
-            ## add residual to return value for optimisation, possibly rescaling it
             if o.residual is not None:
-                # combined_residual.append(o.residual_scale_factor*np.array(o.residual))
                 combined_residual.append(o.residual)
         combined_residual = np.concatenate(combined_residual)  # includes own residual and for all suboptimisers
         self.combined_residual = combined_residual # this includes residuals from construct_functions combined with suboptimisers
@@ -589,11 +618,11 @@ class Optimiser:
         if rms < self._rms_minimum:
             self._rms_minimum = rms
         ## update plot of rms
-        if self._plot_progress is not None:
+        if self._make_plot is not None:
             n = self._number_of_optimisation_function_calls
-            fig = self._plot_progress['fig']
-            ax = self._plot_progress['ax']
-            line = self._plot_progress['line']
+            fig = self._make_plot['fig']
+            ax = self._make_plot['ax']
+            line = self._make_plot['line']
             if (
                     n == 1
                     or n > ax.get_xlim()[1]
@@ -627,7 +656,7 @@ class Optimiser:
             ncpus=1, # Controls the use of multiprocessing of the Jacobian
             monitor_parameters=False, # print parameters every iteration
             monitor_frequency='significant rms decrease', # run monitor functions 'never', 'end', 'every iteration', 'rms decrease', 'significant rms decrease'
-            plot_progress=False,
+            make_plot=False,
             **least_squares_options
     ):
         """Optimise parameters."""
@@ -656,15 +685,15 @@ class Optimiser:
         ## varied
         if number_of_parameters > 0:
             ## monitor decreasing RMS on a plot
-            if plot_progress:
+            if make_plot:
                 fig = plotting.qfig(9999,preset='screen',figsize='quarter screen',show=True)
                 ax = fig.gca()
                 ax.set_title(f'optimiser: {self.name} nparams: {number_of_parameters}')
                 line, = ax.plot([],[])
                 plotting.qupdate(fig)
-                self._plot_progress = {'n':0,'fig':fig,'ax':ax,'line':line}
+                self._make_plot = {'n':0,'fig':fig,'ax':ax,'line':line}
             else:
-                self._plot_progress = None    
+                self._make_plot = None    
             ## collect options for  least squares fit
             x0,diff_step = [],[]
             for pi,stepi in zip(parameters['value'],parameters['step']):
@@ -1017,7 +1046,7 @@ class Parameter():
 
 P = Parameter                   # an abbreviation
 
-class Named_Parameter(P):
+class NamedParameter(P):
     """Like a Parameter but has a name and knows which Optimiser it
     originally belongs to."""
 
@@ -1029,7 +1058,10 @@ class Named_Parameter(P):
     def __repr__(self):
         return f"{self.optimiser.name}['{self.name}']"
 
-    __str__ = Parameter.__repr__
+    def __str__(self):
+        retval = P.__repr__(self)
+        retval = 'NamedParameter('+retval[1:]+')'
+        return retval
 
 def _substitute_parameters_and_optimisers(x,translate):
     """Search for Parameters and Optimisers in x and substitude by id from
