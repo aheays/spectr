@@ -169,20 +169,24 @@ def load(filename):
         # raise Exception(f'unknown spectrum type: {spectrum_type}')
 
 @functools.lru_cache
-def get_lines(species_or_isotopologue):
+def get_lines(species,name=None,**match):
     """Load a preconstructed linelists.  If species_or_isotopologue is not
     an isotopologue return natural abundance."""
-    l = lines.Generic(f'species_or_isotopologue')
-    if species_or_isotopologue in molparam['chemical_species']:
-        filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/natural_abundance/lines.h5'
-    elif species_or_isotopologue in molparam['isotopologue']:
-        filename = f'~/data/databases/HITRAN/data/{species_or_isotopologue}/lines.h5'
+    species_object = kinetics.get_species(species)
+    if species_object.is_isotopologue():
+        path = f'{database.data_directory}/hitran/{species_object.chemical_name}/{species_object.name}/lines'
     else:
-        raise DatabaseException(f"could not determine HITRAN linelist filename for {repr(species_or_isotopologue)}")
-    l.load(filename)
-    l['Zsource'] = 'HITRAN'
-    l['mass']
-    return l
+        path = f'{database.data_directory}/hitran/{species_object.chemical_name}/natural_abundance/lines'
+    line = dataset.load(path)
+    if len(match) > 0:
+        line.limit_to_match(match)
+    line['Zsource'] = 'HITRAN'
+    line['mass']                # compute now for speed later
+    if name is not None:
+        line.name = name
+    line.pop_format_input_function()
+    line.add_format_input_function(lambda: f'{line.name} = hitran.get_lines({repr(species)},name={repr(line.name)},{tools.dict_to_kwargs(match)})')
+    return line
 
 
 # ## downloaded from https://hitran.org/docs/iso-meta/ 2020-10-15

@@ -210,16 +210,8 @@ def get_lines(species):
 @cache
 def get_hitran_lines(species,**match):
     """Load spectral lines from reference data."""
-    species = kinetics.get_species(species)
-    if species.is_isotopologue():
-        path = f'{data_directory}/hitran/{species.chemical_name}/{species.name}/lines'
-    else:
-        path = f'{data_directory}/hitran/{species.chemical_name}/natural_abundance/lines'
-    line = dataset.load(path)
-    if len(match) > 0:
-        line = line.matches(match)
-    line['Zsource'] = 'HITRAN'
-    return line
+    from . import hitran
+    return hitran.get_lines(species,**match)
 
 electronic_states={
     ('C₂','X')  :{'Λ':0,'S':0,'s'  :1,'gu'    :1},
