@@ -233,8 +233,18 @@ class Dataset(optimise.Optimiser):
             self.prototypes[key].setdefault(tkey,tval)
 
     @optimise_method(format_multi_line=99)
-    def set_spline(self,xkey,ykey,knots,order=3,default=None,
-                   match=None,index=None,_cache=None,**match_kwargs):
+    def set_spline(
+            self,
+            xkey,
+            ykey,
+            knots,
+            order=3,
+            default=None,
+            match=None,
+            index=None,
+            _cache=None,
+            **match_kwargs
+    ):
         """Set ykey to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
         given, then only set these."""
@@ -257,7 +267,8 @@ class Dataset(optimise.Optimiser):
             if default is None:
                 raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
             else:
-                self[ykey] = default                                                                                   
+                self[ykey] = default
+        t = tools.spline(xspline,yspline,self.get(xkey,index=index),order=order) #  DEBUG
         self.set(ykey,'value',value=tools.spline(xspline,yspline,self.get(xkey,index=index),order=order),index=index)
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
@@ -1916,8 +1927,8 @@ class Dataset(optimise.Optimiser):
             zlabel_format_function=None, # accept key=val pairs, defaults to printing them
             label_prefix='', # put this before label otherwise generated
             plot_errorbars=True, # if uncertainty available
-            xscale='linear',     # 'log' or 'linear'
-            yscale='linear',     # 'log' or 'linear'
+            xlog=False,
+            ylog=False,
             ncolumns=None,       # number of columsn of subplot -- None to automatically select
             show=False,          # show figure after issuing plot commands
             xlim=None,
@@ -2074,11 +2085,20 @@ class Dataset(optimise.Optimiser):
                             plotting.annotate_line(line=line)
                     if xlim is not None:
                         ax.set_xlim(*xlim)
-                    ax.set_xscale(xscale)
-                    ax.set_yscale(yscale)
+                    if xlog:
+                        ax.set_xscale('log')
+                    if ylog:
+                        ax.set_yscale('log')
                     ax.grid(True,color='gray',zorder=-5)
                     if self[xkey,'kind'] == 'U':
-                        plotting.set_tick_labels_text(xkey_unique_strings,axis='x',ax=ax,rotation=70,fontsize='x-small')
+                        plotting.set_tick_labels_text(
+                            xkey_unique_strings,
+                            axis='x',
+                            ax=ax,
+                            rotation=70,
+                            fontsize='x-small',
+                            ha='right',
+                        )
                 ## set ylim for all axes
                 if ylim is not None:
                     for ax in fig.axes:
