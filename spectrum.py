@@ -1451,7 +1451,7 @@ class Model(Optimiser):
     @optimise_method()
     def convolve_with_signum(
             self,
-            amplitude,          # amplitude of signume
+            amplitude,          # amplitude of signum
             xwindow=10,         # half-window for convolutiom
             xbeg=None,
             xend=None,
