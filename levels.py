@@ -292,7 +292,15 @@ def _f0(self,species,E,Eref,g,Zsource):
     α = g*np.exp(-(E-Eref)/(kB*Tex))/Z
     return α
 prototypes['α296K'] = dict(description="Equilibrium level population at 296K.",units="dimensionless", kind='f', fmt='<10.5e',cast=tools.cast_abs_float_array,infer=[(('species','E','Eref','g','Zsource'),_f0),])
+
+## should these columns even be in levels?
+prototypes['Nchemical_species'] = dict(description="Combined column density of all isotopolouges of a particular species.",units="cm2",kind='f',fmt='<11.3e', infer=[])
+prototypes['Nspecies'] = dict(description="Combined column density of an isotopologue.",units="cm2",kind='f',fmt='<11.3e', infer=[(('Nchemical_species','isotopologue_ratio'),lambda self,Nchemical_species,isotopologue_ratio: Nchemical_species*isotopologue_ratio),])
+prototypes['isotopologue_ratio'] = dict(description="Ratio of this isotopologue to the all isotopologues combined.",units="cm2",kind='f',fmt='<11.3e', infer=[
+    # (('species'),lambda self,species: database.get_species_property(species,'isotopologue_ratio')),
+])
 prototypes['Nself'] = dict(description="Column density",units="cm2",kind='f',fmt='<11.3e', infer=[])
+
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
 prototypes['ν1'] = dict(description="Vibrational quantum number for mode 1", kind='i',infer=[])
@@ -655,16 +663,18 @@ class Generic(Base):
     default_prototypes = _collect_prototypes(
         'species','label','ef','J',
         '_species_hash',
+        'chemical_species','isotopologue_ratio',
         'reference','qnhash',
-        'chemical_species',
         'point_group',
+        'mass','reduced_mass',
         'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres','Eexp',
         'Γ','Γexp','Γres',
         'N','S',
         'g','gnuclear','Inuclear',
         'Teq','Tex',
         'Zsource','Z','α','α296K',
-        'Nself','L',
+        'Nself','Nchemical_species','Nspecies',
+        'L',
         'At','Ae','Ad','ηd','ηe','Γe','Γd',         # destruction rates and branching
         defining_qn=defining_qn)
     Ereduced_common_polynomial = (1,0)
