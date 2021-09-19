@@ -33,18 +33,6 @@ from .optimise import Parameter,P,optimise_method
 
 prototypes = {}
 
-## copy prototypes directly from levels
-for key in (
-        'reference','qnhash',
-        'species', '_species_hash',
-        'point_group',
-        'Zsource',
-        'mass','reduced_mass',
-        'Eref',
-        'qn',
-        'Teq','Tex','Tvib','Trot',
-):
-    prototypes[key] = copy(levels.prototypes[key])
 
 ## import all levels prototypes with _u/_l suffices added
 for key,val in levels.prototypes.items():
@@ -56,14 +44,41 @@ for key,val in levels.prototypes.items():
                      for dependencies,function in val['infer']]
     prototypes[key+'_l'] = copy(tval)
 
-## trivial inferences implying the same properties for upper and lower levels if provided in line
-for key in ('species','Zsource','Eref','mass','reduced_mass','Teq','Tex','Tvib','Trot','Nself',):
-    prototypes[f'{key}_l']['infer'].append(((key),lambda self,species: species))
-    prototypes[f'{key}_u']['infer'].append(((key),lambda self,species: species))
+## copy some prototypes directly from levels, 
+for key in (
+        'species', 'chemical_species','isotopologue_ratio',
+        'point_group',
+        'mass','reduced_mass',
+        'Nself', 'Nchemical_species','Nspecies',
+        'Teq','Tex','Tvib','Trot',
+        'Zsource', 'Eref',
+        'reference',
+        'qnhash', 'qn', '_species_hash',
+):
+    prototypes[key] = copy(levels.prototypes[key])
 
-## and some reversed inferences
-prototypes['species']['infer'].append((('species_l'),lambda self,species_l: species_l))
-prototypes['species']['infer'].append((('species_u'),lambda self,species_u: species_u))
+## connect common and upper lower values in some cases where they
+## might be the same
+for key in (
+        'species', 'chemical_species', 'isotopologue_ratio',
+        'mass', 'reduced_mass',
+        'Nself', 'Nchemical_species', 'Nspecies',
+        'Zsource', 'Eref',
+        'Teq', 'Tex', 'Tvib', 'Trot',
+        ):
+    for suffix in ('u','l'):
+        ## Determine common value of some keys if they are the same in
+        ## upper and lower levels. Error if they differ.
+        def _f(self,value,key=key,suffix=suffix):
+            if self.is_known(f'key_l') and self.is_known(f'key_u'):
+                if np.any(self[f'key_l']!=self[f'key_u']):
+                    raise InferException(f'Cannot infer {key}_{suffix} from {key}_l or {key}_u, they have differing values.')
+            return value
+        prototypes['species']['infer'].append(((f'{key}_{suffix}'),lambda self,x: x))
+        ## set upper or lower level from the common value
+        prototypes[f'{key}_{suffix}']['infer'].append((key,lambda self,x: x))
+
+
 
 ## get branch label, and decode it to quantum numbers
 _ΔJ_translate = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
@@ -98,6 +113,7 @@ prototypes['f'] = dict(description="Line f-value",units="dimensionless",kind='f'
 ])
 
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section.",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[
+    (('τa','Nspecies_l'),lambda self,τa,Nspecies_l: τa/Nspecies_l), 
     (('τa','Nself_l'),lambda self,τ,column_densitypp: τ/column_densitypp), 
     (('f','α_l'),lambda self,f,α_l: f/1.1296e12*α_l),
     (('S','ν','Tex'),lambda self,S,ν,Tex,: S/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/Tex))),])
@@ -114,7 +130,12 @@ prototypes['S296K'] = dict(description="Spectral line intensity at 296K referenc
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
 ## former considers the effect of stimulated emission.
-prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission",units="cm-1", kind='f', fmt='<10.5e', infer=[(('S','Nself_l'),lambda self,S,Nself_l: S*Nself_l,), (('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,),],)
+prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission",units="cm-1", kind='f', fmt='<10.5e', infer=[
+    (('S','Nspecies_l'),lambda self,S,Nspecies_l: S*Nspecies_l,),
+    (('σ','Nspecies_l'),lambda self,σ,Nspecies_l: σ*Nspecies_l,),
+    (('S','Nself_l'),lambda self,S,Nself_l: S*Nself_l,),
+    (('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,),
+],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
 prototypes['σd'] = dict(description="Photodissociation cross section.",units="cm2.cm-1",kind='f',fmt='<10.5e',infer=[(('σ','ηd_u'),lambda self,σ,ηd_u: σ*ηd_u,)],)
@@ -127,10 +148,10 @@ for key in ('J','N','S','Λ','Ω','Σ','v'):
     prototypes[f'{key}_l']['infer'].append(((f'{key}_u',f'Δ{key}'),lambda self,l,Δ: l-Δ))
 
 
-## column 
+## add calculation of column density from optical path length and pressure
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
-prototypes['Nself'] = dict(description="Column density",units="cm-2",kind='f',fmt='<11.3e', cast=cast_abs_float_array,infer=[(
-    ('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),),])
+prototypes['Nchemical_species']['infer'].append((('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
+prototypes['Nself']['infer'].append((('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
 
 
 ####################################
@@ -366,13 +387,15 @@ class Generic(levels.Base):
         base_class=levels.Base,
         new_keys=(
             'reference','qnhash','qn',
-            'species', 'point_group','mass','Zsource','_species_hash',
+            'species', 'chemical_species','isotopologue_ratio',
+            'point_group','mass','Zsource','_species_hash',
             'Eref',
             'ν','ν0', # 'λ',
             'ΔJ', 'branch',
             'ΔJ',
             'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
-            'Nself','L',
+            'Nself','Nspecies','Nchemical_species',
+            'L',
             'Teq','Tex','Ttr',
             # 'Γ','ΓD',
             'Γ','Γp','ΓD','ΓL','ΓG',
