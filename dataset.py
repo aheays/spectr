@@ -26,13 +26,13 @@ class Dataset(optimise.Optimiser):
 
     ## The kind of data that 'value' contains.  Influences which subkinds are relevant.
     data_kinds = {
-        'f':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','description':'float' },
-        'a':    {'cast':lambda x:np.asarray(x,dtype=float) ,'fmt':'+12.8e','description':'positive float' },
-        'i':    {'cast':lambda x:np.asarray(x,dtype=int)   ,'fmt':'d'     ,'description':'int'   },
-        'b':    {'cast':tools.convert_to_bool_vector_array       ,'fmt':''      ,'description':'bool'  },
-        'U':    {'cast':lambda x:np.asarray(x,dtype=str)   ,'fmt':'s'     ,'description':'str'   },
-        'O':    {'cast':lambda x:np.asarray(x,dtype=object),'fmt':''      ,'description':'object'},
-        'h':    {'cast':lambda x:np.asarray(x,dtype='S20') ,'fmt':''      ,'description':'SHA1 hash'},
+        'f' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'float' },
+        'a' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'positive float' },
+        'i' : {'cast' : lambda x                                        : np.asarray(x,dtype=int)   ,'fmt' : 'd'     ,'description' : 'int'   },
+        'b' : {'cast' : tools.convert_to_bool_vector_array       ,'fmt' : ''      ,'description'           : 'bool'  },
+        'U' : {'cast' : lambda x                                        : np.asarray(x,dtype=str)   ,'fmt' : 's'     ,'description' : 'str'   },
+        'O' : {'cast' : lambda x                                        : np.asarray(x,dtype=object),'fmt' : ''      ,'description' : 'object'},
+        'h' : {'cast' : lambda x                                        : np.asarray(x,dtype='S20') ,'fmt' : ''      ,'description' : 'SHA1 hash'},
     }
 
     ##  Kinds of subdata that are vectors
@@ -162,6 +162,7 @@ class Dataset(optimise.Optimiser):
             match=None,         # set these matches only
             set_changed_only=False, # only set data if it differs from value
             kind=None,
+            **match_kwargs
     ):
         """Set value of key or (key,data)"""
         ## check for invalid key
@@ -175,7 +176,7 @@ class Dataset(optimise.Optimiser):
             self._data[key][subkey] = value
         elif subkey in self.vector_subkinds:
             ## combine indices -- might need to sort value if an index array is given
-            combined_index = self._get_combined_index(index,match)
+            combined_index = self._get_combined_index(index,match,match_kwargs)
             ## reduce index and value to changed data only
             if set_changed_only and self.is_set(key,subkey):
                 index_changed = self[key,subkey,combined_index] != value
@@ -253,7 +254,7 @@ class Dataset(optimise.Optimiser):
         if len(_cache) == 0: 
             xspline,yspline = zip(*knots)
             ## get index limit to defined xkey range
-            index = self._get_combined_index(index,match,return_bool=True,**match_kwargs)
+            index = self._get_combined_index(index,match,match_kwargs,return_bool=True,)
             if index is None:
                 index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
             else:
@@ -395,7 +396,7 @@ class Dataset(optimise.Optimiser):
         if not self.is_known(key):
             raise Exception(f"Value of key {repr(key)} must be set before setting subkey {repr(subkey)}")
         data = self._data[key]
-        if (subkind['valid_kinds'] is not None and self.get_kind(key) not in subkind['valid_kinds']):
+        if ('valid_kinds' in subkind and self.get_kind(key) not in subkind['valid_kinds']):
             raise Exception(f"The value kind of {repr(key)} is {repr(data['kind'])} and is invalid for setting {repr(subkey)}")
         if subkind['kind'] == 'O':
             raise ImplementationError()
@@ -426,7 +427,7 @@ class Dataset(optimise.Optimiser):
     def get(self,key,subkey='value',index=None,units=None,match=None,**match_kwargs):
         """Get value for key or (key,subkey). This is the data in place, not a
         copy."""
-        index = self._get_combined_index(index,match,**match_kwargs)
+        index = self._get_combined_index(index,match,match_kwargs)
         ## ensure data is known
         if key not in self._data:
             try:
@@ -496,16 +497,21 @@ class Dataset(optimise.Optimiser):
         else:
             return self.all_subkinds[subkey][attribute]
             
-    def _get_combined_index(self,index=None,match=None,return_bool=False,**match_kwargs):
+    def _get_combined_index(self,index=None,match=None,match_kwargs=None,return_bool=False):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
-        if index is None and match is None and len(match_kwargs)==0:
+        ## combine match dictionaries
+        if match is None:
+            match = {}
+        if match_kwargs is not None:
+            match |= match_kwargs
+        if index is None and len(match) == 0:
             ## no indices at all
             retval = None
         elif np.isscalar(index):
             ## single index
             retval = index
-            if match is not None and len(match_kwargs) != 0:
+            if len(match) > 0:
                 raise Exception("Single index cannot be addtionally matched.")
             if return_bool:
                 raise Exception("Single index cannot be returned as a boolean array.")
@@ -522,8 +528,8 @@ class Dataset(optimise.Optimiser):
                 if retval.dtype == bool:
                     retval = tools.find(retval)
             ## reduce by matches if given
-            if match is not None or len(match_kwargs) > 0:
-                imatch = self.match(match,**match_kwargs)
+            if len(match) > 0:
+                imatch = self.match(match)
                 retval = retval[tools.find(imatch[retval])]
             if return_bool:
                 ## convert to boolean array
@@ -546,17 +552,17 @@ class Dataset(optimise.Optimiser):
         Parameter for optimisation."""
         ## cache matching indices
         if self._clean_construct:
-            _cache['index'] = self._get_combined_index(index,match,**match_kwargs)
-        index = _cache['index']
+            _cache['combined_index'] = self._get_combined_index(index,match,match_kwargs)
+        combined_index = _cache['combined_index']
         ## set the data
-        self.set(key,'value',value,index=index,set_changed_only= True)
+        self.set(key,'value',value,index=combined_index,set_changed_only= True)
         if self._clean_construct and isinstance(value,Parameter):
-            self.set(key,'unc',value.unc,index=index)
-            self.set(key,'step',value.step,index=index)
+            self.set(key,'unc',value.unc,index=combined_index)
+            self.set(key,'step',value.step,index=combined_index)
         ## set vary to False if set, but only on the first execution
         if 'not_first_execution' not in _cache:
             if 'vary' in self._data[key]:
-                self.set(key,'vary',False,index=index)
+                self.set(key,'vary',False,index=combined_index)
             _cache['not_first_execution'] = True
 
     def keys(self):
@@ -805,7 +811,7 @@ class Dataset(optimise.Optimiser):
                 keys = source.explicitly_set_keys()
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         ## get matching indices
-        index = source._get_combined_index(index,match,**match_kwargs)
+        index = source._get_combined_index(index,match,match_kwargs)
         ## copy data and selected prototype data
         for key in keys:
             # self.set(key,'value',source[key,'value',index])
@@ -847,7 +853,7 @@ class Dataset(optimise.Optimiser):
                 else:
                     keys = source.explicitly_set_keys()
             keys = [key for key in keys if key not in skip_keys]
-            index = source._get_combined_index(index,match,**match_kwargs)
+            index = source._get_combined_index(index,match,match_kwargs)
             _cache['keys'],_cache['index'] = keys,index
         else:
             keys,index = _cache['keys'],_cache['index']
@@ -886,26 +892,29 @@ class Dataset(optimise.Optimiser):
         ## update match by key/val
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
-            if len(key) > 4 and key[-4:] == '_min':
-                ## find all larger values
-                i &= (self[key[:-4]] >= val)
-            elif len(key) > 4 and key[-4:] == '_max':
-                ## find all smaller values
-                i &= (self[key[:-4]] <= val)
-            elif len(key) > 4 and key[-4:] == '_not':
+            if len(key) > 4 and key[-4:] == '_not':
                 ## recursively get reverse match for this key
                 i &= ~self.match({key[:-4]:val})
-            elif np.ndim(val)==0:
-                ## match scalar equality, special case for nan
-                if val is np.nan:
+            elif not np.isscalar(val):
+                ## match to any value in val internally "or" then "and" with other keys
+                i &= np.any([self.match({key:vali}) for vali in val],0)
+            else:
+                ## a single value to compare with "and"
+                if len(key) > 4 and key[-4:] == '_min':
+                    ## find all larger values
+                    i &= (self[key[:-4]] >= val)
+                elif len(key) > 4 and key[-4:] == '_max':
+                    ## find all smaller values
+                    i &= (self[key[:-4]] <= val)
+                elif len(key) > 7 and key[-7:] == '_regexp':
+                    ## recursively get reverse match for this key
+                    i &= self.match_regexp({key[:-7]:val})
+                elif val is np.nan:
+                    ## special case for equality with nan
                     i &= np.isnan(self[key])
                 else:
-                    i &= (self[key]==val)
-            else:
-                ## match if in a list
-                i &= np.any([
-                    (np.isnan(self[key]) if vali is np.nan else self[key]==vali)
-                            for vali in val],axis=0)
+                    ## simple equality
+                    i &= self[key]==val
         return i
 
     def find(self,*match_args,**match_kwargs):
@@ -1935,6 +1944,7 @@ class Dataset(optimise.Optimiser):
             ylim=None,
             title=None,
             xsort=True,         # True sort by xkey, False, do not sort, or else a key or list of keys to sort by
+            annotate_points_key=None,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
         """Plot data."""
@@ -2070,6 +2080,10 @@ class Dataset(optimise.Optimiser):
                         kwargs.setdefault('mfc',kwargs['color'])
                         kwargs.setdefault('fillstyle','full')
                         line = ax.plot(x,y,**kwargs)
+                    if annotate_points_key is not None:
+                        for li,xi,yi in zip(z[annotate_points_key],x,y):
+                            if ~np.isnan(xi) and ~np.isnan(yi):
+                                plt.annotate(format(li),(xi,yi),fontsize='x-small',in_layout=False)
                     if title is not None:
                         ax.set_title(title)
                     elif auto_title is not None:
