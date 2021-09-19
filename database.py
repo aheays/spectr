@@ -101,28 +101,37 @@ def get_electronic_state_property(species,label,prop):
         raise DatabaseException(f"Cannot find property {prop=} for electronic state with {species=} {label=}")
     return data[prop]
 
+# # @cachetools.cached(cache=cachetools.LRUCache(1e3))
+# @functools.lru_cache(maxsize=1024)
+# def get_species_data(species):
+#     """Get a dictionary of data for this species."""
+#     species = normalise_species(species)
+#     data = tools.file_to_recarray(data_directory+'/species.csv',table_name='data')
+#     if species not in data['species']:
+#         raise DatabaseException(f"Species unknown: {repr(species)}")
+#     return data[data['species']==species] 
 # @cachetools.cached(cache=cachetools.LRUCache(1e3))
+
+_species_data_cache = None
 @functools.lru_cache(maxsize=1024)
 def get_species_data(species):
     """Get a dictionary of data for this species."""
-    species = normalise_species(species)
-    data = tools.file_to_recarray(data_directory+'/species.csv',table_name='data')
-    if species not in data['species']:
-        raise DatabaseException(f"Species unknown: {repr(species)}")
-    return data[data['species']==species] 
+    ## load data
+    global _species_data_cache
+    if _species_data_cache is None:
+        _species_data_cache = dataset.load(data_directory+'/species.psv')
+    data = _species_data_cache
+    retval = data.matching_row(species=normalise_species(species))
+    return retval
 
-# species_property_dtypes = {'species':'U50','iso_indep':float,'mass':float,
-                           # 'reduced_mass':float,'group':'U5','Ihomo':float,'latex':'U50',
-                           # 'T0-Te':float,}
-
-# @cachetools.cached(cache=cachetools.LRUCache(1e3))
 @tools.vectorise()
 def get_species_property(species,prop):
     """Get a property fo this species using get_species_data. If an
     array of species then return an array of properties. Scalar output, cached."""
-    d = get_species_data(species)
-    assert prop in d.dtype.names,f'Property {repr(prop)} of species {repr(species)} not known to database.'
-    retval = d[prop][0]
+    data = get_species_data(species)
+    if prop not in data:
+        raise Exception(f'Property {repr(prop)} of species {repr(species)} not known to database.')
+    retval = data[prop]
     ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
     if ((np.isreal(retval) and np.isnan(retval))
         or retval=='nan'): 
