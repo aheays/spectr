@@ -296,6 +296,10 @@ class Species:
             charge = 0
             isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
             isotopes.append((r.group(4),(None if r.group(3) == '' else int(r.group(3))),1))
+        ## atam isotopologues e.g., 12C
+        elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)$',name):
+            charge = 0
+            isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
         else:
             raise Exception(f'Could not decode species named: {repr(name)}')
         ## if any masses given, then make sure all are specified
