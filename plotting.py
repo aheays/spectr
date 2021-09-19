@@ -1888,6 +1888,7 @@ def annotate(*args,**kwargs):
     return(a)
 
 def annotate_point(label,x,y,ax=None,fontsize='medium',marker='o',linestyle='',color='black',**plot_kwargs):
+    """Annotate and draw point."""
     if ax is None:
         ax = plt.gca()
     l = ax.plot(x,y,marker=marker,linestyle=linestyle,color=color,**plot_kwargs)
