@@ -228,8 +228,7 @@ class Experiment(Optimiser):
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
         self.x *= float(scale)
-        self._clean_construct = True
-        # print('DEBUG:', 'make clean',self.name)
+        # self._clean_construct = True
 
     def __len__(self):
         return len(self.x)
@@ -346,9 +345,15 @@ class Model(Optimiser):
     def _initialise(self,_cache=None):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
-        # for o in self.suboptimisers: #  DEBUG
-              # print( 'model suboptim clean',o.name,o._clean_construct) #  DEBUG
-        if self._clean_construct:
+        ## test if experimental domain has changed
+        if ('xexp' in _cache
+            and (len(self.experiment.x) != len(_cache['xexp'])
+                 or np.any(self.experiment.x != _cache['xexp']))):
+            xexp_changed = True
+        else:
+            xexp_changed = False
+        ## maybe rebuild x array
+        if self._clean_construct or xexp_changed:
             ## build cache of data
             self.residual_scale_factor = 1
             if self._xin is not None:
@@ -375,7 +380,7 @@ class Model(Optimiser):
                     else:
                         ibeg = np.searchsorted(self.experiment.x,self.xbeg)
                     if self.xend is None:
-                        ibeg = len(self.experiment.x)
+                        iend = len(self.experiment.x)
                     else:
                         iend = np.searchsorted(self.experiment.x,self.xend)
                     # if 'iexp' in _cache:
@@ -385,6 +390,7 @@ class Model(Optimiser):
                     _cache['iexp'] = iexp
                 iexp = _cache['iexp']
                 self.x = self.xexp = self.experiment.x[iexp]
+                _cache['xexp'] = self.experiment.x
                 self.yexp = self.experiment.y[iexp]
                 ## if known use experimental noise RMS to normalise
                 ## residuals
@@ -575,7 +581,7 @@ class Model(Optimiser):
         ## nothing to be done
         if len(self.x) == 0 or len(line) == 0:
             return
-        if True or self._clean_construct:
+        if self._clean_construct:
             ## first run — initalise local copy of lines data, do not
             ## set keys if they are in set_keys_vals
             tmatch = {} if match is None else copy(match)
@@ -2031,7 +2037,7 @@ class FitReferenceAbsorption():
             name='fit_reference_absorption',
             p=None,
             verbose=False,
-            plot_progress=True,
+            make_plot=True,
             max_nfev=5,
             figure_number=1,
             ncpus=1,
@@ -2055,7 +2061,7 @@ class FitReferenceAbsorption():
             # self.p.setdefault(key,val)
         # ## prepare other variables
         self.verbose = verbose
-        self.plot_progress =  plot_progress
+        self.make_plot =  make_plot
         self.figure_number = figure_number
         self.ncpus = ncpus
         self.experiment = None
@@ -2166,7 +2172,7 @@ class FitReferenceAbsorption():
         if xend is None:
             xend = self.p['xend']
         model = self.make_model(species_to_fit=species_to_fit,xbeg=xbeg,xend=xend,**make_model_kwargs)
-        model.optimise(plot_progress=self.plot_progress,monitor_frequency='rms decrease',verbose=self.verbose,max_nfev=max_nfev)
+        model.optimise(make_plot=self.make_plot,monitor_frequency='rms decrease',verbose=self.verbose,max_nfev=max_nfev)
         model_no_absorption = self.make_model(xbeg,xend,list(self.p['N']),neglect_species_to_fit=True)
         self.plot(model,model_no_absorption)
         return model,model_no_absorption
@@ -2175,7 +2181,7 @@ class FitReferenceAbsorption():
         """Full model."""
         print('fit_region',xbeg,xend)
         model = self.make_model(xbeg,xend,**make_model_kwargs)
-        model.optimise(plot_progress=self.plot_progress,verbose=self.verbose,max_nfev=max_nfev)
+        model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
         self.plot(model)
 
     def fit_regions(self,width=100,overlap=0.9,max_nfev=5,**make_model_kwargs):
@@ -2186,7 +2192,7 @@ class FitReferenceAbsorption():
         while xbeg < p['xend']:
             xend = min(xbeg+width,p['xend'])
             model = self.make_model(xbeg,xend,**make_model_kwargs)
-            model.optimise(plot_progress=self.plot_progress,verbose=self.verbose,max_nfev=max_nfev)
+            model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
             self.plot(model)
             xbeg += overlap*width
 
@@ -2234,7 +2240,7 @@ class FitReferenceAbsorption():
                     model_no_absorption = self.make_model(xbeg,xend,[species],neglect_species_to_fit=True)
                     models.append((model,model_no_absorption))
                 ## optimise plot indiviudal speciesmodels
-                residual = main.optimise(plot_progress=self.plot_progress,max_nfev=max_nfev,verbose=self.verbose)
+                residual = main.optimise(make_plot=self.make_plot,max_nfev=max_nfev,verbose=self.verbose)
                 for model,model_no_absorption in models:
                     self.plot(model,model_no_absorption,clf=first_plot)
                     first_plot = False
@@ -2267,8 +2273,8 @@ class FitReferenceAbsorption():
                 main.add_suboptimiser(model)
                 model_no_absorption = self.make_model(xbeg,xend,species_to_fit,neglect_species_to_fit=True)
                 models.append((model,model_no_absorption))
-            ## optimise plot indiviudal speciesmodels
-            residual = main.optimise(plot_progress=self.plot_progress,max_nfev=max_nfev,verbose=self.verbose)
+            ## optimise plot indiviudal species models
+            residual = main.optimise(make_plot=self.make_plot,max_nfev=max_nfev,verbose=self.verbose)
             for model,model_no_absorption in models:
                 self.plot(model,model_no_absorption,clf=first_plot)
                 first_plot = False
@@ -2297,28 +2303,29 @@ class FitReferenceAbsorption():
             if fit_intensity and 'intensity_spline' in self.p:
                 self.p.pop('intensity_spline')
             if fit_intensity:
-                self.auto_intensity_spline()
+                self.auto_intensity()
             self.fit_species(
                 'H2O',
                 regions='lines',
-                fit_species=True,
+                fit_N=True,
+                fit_pair=True,
                 fit_instrument=True,
                 fit_intensity=fit_intensity,
                 max_nfev=30)
             self.fit_species(
-                *species_to_fit,
+                species_to_fit,
                 regions='lines',
-                fit_species=True,
+                fit_N=True,
+                fit_pair=True,
                 fit_intensity=fit_intensity,
                 max_nfev=30,)
+        ## then cycle on careful fit
         for n in range(cycles):
-            ## then cycle on careful fit
-            ##
             ## background
             if fit_sinusoid:
-                self.auto_intensity_sinusoid()
+                self.auto_sinusoid()
             if fit_intensity:
-                self.auto_intensity_spline()
+                self.auto_intensity()
             if fit_sinusoid or fit_intensity:
                 self.fit_regions(
                     fit_intensity=fit_intensity,
@@ -2328,7 +2335,8 @@ class FitReferenceAbsorption():
             self.fit_species(
                 'H2O',
                 regions=regions,
-                fit_species=True,
+                fit_N=True,
+                fit_pair=True,
                 fit_scalex=True,
                 fit_instrument=True,
                 fit_intensity=fit_intensity,
@@ -2337,9 +2345,10 @@ class FitReferenceAbsorption():
             )
             ## all species
             self.fit_species(
-                *species_to_fit,
+                species_to_fit,
                 regions=regions,
-                fit_species=True,
+                fit_N=True,
+                fit_pair=True,
                 fit_intensity=fit_intensity,
                 fit_sinusoid=fit_sinusoid,
                 max_nfev=5,
@@ -2348,7 +2357,7 @@ class FitReferenceAbsorption():
         if full_model:
             self.full_model()
         print('Time elapsed:',format(timestamp()-time,'12.6f'))
-                    
+
     def plot(
             self,
             model,
@@ -2390,7 +2399,8 @@ class FitReferenceAbsorption():
             species_to_fit=None,
             species_to_model=None,
             fit_intensity=False,
-            fit_species=False,
+            fit_N=False,
+            fit_pair=False,
             fit_scalex=False,
             fit_sinusoid=False,
             fit_instrument=False,
@@ -2415,22 +2425,18 @@ class FitReferenceAbsorption():
                 p['scalex'] = P(1,False,1e-10)
                 self.experiment.scalex(p['scalex'])
             p['scalex'].vary = True
-
         ## start model
         model = Model(
             name='_'.join(['make_model',*species_to_fit]),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
         model.permit_construct_on_add =  True
-
         ## set interpolated model grid
         self.p.setdefault('interpolate_model',0.001)
         if p['interpolate_model'] is not None:
             model.interpolate(p['interpolate_model'])
-
         ## add unit intensity
         model.add_intensity(1)
-
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(285,305)))
         p['Teq'].vary = fit_temperature
@@ -2447,15 +2453,14 @@ class FitReferenceAbsorption():
             ## pressure species-by-species and perhaps optimise them
             p['N'].setdefault(species,P(1e16, False,1e13 ,nan,(0,np.inf)))
             p['pair'].setdefault(species,P(500, False,1e0,nan,(1e-3,10000),))
-            if fit_species and species in species_to_fit:
-                p['N'][species].vary = True
-                p['pair'][species].vary = True
+            if species in species_to_fit:
+                p['N'][species].vary = fit_N
+                p['pair'][species].vary = fit_pair
             else:
                 p['N'][species].vary =False
                 p['pair'][species].vary =False
             ## if species is not being fit then trim to lines above a
             ## certain τ
-            # tline = self.get_line(species)
             tline = database.get_hitran_lines(species)
             if species not in species_to_fit:
                 τpeak_min = 1e-3    # approx minimum peak τ to include a line
@@ -2478,15 +2483,13 @@ class FitReferenceAbsorption():
                 lineshape='voigt',
                 verbose=False,
             )
-
         ## uninterpolate model grid
         if p['interpolate_model'] is not None:
             model.uninterpolate(average= True)
-
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
-        if fit_intensity:
-            p.setdefault('intensity_spline',self.auto_intensity())
+        if fit_intensity and 'intensity_spline' not in p:
+            p['intensity_spline'] = self.auto_intensity()
         if 'intensity_spline' in p:
             for i,(xi,yi) in enumerate(p['intensity_spline']):
                 yi.vary = False
@@ -2500,7 +2503,6 @@ class FitReferenceAbsorption():
                         if xi >= xend and xprev < xend:
                             yi.vary = True
             model.multiply_spline(p['intensity_spline'])
-
         ## scale by sinusoidal background, vary points completely within range
         if fit_sinusoid and 'intensity_sinusoid' not in p:
             p['intensity_sinusoid'] = self.auto_sinusoid()
@@ -2510,17 +2512,15 @@ class FitReferenceAbsorption():
                 if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
                     freqi.vary = phasei.vary = amplitudei.vary =  True
             model.add_piecewise_sinusoid(p['intensity_sinusoid'])
-
-        # ## scale by sinusoidal background, vary points completely within range
-        # if fit_second_sinusoid:
-            # p.setdefault('second_intensity_sinusoid',self.auto_sinusoid())
-        # if 'second_intensity_sinusoid' in p:
-            # for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['second_intensity_sinusoid']):
-                # freqi.vary = phasei.vary = amplitudei.vary = False
-                # if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
-                    # freqi.vary = phasei.vary = amplitudei.vary =  True
-            # model.add_piecewise_sinusoid(p['second_intensity_sinusoid'])
-
+        ## # ## scale by sinusoidal background, vary points completely within range
+        ## # if fit_second_sinusoid:
+        ##     # p.setdefault('second_intensity_sinusoid',self.auto_sinusoid())
+        ## # if 'second_intensity_sinusoid' in p:
+        ##     # for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['second_intensity_sinusoid']):
+        ##         # freqi.vary = phasei.vary = amplitudei.vary = False
+        ##         # if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
+        ##             # freqi.vary = phasei.vary = amplitudei.vary =  True
+        ##     # model.add_piecewise_sinusoid(p['second_intensity_sinusoid'])
         ## instrument broadening
         if 'instrument_gaussian' in p or fit_instrument:
             p.setdefault('instrument_gaussian',P(0.02,True,1e-5,nan,(0.01,0.1)))
@@ -2528,7 +2528,6 @@ class FitReferenceAbsorption():
             model.convolve_with_gaussian(p['instrument_gaussian'])
         else:
             model.convolve_with_blackman_harris()
-
         ## build it now
         model.construct()
         return model

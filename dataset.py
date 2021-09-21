@@ -192,7 +192,7 @@ class Dataset(optimise.Optimiser):
             else:
                 self._set_subdata(key,subkey,value,combined_index)
         else:
-            raise Exception('Invalid subkey: {repr(subkey)}')
+            raise Exception(f'Invalid subkey: {repr(subkey)}')
     
     def _guess_kind_from_value(self,value):
         """Guess what kind of data this is from a provided scalar or
@@ -595,6 +595,14 @@ class Dataset(optimise.Optimiser):
             keys += [key for key in self if len(key)>=len(end) and key[-len(end):] == end]
         return keys
             
+    def match_keys_matches(self,regex):
+        """Return a list of keys matching any of regex or beginning/ending string beg/end."""
+        retval = []
+        for key in self:
+            if r:=re.match(regex,key):
+                retval.append((key,*r.groups()))
+        return retval 
+
     def __iter__(self):
         for key in self._data:
             yield key
@@ -688,17 +696,17 @@ class Dataset(optimise.Optimiser):
         """Set key, (key,subkey), (key,index), (key,subkey,index) to
         value."""
         if isinstance(key,str):
-            key,subkey,index = key,'value',None
+            tkey,tsubkey,tindex = key,'value',None
         elif len(key) == 1:
-            key,subkey,index = key[0],'value',None
+            tkey,tsubkey,tindex = key[0],'value',None
         elif len(key) == 2:
             if isinstance(key[1],str):
-                key,subkey,index = key[0],key[1],None
+                tkey,tsubkey,tindex = key[0],key[1],None
             else:
-                key,subkey,index = key[0],'value',key[1]
+                tkey,tsubkey,tindex = key[0],'value',key[1]
         elif len(key) == 3:
-                key,subkey,index = key[0],key[1],key[2]
-        self.set(key,subkey,value,index)
+                tkey,tsubkey,tindex = key[0],key[1],key[2]
+        self.set(tkey,tsubkey,value,tindex)
        
     def clear(self):
         """Clear all data"""
@@ -1685,6 +1693,11 @@ class Dataset(optimise.Optimiser):
             data['classname'] = classname
         if description is not None:
             data['description'] = description
+        ## if there is no kind for this key then try and cast to numeric data
+        for key in data:
+            if key not in metadata or 'kind' not in metadata[key]:
+                data[key] = tools.try_cast_to_numeric_array(data[key])
+        ## load into self
         self.load_from_dict(data,metadata=metadata,flat=True,**load_from_dict_kwargs)
 
     def load_from_string(
@@ -1927,7 +1940,7 @@ class Dataset(optimise.Optimiser):
             zkeys=None,         # plot x-y data separately for unique combinations of zkeys
             ykeys_re=None,
             fig=None,           # otherwise automatic
-            ax=None,            # otherwise automatic
+            axes=None,            # otherwise automatic
             ynewaxes=True,      # plot y-keys on separates axes -- else as different lines
             znewaxes=False,     # plot z-keys on separates axes -- else as different lines
             legend=True,        # plot a legend or not
@@ -1944,7 +1957,7 @@ class Dataset(optimise.Optimiser):
             ylim=None,
             title=None,
             xsort=True,         # True sort by xkey, False, do not sort, or else a key or list of keys to sort by
-            annotate_points_key=None,
+            annotate_points_keys=None,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
         """Plot data."""
@@ -1953,9 +1966,9 @@ class Dataset(optimise.Optimiser):
         if len(self)==0:
             return
         ## re-use or make a new figure/axes
-        if ax is not None:
+        if axes is not None:
             ynewaxes,znewaxes = False,False
-            fig = ax.figure
+            fig = axes.figure
         if fig is None:
             fig = plt.gcf()
             fig.clf()
@@ -2030,6 +2043,8 @@ class Dataset(optimise.Optimiser):
                         color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                         label = ylabel+' '+zlabel
                         ylabel = None
+                    if axes is not None:
+                        ax = axes 
                     ## plotting kwargs
                     kwargs = copy(plot_kwargs)
                     kwargs.setdefault('marker',marker)
@@ -2080,10 +2095,16 @@ class Dataset(optimise.Optimiser):
                         kwargs.setdefault('mfc',kwargs['color'])
                         kwargs.setdefault('fillstyle','full')
                         line = ax.plot(x,y,**kwargs)
-                    if annotate_points_key is not None:
-                        for li,xi,yi in zip(z[annotate_points_key],x,y):
-                            if ~np.isnan(xi) and ~np.isnan(yi):
-                                plt.annotate(format(li),(xi,yi),fontsize='x-small',in_layout=False)
+                    if annotate_points_keys is not None:
+                        ## annotate all points with the value of this key
+                        # for li,xi,yi in zip(z[annotate_points_keys],x,y): 
+                        #     if ~np.isnan(xi) and ~np.isnan(yi):
+                        #         plt.annotate(format(li),(xi,yi),fontsize='x-small',in_layout=False)
+                        for i in range(len(z)):
+                            if ~np.isnan(x[i]) and ~np.isnan(y[i]):
+                                annotation = '\n'.join([tkey+'='+format(z[tkey][i],self[tkey,'fmt']) for tkey in tools.ensure_iterable(annotate_points_keys)])
+                                # annotation = pformat({tkey:format(z[tkey][i]) for tkey in tools.ensure_iterable(annotate_points_keys)})
+                                plt.annotate(annotation,(x[i],y[i]),fontsize='x-small',in_layout=False)
                     if title is not None:
                         ax.set_title(title)
                     elif auto_title is not None:
@@ -2094,7 +2115,7 @@ class Dataset(optimise.Optimiser):
                         ax.set_xlabel(xlabel)
                     if 'label' in kwargs:
                         if legend:
-                            plotting.legend(fontsize='x-small',loc=legend_loc,show_style=True)
+                            plotting.legend(fontsize='x-small',loc=legend_loc,show_style=True,ax=ax)
                         if annotate_lines:
                             plotting.annotate_line(line=line)
                     if xlim is not None:
@@ -2172,6 +2193,7 @@ class Dataset(optimise.Optimiser):
 def find_common(x,y,keys=None,verbose=False):
     """Return indices of two Datasets that have uniquely matching
     combinations of keys."""
+    keys = tools.ensure_iterable(keys)
     ## if empty list then nothing to be done
     if len(x)==0 or len(y)==0:
         return(np.array([],dtype=int),np.array([],dtype=int))
@@ -2265,6 +2287,7 @@ def load(
         classname=None,
         prototypes=None,
         permit_nonprototyped_data=None,
+        name=None,
         **load_kwargs):
     """Load a Dataset.  Attempts to automatically find the correct
     subclass if it is not provided as an argument, but this requires
@@ -2280,6 +2303,8 @@ def load(
         init_kwargs['prototypes'] = prototypes
     if permit_nonprototyped_data is not None:
         init_kwargs['permit_nonprototyped_data'] = permit_nonprototyped_data
+    if name is not None:
+        init_kwargs['name'] = name
     retval = make(classname,**init_kwargs)
     retval.load(filename,**load_kwargs)
     return retval

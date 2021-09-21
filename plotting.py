@@ -2017,19 +2017,50 @@ def annotate_hline(label,ypos,ax=None,color='black',fontsize='medium',va='bottom
         va=va,color=color,fontsize=fontsize) 
     return(line_object,label_object)
 
-def annotate_hspan(label,y0,y1,ax=None,color='black',fontsize='medium',label_ypos='bottom',alpha=0.5,**axhspan_kwargs):
-    """Draw a vertical line at xpos, and label it. label_ypos in 'top','bottom','center'."""
-    if ax==None: ax = plt.gca()
-    line_object = ax.axhspan(y0,y1,color=color,alpha=alpha,**axhspan_kwargs)
-    transform = matplotlib.transforms.blended_transform_factory(ax.transAxes,ax.transData,)
-    if label_ypos=='bottom':
-        ylabel,va = min(y0,y1),'top'
-    elif label_ypos=='top':
-        ylabel,va = max(y0,y1),'bottom'
-    elif label_ypos=='center':
+def annotate_hspan(
+        label,
+        y0,y1,
+        labelpos='bottom right',
+        ax=None,
+        color='black',
+        fontsize='medium',
+        alpha=0.3,
+        zorder=-10,
+        **axhspan_kwargs,
+):
+    """Draw a horizontal hspan with a label."""
+    axhspan_kwargs.setdefault('linewidth',0) # no frame line
+    if ax==None:
+        ax = plt.gca()
+    line_object = ax.axhspan(y0,y1,color=color,alpha=alpha,zorder=zorder,**axhspan_kwargs)
+    if labelpos=='bottom right':
+        ylabel,va = min(y0,y1),'bottom'
+        xlabel,ha = 1,'right'
+        label = label + ' '
+    elif labelpos=='bottom left':
+        ylabel,va = min(y0,y1),'bottom'
+        xlabel,ha = 0,'left'
+        label = ' '+label
+    elif labelpos=='top right':
+        ylabel,va = max(y0,y1),'top'
+        xlabel,ha = 1,'right'
+        label = label + ' '
+    elif labelpos=='top left':
+        ylabel,va = max(y0,y1),'top'
+        xlabel,ha = 0,'left'
+        label = ' '+label
+    elif labelpos=='center':
         ylabel,va = 0.5*(y0+y1),'center'
-    label_object = ax.annotate(label,xy=(0.98,ylabel),xycoords=transform,ha='right',va=va,color=color,fontsize=fontsize) 
+        xlabel,ha = 0.5,'center'
+    else:
+        raise Exception(f'Bad labelpos: {repr(labelpos)}')
+    transform = matplotlib.transforms.blended_transform_factory(ax.transAxes,ax.transData,)
+    label_object = ax.annotate(
+        label, xy=(xlabel,ylabel), xycoords=transform,
+        ha=ha, va=va, color=color, fontsize=fontsize,
+        zorder=zorder,) 
     return(line_object,label_object)
+
 
 def set_text_border(text_object,border_color='black',face_color='white',border_width=1):
     """Set text_object to have a border."""

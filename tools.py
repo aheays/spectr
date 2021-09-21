@@ -8,6 +8,7 @@ from pprint import pprint
 import itertools
 import io
 import inspect
+import sys
 
 from scipy import interpolate,constants,integrate,linalg,stats,signal,fft
 import csv
@@ -289,10 +290,34 @@ def save_data_dict(filename,header=r'from spectr import *',**keys_dicts):
                     val,maxdepth=3,separate_with_blanks_depth=-1))
             fid.write('\n')
 
-            # ## save full model to disk
-# m,mna = o.full_model()
-# t = Dataset(x=m.x,ymod=m.y,yexp=m.yexp,ymod_no_abs=mna.y,)
-# t.save(f'td/{label}/full_model',filetype='directory')
+def import_dict(filename,*names):
+    """Import filename and return a dictionary of its named attributes."""
+    ## import file as 'temporary_module'
+    from importlib.machinery import SourceFileLoader
+    module = SourceFileLoader('_import_data_temporary_module',filename).load_module()
+    ## get requested attributes
+    retval = {name:getattr(module,name) for name in names}
+    ## as far as possible unimport module so different data can be
+    ## loaded/reloaded with this function
+    sys.modules.pop('_import_data_temporary_module')
+    del module
+    return retval
+
+def export_dict(filename,header=None,**names_dicts,):
+    """Write names_dicts as into filename preceeded by header.  Designed
+    to be imported as valid python."""
+    mkdir(os.path.split(filename)[0])
+    with open(filename,'w') as fid:
+        ## add header
+        if header is not None:
+            fid.write(header)
+            fid.write('\n')
+        ## add data as dict_expanded_repr
+        for name,val in names_dicts.items():
+            fid.write(
+                f'{name} = ' + dict_expanded_repr(
+                    val,maxdepth=3,separate_with_blanks_depth=-1))
+            fid.write('\n')
 
 
 ############################
@@ -1504,16 +1529,19 @@ def dict_to_directory(
           override_trash_existing_safety_check=override_trash_existing_safety_check)
     ## loop through all data
     for key,val in dictionary.items():
+        str_key = str(key)
+        if '/' in str_key:
+            raise Exception(f'Invalid character for dict_to_directory [/] in key: {repr(key)}')
         if isinstance(val,dict):
             ## recursively save dictionaries as subdirectories
-            dict_to_directory(f'{directory}/{str(key)}',val,array_format,trash_existing=False)
+            dict_to_directory(f'{directory}/{str_key}',val,array_format,trash_existing=False)
         elif isinstance(val,str):
             ## save strings to text files
-            string_to_file(f'{directory}/{str(key)}',val)
+            string_to_file(f'{directory}/{str_key}',val)
         elif isinstance(val,np.ndarray):
             ## save as array, defer formatting to numpy
             extension = get_extension(array_format)
-            filename = f'{directory}/{str(key)}{extension}'
+            filename = f'{directory}/{str_key}{extension}'
             array_to_file(filename,np.asarray(val))
 
 def directory_to_dict(directory):
@@ -3802,7 +3830,7 @@ def file_to_array(
     # retval = [t.strip() for t in re.split(r'\n',string)
              # if not (re.match(r'^ *#.*',t) or re.match(r'^ *$',t))] # remove blank and # commented lines
     # retval = flatten([re.split(r'[ \t|,]+',t) for t in retval]) # split each x on space | or ,
-    # retval = [try_cast_to_numerical(t) for t in retval]
+    # retval = [try_cast_to_numeric(t) for t in retval]
     # return(retval)
 
 def string_to_array(s,**array_kwargs):
@@ -4346,7 +4374,7 @@ def txt_to_dict(
     for key,column in zip(labels,zip(*lines)):
         data[key] = [(t.strip() if len(t.strip())>0 else replacement_for_blank_elements) for t in column]
         if try_cast_numeric:
-            data[key] = try_cast_to_numerical_array(data[key])
+            data[key] = try_cast_to_numeric_array(data[key])
     return data 
             
 # def txt_to_array_unpack(filename,skiprows=0,comment='#'):
@@ -4367,7 +4395,7 @@ def txt_to_dict(
         # for x,y in zip(data,line.split()):
             # x.append(y)
     # ## cast to arrays, numerical if possiblec
-    # data = [try_cast_to_numerical_array(t) for t in data]
+    # data = [try_cast_to_numeric_array(t) for t in data]
     # return(data)
             
 # def org_table_to_recarray(filename,table_name):
@@ -4395,10 +4423,10 @@ def txt_to_dict(
         # line = line.strip(' |')
         # vals = [val.strip() for val in line.split('|')]
         # for (key,val) in zip(keys,vals): data[key].append(val)
-    # for key in data: data[key] = try_cast_to_numerical_array(data[key]) # cast to arrays, numerical if possiblec
+    # for key in data: data[key] = try_cast_to_numeric_array(data[key]) # cast to arrays, numerical if possiblec
     # return(dict_to_recarray(data))
 
-def try_cast_to_numerical(string):
+def try_cast_to_numeric(string):
     """Try to cast into a numerical type, or else return as a string."""
     try:                 return(int(string))
     except ValueError:   pass
@@ -4408,13 +4436,16 @@ def try_cast_to_numerical(string):
     except ValueError:   pass
     return(str(string))
 
-def try_cast_to_numerical_array(x):
+def try_cast_to_numeric_array(x):
     """Try to cast an interator into an array of ints. On failure try
     floats. On failure return as array of strings."""
     try:
-        return np.array(x,dtype=float)
+        return np.array(x,dtype=int)
     except ValueError:
-        return np.array(x,dtype=str)
+        try:
+            return np.array(x,dtype=float)
+        except ValueError:
+            return np.array(x,dtype=str)
 
 # def prefix_postfix_lines(string,prefix='',postfix=''):
     # """Prefix and postfix every line of string."""
@@ -4697,7 +4728,7 @@ def stream_to_dict(
             if types is not None and key in types:
                 data[key] = np.array(data[key],dtype=types[key])
             else:
-                data[key] = try_cast_to_numerical_array(data[key])
+                data[key] = try_cast_to_numeric_array(data[key])
     return data
 
 # def read_structured_data_file(filename):
