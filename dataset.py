@@ -1457,7 +1457,7 @@ class Dataset(optimise.Optimiser):
                 continue
             ## no data
             if 'value' not in data[key]:
-                raise Exception
+                raise Exception(f'No "value" subkey in data {repr(key)} with subkeys {repr(list(data[key]))}')
             ## if kind is then add a prototype (or replace
             ## existing if the kinds do not match)
             if 'kind' in data[key]:
