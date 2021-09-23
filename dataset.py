@@ -789,6 +789,31 @@ class Dataset(optimise.Optimiser):
         index = self._get_combined_index(index,return_bool=True)
         self.index(~index)
 
+    def __deepcopy__(self,memo):
+        """Manually controlled deepcopy which does seem to be faster than the
+        default for some reason. Relies on all mutable attributes
+        being included in attr_to_deepcopy."""
+        retval = copy(self)
+        memo[id(self)] = retval # add this in case of circular references to it below
+        for attr_to_deepcopy in (
+                '_data',
+                '_row_modify_time',
+                'prototypes',
+                'parameters',
+                '_construct_functions',
+                '_post_construct_functions',
+                '_plot_functions',
+                '_monitor_functions',
+                '_save_to_directory_functions',
+                '_format_input_functions',
+                '_suboptimisers',
+                'residual',
+                'combined_residual',
+                '_store',
+        ):
+            setattr(retval,attr_to_deepcopy, deepcopy(getattr(self,attr_to_deepcopy), memo))
+        return retval
+
     def copy(self,*args_copy_from,name=None,**kwargs_copy_from):
         """Get a copy of self with possible restriction to indices and
         keys."""
@@ -1322,6 +1347,7 @@ class Dataset(optimise.Optimiser):
             tools.dict_to_directory(filename,self.as_dict(keys=keys,subkeys=subkeys))
         elif filetype == 'text':
             ## text file
+            format_kwargs.setdefault('simple',False)
             if re.match(r'.*\.csv',filename):
                 format_kwargs.setdefault('delimiter',', ')
             elif re.match(r'.*\.rs',filename):
@@ -1331,8 +1357,13 @@ class Dataset(optimise.Optimiser):
             else:
                 format_kwargs.setdefault('delimiter',' ')
             tools.string_to_file(filename,self.format(keys,**format_kwargs))
+        elif filetype == 'csv':
+            ## csv file
+            format_kwargs.setdefault('delimiter',', ')
+            format_kwargs.setdefault('simple',False)
+            tools.string_to_file(filename,self.format(keys,**format_kwargs))
         else:
-            assert False
+            raise Exception(f'Do not know how save to {filetype=}')
             
     def load(self,filename,filetype=None,**load_method_kwargs):
         '''Load data from a file.'''
@@ -1558,6 +1589,7 @@ class Dataset(optimise.Optimiser):
             labels_commented=False,
             delimiter=None,
             txt_to_dict_kwargs=None,
+            load_classname_only=False,
             **load_from_dict_kwargs
     ):
         """Load data from a text-formatted file."""
@@ -1624,6 +1656,10 @@ class Dataset(optimise.Optimiser):
                     if section_iline > 1:
                         raise Exception("Invalid classname section")
                     classname = line
+                    if load_classname_only:
+                        ## shortcut, load classname ignore the rest of the data
+                        self.classname = classname
+                        return
                 elif current_section == 'description':
                     ## add to description
                     description += '\n'+line
