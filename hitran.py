@@ -169,23 +169,40 @@ def load(filename):
         # raise Exception(f'unknown spectrum type: {spectrum_type}')
 
 @functools.lru_cache
-def get_lines(species,name=None,**match):
-    """Load a preconstructed linelists.  If species_or_isotopologue is not
-    an isotopologue return natural abundance."""
+def _get_lines_internal(filename):
+    line = dataset.load(filename)
+    line['Zsource'] = 'HITRAN'
+    line['mass']                # compute now for speed later
+    return line
+
+def get_lines(species,name=None,match=None,**match_kwargs):
+    """Hitran linelist.  If species not an isotopologue then load a list
+    of the natural abundance mixture."""
+    ## get data file path
     species_object = kinetics.get_species(species)
     if species_object.is_isotopologue():
         path = f'{database.data_directory}/hitran/{species_object.chemical_name}/{species_object.name}/lines'
     else:
         path = f'{database.data_directory}/hitran/{species_object.chemical_name}/natural_abundance/lines'
-    line = dataset.load(path)
-    if len(match) > 0:
-        line.limit_to_match(match)
-    line['Zsource'] = 'HITRAN'
-    line['mass']                # compute now for speed later
-    if name is not None:
+    ## load data
+    # line = _get_lines_internal(path)
+    line = deepcopy(_get_lines_internal(path))
+    if name is None:
+        line.name ='hitran_lines'
+    else:
         line.name = name
-    line.pop_format_input_function()
-    line.add_format_input_function(lambda: f'{line.name} = hitran.get_lines({repr(species)},name={repr(line.name)},{tools.dict_to_kwargs(match)})')
+    ## limit data
+    line.limit_to_match(match,**match_kwargs)
+    ## replace format input function with a reference to this function
+    line.clear_format_input_functions()
+    def f():
+        retval = f'{line.name} = hitran.get_lines({repr(species)}'
+        if line.name is not None:
+            retval += f',name={repr(name)}'
+        if match is not None:
+            retval += f',match={repr(match)}'
+        return retval
+    line.add_format_input_function(f)
     return line
 
 
