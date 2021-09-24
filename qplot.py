@@ -1,4 +1,5 @@
-#!/usr/bin/env python3 
+#!/usr/bin/env python
+
 
 import argparse,warnings,os,signal,sys,collections,re
 from spectr import tools,plotting,dataset
@@ -7,6 +8,8 @@ from spectr.dataset import Dataset
 import numpy as np
 import matplotlib as mpl
 from copy import deepcopy
+
+
 
 ## get command line agruments
 parser = argparse.ArgumentParser(description='Quickly plot data in files.')
@@ -50,6 +53,7 @@ parser.add_argument('--labels-uncommented', dest='labels_commented',default=None
 parser.add_argument('--hitran', dest='hitran',default=False,action="store_true",help='Plot HITRAN spetrum for this species')
 parser.add_argument('filenames', metavar='file', type=str, nargs='*',help='name of a band data file')
 args = parser.parse_args()
+
 
 ## reduce spew to console
 if not args.verbose:
@@ -102,6 +106,7 @@ if args.verbose:
 plot_count = 0
 original_args = deepcopy(args)  # cache args because they can be changed below, and each file should begin the same
 for filename in args.filenames:
+
     args = deepcopy(original_args)
 
     ## include filename in label if multiple files plotted
