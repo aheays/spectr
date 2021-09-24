@@ -359,7 +359,6 @@ class Model(Optimiser):
             if self._xin is not None:
                 ## x is from a call to get_spectrum
                 self.x = self._xin
-                self.experimental = None # used as flag throughout program
             elif self.experiment is not None:
                 ## get domain from experimental data
                 # iexp = np.full(len(self.experiment.x),True)
@@ -562,6 +561,13 @@ class Model(Optimiser):
                     cache[key]  = p[key]
             self.y *= cache['transmission'] # add to model
         self.add_construct_function(f)
+
+    @format_input_method()
+    def add_hitran_line(self,species,match=None,*args,**kwargs):
+        line = hitran.get_lines(species,match=match)
+        line.clear_format_input_functions()
+        self.add_line(line,*args,**kwargs)
+        self.pop_format_input_function()
 
     @optimise_method()
     def add_line(
@@ -1414,7 +1420,7 @@ class Model(Optimiser):
     def convolve_with_blackman_harris(
             self,
             terms=3,
-            interpolation_factor=None,
+            resolution=None,
             fwhms_to_include=10,
             _cache=None,
     ):
@@ -1422,11 +1428,18 @@ class Model(Optimiser):
         window. Coefficients taken from harris1978 p. 65.  There are
         multiple coefficents given for 3- and 5-Term windows. I use
         the left.  This is faster than apodisation in the
-        length-domain."""
+        length-domain.  The resolution is the FWHM of the unapodised
+        (boxcar) spectrum."""
         # if self._clean_construct or self._xchanged:
         if self._clean_construct:
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
-            width = self.experiment.experimental_parameters['resolution']/2*1.2 # distance between sinc peak and first zero
+            if resolution is not None:
+                pass
+            elif self.experiment is not None and 'resolution' in self.experiment.experimental_parameters:
+                resolution = self.experiment.experimental_parameters['resolution']
+            else:
+                raise Exception('Resolution not specified as argument or in experimental data')
+            width = resolution/2*1.2 # distance between sinc peak and first zero
             xconv = np.arange(0,fwhms_to_include*width,dx)
             xconv = np.concatenate((-xconv[-1:0:-1],xconv))
             if terms == 3:
@@ -2146,7 +2159,7 @@ class FitReferenceAbsorption():
         print('auto_intensity_spline')
         model = self.make_model(xbeg=self.p['xbeg'],xend=self.p['xend'])
         model.construct()
-        self.p['intensity_spline'] = model.auto_multiply_spline(x=5,construct=False,vary=False,)
+        self.p['intensity_spline'] = model.auto_multiply_spline(x=xi,construct=False,vary=False,)
 
     def auto_sinusoid(self,xi=10):
         """Automatic background. Not optimised."""
@@ -2181,6 +2194,7 @@ class FitReferenceAbsorption():
         """Full model."""
         print('fit_region',xbeg,xend)
         model = self.make_model(xbeg,xend,**make_model_kwargs)
+        model.name = f'fit_region_{int(xbeg)}_{int(xend)}'
         model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
         self.plot(model)
 
@@ -2239,6 +2253,8 @@ class FitReferenceAbsorption():
                     main.add_suboptimiser(model)
                     model_no_absorption = self.make_model(xbeg,xend,[species],neglect_species_to_fit=True)
                     models.append((model,model_no_absorption))
+                if len(models) == 0:
+                    raise Exception(f'Cannot fit species {species}, no regions defined in range {xbeg} to {xend}')
                 ## optimise plot indiviudal speciesmodels
                 residual = main.optimise(make_plot=self.make_plot,max_nfev=max_nfev,verbose=self.verbose)
                 for model,model_no_absorption in models:
@@ -2283,11 +2299,16 @@ class FitReferenceAbsorption():
             self,
             species_to_fit=None,
             prefit=True,
-            cycles=2,
+            cycles=3,
             fit_intensity=True,
             fit_sinusoid=True,
             regions='bands',
-            full_model=True,
+            fit_full_model=False,
+            reference_species='H2O',
+            fit_instrument=True,
+            fit_scalex=False,
+            fit_temperature=False,
+            max_nfev=5,
     ):
         """Fit spectrum in a standardised way."""
         print('auto_fit')
@@ -2304,45 +2325,49 @@ class FitReferenceAbsorption():
                 self.p.pop('intensity_spline')
             if fit_intensity:
                 self.auto_intensity()
-            self.fit_species(
-                'H2O',
-                regions='lines',
-                fit_N=True,
-                fit_pair=True,
-                fit_instrument=True,
-                fit_intensity=fit_intensity,
-                max_nfev=30)
+            if fit_instrument or fit_temperature:
+                self.fit_species(
+                    reference_species,
+                    regions='lines',
+                    fit_N=True,
+                    fit_pair=True,
+                    fit_instrument=fit_instrument,
+                    fit_intensity=fit_intensity,
+                    fit_temperature=fit_temperature,
+                    max_nfev=max_nfev)
             self.fit_species(
                 species_to_fit,
                 regions='lines',
                 fit_N=True,
                 fit_pair=True,
                 fit_intensity=fit_intensity,
-                max_nfev=30,)
+                max_nfev=max_nfev,)
         ## then cycle on careful fit
         for n in range(cycles):
             ## background
             if fit_sinusoid:
                 self.auto_sinusoid()
-            if fit_intensity:
-                self.auto_intensity()
+            ## # if fit_intensity:
+            ##     # self.auto_intensity()
             if fit_sinusoid or fit_intensity:
                 self.fit_regions(
                     fit_intensity=fit_intensity,
                     fit_sinusoid=fit_sinusoid,
-                    max_nfev=5,)
-            ## instrument function
-            self.fit_species(
-                'H2O',
-                regions=regions,
-                fit_N=True,
-                fit_pair=True,
-                fit_scalex=True,
-                fit_instrument=True,
-                fit_intensity=fit_intensity,
-                fit_sinusoid=fit_sinusoid,
-                max_nfev=5,
-            )
+                    max_nfev=max_nfev,)
+            ## instrument function etc
+            if fit_instrument or fit_scalex or fit_temperature:
+                self.fit_species(
+                    reference_species,
+                    regions=regions,
+                    fit_N=True,
+                    fit_pair=True,
+                    fit_scalex=fit_scalex,
+                    fit_instrument=fit_instrument,
+                    fit_intensity=fit_intensity,
+                    fit_sinusoid=fit_sinusoid,
+                    fit_temperature=fit_temperature,
+                    max_nfev=max_nfev,
+                )
             ## all species
             self.fit_species(
                 species_to_fit,
@@ -2351,11 +2376,16 @@ class FitReferenceAbsorption():
                 fit_pair=True,
                 fit_intensity=fit_intensity,
                 fit_sinusoid=fit_sinusoid,
-                max_nfev=5,
+                max_nfev=max_nfev,
             )
         ## make final model
-        if full_model:
-            self.full_model()
+        if fit_full_model:
+            self.full_model(
+                species_to_fit,
+                fit_N=True,
+                fit_pair=True,
+                max_nfev=max_nfev,
+            )
         print('Time elapsed:',format(timestamp()-time,'12.6f'))
 
     def plot(
@@ -2418,13 +2448,9 @@ class FitReferenceAbsorption():
         if self.experiment is None:
             self.load_experiment()
         ## fit experiment frequency scale
-        if 'scalex' in p:
-            p['scalex'].vary = False
-        if fit_scalex:
-            if 'scalex' not in p:
-                p['scalex'] = P(1,False,1e-10)
-                self.experiment.scalex(p['scalex'])
-            p['scalex'].vary = True
+        if 'scalex' not in p:
+            p['scalex'] = P(1,False,1e-9)
+        p['scalex'].vary = fit_scalex
         ## start model
         model = Model(
             name='_'.join(['make_model',*species_to_fit]),
@@ -2459,10 +2485,15 @@ class FitReferenceAbsorption():
             else:
                 p['N'][species].vary =False
                 p['pair'][species].vary =False
-            ## if species is not being fit then trim to lines above a
-            ## certain τ
-            tline = database.get_hitran_lines(species)
-            if species not in species_to_fit:
+            ## load data from HITRAN linelists
+            tline = hitran.get_lines(species)
+            ## Trim lines that are too weak to matter
+            if species in species_to_fit:
+                ## Remove very weak lines that probably wont
+                ## contribute at any reasonable column density
+                tline.limit_to_match(S296K_min=1e-25)
+            else:
+                ## if species not fit then lines can be trimmed to a minimum τ
                 τpeak_min = 1e-3    # approx minimum peak τ to include a line
                 # τpeak_min = 1e-5    # approx minimum peak τ to include a line
                 S296K_min = τpeak_min*1e-3/p['N'][species]    # resulting approx min S296K
@@ -2533,3 +2564,55 @@ class FitReferenceAbsorption():
         return model
         
 
+def auto_fit(
+        filename,
+        xbeg=600,
+        xend=6000,
+        species_to_fit=('H2O','CO','CO2','NH3','SO2','H2S','CH4','CS2','HCN',
+                        'N2O','NO','NO2','OCS','C2H2','C2H6','HCOOH',),
+        verbose=False,
+        make_plot=True,
+        prefit=True,
+        cycles=3,
+        fit_intensity=True,
+        fit_sinusoid=False,
+        fit_instrument=True,
+        fit_scalex=False,
+        fit_temperature=False,
+        regions='bands',
+        fit_full_model=False,
+        reference_species='H2O',
+        interpolate_model=0.001,
+        max_nfev=5,
+        
+):
+
+    
+
+    o = FitReferenceAbsorption(
+        filename=filename,
+        xbeg=xbeg,
+        xend=xend,
+        verbose=verbose,
+        make_plot=make_plot,
+        interpolate_model=interpolate_model,
+        )
+    
+    o.figure_number = plotting.gcf().number
+    o.ncpus = 1
+    o.auto_fit(
+        species_to_fit=species_to_fit,
+        prefit=prefit,
+        cycles=cycles,
+        fit_intensity=fit_intensity,
+        fit_sinusoid=fit_sinusoid,
+        fit_instrument=fit_instrument,
+        fit_temperature=fit_temperature,
+        fit_scalex=fit_scalex,
+        regions=regions,
+        fit_full_model=fit_full_model,
+        reference_species=reference_species,
+        max_nfev=max_nfev,
+    )
+    o.full_model()
+    return o
