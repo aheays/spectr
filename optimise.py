@@ -19,15 +19,66 @@ from immutabledict import immutabledict as idict
 from . import tools
 from . import plotting
 
-# class Store(dict):
+class _Store(dict):
+    """An object very similar to a dictionary, except that it knows the
+    Optimiser parent that it is an attribute and its repr function
+    produces an index reference to that Optimiser."""
+    
+    def __init__(self,parent):
+        dict.__init__(self)
+        self._parent = parent
 
-    # def __setitem__(self,key,val):
+    def __setitem__(self,key,val):
+        """Add key=val to self, but first reinitialise the val with modified repr function."""
+        ## adding a store something already in a store will presumably
+        ## cause problems
+        if hasattr(val,'_in_store'):
+            raise Exception(f'Cannot add already stored object {repr(val)} to store.')
+        ## str method
+        if type(val) in (int,float,tuple,str):
+            new_str = lambda obj: str(val)
+        elif type(val) in (dict,list,Parameter):
+            new_str = lambda obj: type(val).__str__(obj)
+        else:
+            raise Exception(f'Unsupported store type: {repr(type(val))}')
+        ## repr method referencing self
+        new_repr = lambda obj: f'{self._parent.name}[{repr(key)}]'
+        ## proper repr method
+        old_repr = lambda obj: type(val).__repr__(obj)
+        ## wrap val in a class that has the right str and repr methods
+        class StoredObject(type(val)):
+            """Same object but with modified str/repr functions"""
+            _in_store = self
+            __str__ = new_str
+            __repr__ = new_repr
+            __old_repr__ = old_repr
+        stored_val = StoredObject(val)
+        ## add and parameters/suboptimisers in the stored object
+        parameters,optimisers = _collect_parameters_and_optimisers(stored_val)
+        for t in parameters:
+            self._parent.add_parameter(t)
+        for t in optimisers:
+            self._parent.add_suboptimiser(t)
+        dict.__setitem__(self,key,stored_val)
 
-    # def __repr__(self):
+    def __repr__(self):
+        retval = ['{']
+        for key,val in self.items():
+            retval.append(f'    {repr(key):20} : {val.__old_repr__()},')
+        retval.append('}')
+        retval = '\n'.join(retval)
+        return retval
         
-    # def import(self):
-
-    # def export(self):
+    def load(self,filename):
+        data = deepcopy(tools.import_dict(filename,'store'))
+        for tkey,tval in data['store'].items():
+            self[tkey] = tval
+            
+    def save(self,filename):
+        tools.string_to_file(
+            filename,
+            # f'from spectr import *\nstore = {self._parent.name}.add_store_dict({repr(self)})',)
+            f'from spectr import *\nstore = {repr(self)}')
 
 
 class CustomBool():
@@ -133,10 +184,10 @@ def optimise_method(
         return new_function
     return actual_decorator
 
-def format_input_method(
-        format_multi_line=2,            # if the method has more arguments than this then format on separate lines
-):
-    """A decorator factory to add a optimiser format_input_function for the decorated method"""
+def format_input_method(format_multi_line=2):
+    """A decorator factory to add a optimiser format_input_function for
+    the decorated method. If more arguments than then
+    format_input_function then format on separate lines."""
     def actual_decorator(function):
         @functools.wraps(function)
         def new_function(self,*args,**kwargs):
@@ -211,15 +262,16 @@ class Optimiser:
                 retval += f'verbose={repr(self.verbose)},'
             if self.description is not None:
                 retval += f'description={repr(self.description)},'
-            # if len(self._store)>0:
-                # retval += f'store={self.format_store()},'
+            if len(self.store)>0:
+                retval += f'store={repr(self.store)},'
             retval += ')'
             return retval
         self.add_format_input_function(f)
         ## add data to internal store
-        self._store = {}
+        self.store = _Store(self)
         if store is not None:
-            self.set_store(store)
+            for key in store:
+                self.store[key] = store[key]
 
     def __repr__(self):
         """No attempt to represent this data but its name may be used in place
@@ -277,111 +329,48 @@ class Optimiser:
     def add_parameter(self,parameter,*args,**kwargs):
         """Add one parameter. Return a reference to it. Args are as in
         pP or one are is a P."""
-        if hasattr(parameter,'_this_is_a_stored_object_in'):
-            if (parameter._this_is_a_stored_object_in is not self
-                and parameter._this_is_a_stored_object_in not in self.suboptimisers):
-                self.add_suboptimiser(parameter._this_is_a_stored_object_in)
+        if hasattr(parameter,'_in_store'):
+            optimiser = parameter._in_store._parent
+            if optimiser is not self and optimiser not in self.suboptimisers:
+                self.add_suboptimiser(optimiser)
+                self.pop_format_input_function()
         if not isinstance(parameter,Parameter):
             parameter = Parameter(*tools.tools.ensure_iterable(parameter),*args,**kwargs)
         if parameter not in self.parameters:
             self.parameters.append(parameter)
         return parameter
     
-    def set_store(self,store_dict):
-        """Add Parameters or other data to internal store."""
-        for key,val in store_dict.items():
-            self._add_to_store(key,val)
-        self.add_format_input_function(
-            lambda: f'{self.name}.set_store({self.format_store()})')
-
-    def _add_to_store(self,key,val):
-        """Add Parameters or other data to internal store. Only some types implemented."""
-        ## adding a store something already in a store will presumably
-        ## cause problems
-        if hasattr(val,'_this_is_a_stored_object_in'):
-            raise Exception(f'Cannot add already stored object {repr(val)} to store.')
-        ## str method
-        if type(val) in (int,float,tuple,str):
-            new_str = lambda obj: str(val)
-        elif type(val) in (dict,list,Parameter):
-            new_str = lambda obj: type(val).__str__(obj)
-        else:
-            raise Exception(f'Unsupported store type: {repr(type(val))}')
-        ## repr method referencing self
-        new_repr = lambda obj: f'{self.name}[{repr(key)}]'
-        ## proper repr method
-        old_repr = lambda obj: type(val).__repr__(obj)
-        ## wrap val in a class that has the right str and repr methods
-        class StoredObject(type(val)):
-            """Same object but with modified str/repr functions"""
-            _this_is_a_stored_object_in = self
-            __str__ = new_str
-            __repr__ = new_repr
-            __old_repr__ = old_repr
-        self._store[key] = StoredObject(val)
-        ## add and parameters/suboptimisers in the stored object
-        parameters,optimisers = _collect_parameters_and_optimisers(self._store[key])
-        for t in parameters:
-            self.add_parameter(t)
-        for t in optimisers:
-            self.add_suboptimiser(t)
-        
-    def format_store(self):
-        retval = ['{']
-        for key,val in self._store.items():
-            retval.append(f'    {repr(key):20} : {val.__old_repr__()},')
-        retval.append('}')
-        retval = '\n'.join(retval)
-        return retval
-
-    def get_store(self,key):
-        """Return a value from store."""
-        return self._store[key] 
-
-    def import_store(self,filename,key='store'):
-        data = deepcopy(tools.import_dict(filename,key))
-        for tkey,tval in data[key].items():
-            self.add_store(tkey,tval)
-            self.pop_format_input_function()
-        self.add_format_input_function(
-            lambda: f'{self.name}.import_store(filename={repr(filename)},key={repr(key)})')
-
-    @optimise_method()
-    def export_store(self,filename):
-        tools.string_to_file(
-            filename,
-            f'from spectr import *\nstore = {self.name}.add_store_dict({self.format_store()})',)
     
     def __getitem__(self,key):
-        return self.get_store(key)
+        return self.store[key]
 
     def __setitem__(self,key,val):
         """Add data to store."""
-        self.add_store(key,val)
+        self.store[key] = val
 
     def __iter__(self):
         for key in self.keys():
             yield key
 
     def keys(self):
-        return list(self._store)
+        return list(self.store)
 
     def add_construct_function(self,*functions,construct_on_add=True):
         """Add one or more functions that are called each iteration when the
         model is optimised. Optionally these may return an array that is added
         to the list of residuals."""
+        self._clean_construct = True 
         for f in functions:
             self._construct_functions[timestamp()] = f
             if construct_on_add and self.permit_construct_on_add: 
                 f()
-        self._clean_construct = True 
 
     def add_post_construct_function(self,*functions):
         """Add one or more functions that is run after normal construct
         functions. Run in the reverse order in which they were added."""
+        self._clean_construct = True 
         for f in functions:
             self._post_construct_functions[timestamp()] = f
-        self._clean_construct = True 
 
     def add_monitor_function(self,*functions):
         """Add one or more functions that are called when a new minimum
@@ -499,8 +488,8 @@ class Optimiser:
             ## save formated input file
             tools.string_to_file(f'{subdirectory}/input.py',optimiser.format_input())
             ## save store
-            if len(self._store) > 0:
-                self.export_store(f'{subdirectory}/store.py')
+            if len(optimiser.store) > 0:
+                optimiser.store.save(f'{subdirectory}/store.py')
             ## save residual error
             if optimiser.residual is not None:
                 tools.array_to_file(f'{subdirectory}/residual' ,optimiser.residual,fmt='%+0.4e')
@@ -861,8 +850,8 @@ class Optimiser:
         if self._monitor_frequency != 'never':
             self.monitor() 
         ## describe result
-        if verbose or self.verbose:
-            print('total RMS:',np.sqrt(np.mean(np.array(self.combined_residual)**2)))
+        if (verbose or self.verbose) and len(self.combined_residual) > 0:
+            print('total RMS:',tools.rms(self.combined_residual))
             for suboptimiser in self.get_all_suboptimisers():
                 if (suboptimiser.residual is not None and len(suboptimiser.residual)>0):
                     print(f'suboptimiser {suboptimiser.name} RMS:',tools.rms(suboptimiser.residual))
@@ -1010,6 +999,8 @@ class Optimiser:
                 else:
                     t = jacobian[:,inonzero]
                     covariance = linalg.inv(np.dot(t.T,t))
+                    ## if np.any(covariance<0):
+                    ##           raise linalg.LinAlgError
                     if rms_noise is None:
                         chisq = np.sum(residual**2)
                         dof = len(residual)-number_of_parameters+1
@@ -1117,8 +1108,6 @@ class Parameter():
         retval += ')'
         return retval
 
-    # def __str__(self):
-        # return repr(self)
     __str__ = copy(__repr__)
 
     def __neg__(self): return(-self.value)

@@ -238,18 +238,25 @@ def dict_to_kwargs(d,keys=None):
         keys = d.keys() # default to all keys
     return(','.join([key+'='+repr(d[key]) for key in keys]))
 
-def dict_expanded_repr(d,indent='',maxdepth=1,separate_with_blanks_depth=-1,_depth=0):
+def format_dict(
+        input_dict,
+        indent='',
+        newline_depth=1,
+        blank_depth=0,
+        _depth=0,
+):
     """pprint dict recursively but repr non-dict elements."""
     indent = '    '
     lines = ['{']
-    for i,(key,val) in enumerate(d.items()):
-        if separate_with_blanks_depth >= _depth:
+    ## add all values, either on new line, or as subdict
+    for i,(key,val) in enumerate(input_dict.items()):
+        if blank_depth >= _depth:
             prefix = '\n'+indent
         else:
             prefix = indent
         if (
                 not isinstance(val,dict) # not a dict
-                or _depth >= maxdepth    # already too deep
+                or _depth >= newline_depth    # already too deep
                 or len(val) == 0         # empty dict
                 or (len(val) == 1 and not any([isinstance(t,dict) for t in val.values()])) # dict contains no other dicts
             ):
@@ -257,12 +264,25 @@ def dict_expanded_repr(d,indent='',maxdepth=1,separate_with_blanks_depth=-1,_dep
             lines.append(f'{prefix}{repr(key):20}: {repr(val)},')
         else:
             ## expand as subdict
-            subdict = dict_expanded_repr(val,indent+"    ",_depth=_depth+1,maxdepth=maxdepth,separate_with_blanks_depth=separate_with_blanks_depth)
+            subdict = dict_expanded_repr(
+                val,
+                indent+"    ",
+                _depth=_depth+1,
+                newline_depth=newline_depth,
+                blank_depth=blank_depth,
+            )
             lines.append(f'{prefix}{repr(key):10}: {subdict},')
+    ## close dictionary with blank line first if needed
+    if blank_depth >= _depth:
+        lines.append('')
     lines.append('}')
-    lines = [indent*_depth+t for t in lines]
+    ## add indents to non blank lines
+    lines = [(indent*_depth+t if len(t)>0 else t) for t in lines]
+    ## combine into one
     retval = '\n'.join(lines)
     return retval
+
+dict_expanded_repr = format_dict
 
 def compute_matrix_of_function(A,*args,**kwargs):
     """2D only"""
@@ -691,6 +711,7 @@ def make_valid_python_symbol_name(string):
     """Substitute characters in string so that it can be used as a symbol
     name."""
     string = re.sub(r'[-<!^.+|&/%]','_',string)
+    string = regularise_unicode(string)
     return string
 
 def regularise_unicode(s):
@@ -3075,6 +3096,16 @@ def match_regexp(regexp,x):
 
 def find_regexp(regexp,x):
     return find(match_regexp(regexp,x))
+
+def match_lines(string,regexp):
+    """"""
+    r = re.compile(regexp)
+    retval = []
+    for line in string.split('\n'):
+        if re.match(r,line):
+            retval.append(line)
+    retval = '\n'.join(retval)
+    return retval
 
 # def meshgrid(*args):
     # """ meshgrid(arr1,arr2,arr3,...)

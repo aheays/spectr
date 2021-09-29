@@ -39,10 +39,14 @@ class Experiment(Optimiser):
             xbeg=None,
             xend=None,
             noise_rms=None,
+            store=None,
     ):
-        optimise.Optimiser.__init__(self,name)
-        self.pop_format_input_function()
+        ## initalise optimiser variables
+        optimise.Optimiser.__init__(self,name,store=store)
+        self.pop_format_input_function() 
+        store = self.store
         self.automatic_format_input_function()
+        ## initialise data arrays
         self.x = None
         self.y = None
         self.experimental_parameters = {} # a dictionary containing any additional known experimental parameters
@@ -59,7 +63,7 @@ class Experiment(Optimiser):
     def set_spectrum(self,x,y,xbeg=None,xend=None,_cache=None,**experimental_parameters):
         """Set x and y as the experimental spectrum. With various safety
         checks. Not optimisable, no format_input_function."""
-        if len(_cache) == 0:
+        if self._clean_construct:
             x,y = np.array(x),np.array(y)
             i = np.argsort(x); x,y = x[i],y[i] # sort
             ## set range
@@ -228,11 +232,11 @@ class Experiment(Optimiser):
     def scalex(self,scale=1):
         """Rescale experimental spectrum x-grid."""
         self.x *= float(scale)
-        # self._clean_construct = True
 
     def __len__(self):
         return len(self.x)
 
+    @format_input_method(format_multi_line=inf)
     def fit_noise(self,xbeg=None,xend=None,xedge=None,n=1,make_plot=False,figure_number=None):
         """Estimate the noise level by fitting a polynomial of order n
         between xbeg and xend to the experimental data. Also rescale
@@ -345,15 +349,13 @@ class Model(Optimiser):
     def _initialise(self,_cache=None):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
-        ## test if experimental domain has changed
+        ## clean construct the the experimental domain has changed
         if ('xexp' in _cache
             and (len(self.experiment.x) != len(_cache['xexp'])
                  or np.any(self.experiment.x != _cache['xexp']))):
-            xexp_changed = True
-        else:
-            xexp_changed = False
+            self._clean_construct = True
         ## maybe rebuild x array
-        if self._clean_construct or xexp_changed:
+        if self._clean_construct:
             ## build cache of data
             self.residual_scale_factor = 1
             if self._xin is not None:
@@ -563,7 +565,14 @@ class Model(Optimiser):
         self.add_construct_function(f)
 
     @format_input_method()
-    def add_hitran_line(self,species,match=None,*args,**kwargs):
+    def add_hitran_line(
+            self,
+            species,
+            match=None,
+            *args,
+            **kwargs,
+            
+    ):
         line = hitran.get_lines(species,match=match)
         line.clear_format_input_functions()
         self.add_line(line,*args,**kwargs)
@@ -572,16 +581,16 @@ class Model(Optimiser):
     @optimise_method()
     def add_line(
             self,
-            line,
-            kind='absorption',
-            nfwhmL=20,
-            nfwhmG=10,
-            ymin=None,
-            lineshape=None,
-            ncpus=1,
+            line,               # lines.Generic or a subclass
+            kind='absorption',  # 'absorption', 'emission' or else any other key defined in line
+            nfwhmL=20,          # number of Lorentzian fwhms to include
+            nfwhmG=10,          # number of Gaussian fwhms to include
+            ymin=0,             # minimum value of ykey to include
+            lineshape=None,     # as in lineshapes.py, or will be automatically selected
+            ncpus=1,            # for multiprocessing
+            verbose=None,       # print info 
+            match=None,         # only include lines matching keys:vals in this dictionary
             _cache=None,
-            verbose=None,
-            match=None,
             **set_keys_vals
     ):
         ## nothing to be done
@@ -601,7 +610,7 @@ class Model(Optimiser):
                 line_copy.verbose = verbose
             if verbose:
                 print('add_line: clean construct')
-            ## set parameter data
+            ## set parameter/constant data
             for key,val in set_keys_vals.items():
                 line_copy[key] = val
             ## get ykey
@@ -610,7 +619,7 @@ class Model(Optimiser):
             elif kind == 'emission':
                 ykey = 'I'
             else:
-                raise Exception(f"Invalid kind {repr(kind)} try 'absorption' or 'emission'")
+                ykey = kind
             ## calculate full spectrum
             def _calculate_spectrum(line,index):
                 if len(line) == 0:
@@ -622,7 +631,8 @@ class Model(Optimiser):
                     y = np.exp(-y)
                 return y
             y = _calculate_spectrum(line_copy,None)
-            ## important data — only update spectrum if these have changed
+            ## important data — only update spectrum if these have
+            ## changed -- HACK
             data = {key:line_copy[key] for key in ('ν',ykey,'ΓL','ΓD') if line_copy.is_known(key)}
             ## cache
             (
@@ -647,29 +657,20 @@ class Model(Optimiser):
             if nmatch == 0:
                 return
             ## set modified data in set_keys_vals if they have changed
-            ## from cached values.  
+            ## from cached values.  Only update Parameters (assume
+            ## other types ## cannot change)
             for key,val in set_keys_vals.items():
                 if isinstance(val,Parameter):
                     if self._last_construct_time < val._last_modify_value_time:
-                        ## changed parmaeter
                         line_copy[key] = val
-                else:
-                    ## Only update Parameters (assume other types ## cannot change)
-                    pass        
-            ## update from keys and rows that have changed
-            ichanged = line.row_modify_time[imatch] > self._last_construct_time
-            nchanged = np.sum(ichanged)
-            if nchanged > 0:
+            ## if the source lines data has changed then update
+            ## changed rows and keys in the local copy
+            if line.global_modify_time > self._last_construct_time:
                 for key in line.explicitly_set_keys():
                     if line[key,'_modify_time'] > self._last_construct_time:
-                        line_copy[key,ichanged] = line[key,imatch][ichanged]
-            # ## x grid has changed, full recalculation
-            # if self._xchanged:
-                # if verbose:
-                    # print('add_line: x grid has changed, full recalculation')
-                # y = _calculate_spectrum(line_copy,None)
-            ## else find all changed lines and update those only
-            elif line_copy.global_modify_time > self._last_construct_time:
+                        line_copy.set(key,'value',line[key,imatch],set_changed_only=True)
+            ## update spectrum for any changed lines in the local copy
+            if line_copy.global_modify_time > self._last_construct_time:
                 ## get indices of local lines that has been changed
                 ichanged = line_copy.row_modify_time > self._last_construct_time
                 nchanged = np.sum(ichanged)
@@ -681,7 +682,7 @@ class Model(Optimiser):
                         ## no key other than ykey has changed
                         and (np.all([line_copy[key,'_modify_time'] < self._last_construct_time for key in data if key != ykey]))
                         ## ykey has changed by a near-constant factor -- RISKY!!!!
-                        and tools.total_fractional_range(data[ykey]/line_copy[ykey])<1e-14
+                        and _similar_within_fraction(data[ykey],line_copy[ykey])
                         ## if ymin is set then scaling is dangerous -- lines can fail to appear when scaled up
                         and (ymin is None or ymin == 0)
                 ):
@@ -699,7 +700,7 @@ class Model(Optimiser):
                     ## more than half lines have changed -- full
                     ## recalculation
                     if verbose:
-                        print('add_line: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
+                        print(f'add_line: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
                 else:
                     ## a few lines have changed, update these only
@@ -725,7 +726,6 @@ class Model(Optimiser):
         ## apply to model
         if kind == 'absorption':
             self.y *= y
-            ## fortran_tools.in_place_array_multiplication(self.y,y)
         else:
             self.y += y
         _cache['y'] = y
@@ -954,26 +954,21 @@ class Model(Optimiser):
         return knots
 
     @optimise_method()
-    def add_spline(self,knots=None,order=3,_cache=None,_parameters=None):
-        """Multiple y by a spline function."""
-        ## make the spline if necessary
-        if 'spline' not in _cache:
-            spline = Spline(f'{self.name}_multiply_spline',knots,order)
-            spline.clear_format_input_functions()
-            self.add_suboptimiser(spline)
-            self.pop_format_input_function()
-            _cache['spline'] = spline
-        spline = _cache['spline'] 
-        ## compute the  spline if necessary
-        # if self._clean_construct or self._xchanged:
+    def add_spline(self,knots=None,order=3,_cache=None,_parameters=None,):
+        """Add a spline."""
         if self._clean_construct:
-            i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
-            spline.set_x(self.x[i])
-            spline.clear_format_input_functions()
+            xs = [t[0] for t in knots]
+            ys = [t[1] for t in knots]
+            i = (self.x >= np.min(xs)) & (self.x <= np.max(xs))
             _cache['i'] = i
-        i = _cache['i']
-        ## add to y
-        self.y[i] += spline.y  
+            _cache['xs'] = xs
+            _cache['ys'] = ys
+        if (self._clean_construct 
+            or np.any([t._last_modify_value_time > self._last_construct_time
+                       for t in _parameters])):
+            y = tools.spline(_cache['xs'],_cache['ys'],self.x[_cache['i']],order=order)
+            _cache['y'] = y
+        self.y[_cache['i']] += _cache['y']
 
     add_intensity_spline = add_spline # deprecated
 
@@ -1739,7 +1734,7 @@ class Model(Optimiser):
             ymin,ymax = -0.1*self.yexp.max(),self.yexp.max()*1.1
             xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
             tkwargs = dict(color=plotting.newcolor(0), label=f'Experimental spectrum: {self.experiment.name}', **plot_kwargs)
-            ax.plot(self.x,self.yexp,**tkwargs)
+            ax.plot(self.xexp,self.yexp,**tkwargs)
         if plot_model and self.y is not None:
             if invert_model:
                 self.y *= -1
@@ -1750,13 +1745,16 @@ class Model(Optimiser):
             if invert_model:
                 self.y *= -1
         if plot_residual and self.y is not None and self.experiment is not None and self.experiment.y is not None:
-            yres = self.yexp - self.y
-            if self.residual_weighting is not None:
-                yres *= self.residual_weighting
-            ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
-            xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
-            tkwargs = dict(color=plotting.newcolor(2), label='Experiment-Model residual', **plot_kwargs)
-            ax.plot(self.x,yres+shift_residual,zorder=-1,**tkwargs) # plot fit residual
+            if self._interpolate_factor is not None:
+                print("Model is interpolated, cannot compute residual.")
+            else:
+                yres = self.yexp - self.y
+                if self.residual_weighting is not None:
+                    yres *= self.residual_weighting
+                ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
+                xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
+                tkwargs = dict(color=plotting.newcolor(2), label='Experiment-Model residual', **plot_kwargs)
+                ax.plot(self.x,yres+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
@@ -2126,7 +2124,7 @@ class FitReferenceAbsorption():
     }
 
     def __str__(self):
-        retval = tools.dict_expanded_repr(self.p,maxdepth=3)
+        retval = tools.dict_expanded_repr(self.p,newline_depth=3)
         return retval
 
     def verbose_print(self,*args,**kwargs):
@@ -2563,6 +2561,20 @@ class FitReferenceAbsorption():
         model.construct()
         return model
         
+
+def _similar_within_fraction(x,y,maxfrac=1e14):
+    """Test if nonzero values of x and y are similar within a maximum fraction abs(x/y)."""
+    i = (x!=0)&(y!=0)
+    x,y = x[i],y[i]
+    assert ~np.any(x==0)
+    assert ~np.any(y==0)
+    frac = x/y
+    fracmax,fracmin = np.max(frac),np.min(frac)
+    if fracmax == 0 and fracmin == 0:
+        total_fractional_range = 0
+    else:
+        total_fractional_range = abs((fracmax-fracmin)/((fracmax+fracmin)/2))
+    return total_fractional_range < maxfrac
 
 def auto_fit(
         filename,

@@ -82,6 +82,10 @@ class Dataset(optimise.Optimiser):
             limit_to_match=None, # dict of things to match
             description='',
             **kwargs):
+        ## init as optimiser, make a custom form_input_function, save
+        ## some extra stuff if output to directory
+        optimise.Optimiser.__init__(self)
+        self.pop_format_input_function()
         ## basic internal variables
         self._data = {} # table data and its properties stored here
         self._length = 0    # length of data
@@ -109,10 +113,8 @@ class Dataset(optimise.Optimiser):
         if name is None:
             name = tools.make_valid_python_symbol_name(
                 self.classname.lower())
-        ## init as optimiser, make a custom form_input_function, save
-        ## some extra stuff if output to directory
-        optimise.Optimiser.__init__(self,name=name)
-        self.pop_format_input_function()
+        self.name = name
+        name = self.name
         ## new format input function
         def format_input_function():
             retval = f'{self.name} = {self.classname}({repr(self.name)},'
@@ -149,6 +151,11 @@ class Dataset(optimise.Optimiser):
         ## limit to matching data somehow loaded above
         if limit_to_match is not None:
             self.limit_to_match(**limit_to_match)
+
+    ## name is adjusted to be proper python symbol when set
+    def _set_name(self,name):
+        self._name = tools.make_valid_python_symbol_name(name)
+    name = property(lambda self:self._name,_set_name)
 
     def __len__(self):
         return self._length
@@ -695,6 +702,9 @@ class Dataset(optimise.Optimiser):
     def __setitem__(self,key,value):
         """Set key, (key,subkey), (key,index), (key,subkey,index) to
         value."""
+        if key == 'isotopologue_ratio':
+            import pdb; pdb.set_trace(); # DEBUG
+            
         if isinstance(key,str):
             tkey,tsubkey,tindex = key,'value',None
         elif len(key) == 1:
@@ -809,7 +819,7 @@ class Dataset(optimise.Optimiser):
                 '_suboptimisers',
                 'residual',
                 'combined_residual',
-                '_store',
+                'store',
         ):
             setattr(retval,attr_to_deepcopy, deepcopy(getattr(self,attr_to_deepcopy), memo))
         return retval
@@ -1828,7 +1838,6 @@ class Dataset(optimise.Optimiser):
         on optimisaion if new_dataset changes."""
         if self._clean_construct and 'total_length' not in _cache:
             ## concatenate data if it hasn't been done before
-            self.permit_indexing = False
             ## limit to keys
             if keys == 'old':
                 keys = list(self.explicitly_set_keys())
@@ -1841,6 +1850,7 @@ class Dataset(optimise.Optimiser):
             total_length = len(self) + len(new_dataset)
             self.concatenate(new_dataset,keys)
             _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
+            self.permit_indexing = False
         else:
             ## update data in place
             index = slice(_cache['old_length'],_cache['total_length'])
@@ -2018,7 +2028,7 @@ class Dataset(optimise.Optimiser):
         if zkeys is None:
             zkeys = self.default_zkeys
         zkeys = list(tools.ensure_iterable(zkeys))
-        ykeys = [key for key in ykeys if key not in xkeys+zkeys]
+        # ykeys = [key for key in ykeys if key not in xkeys+zkeys]
         # zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
         zkeys = [key for key in zkeys if key not in xkeys+ykeys and self.is_known(key)] # remove xkey and ykeys from zkeys
         for t in xkeys+ykeys+zkeys:

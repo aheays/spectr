@@ -188,7 +188,7 @@ def get_lines(species,name=None,match=None,**match_kwargs):
     # line = _get_lines_internal(path)
     line = deepcopy(_get_lines_internal(path))
     if name is None:
-        line.name ='hitran_lines'
+        line.name =f'hitran_lines_{species}'
     else:
         line.name = name
     ## limit data
@@ -201,6 +201,7 @@ def get_lines(species,name=None,match=None,**match_kwargs):
             retval += f',name={repr(name)}'
         if match is not None:
             retval += f',match={repr(match)}'
+        retval += ')'
         return retval
     line.add_format_input_function(f)
     return line
