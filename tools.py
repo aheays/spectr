@@ -241,8 +241,8 @@ def dict_to_kwargs(d,keys=None):
 def format_dict(
         input_dict,
         indent='',
-        newline_depth=1,
-        blank_depth=0,
+        newline_depth=inf,
+        blank_depth=-1,
         _depth=0,
 ):
     """pprint dict recursively but repr non-dict elements."""

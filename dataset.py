@@ -309,7 +309,7 @@ class Dataset(optimise.Optimiser):
                 raise Exception(f'Cannot set data by index for unset key: {key}')
             ## reallocate with increased unicode dtype length if new
             ## strings are longer than the current array dtype
-            if self.get_kind(key) == 'U':
+            if self[key,'kind'] == 'U':
                 ## this is a really hacky way to get the length of string in a numpy array!!!
                 old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
                 new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(value).dtype)))
@@ -320,6 +320,9 @@ class Dataset(optimise.Optimiser):
                         dtype=f'<U{new_str_len*self._over_allocate_factor}')
                     t[:len(self)] = self.get(key)
                     data['value'] = t
+            ## cast scalar data correctly
+            if np.isscalar(value):
+                value = self[key,'cast'](array([value]))
             ## set indexed data
             data['value'][:self._length][index] = data['cast'](value)
         else:
@@ -702,9 +705,6 @@ class Dataset(optimise.Optimiser):
     def __setitem__(self,key,value):
         """Set key, (key,subkey), (key,index), (key,subkey,index) to
         value."""
-        if key == 'isotopologue_ratio':
-            import pdb; pdb.set_trace(); # DEBUG
-            
         if isinstance(key,str):
             tkey,tsubkey,tindex = key,'value',None
         elif len(key) == 1:
@@ -1393,6 +1393,8 @@ class Dataset(optimise.Optimiser):
             self.load_from_org(filename,**load_method_kwargs)
         elif filetype == 'text':
             self.load_from_text(filename,**load_method_kwargs)
+        elif filetype == 'rs':
+            self.load_from_text(filename,**load_method_kwargs,delimiter='␞')
         else:
             raise Exception(f"Unrecognised data filetype: {filename=} {filetype=}")
 

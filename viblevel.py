@@ -101,7 +101,6 @@ class Level(Optimiser):
         """Return an xml fragment describing this viblevel as a pgopher LinearManifold."""
         lines = []
         lines.append(f'<LinearManifold Name="{self.name}" LimitSearch="True">')
-
         ## add manifolds
         level = self.get_electronic_vibrational_level()
         encode_lambda = {(0,0):'Sigma+', (0,1):'Sigma-',
@@ -143,9 +142,12 @@ class Level(Optimiser):
         ## join lines
         lines.append('')
         lines.append(f'</LinearManifold>')
-
         retval = '\n'.join(lines)
         return retval
+
+    def load_from_pgopher(self,filename):
+        
+        pass
 
     def _get_J(self):
         return self._J
@@ -331,7 +333,7 @@ class Level(Optimiser):
             for key in kw:
                 if key not in self.vibrational_spin_level:
                     self.vibrational_spin_level[key] = 0
-            self.vibrational_spin_level.extend(keys='new',ef=ef,Σ=Σ, **{key:kw[key] for key in kw},)
+            self.vibrational_spin_level.extend(ef=ef,Σ=Σ, **{key:kw[key] for key in kw},)
             ## make H bigger
             tH = np.full((len(self.J),len(self.vibrational_spin_level),len(self.vibrational_spin_level)),0.,dtype=complex)
             tH[:,:ibeg,:ibeg] = self.H
@@ -639,7 +641,6 @@ class Line(Optimiser):
                     self.line.extend(
                         J_u=J_u,
                         J_l=J_l,
-                        keys='new',
                         **{key+'_u':np.repeat(val,len(self.level_l.vibrational_spin_level))
                            for key,val in self.level_u.vibrational_spin_level.items()},
                         **{key+'_l':  np.tile(val,len(self.level_u.vibrational_spin_level))

@@ -74,7 +74,7 @@ for key in (
                 if np.any(self[f'key_l']!=self[f'key_u']):
                     raise InferException(f'Cannot infer {key}_{suffix} from {key}_l or {key}_u, they have differing values.')
             return value
-        prototypes['species']['infer'].append(((f'{key}_{suffix}'),lambda self,x: x))
+        prototypes[key]['infer'].append((f'{key}_{suffix}',_f))
         ## set upper or lower level from the common value
         prototypes[f'{key}_{suffix}']['infer'].append((key,lambda self,x: x))
 
@@ -1056,7 +1056,7 @@ class Generic(levels.Base):
         for key in defaults:
             data[key] = defaults[key]
         ## add to self
-        self.concatenate(data,keys='all',)
+        self.concatenate(data)
         ## set data to be copied
         if optimise:
             self.copy_level_data(levelu)
@@ -1455,7 +1455,7 @@ class Diatomic(Linear):
         ):
             if key in data:
                 data.pop(key)
-        self.extend(keys='all',**data)
+        self.extend(**data)
 
 
     def concatenate_with_combination_differences(self,line):

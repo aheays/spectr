@@ -29,9 +29,8 @@ prototypes['notes'] = dict(description="Notes regarding this line" , kind='U' ,i
 prototypes['author'] = dict(description="Author of data or printed file" ,kind='U' ,infer=[])
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
-prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U',infer=[],
-                             cast=database.normalise_species
-                             )
+
+prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U',infer=[], cast=database.normalise_species)
 prototypes['_species_hash'] = dict(description="Hash of species", kind='i',infer=[('species',lambda self,species:[hash(t) for t in species]),])
 
 @vectorise(cache=True,vargs=(1,))
