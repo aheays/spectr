@@ -116,8 +116,7 @@ class Level(Optimiser):
             lines.append(' '.join(line))
             for key1,key2 in (
                     ('Tv','Origin'), ('Bv','B'), ('Dv','D'),
-                    ('Hv','H'), ('Lv','L'), ('Mv','M'), ('Nv','N'),
-                    ('Ov','O'),
+                    ('Hv','H'), ('Lv','L'), ('Mv','M'), ('Nv','N'), ('Ov','O'),
                     ('Av','A'), ('ADv','AD'),
                     ('λv','LambdaSS'), ('λD','LambdaD'), ('λH','LambdaH'),
                     ('γv','gamma'), ('γDv','gammaD'), ('γHv','gammaH'), ('γLv','gammaL'),
@@ -145,9 +144,7 @@ class Level(Optimiser):
         retval = '\n'.join(lines)
         return retval
 
-    def load_from_pgopher(self,filename):
-        
-        pass
+    
 
     def _get_J(self):
         return self._J
@@ -298,7 +295,7 @@ class Level(Optimiser):
             ## check kwargs contains only defined data
             allowed_kwargs = (
                 'species','label','S','Λ','s','v','gu',
-                'Tv','Bv','Dv','Hv','Lv','Mv',
+                'Tv','Bv','Dv','Hv','Lv','Mv','Nv','Ov',
                 'Av','ADv','λv','λDv','λHv','γv','γDv',
                 'ov','pv','pDv','qv','qDv',)
             for key in kw:
@@ -306,7 +303,8 @@ class Level(Optimiser):
                     raise Exception(f'Keyword argument {repr(key)} is not a known quantum number of Hamiltonian parameter. Allowed kwargs: {allowed_kwargs} ')
             ## set differentiation stepsize
             stepsizes = {'Tv':1e-3, 'Bv':1e-6, 'Dv':1e-9, 'Hv':1e-13,
-                         'Lv':1e-15, 'Mv':1e-17, 'Av':1e-3, 'ADv':1e-7, 'λv':1e-5,
+                         'Lv':1e-15, 'Mv':1e-17, 'Nv':1e-19, 'Ov':1e-21,
+                         'Av':1e-3, 'ADv':1e-7, 'λv':1e-5,
                          'λDv':1e-8, 'λHv':1e-11, 'γv':1e-3, 'γDv':1e-7, 'ov':1e-3,
                          'pv':1e-3, 'pDv':1e-7, 'qv':1e-6, 'qDv':1e-7,}
             for key in kw:
@@ -350,6 +348,7 @@ class Level(Optimiser):
 
     add_level = add_manifold    # deprecated
 
+
     @optimise_method()
     def add_spline_width(self,name,knots,ef=None,Σ=None,order=3):
         """Add complex width to manifold 'name' according to the given spline knots.. If ef and Σ are not none then set these levels only."""
@@ -385,7 +384,6 @@ class Level(Optimiser):
             _cache=None):
         """Add spin-orbit coupling of two manifolds."""
         assert HJSDv == 0, 'not implemented'
-        
         ## save all interactions
         self.interactions[name1,name2] = {
             'ηv':ηv, 'ηDv':ηDv,
@@ -458,13 +456,75 @@ class Level(Optimiser):
                 (HJSv, HJSv*JS[i,j](J)), # JS, better symbol needed
                 (Hev, float(Hev)*ΛSΣefdiag[i,j]), # electronic
                 (λvtest, λvtest*SS[i,j]),               # spin-spin off-diagonal coupling, not final formulation
-                    
             ):
                 if isinstance(pi,Parameter) or pi!=0:
                     H += Hi
             ## add to self
             self.H[iJ,i+ibeg,j+jbeg] += H
             self.H[iJ,j+jbeg,i+ibeg] += np.conj(H)
+
+    def load_from_pgopher(
+            self,
+            filename,
+            match=None,
+            not_keys=(),
+            **load_pgopher_constants_kwargs
+    ):
+        ## load molecular constants and perturbations
+        level = levels.Diatomic()
+        level.load_pgopher_constants(filename,**load_pgopher_constants_kwargs)
+        line = lines.Diatomic()
+        line.load_pgopher_constants(filename,**load_pgopher_constants_kwargs)
+        ## limit to matches
+        level.limit_to_match(match)
+        tmatch = {}
+        for key,val in match.items():
+            tmatch[f'{key}_u'] = tmatch[f'{key}_l'] = val
+        line.limit_to_match(tmatch)
+        ## limit to keys if specified
+        for key in not_keys:
+            if key in level:
+                level.unset(key)
+            if key in line:
+                line.unset(key)
+        ## add to self
+        self.add_manifolds_from_level(level)
+        self.add_couplings_from_line(line)
+
+    def add_manifolds_from_level(self,level):
+        ## add mainfolds to self
+        for row in level.rows():
+            qn,p ={},{}
+            for key in row:
+                if key in ('label','v','Λ','S','s','gu',):
+                    qn[key] = row[key]
+                elif row[key] != 0:
+                    p[key] = row[key]
+            self.add_manifold(name=level.encode_qn(qn),**p)
+
+    def add_couplings_from_line(self,line):
+        """Add couplings in line object to self."""
+        for row in line.rows():
+            ## separate qn and matrix elements
+            qnu,qnl,p = {},{},{}
+            for key in row:
+                if key in  ('label_u','v_u','Λ_u','S_u','s_u','gu_u'):
+                    qnu[key[:-2]] = row[key]
+                elif key in  ('label_l','v_l','Λ_l','S_l','s_l','gu_l'):
+                    qnl[key[:-2]] = row[key]
+                elif row[key] != 0:
+                    p[key] = row[key]
+            ## find levels corresponding to his interaction
+            name1 = name2 = None
+            for name,t in self._manifolds.items():
+                if np.all([t[key] == qnu[key] for key in qnu]):
+                    assert name1 is None
+                    name1 = name
+                if np.all([t[key] == qnl[key] for key in qnl]):
+                    assert name2 is None
+                    name2 = name
+            ## add coupling
+            self.add_coupling(name1=name1,name2=name2,**p)
 
     def plot(
             self,
@@ -546,7 +606,7 @@ class Level(Optimiser):
                             axΓ.plot(m2['J'],m2['Γexp'],**tkwargs)
                             axΓres.plot(m2['J'],m2['Γexp'],**tkwargs)
         ## plot E residual histogram
-        if plot_histogram:
+        if plot_histogram and self.experimental_level is not None:
             ax = plotting.subplot(fig=fig)
             if nbins_histogram is None:
                 nbins_histogram = int(len(level)/20)
@@ -731,7 +791,7 @@ def _get_linear_H(S,Λ,s):
     of a linear molecule."""
     ## symbolic variables, Note that expected value of ef is +1 or -1 for 'e' and 'f'
     p = {key:sympy.Symbol(key) for key in (
-        'Tv','Bv','Dv','Hv','Lv','Mv','Av','ADv','λv','λDv','λHv','γv','γDv','ov','pv','pDv','qv','qDv')}
+        'Tv','Bv','Dv','Hv','Lv','Mv','Nv','Ov','Av','ADv','λv','λDv','λHv','γv','γDv','ov','pv','pDv','qv','qDv')}
     J = sympy.Symbol('J')
     case_a = quantum_numbers.get_case_a_basis(S,Λ,s,print_output=False)
     efs = case_a['qnef']['ef']
@@ -743,11 +803,16 @@ def _get_linear_H(S,Λ,s):
         return(X*Y+Y*X)
     I  = sympy.eye(case_a['n']) # unit matrix
     ## Equation 18 of brown1979
-    H = p['Tv']*I + p['Bv']*NN - p['Dv']*NN**2 + p['Hv']*NN**3 + p['Lv']*NN**4 + p['Mv']*NN**5
+    H = (p['Tv']*I + p['Bv']*NN - p['Dv']*NN**2 + p['Hv']*NN**3
+         + p['Lv']*NN**4 + p['Mv']*NN**5 + p['Nv']*NN**6 + p['Ov']*NN**7)
     if S>0:
-        if Λ>0: H += anticommutate(p['Av']*I+p['ADv']*NN,sympy.diag(*[float(Λ*Σ) for Σ in Σs]))/2 # 1/2[A+AN2,LzSz]+
+        if Λ>0: H += anticommutate(
+                p['Av']*I+p['ADv']*NN,
+                sympy.diag(*[float(Λ*Σ) for Σ in Σs]))/2 # 1/2[A+AN2,LzSz]+
         H += (p['γv']*I+p['γDv']*NN)*NS # (γ+γD.N**2)N.S
-        H += anticommutate(p['λv']*I+p['λDv']*NN+p['λHv']*NN**2,sympy.diag(*[float(Σ**2) for Σ in Σs])-I/3*S*(S+1)) # [λ+λD.N**2),Sz**2-1/3*S**2]+
+        H += anticommutate(
+            p['λv']*I+p['λDv']*NN+p['λHv']*NN**2,
+            sympy.diag(*[float(Σ**2) for Σ in Σs])-I/3*S*(S+1)) # [λ+λD.N**2),Sz**2-1/3*S**2]+
     ## add Λ-doubling terms here, element-by-element.
     for i,(Σi,efi) in enumerate(zip(Σs,efs)):
         for j,(Σj,efj) in enumerate(zip(Σs,efs)):

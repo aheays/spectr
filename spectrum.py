@@ -600,8 +600,8 @@ class Model(Optimiser):
             ## first run — initalise local copy of lines data, do not
             ## set keys if they are in set_keys_vals
             tmatch = {} if match is None else copy(match)
-            tmatch.setdefault('ν_min',(self.x[0]-1))
-            tmatch.setdefault('ν_max',(self.x[-1]+1))
+            tmatch.setdefault('min_ν',(self.x[0]-1))
+            tmatch.setdefault('max_ν',(self.x[-1]+1))
             imatch = line.match(**tmatch)
             nmatch = np.sum(imatch)
             keys = [key for key in line.explicitly_set_keys() if key not in set_keys_vals]
@@ -691,7 +691,9 @@ class Model(Optimiser):
                         warnings.warn(f'Scaling spectrum uniformly but ymin is set to a nonzero value, {repr(ymin)}.  This could lead to lines appearing in subsequent model constructions.')
                     if verbose:
                         print('add_line: constant factor scaling all lines')
-                    scale = np.mean(line_copy[ykey]/data[ykey])
+                    ## ignore zero values
+                    i = (line_copy[ykey]!=0)&(data[ykey]!=0)
+                    scale = np.mean(line_copy[ykey,i]/data[ykey][i])
                     if kind == 'absorption':
                         y = y**scale
                     else:
@@ -1815,7 +1817,7 @@ class Model(Optimiser):
             icontaminant = 0
             for tspecies,tmatch in contaminants:
                 l = database.get_lines(tspecies)
-                tmatch |= {'ν_min':self.x.min(),'ν_max':self.x.max()}
+                tmatch |= {'min_ν':self.x.min(),'max_ν':self.x.max()}
                 l = l.matches(**tmatch)
                 if len(l) > 0:
                     ax.plot(l['ν'],np.full(len(l),ax.get_ylim()[0]/2),
@@ -2066,7 +2068,7 @@ class FitReferenceAbsorption():
                 # 'xbeg':600,
                 # 'xend':6000,
                 # 'interpolate_model':0.001,
-                # # 'S296K_min':1e-23,
+                # # 'min_S296K' :1e-23,
                 # # 'noise':{'xbeg':5951.26,'xend':5959.4},
         # }.items():
             # self.p.setdefault(key,val)
@@ -2561,13 +2563,12 @@ class FitReferenceAbsorption():
         model.construct()
         return model
         
-
 def _similar_within_fraction(x,y,maxfrac=1e14):
     """Test if nonzero values of x and y are similar within a maximum fraction abs(x/y)."""
     i = (x!=0)&(y!=0)
     x,y = x[i],y[i]
-    assert ~np.any(x==0)
-    assert ~np.any(y==0)
+    assert ~np.any(x==0),'some x is 0 when y is not'
+    assert ~np.any(y==0),'some y is 0 when x is not'
     frac = x/y
     fracmax,fracmin = np.max(frac),np.min(frac)
     if fracmax == 0 and fracmin == 0:

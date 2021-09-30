@@ -925,7 +925,7 @@ class Dataset(optimise.Optimiser):
 
     def match(self,keys_vals=None,**kwarg_keys_vals):
         """Return boolean array of data matching all key==val.\n\nIf key has
-        suffix '_min' or '_max' then match anything greater/lesser or
+        suffix 'min_' or 'max_' then match anything greater/lesser or
         equal to this value.  If key has suffix _not then match not
         equal."""
         ## combine all match keys/vals
@@ -935,29 +935,34 @@ class Dataset(optimise.Optimiser):
         ## update match by key/val
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
-            if len(key) > 4 and key[-4:] == '_not':
-                ## recursively get reverse match for this key
-                i &= ~self.match({key[:-4]:val})
+            if len(key) > 4 and key[:4] == 'not_' and not self.is_known(key):
+                ## negate match
+                i &= ~self.match({key[4:]:val})
             elif not np.isscalar(val):
-                ## match to any value in val internally "or" then "and" with other keys
+                ## multiple possibilities to match against
                 i &= np.any([self.match({key:vali}) for vali in val],0)
             else:
-                ## a single value to compare with "and"
-                if len(key) > 4 and key[-4:] == '_min':
+                ## a single value to match against
+                if self.is_known(key):
+                    ## a simple equality
+                    if val is np.nan:
+                        ## special case for equality with nan
+                        i &= np.isnan(self[key])
+                    else:
+                        ## simple equality
+                        i &= self[key]==val
+                elif len(key) > 4 and key[:4] == 'min_':
                     ## find all larger values
-                    i &= (self[key[:-4]] >= val)
-                elif len(key) > 4 and key[-4:] == '_max':
+                    i &= (self[key[4:]] >= val)
+                elif len(key) > 4 and key[:4] == 'max_':
                     ## find all smaller values
-                    i &= (self[key[:-4]] <= val)
-                elif len(key) > 7 and key[-7:] == '_regexp':
+                    i &= (self[key[4:]] <= val)
+                elif len(key) > 7 and key[:7] == 'regexp_':
                     ## recursively get reverse match for this key
-                    i &= self.match_regexp({key[:-7]:val})
-                elif val is np.nan:
-                    ## special case for equality with nan
-                    i &= np.isnan(self[key])
+                    i &= self.match_regexp({key[7:]:val})
                 else:
-                    ## simple equality
-                    i &= self[key]==val
+                    ## total failure
+                    raise Exception(f'Could not match key: {repr(key)}')
         return i
 
     def find(self,*match_args,**match_kwargs):
@@ -1875,17 +1880,9 @@ class Dataset(optimise.Optimiser):
             keys_vals[key] = [keys_vals[key]]
         self.extend(keys_vals)
 
-    def extend(
-            self,
-            keys_vals=None,
-            # keys='old',         # 'old','new','all'
-            **keys_vals_as_kwargs
-    ):
-        """Extend self with new_data.  Keys must be present in both new and
-        old data.  If keys='old' then extra keys in new data are
-        ignored. If keys='new' then extra keys in old data are unset.
-        If 'all' then keys must match exactly.  If key=='new' no data
-        currently present then just add this data."""
+    def extend(self,keys_vals=None,**keys_vals_as_kwargs):
+        """Extend self with new data.  All keys or their defaults must be set
+        in both new and old data."""
         ## get lists of new data
         if keys_vals is None:
             keys_vals = {}
@@ -1907,6 +1904,7 @@ class Dataset(optimise.Optimiser):
             if key not in keys:
                 if self.is_set(key,'default'):
                     keys_vals[key] = self[key,'default']
+                    keys.append(key)
                 else:
                     raise Exception(f'Extending data missing key: {repr(key)}')
         ## Ensure all new keys are existing data, unless the current

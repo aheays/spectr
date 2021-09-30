@@ -464,6 +464,8 @@ prototypes['Dv']  = dict(description='Centrifugal distortion' ,units='cm-1',kind
 prototypes['Hv']  = dict(description='Third order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
 prototypes['Lv']  = dict(description='Fourth order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
 prototypes['Mv']  = dict(description='Fifth order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
+prototypes['Nv']  = dict(description='Sixth order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
+prototypes['Ov']  = dict(description='Seventh order centrifugal distortion' ,units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
 prototypes['Av']  = dict(description='Spin-orbit energy' ,units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
 prototypes['ADv'] = dict(description='Spin-orbit centrifugal distortion',units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
 prototypes['AHv'] = dict(description='Higher-order spin-orbit centrifugal distortion',units='cm-1',kind='f',fmt='0.6g',default=0,infer=[])
@@ -764,6 +766,88 @@ class Linear(Generic):
         """Decode string into quantum numbers"""
         return quantum_numbers.decode_linear_level(encoded_qn)
 
+    def load_pgopher_constants(self, filename,decode_name_function=None):
+        """Load constants from a Pgopher .pgo xml file."""
+        ## load xml as dictionary
+        import xmltodict
+        data = xmltodict.parse(tools.file_to_string(filename))
+        ## extract different parts of the dictionatry
+        mixture  = data['Mixture']
+        species = mixture['Species']
+        molecule = species['LinearMolecule']
+        manifolds = molecule['LinearManifold']
+        ## for each LinearManifold extract quantum numbers and
+        ## molecular constants, add to self
+        # self.set_prototype('pgopher_name','U',description='PGopher manifold name')
+        for manifold in manifolds:
+            manifold_name =  manifold['@Name']
+            if isinstance(manifold['Linear'],dict):
+                manifold['Linear'] = [manifold['Linear']]
+            for linear in manifold['Linear']:
+                ## decode name
+                linear_name = linear.pop('@Name')
+                # linear['pgopher_name'] = linear_name
+                if decode_name_function is None:
+                    linear['label'] = linear_name
+                else:
+                    linear.update(decode_name_function(linear_name))
+                ## get molecular constants
+                for p in linear['Parameter']:
+                    linear[p['@Name']] = p['@Value']
+                linear.pop('Parameter')
+                ## translate key names, key1=None to delete,
+                ## default!=None to add a default
+                for key0,key1,cast,default in (
+                        ('@Comment' , None  , None                                   , None)     , 
+                        ('@Colour'  , None  , None                                   , None)     , 
+                        ('@Lambda'  , 'Λ'   , str                                    , 'Sigma+') , 
+                        ('@S'       , 'S'   , lambda S:float(S)/2                    , 0)        , 
+                        ('@gerade'  , 'gu'  , lambda gu: (1 if gu == 'True' else -1) , None)     , 
+                        ('A'        , 'Av'  , float                                   , None)     , 
+                        ('AD'       , 'ADv' , float                                   , None)     , 
+                        ('B'        , 'Bv'  , float                                   , None)     , 
+                        ('D'        , 'Dv'  , float                                   , None)     , 
+                        ('H'        , 'Hv'  , float                                   , None)     , 
+                        ('LambdaSS' , 'λv'  , float                                   , None)     , 
+                        ('Origin'   , 'Tv'  , float                                   , None)     , 
+                        ('gamma'    , 'γv'  , float                                   , None)     , 
+                        ('o'        , 'ov'  , float                                   , None)     , 
+                        ('p'        , 'pv'  , float                                   , None)     , 
+                        ('q'        , 'qv'  , float                                   , None)     , 
+                        ('L'        , 'Lv'  , float                                   , None)     , 
+                        ('M'        , 'Mv'  , float                                   , None)     , 
+                        ('PP'       , 'Nv'  , float                                   , None)     , 
+                ):
+                    if key0 in linear:
+                        if key1 is None:
+                            linear.pop(key0)
+                        elif cast is None:
+                            linear[key1] = linear.pop(key0)
+                        else:
+                            linear[key1] = cast(linear.pop(key0))
+                    elif default is not None:
+                        linear[key1] = default
+                ## decode gu
+                if 'gu' in linear:
+                    linear['gu'] = (1 if linear['gu'] == 'True' else -1)
+                ## decode Λ
+                if linear['Λ'] == 'Sigma+':
+                    linear['Λ'],linear['s'] = 0,0
+                elif linear['Λ'] == 'Sigma-':
+                    linear['Λ'],linear['s'] = 0,1
+                elif linear['Λ'] == 'Pi':
+                    linear['Λ'],linear['s'] = 1,0
+                elif linear['Λ'] == 'Delta':
+                    linear['Λ'],linear['s'] = 2,0
+                elif linear['Λ'] == 'Phi':
+                    linear['Λ'],linear['s'] = 3,0
+                elif linear['Λ'] == 'Gamma':
+                    linear['Λ'],linear['s'] = 4,0
+                else:
+                    raise Exception(f'Lambda code not implemented: {repr(linear["Λ"])}')
+                ## add to data
+                self.append(linear)
+
 class LinearTriatomic(Linear):
     """A generic level."""
     defining_qn = ('species','label','ef','ν1','ν2','ν3','l2','J')
@@ -782,7 +866,7 @@ class Diatomic(Linear):
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
         'Tvib','Trot','αvib','αrot','Zvib','Zrot',
-        'Tv','Bv','Dv','Hv','Lv','Mv',
+        'Tv','Bv','Dv','Hv','Lv','Mv','Nv','Ov',
         'Av','ADv','AHv',
         'λv','λDv','λHv',
         'γv','γDv','γHv',

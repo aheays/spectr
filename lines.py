@@ -104,29 +104,55 @@ def _f1(self,fv,SJ,J_l,Λ_u,Λ_l):
     f = fv*SJ/(2.*J_l+1.)       # correct? What about 2S+1?
     f[(Λ_l==0)&(Λ_u!=0)] /= 2
     return f
+
+
 prototypes['f'] = dict(description="Line f-value",units="dimensionless",kind='f',fmt='<10.5e', cast=cast_abs_float_array,infer=[
     (('Ae','ν','g_u','g_l'),lambda self,Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2),
     (('Sij','ν','J_l'), lambda self,Sij,ν,J_l: 3.038e-6*ν*Sij/(2*J_l+1)), 
     (('σ','α_l'),lambda self,σ,α_l: σ*1.1296e12/α_l,),
     (('fv','SJ','J_l','Λ_u','Λ_l'),_f1),
-    (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K),
+    (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K), # correct? What about stimulated emission?
+    ## (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/296))),
 ])
 
-prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section.",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[
+prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[
     (('τa','Nspecies_l'),lambda self,τa,Nspecies_l: τa/Nspecies_l), 
     (('τa','Nself_l'),lambda self,τ,column_densitypp: τ/column_densitypp), 
     (('f','α_l'),lambda self,f,α_l: f/1.1296e12*α_l),
     (('S','ν','Tex'),lambda self,S,ν,Tex,: S/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/Tex))),])
-## prototypes['σ'] =dict(description="Integrated cross section (cm2.cm-1).", kind='f',  fmt='<10.5e', infer={('τ','column_densitypp'):lambda self,τ,column_densitypp: τ/column_densitypp, ('f','populationpp'):lambda self,f,populationpp: f/1.1296e12*populationpp,})
-def _f0(self,S296K,species,Z,E_l,Tex,ν):
+
+prototypes['σ296K'] = dict(description="Spectrally-integrated photoabsorption cross section at 296K",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[(('f','α296K_l'),lambda self,f,α_l: f/1.1296e12*α296K_l),])
+
+def _f0(self,S296K,species,E_l,Tex,ν):
     """See Eq. 9 of simeckova2006"""
     Z296K = hitran.get_partition_function(species,296)
-    c = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
+    Z = hitran.get_partition_function(species,Tex)
+    c2 = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
     return (S296K
-            *((np.exp(-E_l/(c*Tex))/Z)*(1-np.exp(-c*ν/Tex)))
-            /((np.exp(-E_l/(c*296))/Z296K)*(1-np.exp(-c*ν/296))))
-prototypes['S'] = dict(description="Spectral line intensity ",units="cm-1.cm2", kind='f', fmt='<10.5e', infer=[(('S296K','species','Z_l','E_l','Tex_l','ν'),_f0,)])
-prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",units="cm-1.cm2", kind='f', fmt='<10.5e', infer=[],cast=tools.cast_abs_float_array)
+            *((np.exp(-E_l/(c2*Tex))/Z)    *(1-np.exp(-c2*ν/Tex)))
+            /((np.exp(-E_l/(c2*296))/Z296K)*(1-np.exp(-c2*ν/296))))
+def _f1(self,σ,Tex,ν):
+    """See Eq. 9 of simeckova2006"""
+    c = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
+    return σ*(1-np.exp(-c*ν/Tex))
+prototypes['S'] = dict(description="Spectral line intensity",units="cm-1.cm2", kind='f', fmt='<10.5e', infer=[
+    (('S296K','species','E_l','Tex','ν'),_f0,),
+    (('σ','Tex_l','ν'),_f1,),
+])
+
+def _f0(self,Ae,E_l,ν,g_u,species):
+    """Convert between HITRAN line intensity at 296K to Einstein A
+    coefficient. From Eq. 20 simeckova2006.  FACTOR OF 2 ERROR IN SOME
+    CASES? BAD G_U?"""
+    c = constants.c*100         # cm.s-1
+    c2 = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
+    T = 296
+    π = constants.pi
+    Q = hitran.get_partition_function(species,296)
+    return Ae/(8*π*c*ν**2*Q/(np.exp(-c2*E_l/T)*(1-np.exp(-c2*ν/T))*g_u))
+prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",units="cm-1.cm2", kind='f', fmt='<10.5e',
+                           ## infer=[(('Ae','E_l','ν','g_u','species'),_f0),], 
+                           cast=tools.cast_abs_float_array)
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
 ## former considers the effect of stimulated emission.
@@ -137,7 +163,22 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
     (('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,),
 ],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
-prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[(('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),(('At','Ad'), lambda self,At,Ad: At-Ad,)])
+
+def _f0(self,S296K,E_l,ν,g_u,species):
+    """Convert HITRAN line intensity at 296K to Einstein A
+    coefficient. From Eq. 20 simeckova2006.  FACTOR OF 2 ERROR IN SOME
+    CASES? BAD G_U?"""
+    c = constants.c
+    c2 = constants.h*constants.c/constants.Boltzmann
+    T = 296
+    π = constants.pi
+    Q = hitran.get_partition_function(species,296)
+    return 8*π*c*ν**2*Q*S296K/(np.exp(-c2*E_l/T)*(1-np.exp(-c2*ν/T))*g_u)
+prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[
+    (('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),
+    (('At','Ad'), lambda self,At,Ad: At-Ad,),
+    ## (('S296K','E_l','ν','g_u','species'),_f0),
+])
 prototypes['σd'] = dict(description="Photodissociation cross section.",units="cm2.cm-1",kind='f',fmt='<10.5e',infer=[(('σ','ηd_u'),lambda self,σ,ηd_u: σ*ηd_u,)],)
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
 
@@ -329,13 +370,13 @@ prototypes['Finstr'] = dict(description="Instrument photoemission detection effi
 prototypes['I'] = dict(description="Spectrally-integrated emission energy intensity -- ABSOLUTE SCALE NOT PROPERLY DEFINED",units='not_well_defined',kind='f',fmt='<10.5e',infer=[(('Finstr','Ae','α_u','ν'),lambda self,Finstr,Ae,α_u,ν: Finstr*Ae*α_u*ν,)],)
 
 ## vibrational interaction energies
-prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
-prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
-prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
-prototypes['ξDv'] = dict(description="Higher-order reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
-prototypes['HJSv'] = dict(description="Reduced JS coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
-prototypes['HJSDv'] = dict(description="Higher-order reduced JS coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
-prototypes['Hev'] = dict(description="Electronic coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<10.5e', infer=[],default=0)
+prototypes['ηv'] = dict(description="Reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
+prototypes['ξv'] = dict(description="Reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
+prototypes['ηDv'] = dict(description="Higher-order reduced spin-orbit interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
+prototypes['ξDv'] = dict(description="Higher-order reduced rotational interaction energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
+prototypes['HJSv'] = dict(description="Reduced JS coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
+prototypes['HJSDv'] = dict(description="Higher-order reduced JS coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
+prototypes['Hev'] = dict(description="Electronic coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
 
 ## parity from transition selection
 def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
@@ -393,7 +434,7 @@ class Generic(levels.Base):
             'ν','ν0', # 'λ',
             'ΔJ', 'branch',
             'ΔJ',
-            'f','σ','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
+            'f','σ','σ296K','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
             'Nself','Nspecies','Nchemical_species',
             'L',
             'Teq','Tex','Ttr',
@@ -939,6 +980,68 @@ class Generic(levels.Base):
             if len(data[key])==0: data.pop(key) # remove empty keys
             
         self.extend(**data,keys='new')
+
+    def load_pgopher_constants(
+            self,
+            filename,
+            decode_name_function=None,
+            match=None,
+            keys=None,
+            not_keys=None
+    ):
+        """Load constants from a Pgopher .pgo xml file."""
+        ## load xml as dictionary
+        import xmltodict
+        data = xmltodict.parse(tools.file_to_string(filename))
+        ## extract different parts of the dictionatry
+        mixture  = data['Mixture']
+        species = mixture['Species']
+        molecule = species['LinearMolecule']
+        manifolds = molecule['LinearManifold']
+        ## for each LinearManifold extract quantum numbers and
+        ## molecular constants, add to self
+        # self.set_prototype('pgopher_name_u','U',description='PGopher upper manifold name')
+        # self.set_prototype('pgopher_name_l','U',description='PGopher lower manifold name')
+        for manifold in manifolds:
+            manifold_name =  manifold['@Name']
+            if 'LinearPerturbation' in manifold:
+                perturbations = manifold['LinearPerturbation']
+                if isinstance(perturbations,dict):
+                    perturbations = [perturbations]
+                for perturbation in perturbations:
+                    ## no actual matrix element
+                    if 'Parameter' not in perturbation:
+                        continue
+                    ## decode quantumer numbers from level names
+                    # perturbation['pgopher_name_u'] = perturbation['@Bra']
+                    # perturbation['pgopher_name_l'] = perturbation['@Ket']
+                    if decode_name_function is None:
+                        perturbation['label_u'] = perturbation.pop('@Bra')
+                        perturbation['label_l'] = perturbation.pop('@Ket')
+                    else:
+                        qn = decode_name_function(perturbation.pop('@Bra'))
+                        perturbation.update({f'{key}_u':val for key,val in qn.items()})
+                        qn = decode_name_function(perturbation.pop('@Ket'))
+                        perturbation.update({f'{key}_l':val for key,val in qn.items()})
+                    ## missing @Op set to spin-orbit interaction
+                    perturbation.setdefault('@Op','Suncouple')
+                    ## determine operator and matrix element value
+                    for Op,key in (
+                            ('Luncouple','ξv'),
+                            ('Suncouple','ηv'),
+                            ('Homog','Hev'),
+                            ):
+                        if perturbation['@Op'] == Op:
+                            perturbation[key] = float(perturbation['Parameter']['@Value'])
+                            break
+                    else:
+                        raise Exception(f'Popher operator not implemented: {repr(perturbation["@Op"])}')
+                    ## delete unwanted data
+                    for key in ('@Comment', '@Op', '@Npower', '@n',
+                                '@Bra', '@Ket', 'Parameter',):
+                        if key in perturbation:
+                            perturbation.pop(key)
+                    self.append(perturbation)
 
     # @optimise_method()
     # def generate_from_levels(

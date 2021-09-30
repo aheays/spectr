@@ -2635,7 +2635,7 @@ def power_spectrum(
         from . import dataset
         from . import lineshapes
         resonances = dataset.Dataset()
-        find_peaks_kwargs.setdefault('peak_min',0.9)
+        find_peaks_kwargs.setdefault('min_peak',0.9)
         find_peaks_kwargs.setdefault('x_minimimum_separation',fit_radius)
         ipeaks = find_peaks(F,f,**find_peaks_kwargs)
         if make_plot:
