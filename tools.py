@@ -224,13 +224,13 @@ def vectorise_arguments(function):
 ## things for dictionaries ##
 #############################
 
-def combine_dicts(*input_dicts):
-    """Combine input dicts into one, ignoring any that are None."""
-    retval = {}
-    for d in input_dicts:
-        if d is not None:
-            retval |= d
-    return retval
+# def combine_dicts(*input_dicts):
+    # """Combine input dicts into one, ignoring any that are None."""
+    # retval = {}
+    # for d in input_dicts:
+        # if d is not None:
+            # retval |= d
+    # return retval
 
 def dict_to_kwargs(d,keys=None):
     """Expand a dict into evaluable kwargs. Default to all keys."""
@@ -282,35 +282,30 @@ def format_dict(
     retval = '\n'.join(lines)
     return retval
 
-dict_expanded_repr = format_dict
+# dict_expanded_repr = format_dict
 
-def compute_matrix_of_function(A,*args,**kwargs):
-    """2D only"""
-    retval = np.matrix([[Aij(*args,**kwargs) for Aij in Ai] for Ai in A])
-    return retval
+# def load_data_dict(filename,*keys):
+    # """Import filename namespace as a dictionary and return.  Progressively
+    # index this dictionary by each given key."""
+    # import runpy
+    # data = runpy.run_path(expand_path(filename))
+    # for key in keys:
+        # data = data[key]
+    # return data
 
-def load_data_dict(filename,*keys):
-    """Import filename namespace as a dictionary and return.  Progressively
-    index this dictionary by each given key."""
-    import runpy
-    data = runpy.run_path(expand_path(filename))
-    for key in keys:
-        data = data[key]
-    return data
+# def save_data_dict(filename,header=r'from spectr import *',**keys_dicts):
+    # """Save dictionaires in keys_dicts to file.  With optional filename."""
+    # mkdir(os.path.split(filename)[0])
+    # with open(filename,'w') as fid:
+        # fid.write(header)
+        # fid.write('\n')
+        # for key,val in keys_dicts.items():
+            # fid.write(
+                # f'{key} = ' + dict_expanded_repr(
+                    # val,maxdepth=3,separate_with_blanks_depth=-1))
+            # fid.write('\n')
 
-def save_data_dict(filename,header=r'from spectr import *',**keys_dicts):
-    """Save dictionaires in keys_dicts to file.  With optional filename."""
-    mkdir(os.path.split(filename)[0])
-    with open(filename,'w') as fid:
-        fid.write(header)
-        fid.write('\n')
-        for key,val in keys_dicts.items():
-            fid.write(
-                f'{key} = ' + dict_expanded_repr(
-                    val,maxdepth=3,separate_with_blanks_depth=-1))
-            fid.write('\n')
-
-def import_dict(filename,*names):
+def load_dict(filename,*names):
     """Import filename and return a dictionary of its named attributes."""
     ## import file as 'temporary_module'
     from importlib.machinery import SourceFileLoader
@@ -323,7 +318,7 @@ def import_dict(filename,*names):
     del module
     return retval
 
-def export_dict(filename,header=None,**names_dicts,):
+def save_dict(filename,header=None,**names_dicts,):
     """Write names_dicts as into filename preceeded by header.  Designed
     to be imported as valid python."""
     mkdir(os.path.split(filename)[0])
@@ -334,15 +329,17 @@ def export_dict(filename,header=None,**names_dicts,):
             fid.write('\n')
         ## add data as dict_expanded_repr
         for name,val in names_dicts.items():
-            fid.write(
-                f'{name} = ' + dict_expanded_repr(
-                    val,maxdepth=3,separate_with_blanks_depth=-1))
-            fid.write('\n')
+            fid.write(f'{name} = {format_dict(val)}\n')
 
 
 ############################
 ## mathematical functions ##
 ############################
+
+def compute_matrix_of_function(A,*args,**kwargs):
+    """2D only"""
+    retval = np.matrix([[Aij(*args,**kwargs) for Aij in Ai] for Ai in A])
+    return retval
 
 def kronecker_delta(x,y):
     """1 if x==y else 0."""
@@ -4092,6 +4089,8 @@ def infer_filetype(filename):
         return 'org'
     elif extension in ('.txt','.dat'):
         return 'text'
+    elif extension == '.psv':
+        return 'psv'
     elif re.match(r'.*\.[0-9]+$',basename(filename)):
         return 'opus'
     elif os.path.exists(filename) and os.path.isdir(filename):
