@@ -56,8 +56,9 @@ class Experiment(Optimiser):
             self.set_spectrum(x,y,xbeg,xend)
         if noise_rms is not None:
             self.experimental_parameters['noise_rms'] = float(noise_rms)
-        self.add_save_to_directory_function(
-            lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
+        self.add_save_to_directory_function(self.output_data_to_directory)
+            # lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
+        self._figure = None
 
     @optimise_method()
     def set_spectrum(self,x,y,xbeg=None,xend=None,_cache=None,**experimental_parameters):
@@ -89,6 +90,25 @@ class Experiment(Optimiser):
         ## every iteration make a copy -- more memory but survives
         ## in-place other changes
         self.x,self.y = copy(_cache['x']),copy(_cache['y']) 
+
+    def output_data_to_directory(self,directory):
+        """Save various files from this optimsiation to a directory."""
+        tools.mkdir(directory)
+        ## model data
+        if self.x is not None and self.y is not None:
+            t = Spectrum(ν=self.x,I=self.y,description=f'Experimental spectrum of {self.name}')
+            t.save(f'{directory}/spectrum',filetype='directory')
+        if self._figure is not None:
+            ## svg / pdf are the fastest output formats. Significantly
+            ## faster if there is not text on the figure
+            # self._figure.savefig(directory+'/figure.png',dpi=300)
+            self._figure.savefig(f'{directory}/figure.pdf')
+        if len(self.experimental_parameters) > 0:
+            tools.save_dict(
+                f'{directory}/experimental_parameters.py',
+                experimental_parameters=self.experimental_parameters,
+                header=f'## experimental parameters of {self.name}\n')
+
 
     @optimise_method()
     def set_spectrum_from_file(
@@ -282,7 +302,7 @@ class Experiment(Optimiser):
         self.construct()
         ## reuse current axes if not specified
         if ax is None:
-            ax = plt.gca()
+            ax = plotting.gca()
             ax.cla()
             def format_coord(x,y):
                 if x<1e-5 or x>=1e10:
@@ -299,6 +319,7 @@ class Experiment(Optimiser):
             plotting.simple_tick_labels(ax=ax)
         ax.plot(self.x,self.y,label=self.name)
         plotting.legend(ax=ax,loc='upper left')
+        self._figure = plotting.gcf()
         return ax
 
 class Model(Optimiser):
@@ -1827,7 +1848,7 @@ class Model(Optimiser):
 
     def output_data_to_directory(
             self,
-            directory='td',
+            directory,
             output_model_residual=False,
             output_transition_linelists=False,
             output_individual_optical_depths=False,
@@ -1836,9 +1857,8 @@ class Model(Optimiser):
         tools.mkdir(directory)
         ## model data
         if self.x is not None and self.y is not None:
-            tools.array_to_file(directory+'/spectrum.h5',self.x,self.y)
-        # if output_residual and self.residual is not None:
-            # tools.array_to_file(directory+'/residual.h5', self.xexp,self.residual)
+            t = Spectrum(ν=self.x,I=self.y,description=f'Model spectrum of {self.name}')
+            t.save(f'{directory}/spectrum',filetype='directory')
         if self._figure is not None:
             ## svg / pdf are the fastest output formats. Significantly
             ## faster if there is not text on the figure
@@ -2019,6 +2039,19 @@ def load_spectrum(filename,**kwargs):
     x = Spectrum()
     x.load_from_directory(filename,**kwargs)
     return(x)
+
+class Spectrum(Dataset):
+
+    default_xkey = 'x'
+    default_zkeys = ()
+    default_prototypes = {
+        'x':{'description':'x-scale'          ,  'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'ν':{'description':'Wavenumber scale' , 'units':'cm-1' , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'λ':{'description':'Wavelength scale' , 'units':'nm'   , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'f':{'description':'Frequency scale'  , 'units':'MHz'  , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'σ':{'description':'Cross section'    , 'units':'cm2'  , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'I':{'description':'Intensity'        ,  'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+    }
 
 
 class FitReferenceAbsorption():

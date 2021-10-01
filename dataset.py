@@ -127,7 +127,8 @@ class Dataset(optimise.Optimiser):
             retval += ')'
             return retval
         self.add_format_input_function(format_input_function)
-        self.add_save_to_directory_function(lambda directory: self.save(f'{directory}/dataset.h5'))
+        ## save self to directory
+        self.add_save_to_directory_function(self._save_to_directory)
         ## copy data from another dataset provided as argument
         if copy_from is not None:
             self.copy_from(copy_from)
@@ -156,6 +157,13 @@ class Dataset(optimise.Optimiser):
     def _set_name(self,name):
         self._name = tools.make_valid_python_symbol_name(name)
     name = property(lambda self:self._name,_set_name)
+
+    def _save_to_directory(self,directory):
+        """Save data in directory as a directory, also save as psv
+        file if data is not too much."""
+        self.save(f'{directory}/data',filetype='directory')
+        if len(self)*len(self.keys()) < 10000:
+            self.save(f'{directory}/data.psv')
 
     def __len__(self):
         return self._length
@@ -1139,12 +1147,14 @@ class Dataset(optimise.Optimiser):
             self,
             keys=None,
             index=None,
-            subkeys=('value','unc','description','units'),
+            subkeys=None,
     ):
         """Return as a structured dict."""
         ## default to all data
         if keys is None: 
             keys = list(self.keys())
+        if subkeys is None:
+            subkeys = ('value','unc','description','units')
         ## add data
         retval = {}
         retval['classname'] = self.classname
@@ -1167,6 +1177,7 @@ class Dataset(optimise.Optimiser):
     def rows(self,keys=None):
         """Iterate value data row by row, returns as a dictionary of
         scalar values."""
+        keys = tools.ensure_iterable(keys)
         if keys is None:
             keys = self.keys()
         for i in range(len(self)):
@@ -1221,7 +1232,7 @@ class Dataset(optimise.Optimiser):
             self,
             keys=None,
             delimiter=' | ',
-            simple= True,       # if True then just print data in a table, no metadata
+            simple=False,       # ifFalse then just print data in a table, no metadata
             unique_values_in_header=False,
             subkeys=('value','unc','vary','step','ref','description','units','fmt','kind'),
             include_keys_with_leading_underscore=False,
@@ -1349,8 +1360,10 @@ class Dataset(optimise.Optimiser):
             keys = self.keys()
         if subkeys is None:
             ## get a list of default subkeys, ignore those beginning
-            ## with "_"
-            subkeys = [subkey for subkey in self.vector_subkinds if subkey[0] != '_']
+            ## with "_" and some specific keys
+            # subkeys = [subkey for subkey in self.vector_subkinds if subkey[0] != '_']
+            subkeys = [subkey for subkey in self.all_subkinds if
+                       (subkey[0] != '_') and subkey not in ('infer',)]
         if filetype == 'hdf5':
             ## hdf5 file
             tools.dict_to_hdf5(filename,self.as_dict(keys=keys,subkeys=subkeys),verbose=False)
@@ -1361,21 +1374,20 @@ class Dataset(optimise.Optimiser):
             ## directory of npy files
             tools.dict_to_directory(filename,self.as_dict(keys=keys,subkeys=subkeys))
         elif filetype == 'text':
-            ## text file
-            format_kwargs.setdefault('simple',False)
-            if re.match(r'.*\.csv',filename):
-                format_kwargs.setdefault('delimiter',', ')
-            elif re.match(r'.*\.rs',filename):
-                format_kwargs.setdefault('delimiter',' ␞ ')
-            elif re.match(r'.*\.psv',filename):
-                format_kwargs.setdefault('delimiter',' | ')
-            else:
-                format_kwargs.setdefault('delimiter',' ')
+            ## space-separated text file
+            format_kwargs.setdefault('delimiter',' ')
+            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+        elif filetype == 'rs':
+            ## ␞-separated text file
+            format_kwargs.setdefault('delimiter',' ␞ ')
+            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+        elif filetype == 'psv':
+            ## |-separated text file
+            format_kwargs.setdefault('delimiter',' | ')
             tools.string_to_file(filename,self.format(keys,**format_kwargs))
         elif filetype == 'csv':
-            ## csv file
+            ## comma-separated text file
             format_kwargs.setdefault('delimiter',', ')
-            format_kwargs.setdefault('simple',False)
             tools.string_to_file(filename,self.format(keys,**format_kwargs))
         else:
             raise Exception(f'Do not know how save to {filetype=}')
@@ -1389,17 +1401,21 @@ class Dataset(optimise.Optimiser):
             if filetype == None:
                 filetype = 'text'
         if filetype == 'hdf5':
-            self.load_from_hdf5(filename,**load_method_kwargs)
+            self._load_from_hdf5(filename,**load_method_kwargs)
         elif filetype == 'directory':
-            self.load_from_directory(filename,**load_method_kwargs)
+            self._load_from_directory(filename,**load_method_kwargs)
         elif filetype == 'npz':
-            self.load_from_npz(filename,**load_method_kwargs)
+            self._load_from_npz(filename,**load_method_kwargs)
         elif filetype == 'org':
-            self.load_from_org(filename,**load_method_kwargs)
+            self._load_from_org(filename,**load_method_kwargs)
         elif filetype == 'text':
-            self.load_from_text(filename,**load_method_kwargs)
+            self._load_from_text(filename,**load_method_kwargs,delimeter=' ')
         elif filetype == 'rs':
-            self.load_from_text(filename,**load_method_kwargs,delimiter='␞')
+            self._load_from_text(filename,**load_method_kwargs,delimiter='␞')
+        elif filetype == 'psv':
+            self._load_from_text(filename,**load_method_kwargs,delimiter='|')
+        elif filetype == 'csv':
+            self._load_from_text(filename,**load_method_kwargs,delimiter=',')
         else:
             raise Exception(f"Unrecognised data filetype: {filename=} {filetype=}")
 
@@ -1567,12 +1583,12 @@ class Dataset(optimise.Optimiser):
                 data[key].append(val)
         self.load_from_dict(data,flat=True)
 
-    def load_from_directory(self,filename,**load_from_dict_kwargs):
+    def _load_from_directory(self,filename,**load_from_dict_kwargs):
         """Load data stored in a structured directory tree."""
         data = tools.directory_to_dict(filename)
         self.load_from_dict(data,**load_from_dict_kwargs)
 
-    def load_from_hdf5(self,filename,load_attributes=True,**load_from_dict_kwargs):
+    def _load_from_hdf5(self,filename,load_attributes=True,**load_from_dict_kwargs):
         """Load data stored in a structured or unstructured hdf5 file."""
         data = tools.hdf5_to_dict(filename,load_attributes=load_attributes)
         ## hack to get flat data or not
@@ -1584,7 +1600,7 @@ class Dataset(optimise.Optimiser):
             flat = True
         self.load_from_dict(data,flat=flat,**load_from_dict_kwargs)
 
-    def load_from_npz(self,filename,**load_from_dict_kwargs):
+    def _load_from_npz(self,filename,**load_from_dict_kwargs):
         """numpy npz archive.  get as scalar rather than
         zero-dimensional numpy array"""
         data = {}
@@ -1594,17 +1610,17 @@ class Dataset(optimise.Optimiser):
             data[key] = val
         self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
 
-    def load_from_org(self,filename,**load_from_dict_kwargs):
+    def _load_from_org(self,filename,**load_from_dict_kwargs):
         """Load form org table"""
         data = tools.org_table_to_dict(filename,table_name)
         self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
 
-    def load_from_text(
+    def _load_from_text(
             self,
             filename,
             comment='',
             labels_commented=False,
-            delimiter=None,
+            delimiter=' ',
             txt_to_dict_kwargs=None,
             load_classname_only=False,
             **load_from_dict_kwargs
@@ -1614,15 +1630,15 @@ class Dataset(optimise.Optimiser):
         if txt_to_dict_kwargs is None:
             txt_to_dict_kwargs = {}
         txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':labels_commented}
-        if txt_to_dict_kwargs['delimiter'] is None:
-            if re.match(r'.*\.csv',filename):
-                txt_to_dict_kwargs['delimiter'] = ','
-            elif re.match(r'.*\.rs',filename):
-                txt_to_dict_kwargs['delimiter'] = '␞'
-            elif re.match(r'.*\.psv',filename):
-                txt_to_dict_kwargs['delimiter'] = '|'
-            elif re.match(r'.*\.tsv',filename):
-                txt_to_dict_kwargs['delimiter'] = '\t'
+        # if txt_to_dict_kwargs['delimiter'] is None:
+            # if re.match(r'.*\.csv',filename):
+                # txt_to_dict_kwargs['delimiter'] = ','
+            # elif re.match(r'.*\.rs',filename):
+                # txt_to_dict_kwargs['delimiter'] = '␞'
+            # elif re.match(r'.*\.psv',filename):
+                # txt_to_dict_kwargs['delimiter'] = '|'
+            # elif re.match(r'.*\.tsv',filename):
+                # txt_to_dict_kwargs['delimiter'] = '\t'
         filename = tools.expand_path(filename)
         data = {}
         metadata = {}
@@ -1765,7 +1781,7 @@ class Dataset(optimise.Optimiser):
         tmpfile.write(string.encode())
         tmpfile.flush()
         tmpfile.seek(0)
-        self.load_from_text(tmpfile.name,delimiter=delimiter,**load_kwargs)
+        self._load_from_text(tmpfile.name,delimiter=delimiter,**load_kwargs)
 
     def load_from_lists(self,keys,*values):
         """Add many lines of data efficiently, with values possible
@@ -2320,6 +2336,9 @@ def _get_class(classname):
         elif module == 'levels':
             from . import levels
             return getattr(levels,subclass)
+        elif module == 'spectrum':
+            from . import spectrum
+            return getattr(spectrum,subclass)
     raise Exception(f'Could not find a class matching {classname=}')
     
 def make(classname='dataset.Dataset',*init_args,**init_kwargs):
