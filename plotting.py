@@ -1839,7 +1839,7 @@ def annotate_line(
     elif xpos in ('minimum','ymin',):
         xpos = line.get_xdata()[np.argmin(ydata)]
         annotate_kwargs.setdefault('ha','center')
-    elif isnumeric(xpos):
+    elif tools.isnumeric(xpos):
         annotate_kwargs.setdefault('ha','center')
     else:
         raise Exception('bad xpos: ',repr(xpos))
@@ -2443,7 +2443,8 @@ def annotate_spectrum(
     if ax==None: ax = plt.gca()
     (xlim,ylim,) = (ax.get_xlim(),ax.get_ylim(),) # save limits so not changed by this function
     if namepad==None:
-        namepad = 0.5*np.abs(length)*(xlim[1]-xlim[0])
+        # namepad = 0.5*np.abs(length)*(xlim[1]-xlim[0])
+        namepad = np.abs(length)
     length = length*(ylim[1]-ylim[0]) # convert length fraction into absolute scale
     if labelpad==None:
         labelpad = -0.4*length
@@ -2565,7 +2566,7 @@ def annotate_spectrum_by_branch(
         kwargs.setdefault('name',name)
         kwargs.setdefault('color',newcolor(iz))
         if label_function is not None:
-            labels = [label_function(t) for t in zline.iter_dict(*tools.ensure_iterable(label_key))]
+            labels = [label_function(t) for t in zline.rows(keys=label_key)]
         elif label_key is None:
             labels = ['' for t in zline.rows()]
         elif np.isscalar(label_key):
