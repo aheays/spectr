@@ -344,37 +344,24 @@ class Model(Optimiser):
         self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
 
-
     @optimise_method(add_format_input_function=False)
     def _initialise(self,_cache=None):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
-        ## clean construct the the experimental domain has changed
+        ## clean construct if the experimental domain has changed
         if ('xexp' in _cache
             and (len(self.experiment.x) != len(_cache['xexp'])
                  or np.any(self.experiment.x != _cache['xexp']))):
             self._clean_construct = True
-        ## maybe rebuild x array
         if self._clean_construct:
-            ## build cache of data
+            ## get new x grid
             self.residual_scale_factor = 1
             if self._xin is not None:
                 ## x is from a call to get_spectrum
                 self.x = self._xin
+                self._xin = None
+                self._compute_residual =False
             elif self.experiment is not None:
-                ## get domain from experimental data
-                # iexp = np.full(len(self.experiment.x),True)
-                # self._iexp = iexp # make available this 
-                # if self.xbeg is not None:
-                #     iexp &= self.experiment.x >= self.xbeg
-                # if self.xend is not None:
-                #     iexp &= self.experiment.x <= self.xend
-                # self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
-                # self.x = self.xexp
-                # _cache['iexp'] = iexp
-
-                # iexp = np.full(len(self.experiment.x),True)
-                # self._iexp = iexp # make available this
                 if 'iexp' not in _cache:
                     if self.xbeg is None:
                         ibeg = 0
@@ -384,9 +371,6 @@ class Model(Optimiser):
                         iend = len(self.experiment.x)
                     else:
                         iend = np.searchsorted(self.experiment.x,self.xend)
-                    # if 'iexp' in _cache:
-                        # if (iend-ibeg) < (_cache['iexp'].stop-_cache['iexp'].start):
-                        # elif (iend-ibeg) > (_cache['iexp'].stop-_cache['iexp'].start):
                     iexp = slice(int(ibeg),int(iend))
                     _cache['iexp'] = iexp
                 iexp = _cache['iexp']
@@ -397,43 +381,39 @@ class Model(Optimiser):
                 ## residuals
                 if 'noise_rms' in self.experiment.experimental_parameters:
                     self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
+                self._compute_residual = True
+            elif self.xbeg is not None and self.xend is not None:
+                ## xbeg to xend
+                self.x = linspace(self.xbeg,self.xend,1000,dtype=float)
+                self._compute_residual =False
             else:
-                self.x = np.array([],dtype=float,ndmin=1)
-            # self._xchanged =  True
-        # elif 'iexp' in _cache :
-            # ## reload x if experimental
-            # iexp = _cache['iexp']
-            # if (
-                    # ## different x length
-                    # len(self.x) != len(self.experiment.x[iexp])
-                    # ## x has changed in detail
-                    # or not tools.approximately_equal(self.x,self.experiment.x[iexp],fractol=1e-15)
-            # ):
-                # self._xchanged = True
-            # else:
-                # self._xchanged = False
-            # self.xexp,self.yexp = self.experiment.x[iexp],self.experiment.y[iexp]
-            # self.x = self.xexp
+                ## default
+                self.x = linespace(100,1000,1000,dtype=float)
+                self._compute_residual =False
         ## new grid
         self.y = np.zeros(self.x.shape,dtype=float)
         
     def get_spectrum(self,x):
         """Construct a model spectrum at x."""
         self._xin = np.asarray(x,dtype=float) # needed in _initialise
-        self.timestamp = -1     # force reconstruction, but not suboptimisers
+        # self.timestamp = -1     # force reconstruction, but not suboptimisers
+        self._clean_construct = True   # force reconstruction
         self.construct()
         self._xin = None        # might be needed in next _initialise
         return self.y
 
     def get_residual(self):
         """Compute residual error."""
-        if self._interpolate_factor is not None:
-            self.uninterpolate(average=False)
-        if self.experiment is None:
-            return []
-        residual = self.yexp - self.y
-        if self.residual_weighting is not None:
-            residual *= self.residual_weighting
+        if self._compute_residual:
+            if self._interpolate_factor is not None:
+                self.uninterpolate(average=False)
+            if self.experiment is None:
+                return []
+            residual = self.yexp - self.y
+            if self.residual_weighting is not None:
+                residual *= self.residual_weighting
+        else:
+            residual = None
         return residual
 
     @optimise_method()
@@ -1747,9 +1727,7 @@ class Model(Optimiser):
             if invert_model:
                 self.y *= -1
         if plot_residual and self.y is not None and self.experiment is not None and self.experiment.y is not None:
-            if self._interpolate_factor is not None:
-                print("Model is interpolated, cannot compute residual.")
-            else:
+            if self._compute_residual is not None:
                 yres = self.yexp - self.y
                 if self.residual_weighting is not None:
                     yres *= self.residual_weighting
