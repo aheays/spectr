@@ -28,6 +28,7 @@ from . import database
 from . import fortran_tools
 from .dataset import Dataset
 
+
 class Experiment(Optimiser):
     
     def __init__(
@@ -57,8 +58,8 @@ class Experiment(Optimiser):
         if noise_rms is not None:
             self.experimental_parameters['noise_rms'] = float(noise_rms)
         self.add_save_to_directory_function(self.output_data_to_directory)
-            # lambda directory: tools.array_to_file(directory+'/spectrum.h5',self.x,self.y))
         self._figure = None
+        self.background = None  # on same grid as x and y, the "background" spectrum – whatever that means
 
     @optimise_method()
     def set_spectrum(self,x,y,xbeg=None,xend=None,_cache=None,**experimental_parameters):
@@ -297,7 +298,11 @@ class Experiment(Optimiser):
             ax.set_title(f'noise distribution\n{self.name}')
         return rms
 
-    def plot(self,ax=None):
+    def plot(
+            self,
+            ax=None,
+            plot_background= True,
+    ):
         """Plot spectrum."""
         self.construct()
         ## reuse current axes if not specified
@@ -318,9 +323,38 @@ class Experiment(Optimiser):
             ax.grid(True,color='gray')
             plotting.simple_tick_labels(ax=ax)
         ax.plot(self.x,self.y,label=self.name)
+        if plot_background and self.background is not None:
+            ax.plot(self.x,self.background,label='background')
         plotting.legend(ax=ax,loc='upper left')
         self._figure = plotting.gcf()
         return ax
+
+    @optimise_method()
+    def fit_background(self,xi=100,make_plot=False,**fit_kwargs):
+        """Use fit_spline_to_extrema_or_median to fit the background in the presence of lines."""
+        if self._clean_construct:
+            xs,ys,yf = tools.fit_spline_to_extrema_or_median(self.x,self.y,xi=xi,make_plot=make_plot,**fit_kwargs)
+            self.background = yf
+
+    @optimise_method()
+    def normalise_background(self):
+        """Use fit_spline_to_extrema_or_median to fit the background in the presence of lines."""
+        if self._clean_construct:
+            if self.background is None:
+                raise Exception(r'Background must be defined before calling normalise_background.')
+            self.y /= self.background 
+            self.background /= self.background
+
+    def integrate_signal(self):
+        """Trapezoidally integrated signal."""
+        from scipy import integrate
+        self.experimental_parameters['integrated_signal'] = integrate.trapz(self.y,self.x)
+        return self.experimental_parameters['integrated_signal']
+
+    def integrate_excess(self,method='trapz'):
+        """Trapezoidally integrate difference between signal and background."""
+        self.experimental_parameters['integrated_excess'] = tools.integrate(self.x,self.y-self.background,method=method)
+        return self.experimental_parameters['integrated_excess']
 
 class Model(Optimiser):
 
@@ -409,7 +443,7 @@ class Model(Optimiser):
                 self._compute_residual =False
             else:
                 ## default
-                self.x = linespace(100,1000,1000,dtype=float)
+                self.x = linspace(100,1000,1000,dtype=float)
                 self._compute_residual =False
         ## new grid
         self.y = np.zeros(self.x.shape,dtype=float)
@@ -1462,7 +1496,6 @@ class Model(Optimiser):
         else:
             xconv = _cache['xconv']
             yconv = _cache['yconv']
-        ## convolve
         self.y = tools.convolve_with_padding(self.x,self.y,xconv,yconv)
 
     @optimise_method()

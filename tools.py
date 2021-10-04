@@ -10,7 +10,7 @@ import io
 import inspect
 import sys
 
-from scipy import interpolate,constants,integrate,linalg,stats,signal,fft
+from scipy import interpolate,constants,linalg,stats,signal,fft
 import csv
 import glob as glob_module
 import numpy as np
@@ -2591,6 +2591,7 @@ def cumtrapz(y,
         y = y[::-1]
         if x is not None: 
             x = x[::-1]
+    from scipy import integrate
     yintegrated = np.concatenate(([0],integrate.cumtrapz(y,x)))
     if reverse:
         yintegrated = -yintegrated[::-1] # minus sign to account for change in size of dx when going backwards, which is probably not intended
@@ -3002,6 +3003,23 @@ def findin_numeric(x,y,tolerance=1e-10):
     # else:
         # raise Exception('Only implemented for 1D and 2D arrays.')
 
+def integrate(x,y,method='trapz'):
+    """Integrate x vs. y"""
+    import scipy
+    if method == 'trapz':
+        retval = scipy.integrate.trapz(y,x)
+    elif method == 'simps':
+        retval = scipy.integrate.simps(y,x)
+    elif method == 'bin':
+        dx = np.diff(x)/2
+        width = np.full(len(x),0.0)
+        width[1:] += dx
+        width[:-1] += dx
+        retval = np.sum(y*width)
+    else:
+        raise Exception(f'Unknown integration method: {repr(method)}')
+    return retval
+
 def find_blocks(b,error_on_empty_block=True):
     """Find boolean index arrays that divide boolean array b into
     independent True blocks."""
@@ -3210,15 +3228,23 @@ def gaussian(x,fwhm=1.,mean=0.,norm='area'):
 
 def convolve_with_padding(x,y,xconv,yconv):
     """Convolve function (x,y) with (xconv,yconv) returning length of (x,y)."""
-    dxorig = (x[-1]-x[0])/(len(x)-1)
-    width = xconv[-1]-xconv[0]
-    dx = width/(len(xconv)-1)
-    if abs(dx-dxorig)/dx > 1e-5:
-        raise Exception("Grid steps do not match")
-    padding = arange(dx,width+dx,dx)
-    xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-    ypad = np.concatenate((np.full(padding.shape,y[0]),y,np.full(padding.shape,y[-1])))
-    yout = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+    if len(xconv) == 0:
+        raise Exception('Length of convolving array is zero.')
+    elif len(xconv) == 1:
+        xpad = x
+        ypad = y
+        npadding = 0
+    else:
+        dxorig = (x[-1]-x[0])/(len(x)-1)
+        width = xconv[-1]-xconv[0]
+        dx = width/(len(xconv)-1)
+        if abs(dx-dxorig)/dx > 1e-5:
+            raise Exception("Grid steps do not match")
+        padding = arange(dx,width+dx,dx)
+        npadding = len(padding)
+        xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+        ypad = np.concatenate((np.full(padding.shape,y[0]),y,np.full(padding.shape,y[-1])))
+    yout = signal.oaconvolve(ypad,yconv,mode='same')[npadding:npadding+len(x)]
     return yout
 
 def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=False):
@@ -5125,18 +5151,19 @@ def fit_spline_to_extrema_or_median(
     xi = np.asarray(xi,dtype=float)
     assert np.all(np.sort(xi)==xi),'Spline points not monotonically increasing'
     ## find intervals to fit get spline points in
-    xbeg = np.concatenate((xi[0:1], xi[1:]-(xi[1:]-xi[:-1])*interval_fraction))
-    xend = np.concatenate(((xi[:-1]+(xi[1:]-xi[:-1])*interval_fraction,x[-1:])))
-    ibeg,iend = [],[]
-    for xbegi,xendi in zip(xbeg,xend):
-        i = find((x>=xbegi)&(x<=xendi))
-        if len(i) == 0:
-            ## out of bounds of data
-            continue
-        ibeg.append(i[0])
-        iend.append(i[-1])
-    ## get y spline points at min or max
-    xspline,yspline = [],[]
+    ## add extra outer boundary points
+    if len(xi) == 1:
+        ## if only one point given then use equal width interval on both sides
+        xi = array([xbeg,xend])
+    ## get allowed interval fraction around each xi 
+    xi = np.concatenate((xi[:1],xi,xi[-1:]))
+    xbeg = xi[1:-1] - (xi[1:-1] - xi[:-2] ) * min(interval_fraction,0.5)
+    xend = xi[1:-1] + (xi[2:]   - xi[1:-1]) * min(interval_fraction,0.5)
+    ## and as inidices
+    ibeg =  np.searchsorted(x,xbeg)
+    iend =  np.searchsorted(x,xend)
+    ## find min or max in intervals
+    xspline,yspline = [],[]     
     for ibegi,iendi in zip(ibeg,iend):
         xi = x[ibegi:iendi]
         yi = y[ibegi:iendi]
@@ -5341,6 +5368,7 @@ def bin_data(x,n,mean=False):
 def resample(xin,yin,xout):
     """One particular way to spline or bin (as appropriate) (x,y) data to
     a given xout grid. Trapezoidally-integrated value is preserved."""
+    from scipy import integrate
     assert np.all(xin==np.unique(xin)),'Input x-data not monotonically increasing.'
     assert all(yin>=0),'Negative cross section in input data'
     assert not np.any(np.isnan(yin)),'NaN cross section in input data'
