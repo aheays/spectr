@@ -81,6 +81,7 @@ class Dataset(optimise.Optimiser):
             copy_from = None,
             limit_to_match=None, # dict of things to match
             description='',
+            data=None,
             **kwargs):
         ## init as optimiser, make a custom form_input_function, save
         ## some extra stuff if output to directory
@@ -139,6 +140,10 @@ class Dataset(optimise.Optimiser):
         ## argument
         if load_from_string is not None:
             self.load_from_string(load_from_string)
+        ## load data in dict if provided
+        if data is not None:
+            for key,val in data.items():
+                self[key] = val
         ## kwargs set data somehow
         for key,val in kwargs.items():
             if isinstance(val,optimise.Parameter):
@@ -712,7 +717,7 @@ class Dataset(optimise.Optimiser):
 
     def __setitem__(self,key,value):
         """Set key, (key,subkey), (key,index), (key,subkey,index) to
-        value."""
+        value. If key='key:subkey' then decode this."""
         if isinstance(key,str):
             tkey,tsubkey,tindex = key,'value',None
         elif len(key) == 1:
@@ -724,6 +729,9 @@ class Dataset(optimise.Optimiser):
                 tkey,tsubkey,tindex = key[0],'value',key[1]
         elif len(key) == 3:
                 tkey,tsubkey,tindex = key[0],key[1],key[2]
+        ## maybe a key:subkey encoded key
+        if tsubkey == 'value' and ':' in tkey:
+            tkey,tsubkey = tkey.split(':')
         self.set(tkey,tsubkey,value,tindex)
        
     def clear(self):
@@ -786,6 +794,9 @@ class Dataset(optimise.Optimiser):
                 if tkey not in keys and tkey in self:
                     self.unset(tkey)
 
+    def unlink_all_inferences(self):
+        """Mark all data as not inferred."""
+        self.unlink_inferences(self.keys())
 
     def add_infer_function(self,key,dependencies,function):
         """Add a new method of data inference."""
@@ -1217,12 +1228,12 @@ class Dataset(optimise.Optimiser):
         value = self.get(key,index=i)
         return value
 
-    def sort(self,sort_keys,reverse_order=False):
+    def sort(self,sort_keys,reverse=False):
         """Sort rows according to key or keys."""
         if isinstance(sort_keys,str):
             sort_keys = [sort_keys]
         i = np.argsort(self[sort_keys[0]])
-        if reverse_order:
+        if reverse:
             i = i[::-1]
         for key in sort_keys[1:]:
             i = i[np.argsort(self[key][i])]
@@ -1409,7 +1420,7 @@ class Dataset(optimise.Optimiser):
         elif filetype == 'org':
             self._load_from_org(filename,**load_method_kwargs)
         elif filetype == 'text':
-            self._load_from_text(filename,**load_method_kwargs,delimeter=' ')
+            self._load_from_text(filename,**load_method_kwargs,delimiter=' ')
         elif filetype == 'rs':
             self._load_from_text(filename,**load_method_kwargs,delimiter='␞')
         elif filetype == 'psv':
