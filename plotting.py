@@ -2314,27 +2314,12 @@ def show(show_in_ipython=False,block=True):
 
 # show_if_noninteractive = show
 
-def qplot(*plot_args,**plot_kwargs):
+def qplot(figure_number,*plot_args,**plot_kwargs):
     """Issue a plot command and then output to file."""
-    ax = qax()
+    ax = qax(figure_number)
     ax.plot(*plot_args,**plot_kwargs)
     legend()
     ax.grid(True)
-    show()
-
-def qxlim(*args,**kwargs):
-    """Issue a plot command and then output to file."""
-    fig = plt.gcf()
-    ax=fig.gca()
-    ax.set_xlim(*args,**kwargs)
-    fig.savefig('/tmp/tmp.eps')
-
-def qylim(*args,**kwargs):
-    """Issue a plot command and then output to file."""
-    fig = plt.gcf()
-    ax=fig.gca()
-    ax.set_ylim(*args,**kwargs)
-    fig.savefig('/tmp/tmp.eps')
 
 def ylogerrorbar(x,y,dy,ylolimScale=0.9,*args,**kwargs):
     """Ensures lower bound of error bars doesn't go negative messing
