@@ -4391,7 +4391,7 @@ def txt_to_dict(
             line = filter_function(line)
         if filter_regexp is not None:
             line = re.sub(filter_regexp[0],filter_regexp[1],line)
-        line = (line.split() if delimiter is None else line.split(delimiter)) # split line
+        line = (line.split() if delimiter in (None,' ') else line.split(delimiter)) # split line
         if comment_regexp is not None and re.match(comment_regexp,line[0]): # commented line found
             if not first_block_commented_lines_passed:
                 line[0] = re.sub(comment_regexp,'',line[0]) # remove comment start
