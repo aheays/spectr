@@ -1,5 +1,4 @@
-description = "Fitted rovibronic transitions."
-species_l  E_l           unc_E_l  species_u  E_u            unc_E_u  Γ_u  Γ_l  ΓD  ν             f
+species_l  E_l           E_l:unc  species_u  E_u            E_u:unc  Γ_u  Γ_l  ΓD  ν             f
 32S16O     569.2004999   0.1      32S16O     38927.8636513  0.2      1    0    1   38358.663151  5.42280e-07
 32S16O     571.2996734   0.1      32S16O     38929.0247858  0.2      1    0    1   38357.725112  1.21354e-06
 32S16O     574.6119602   0.1      32S16O     38931.3469547  0.2      1    0    1   38356.734995  1.83698e-06
