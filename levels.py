@@ -599,11 +599,11 @@ class Base(Dataset):
                 print()
             raise Exception(f"There are {len(j)} sets of quantum numbers that are repeated (set verbose=True to print).")
 
-    def sort(self,*sort_keys,reverse_order=False):
+    def sort(self,*sort_keys,**dataset_sort_kwargs):
         """Overload sort to include automatic keys."""
         if len(sort_keys) == 0:
             sort_keys = [key for key in self.defining_qn if self.is_known(key)]
-        Dataset.sort(self,*sort_keys,reverse_order=reverse_order)
+        Dataset.sort(self,*sort_keys,**dataset_sort_kwargs)
 
     def match(self,keys_vals=None,**kwargs):
         """Overload Dataset.match to handle 'encoded_qn'."""
