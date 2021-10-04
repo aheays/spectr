@@ -98,21 +98,21 @@ for key in ('ef_u','ef_l','Fi_u','Fi_l'):
     def _f0(self,branch,key=key):
         return quantum_numbers.decode_branch(branch)[key]
     prototypes[key]['infer'].append(('branch',_f0))
-
 def _f1(self,fv,SJ,J_l,Λ_u,Λ_l):
     """Get band fvalues from line strength"""
     f = fv*SJ/(2.*J_l+1.)       # correct? What about 2S+1?
     f[(Λ_l==0)&(Λ_u!=0)] /= 2
     return f
-
-
 prototypes['f'] = dict(description="Line f-value",units="dimensionless",kind='f',fmt='<10.5e', cast=cast_abs_float_array,infer=[
     (('Ae','ν','g_u','g_l'),lambda self,Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2),
     (('Sij','ν','J_l'), lambda self,Sij,ν,J_l: 3.038e-6*ν*Sij/(2*J_l+1)), 
     (('σ','α_l'),lambda self,σ,α_l: σ*1.1296e12/α_l,),
     (('fv','SJ','J_l','Λ_u','Λ_l'),_f1),
-    (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K), # correct? What about stimulated emission?
-    ## (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/296))),
+    ## (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K), # correct? What about stimulated emission?
+    (('S296K','α296K_l','ν',),
+     lambda self,S296K,α_l_296K,ν:
+     S296K*1.1296e12/α_l_296K/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/296))
+     ),
 ])
 
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[
@@ -120,8 +120,6 @@ prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross
     (('τa','Nself_l'),lambda self,τ,column_densitypp: τ/column_densitypp), 
     (('f','α_l'),lambda self,f,α_l: f/1.1296e12*α_l),
     (('S','ν','Tex'),lambda self,S,ν,Tex,: S/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/Tex))),])
-
-prototypes['σ296K'] = dict(description="Spectrally-integrated photoabsorption cross section at 296K",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[(('f','α296K_l'),lambda self,f,α_l: f/1.1296e12*α296K_l),])
 
 def _f0(self,S296K,species,E_l,Tex,ν):
     """See Eq. 9 of simeckova2006"""
@@ -136,22 +134,26 @@ def _f1(self,σ,Tex,ν):
     c = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
     return σ*(1-np.exp(-c*ν/Tex))
 prototypes['S'] = dict(description="Spectral line intensity",units="cm-1.cm2", kind='f', fmt='<10.5e', infer=[
-    (('S296K','species','E_l','Tex','ν'),_f0,),
     (('σ','Tex_l','ν'),_f1,),
-])
+    (('S296K','species','E_l','Tex','ν'),_f0,),])
 
 def _f0(self,Ae,E_l,ν,g_u,species):
     """Convert between HITRAN line intensity at 296K to Einstein A
-    coefficient. From Eq. 20 simeckova2006.  FACTOR OF 2 ERROR IN SOME
-    CASES? BAD G_U?"""
+    coefficient. From Eq. 20 simeckova2006.  Errors? Missing g_l
+    factor? Probably I misunderstand the definition of HITRAN
+    degeneracies. """
     c = constants.c*100         # cm.s-1
     c2 = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
     T = 296
     π = constants.pi
     Q = hitran.get_partition_function(species,296)
     return Ae/(8*π*c*ν**2*Q/(np.exp(-c2*E_l/T)*(1-np.exp(-c2*ν/T))*g_u))
+
 prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",units="cm-1.cm2", kind='f', fmt='<10.5e',
-                           ## infer=[(('Ae','E_l','ν','g_u','species'),_f0),], 
+                           infer=[
+                               ## (('Ae','E_l','ν','g_u','species'),_f0),
+                               (('f','α296K_l','ν',),lambda self,f,α_l_296K,ν: f/1.1296e12*α_l_296K*(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/296))),
+                           ], 
                            cast=tools.cast_abs_float_array)
 ## Preferentially compute τ from the spectral line intensity, S,
 ## rather than than the photoabsorption cross section, σ, because the
@@ -164,21 +166,6 @@ prototypes['τ'] = dict(description="Integrated optical depth including stimulat
 ],)
 prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
 
-def _f0(self,S296K,E_l,ν,g_u,species):
-    """Convert HITRAN line intensity at 296K to Einstein A
-    coefficient. From Eq. 20 simeckova2006.  FACTOR OF 2 ERROR IN SOME
-    CASES? BAD G_U?"""
-    c = constants.c
-    c2 = constants.h*constants.c/constants.Boltzmann
-    T = 296
-    π = constants.pi
-    Q = hitran.get_partition_function(species,296)
-    return 8*π*c*ν**2*Q*S296K/(np.exp(-c2*E_l/T)*(1-np.exp(-c2*ν/T))*g_u)
-prototypes['Ae'] = dict(description="Radiative decay rate",units="s-1", kind='f', fmt='<10.5g', infer=[
-    (('f','ν','g_u','g_l'),lambda self,f,ν,g_u,g_l: f/(1.49951*g_u/g_l/ν**2)),
-    (('At','Ad'), lambda self,At,Ad: At-Ad,),
-    ## (('S296K','E_l','ν','g_u','species'),_f0),
-])
 prototypes['σd'] = dict(description="Photodissociation cross section.",units="cm2.cm-1",kind='f',fmt='<10.5e',infer=[(('σ','ηd_u'),lambda self,σ,ηd_u: σ*ηd_u,)],)
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
 
@@ -353,7 +340,28 @@ prototypes['Sij'] =dict(description=" strength",units="au", kind='f',  fmt='<10.
     (('Sv','SJ'), lambda self,Sv,SJ:  Sv*SJ),
     ( ('f','ν','J_l'), lambda self,f,ν,J_l: f/3.038e-6/ν*(2*J_l+1)),
     ( ('Ae','ν','J_u'), lambda self,Ae,ν,J_u: Ae/(2.026e-6*ν**3/(2*J_u+1)),)])
-prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('f','ν','J_u','J_l'), lambda self,f,ν,J_u,J_l: f*0.666886/(2*J_u+1)*(2*J_l+1)*ν**2),( ('Sij','ν','J_u'), lambda self,Sij,ν,J_u: Sij*2.026e-6*ν**3/(2*J_u+1))],)
+
+def _f0(self,S296K,E_l,ν,g_u,species):
+    """Convert HITRAN line intensity at 296K to Einstein A
+    coefficient. From Eq. 20 simeckova2006.  FACTOR OF 2 ERROR IN SOME
+    CASES? BAD G_U?"""
+    c = constants.c*100         # cm.s-1
+    c2 = convert.units(constants.Boltzmann,'J','cm-1')
+    T = 296
+    π = constants.pi
+    Q = hitran.get_partition_function(species,296)
+    return S296K*(8*π*c*ν**2*Q/(np.exp(-c2*E_l/T)*(1-np.exp(-c2*ν/T))*g_u))
+
+
+prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate.",units="s-1", kind='a',  fmt='<10.5e', infer=[
+    ## (('f','ν','J_u','J_l'), lambda self,f,ν,J_u,J_l : f*0.666886/(2*J_u+1)*(2*J_l+1)*ν**2),
+    (('f','ν','g_u','g_l'), lambda self,f,ν,g_u,g_l : f/(1.49951*g_u/g_l/ν**2)),
+    # (('Sij','ν','J_u'),     lambda self,Sij,ν,J_u   : Sij*2.026e-6*ν**3/(2*J_u+1)),
+    # (('At','Ad'), lambda self,At,Ad: At-Ad,),
+    # (('S296K','E_l','ν','g_u','species'),_f0),
+],)
+
+
 prototypes['FCfactor'] =dict(description="Franck-Condon factor",units="dimensionless", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R'), lambda self,χp,χpp,R: np.array([integrate.trapz(χpi*χppi,R)**2 for (χpi,χppi) in zip(χp,χpp)])),],)
 prototypes['Rcentroid'] =dict(description="R-centroid",units="Å", kind='f',  fmt='<10.5e', infer=[(('χp','χpp','R','FCfactor'), lambda self,χp,χpp,R,FCfactor: np.array([integrate.trapz(χpi*R*χppi,R)/integrate.trapz(χpi*χppi,R) for (χpi,χppi) in zip(χp,χpp)])),])
 
@@ -434,7 +442,9 @@ class Generic(levels.Base):
             'ν','ν0', # 'λ',
             'ΔJ', 'branch',
             'ΔJ',
-            'f','σ','σ296K','S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
+            'f','σ',
+            # 'σ296K',
+            'S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
             'Nself','Nspecies','Nchemical_species',
             'L',
             'Teq','Tex','Ttr',
@@ -514,8 +524,6 @@ class Generic(levels.Base):
             ax.set_ylim(ymin,ymax+ystep*(len(branch_annotations)+1))
         if not plot_labels:
             plotting.legend(ax=ax,fontsize='x-small')
-
-
         return ax
 
     def plot_transmission_spectrum(
@@ -601,9 +609,11 @@ class Generic(levels.Base):
             ymin=None, # minimum value of ykey before a line is ignored, None for use all lines
             ncpus=1, # 1 for single process, more to use up to this amount when computing spectrum
             index=None,         # only calculate for these indices
-            # **set_keys_vals, # set some data first, e..g, the tempertaure
+            **set_these_keys_vals_first, # set some data first, e..g, the tempertaure
     ):
         """Calculate a spectrum from the data in self. Returns (x,y)."""
+        for key,val in set_these_keys_vals_first.items():
+            self[key] = val
         ## guess a default ykey
         if ykey is None:
             for ykey in ('τ','σ','f','Ae','Sij','μ'):
