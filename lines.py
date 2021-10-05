@@ -203,13 +203,13 @@ prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence 
 prototypes['Γair'] = dict(description="Pressure broadening due to air",units="cm-1.FWHM", kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert.units(P,'Pa','atm')),])
 prototypes['Δνair'] = dict(description="Pressure shift due to air",units="cm-1",kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert.units(P,'Pa','atm')),])
 prototypes['νvc'] = dict(description="Frequency of velocity changing collsions (which profile?)",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
-prototypes['pself'] = dict(description="Pressure of self",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
+prototypes['pself'] = dict(description="Partial pressure of this species",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
 prototypes['γ0self'] = dict(description="Pressure broadening coefficient in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0self'] = dict(description="Pressure broadening temperature dependence in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0self'] = dict(description="Pressure shift coefficient in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
 prototypes['nδ0self'] = dict(description="Pressure shift temperature dependence in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['Γself'] = dict(description="Pressure broadening due to self",units="cm-1.FWHM",kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0self','nγ0self','pself','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert.units(P,'Pa','atm')),])
-prototypes['Δνself'] = dict(description="Pressure shift due to self",units="cm-1.HWHM",kind='f', fmt='<10.5g',infer=[(('δ0self','nδ0self','pself','Ttr'),lambda self,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
+prototypes['Δνself'] = dict(description="Pressure shift due to self",units="cm-1",kind='f', fmt='<10.5g',infer=[(('δ0self','nδ0self','pself','Ttr'),lambda self,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
 prototypes['pX'] = dict(description="Pressure of X",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
 prototypes['γ0X'] = dict(description="Pressure broadening coefficient in X",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0X'] = dict(description="Pressure broadening temperature dependence in X",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
@@ -1468,10 +1468,10 @@ class Diatomic(Linear):
             'E'+'_l':data['E_l'],
             'g'+'_u':data['g_u'],
             'g'+'_l':data['g_l'],
-            'γ0air':data['γair'], # HITRAN uses HWHM, I'm going to go with FWHM
+            'γ0air':data['γair'], #  HWHM
             'nair':data['nair'],
             'δ0air':data['δair'],
-            'γ0self':data['γself'], # HITRAN uses HWHM, I'm going to go with FWHM
+            'γ0self':data['γself'], #  HWHM
         }
         ## get species
         assert len(np.unique(data['Mol']))==1
