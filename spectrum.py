@@ -77,6 +77,10 @@ class Experiment(Optimiser):
                 raise Exception(f'No data in range {xbeg} to {xend}')
             i = (x>=xbeg)&(x<=xend)
             x,y = x[i],y[i]
+            if len(x) == 0:
+                raise Exception('no points in spectrum')
+            if len(x) == 1:
+                raise Exception('only one point in spectrum')
             self.experimental_parameters['xbeg'] = xbeg 
             self.experimental_parameters['xend'] = xend
             ## check for regular x grid
@@ -170,12 +174,17 @@ class Experiment(Optimiser):
         self.experimental_parameters['filename'] = filename
         if 'Fourier Transformation' in d:
             self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
-            if d['Fourier Transformation']['APF'] == 'B3':
+            if d['Fourier Transformation']['APF'] == 'BX':
+                self.experimental_parameters['apodisation_function'] = 'boxcar'
+            elif d['Fourier Transformation']['APF'] == 'B3':
                 self.experimental_parameters['apodisation_function'] = 'Blackman-Harris 3-term'
             else:
                 warnings.warn(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
         if 'Acquisition' in d:
-            self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
+            self.experimental_parameters['filetype'] = 'opus'
+            ## opus resolution is zero-to-zero of central sinc function peak
+            ##self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
+            self.experimental_parameters['sinc_FWHM'] = opusdata.get_resolution()
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
         # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
@@ -332,18 +341,18 @@ class Experiment(Optimiser):
     @optimise_method()
     def fit_background(self,xi=100,make_plot=False,**fit_kwargs):
         """Use fit_spline_to_extrema_or_median to fit the background in the presence of lines."""
-        if self._clean_construct:
-            xs,ys,yf = tools.fit_spline_to_extrema_or_median(self.x,self.y,xi=xi,make_plot=make_plot,**fit_kwargs)
-            self.background = yf
+        # if self._clean_construct:
+        xs,ys,yf = tools.fit_spline_to_extrema_or_median(self.x,self.y,xi=xi,make_plot=make_plot,**fit_kwargs)
+        self.background = yf
 
     @optimise_method()
     def normalise_background(self):
         """Use fit_spline_to_extrema_or_median to fit the background in the presence of lines."""
-        if self._clean_construct:
-            if self.background is None:
-                raise Exception(r'Background must be defined before calling normalise_background.')
-            self.y /= self.background 
-            self.background /= self.background
+        # if self._clean_construct:
+        if self.background is None:
+            raise Exception(r'Background must be defined before calling normalise_background.')
+        self.y /= self.background 
+        self.background /= self.background
 
     def integrate_signal(self):
         """Trapezoidally integrated signal."""
@@ -459,16 +468,20 @@ class Model(Optimiser):
 
     def get_residual(self):
         """Compute residual error."""
-        if self._compute_residual:
-            if self._interpolate_factor is not None:
-                self.uninterpolate(average=False)
-            if self.experiment is None:
-                return []
+        ## no experiment to compute with
+        if self.experiment is None:
+            return None
+        ## no residual requested
+        if not self._compute_residual:
+            return None
+        ## possible subsample to match experiment
+        if self._interpolate_factor is None:
             residual = self.yexp - self.y
-            if self.residual_weighting is not None:
-                residual *= self.residual_weighting
         else:
-            residual = None
+            residual = self.yexp - self.y[::self._interpolate_factor]
+        ## weight residual
+        if self.residual_weighting is not None:
+            residual *= self.residual_weighting
         return residual
 
     @optimise_method()
@@ -1259,31 +1272,29 @@ class Model(Optimiser):
             self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
         self.add_construct_function(f)
 
-    def convolve_with_sinc(self,width=None,fwhms_to_include=100):
+    @optimise_method()
+    def convolve_with_sinc(self,width=None,fwhms_to_include=100,_cache=None):
         """Convolve with sinc function, width is FWHM."""
         ## check if there is a risk that subsampling will ruin the convolution
-        p = self.add_parameter_set('convolve_with_sinc',width=width)
-        if 'sinc_FWHM' in self.experimental_parameters: # get auto width and make sure consistent with what is given
-            if width is None: width = self.experimental_parameters['sinc_FWHM']
-            if np.abs(np.log(p['width']/self.experimental_parameters['sinc_FWHM']))>1e-3: warnings.warn(f"Input parameter sinc FWHM {repr(p['width'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
-        self.add_format_input_function(lambda: f'{self.name}.convolve_with_sinc({p.format_input()})')
-        if self.verbose and p['width'] < 3*np.diff(self.x).min(): warnings.warn('Convolving sinc with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
-        def f():
-            x,y = self.x,self.y
-            width = np.abs(p['width'])
-            ## get padded spectrum to minimise edge effects
-            dx = (x[-1]-x[0])/(len(x)-1) # ASSUMES EVEN SPACED GRID
-            padding = np.arange(dx,fwhms_to_include*width+dx,dx)
-            xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-            ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-            ## generate sinc to convolve with
-            xconv = np.arange(-fwhms_to_include*width,fwhms_to_include*width,dx)
-            if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-            yconv = np.sinc((xconv-xconv.mean())/width*1.2)*1.2/width # unit integral normalised sinc
+        if (self._clean_construct
+            or width is None
+            or 'width' not in _cache
+            or _cache['width'] != width):
+            if width is None:
+                if 'sinc_FWHM' in self.experiment.experimental_parameters:
+                    width = self.experiment.experimental_parameters['sinc_FWHM']
+                else:
+                    raise Exception("Width is None and could not be inferred from experimental_parameters")
+            dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
+            xconv = np.arange(0,fwhms_to_include*width,dx)
+            xconv = np.concatenate((-xconv[-1:0:-1],xconv))
+            yconv = lineshapes.sinc(xconv,Γ=width)
             yconv = yconv/yconv.sum() # sum normalised
             ## convolve and return, discarding padding
-            self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.add_construct_function(f)
+            _cache['xconv'] = xconv
+            _cache['yconv'] = yconv
+            _cache['width'] = float(width)
+        self.y = tools.convolve_with_padding(self.x,self.y,_cache['xconv'],_cache['yconv'])
 
     def convolve_with_instrument_function(
             self,
@@ -1471,7 +1482,7 @@ class Model(Optimiser):
                 resolution = self.experiment.experimental_parameters['resolution']
             else:
                 raise Exception('Resolution not specified as argument or in experimental data')
-            width = resolution/2*1.2 # distance between sinc peak and first zero
+            width = resolution*0.6 # distance between sinc peak and first zero
             xconv = np.arange(0,fwhms_to_include*width,dx)
             xconv = np.concatenate((-xconv[-1:0:-1],xconv))
             if terms == 3:
@@ -1780,15 +1791,16 @@ class Model(Optimiser):
             ax.plot(self.x,self.y,**tkwargs)
             if invert_model:
                 self.y *= -1
-        if plot_residual and self.y is not None and self.experiment is not None and self.experiment.y is not None:
-            if self._compute_residual is not None:
-                yres = self.yexp - self.y
-                if self.residual_weighting is not None:
-                    yres *= self.residual_weighting
+        if (plot_residual
+            and self.y is not None
+            and self.experiment is not None
+            and self.experiment.y is not None
+            and self._compute_residual is not None):
+                yres = self.get_residual()
                 ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
                 xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
                 tkwargs = dict(color=plotting.newcolor(2), label='Experiment-Model residual', **plot_kwargs)
-                ax.plot(self.x,yres+shift_residual,zorder=-1,**tkwargs) # plot fit residual
+                ax.plot(self.xexp,yres+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
