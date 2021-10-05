@@ -5145,16 +5145,15 @@ def fit_spline_to_extrema_or_median(
     interval, or the median point. If refit_median then find the median of
     residual error of first fit and fit to that."""
     ## get xi spline points
-    xbeg,xend = x[0],x[-1]
     if np.isscalar(xi):
-        xi = np.linspace(xbeg,xend,max(2,int((xend-xbeg)/xi)))
+        xi = np.linspace(x[0],x[-1],max(2,int((x[-1]-x[0])/xi)))
     xi = np.asarray(xi,dtype=float)
     assert np.all(np.sort(xi)==xi),'Spline points not monotonically increasing'
     ## find intervals to fit get spline points in
     ## add extra outer boundary points
     if len(xi) == 1:
         ## if only one point given then use equal width interval on both sides
-        xi = array([xbeg,xend])
+        xi = array([x[0],x[-1]])
     ## get allowed interval fraction around each xi 
     xi = np.concatenate((xi[:1],xi,xi[-1:]))
     xbeg = xi[1:-1] - (xi[1:-1] - xi[:-2] ) * min(interval_fraction,0.5)
@@ -5162,6 +5161,10 @@ def fit_spline_to_extrema_or_median(
     ## and as inidices
     ibeg =  np.searchsorted(x,xbeg)
     iend =  np.searchsorted(x,xend)
+    iend = np.max([iend,ibeg+1],0) # ensure at least one point
+    ## join overlapping ibeg/iend into single interval
+    while np.any(i:=(ibeg[1:]<iend[:-1])):
+        assert False
     ## find min or max in intervals
     xspline,yspline = [],[]     
     for ibegi,iendi in zip(ibeg,iend):
