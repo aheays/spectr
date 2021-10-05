@@ -191,8 +191,8 @@ def _calculate_spectrum_worker_lines(jbeg,jend):
 
 def sinc(x,x0=0,S=1,Γ=1):
     """Lorentzian profile. Γ is FWHM."""
-    Γnode = Γ/1.2
-    return(S*np.sinc((x-x0)/Γnode)/Γnode)
+    Γnode = Γ/1.2               # 0 to first node
+    return S*np.sinc((x-x0)/Γnode)/Γnode
 
 _lorentzian_k = 2*constants.pi
 def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None,method='fortran'): 
