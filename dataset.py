@@ -38,9 +38,9 @@ class Dataset(optimise.Optimiser):
     ##  Kinds of subdata that are vectors
     vector_subkinds = {
         'value'        : {'description' : 'Value of this data'},
-        'unc'          : {'description' : 'Uncertainty'                         , 'kind'         : 'f' , 'valid_kinds'                : ('f',), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 0.0   ,},
-        'step'         : {'description' : 'Default numerical differentiation step size' , 'kind' : 'f' , 'valid_kinds'                : ('f',), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 1e-8  ,},
-        'vary'         : {'description' : 'Whether to vary during optimisation' , 'kind'         : 'b' , 'valid_kinds'                : ('f',), 'cast' : tools.convert_to_bool_vector_array       ,'fmt' : ''      ,'default'               : False ,},
+        'unc'          : {'description' : 'Uncertainty'                         , 'kind'         : 'f' , 'valid_kinds'                : ('f','a'), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 0.0   ,},
+        'step'         : {'description' : 'Default numerical differentiation step size' , 'kind' : 'f' , 'valid_kinds'                : ('f','a'), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 1e-8  ,},
+        'vary'         : {'description' : 'Whether to vary during optimisation' , 'kind'         : 'b' , 'valid_kinds'                : ('f','a'), 'cast' : tools.convert_to_bool_vector_array       ,'fmt' : ''      ,'default'               : False ,},
         'ref'          : {'description' : 'Source reference'                    , 'kind'         : 'U' ,                       'cast' : lambda x       : np.asarray(x,dtype='U20') ,'fmt'          : 's'     ,'default'               : nan   ,},
     }
 
@@ -289,7 +289,6 @@ class Dataset(optimise.Optimiser):
                 raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
             else:
                 self[ykey] = default
-        t = tools.spline(xspline,yspline,self.get(xkey,index=index),order=order) #  DEBUG
         self.set(ykey,'value',value=tools.spline(xspline,yspline,self.get(xkey,index=index),order=order),index=index)
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
@@ -806,6 +805,9 @@ class Dataset(optimise.Optimiser):
         """Index all array data in place."""
         if not self.permit_indexing:
             raise Exception('Indexing not permitted')
+        if isinstance(index,(int,np.int64)):
+            ## allow single integer indexing
+            index = [index]
         original_length = len(self)
         for key,data in self._data.items():
             for subkey in data:
