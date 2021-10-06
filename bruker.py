@@ -60,18 +60,28 @@ class OpusData:
         else:
             raise Exception(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
 
-    def get_resolution(self):
+    def get_resolution(self,kind='fwhm'):
         """Return spectral resolution as a full-width half-maximum of the sinc
         function central peak assuming a boxcar apodisation."""
         ## get spectrum grid step (cm-1)
-        dν_interp = ((self.data[f'ScSm Data Parameter']['LXV']
+        retval = ((self.data[f'ScSm Data Parameter']['LXV']
                -self.data[f'ScSm Data Parameter']['FXV'])
               /(self.data[f'ScSm Data Parameter']['NPT']-1))
-        dν = dν_interp*int(self.data['Fourier Transformation']['ZFF'])
+        ## account for interpolation
+        retval = retval*int(self.data['Fourier Transformation']['ZFF'])
         ## fixed to powers of 2 of 1e-3cm-1
-        dν = 2**round(np.log2(dν*1000))/1000
-        width = dν/1.2         # convert to fwhm
-        return width
+        retval = 2**round(np.log2(retval*1000))/1000
+        ## convert to full-width half-maximum if requested
+        if kind == 'zero-to-zero':
+            ## distance between central zeros of sinc
+            pass
+        elif kind == 'peak-to-zero':
+            ## distance between peak and first zero of sinc
+            retval /= 2
+        elif kind == 'fwhm':
+            ## convert to fwhm of sinc central peak
+            retval /= 1.2     
+        return retval
 
     def plot_interferogram(self,ax=None,**plot_kwargs):
         """Plot interferogram."""
