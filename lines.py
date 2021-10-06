@@ -109,10 +109,7 @@ prototypes['f'] = dict(description="Line f-value",units="dimensionless",kind='f'
     (('σ','α_l'),lambda self,σ,α_l: σ*1.1296e12/α_l,),
     (('fv','SJ','J_l','Λ_u','Λ_l'),_f1),
     ## (('S296K','α296K_l'),lambda self,S296K,α_l_296K: S296K*1.1296e12/α_l_296K), # correct? What about stimulated emission?
-    (('S296K','α296K_l','ν',),
-     lambda self,S296K,α_l_296K,ν:
-     S296K*1.1296e12/α_l_296K/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/296))
-     ),
+    (('S296K','α296K_l','ν',), lambda self,S296K,α_l_296K,ν: S296K*1.1296e12/α_l_296K/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/296))),
 ])
 
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[
@@ -134,8 +131,9 @@ def _f1(self,σ,Tex,ν):
     c = convert.units(constants.Boltzmann,'J','cm-1') # hc/kB
     return σ*(1-np.exp(-c*ν/Tex))
 prototypes['S'] = dict(description="Spectral line intensity",units="cm-1.cm2", kind='f', fmt='<10.5e', infer=[
+    (('S296K','species','E_l','Tex','ν'),_f0,),
     (('σ','Tex_l','ν'),_f1,),
-    (('S296K','species','E_l','Tex','ν'),_f0,),])
+])
 
 def _f0(self,Ae,E_l,ν,g_u,species):
     """Convert between HITRAN line intensity at 296K to Einstein A
@@ -346,7 +344,7 @@ def _f0(self,S296K,E_l,ν,g_u,species):
     coefficient. From Eq. 20 simeckova2006.  FACTOR OF 2 ERROR IN SOME
     CASES? BAD G_U?"""
     c = constants.c*100         # cm.s-1
-    c2 = convert.units(constants.Boltzmann,'J','cm-1')
+    c2 = 1/convert.units(constants.Boltzmann,'J','cm-1')
     T = 296
     π = constants.pi
     Q = hitran.get_partition_function(species,296)
@@ -356,9 +354,9 @@ def _f0(self,S296K,E_l,ν,g_u,species):
 prototypes['Ae'] =dict(description="Einstein A coefficient / emission rate.",units="s-1", kind='a',  fmt='<10.5e', infer=[
     ## (('f','ν','J_u','J_l'), lambda self,f,ν,J_u,J_l : f*0.666886/(2*J_u+1)*(2*J_l+1)*ν**2),
     (('f','ν','g_u','g_l'), lambda self,f,ν,g_u,g_l : f/(1.49951*g_u/g_l/ν**2)),
-    # (('Sij','ν','J_u'),     lambda self,Sij,ν,J_u   : Sij*2.026e-6*ν**3/(2*J_u+1)),
-    # (('At','Ad'), lambda self,At,Ad: At-Ad,),
-    # (('S296K','E_l','ν','g_u','species'),_f0),
+    (('Sij','ν','J_u'),     lambda self,Sij,ν,J_u   : Sij*2.026e-6*ν**3/(2*J_u+1)),
+    (('At','Ad'), lambda self,At,Ad: At-Ad,),
+    (('S296K','E_l','ν','g_u','species'),_f0),
 ],)
 
 
