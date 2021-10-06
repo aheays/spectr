@@ -174,8 +174,8 @@ for key in ('J','N','S','Λ','Ω','Σ','v'):
 
 ## add calculation of column density from optical path length and pressure
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
-prototypes['Nchemical_species']['infer'].append((('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
-prototypes['Nspecies']['infer'].append((('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
+prototypes['Nchemical_species']['infer'].append((('pchemical_species','L','Teq'), lambda self,pchemical_species,L,Teq: convert.units((pchemical_species*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
+prototypes['Nspecies']['infer'].append((         ('pspecies','L','Teq'), lambda self,pspecies,L,Teq: convert.units((pspecies*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
 
 
 ####################################
@@ -199,7 +199,9 @@ prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence 
 prototypes['Γair'] = dict(description="Pressure broadening due to air",units="cm-1.FWHM", kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert.units(P,'Pa','atm')),])
 prototypes['Δνair'] = dict(description="Pressure shift due to air",units="cm-1",kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert.units(P,'Pa','atm')),])
 prototypes['νvc'] = dict(description="Frequency of velocity changing collsions (which profile?)",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
-prototypes['pself'] = dict(description="Partial pressure of this species",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
+prototypes['pspecies'] = dict(description="Partial pressure of this species",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
+prototypes['pself'] = dict(description="Partial pressure of this chemical species (synonym for pchemical_species)",units="Pa", kind='f', fmt='0.5f',infer=[('pchemical_species',lambda self,pchemical_species:pchemical_species)],cast=tools.cast_abs_float_array)
+prototypes['pchemical_species'] = dict(description="Partial pressure of this chemical species",units="Pa", kind='f', fmt='0.5f',infer=[('pself',lambda self,pself:pself)],cast=tools.cast_abs_float_array)
 prototypes['γ0self'] = dict(description="Pressure broadening coefficient in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0self'] = dict(description="Pressure broadening temperature dependence in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['δ0self'] = dict(description="Pressure shift coefficient in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
@@ -441,6 +443,7 @@ class Generic(levels.Base):
             'f','σ',
             # 'σ296K',
             'S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
+            'pspecies','pchemical_species',
             'Nspecies','Nchemical_species',
             'L',
             'Teq','Tex','Ttr',
