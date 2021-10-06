@@ -264,7 +264,7 @@ def format_dict(
             lines.append(f'{prefix}{repr(key):20}: {repr(val)},')
         else:
             ## expand as subdict
-            subdict = dict_expanded_repr(
+            subdict = format_dict(
                 val,
                 indent+"    ",
                 _depth=_depth+1,
