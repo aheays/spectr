@@ -172,6 +172,7 @@ class Experiment(Optimiser):
         x,y = opusdata.get_spectrum()
         d = opusdata.data
         self.experimental_parameters['filename'] = filename
+        self.experimental_parameters['filetype'] = 'opus'
         if 'Fourier Transformation' in d:
             self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
             if d['Fourier Transformation']['APF'] == 'BX':
@@ -181,7 +182,6 @@ class Experiment(Optimiser):
             else:
                 warnings.warn(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
         if 'Acquisition' in d:
-            self.experimental_parameters['filetype'] = 'opus'
             ## opus resolution is zero-to-zero of central sinc function peak
             ##self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
             self.experimental_parameters['sinc_FWHM'] = opusdata.get_resolution()
@@ -375,6 +375,7 @@ class Model(Optimiser):
             residual_weighting=None,
             verbose=None,
             xbeg=None,xend=None,
+            x=None
     ):
         ## build an Experiment from method givens as dict of method:args
         if load_experiment_args is not None:
@@ -389,7 +390,7 @@ class Model(Optimiser):
                 name = f'model_of_{experiment.name}'
         self.x = None
         self.y = None
-        self._xin = None
+        self._xin = x          
         self._xcache = None
         self.xbeg = xbeg
         self.xend = xend
@@ -1478,8 +1479,10 @@ class Model(Optimiser):
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
             if resolution is not None:
                 pass
-            elif self.experiment is not None and 'resolution' in self.experiment.experimental_parameters:
-                resolution = self.experiment.experimental_parameters['resolution']
+            # elif self.experiment is not None and 'resolution' in self.experiment.experimental_parameters:
+            #     resolution = self.experiment.experimental_parameters['resolution']
+            elif self.experiment is not None and 'sinc_FWHM' in self.experiment.experimental_parameters:
+                resolution = self.experiment.experimental_parameters['sinc_FWHM']*1.2
             else:
                 raise Exception('Resolution not specified as argument or in experimental data')
             width = resolution*0.6 # distance between sinc peak and first zero
