@@ -49,7 +49,7 @@ for key in (
         'species', 'chemical_species','isotopologue_ratio',
         'point_group',
         'mass','reduced_mass',
-        'Nself', 'Nchemical_species','Nspecies',
+        'Nchemical_species','Nspecies',
         'Teq','Tex','Tvib','Trot',
         'Zsource', 'Eref',
         'reference',
@@ -62,7 +62,7 @@ for key in (
 for key in (
         'species', 'chemical_species', 'isotopologue_ratio',
         'mass', 'reduced_mass',
-        'Nself', 'Nchemical_species', 'Nspecies',
+        'Nchemical_species', 'Nspecies',
         'Zsource', 'Eref',
         'Teq', 'Tex', 'Tvib', 'Trot',
         ):
@@ -114,7 +114,6 @@ prototypes['f'] = dict(description="Line f-value",units="dimensionless",kind='f'
 
 prototypes['σ'] = dict(description="Spectrally-integrated photoabsorption cross section",units="cm2.cm-1", kind='f', fmt='<10.5e',infer=[
     (('τa','Nspecies_l'),lambda self,τa,Nspecies_l: τa/Nspecies_l), 
-    (('τa','Nself_l'),lambda self,τ,column_densitypp: τ/column_densitypp), 
     (('f','α_l'),lambda self,f,α_l: f/1.1296e12*α_l),
     (('S','ν','Tex'),lambda self,S,ν,Tex,: S/(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/Tex))),])
 
@@ -159,10 +158,9 @@ prototypes['S296K'] = dict(description="Spectral line intensity at 296K referenc
 prototypes['τ'] = dict(description="Integrated optical depth including stimulated emission",units="cm-1", kind='f', fmt='<10.5e', infer=[
     (('S','Nspecies_l'),lambda self,S,Nspecies_l: S*Nspecies_l,),
     (('σ','Nspecies_l'),lambda self,σ,Nspecies_l: σ*Nspecies_l,),
-    (('S','Nself_l'),lambda self,S,Nself_l: S*Nself_l,),
-    (('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,),
 ],)
-prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[(('σ','Nself_l'),lambda self,σ,Nself_l: σ*Nself_l,)],)
+prototypes['τa'] = dict(description="Integrated optical depth from absorption only",units="cm-1", kind='f', fmt='<10.5e', infer=[
+    (('σ','Nspecies_l'),lambda self,σ,Nspecies_l: σ*Nspecies_l,)],)
 
 prototypes['σd'] = dict(description="Photodissociation cross section.",units="cm2.cm-1",kind='f',fmt='<10.5e',infer=[(('σ','ηd_u'),lambda self,σ,ηd_u: σ*ηd_u,)],)
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
@@ -177,7 +175,7 @@ for key in ('J','N','S','Λ','Ω','Σ','v'):
 ## add calculation of column density from optical path length and pressure
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
 prototypes['Nchemical_species']['infer'].append((('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
-prototypes['Nself']['infer'].append((('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
+prototypes['Nspecies']['infer'].append((('pself','L','Teq'), lambda self,pself,L,Teq: convert.units((pself*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
 
 
 ####################################
@@ -443,7 +441,7 @@ class Generic(levels.Base):
             'f','σ',
             # 'σ296K',
             'S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
-            'Nself','Nspecies','Nchemical_species',
+            'Nspecies','Nchemical_species',
             'L',
             'Teq','Tex','Ttr',
             # 'Γ','ΓD',
@@ -461,11 +459,12 @@ class Generic(levels.Base):
     default_zkeys = ['species_u','label_u','v_u','Σ_u','ef_u','species_l','label_l','v_l','Σ_l','ef_l','ΔJ']
       
     def load(self,*args,**kwargs):
-        """Hack to auto translate some keys."""
+        """Hack to auto translate some keys. Delete some day."""
         if 'translate_keys' not in kwargs or kwargs['translate_keys'] is None:
             kwargs['translate_keys'] = {}
         kwargs['translate_keys'] |= {
             'Γ':'ΓL',
+            'Nself':'Nspecies',
             }
         levels.Base.load(self,*args,**kwargs)
 

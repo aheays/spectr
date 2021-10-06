@@ -293,13 +293,12 @@ def _f0(self,species,E,Eref,g,Zsource):
 prototypes['α296K'] = dict(description="Equilibrium level population at 296K.",units="dimensionless", kind='f', fmt='<10.5e',cast=tools.cast_abs_float_array,infer=[(('species','E','Eref','g','Zsource'),_f0),])
 
 ## should these columns even be in levels?
-prototypes['Nchemical_species'] = dict(description="Combined column density of all isotopolouges of a particular species.",units="cm2",kind='f',fmt='<11.3e', infer=[])
-prototypes['Nspecies'] = dict(description="Combined column density of an isotopologue.",units="cm2",kind='f',fmt='<11.3e', infer=[(('Nchemical_species','isotopologue_ratio'),lambda self,Nchemical_species,isotopologue_ratio: Nchemical_species*isotopologue_ratio),])
-prototypes['isotopologue_ratio'] = dict(description="Ratio of this isotopologue to the all isotopologues combined.",units="cm2",kind='f',fmt='<11.3e', infer=[
+prototypes['Nchemical_species'] = dict(description="Combined column density of all isotopolouges of this chemical species",units="cm-2",kind='a',fmt='<11.3e', infer=[])
+prototypes['Nspecies'] = dict(description="Column density of this species",units="cm-2",kind='a',fmt='<11.3e', infer=[(('Nchemical_species','isotopologue_ratio'),lambda self,Nchemical_species,isotopologue_ratio: Nchemical_species*isotopologue_ratio),])
+prototypes['isotopologue_ratio'] = dict(description="Ratio of this isotopologue to the all isotopologues combined",units="cm-2",kind='a',fmt='<11.3e', infer=[
     # (('species'),lambda self,species: database.get_species_property(species,'isotopologue_ratio')),
+    (('Nspecies','Nchemical_species'),lambda self,Nspecies,Nchemical_species: Nspecies/Nchemical_species),
 ])
-prototypes['Nself'] = dict(description="Column density",units="cm2",kind='f',fmt='<11.3e', infer=[])
-
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
 prototypes['ν1'] = dict(description="Vibrational quantum number for mode 1", kind='i',infer=[])
@@ -674,7 +673,7 @@ class Generic(Base):
         'g','gnuclear','Inuclear',
         'Teq','Tex',
         'Zsource','Z','α','α296K',
-        'Nself','Nchemical_species','Nspecies',
+        'Nchemical_species','Nspecies',
         'L',
         'At','Ae','Ad','ηd','ηe','Γe','Γd',         # destruction rates and branching
         defining_qn=defining_qn)
