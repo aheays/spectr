@@ -6,7 +6,7 @@ species_ID             = {'kind':'i'}
 global_isotopologue_ID = {'kind':'i'}
 local_isotopologue_ID  = {'kind':'i'}
 chemical_species       = {'kind':'U'}
-isotopologue           = {'kind':'U'}
+species                = {'kind':'U'}
 AFGL_code              = {'kind':'i'}
 natural_abundance      = {'kind':'f'}
 molar_mass             = {'kind':'f'}
@@ -14,7 +14,7 @@ Q_296K                 = {'kind':'f'}
 gi                     = {'kind':'i'}
 dataset_classname      = {'kind':'U'}
 [data]
-species_ID | global_isotopologue_ID | local_isotopologue_ID | chemical_species | isotopologue   | AFGL_code | natural_abundance | molar_mass    | Q_296K   | gi | dataset_classname
+species_ID | global_isotopologue_ID | local_isotopologue_ID | chemical_species | species        | AFGL_code | natural_abundance | molar_mass    | Q_296K   | gi | dataset_classname
 1          | 1                      | 1                     | H₂O              | ¹H₂¹⁶O         | 161       | 0.997317          | 18.010565     | 174.58   | 1  | lines.Generic
 1          | 2                      | 2                     | H₂O              | ¹H₂¹⁸O         | 181       | 0.002000          | 20.014811     | 176.05   | 1  | lines.Generic
 1          | 3                      | 3                     | H₂O              | ¹H₂¹⁷O         | 171       | 3.718840e-4       | 19.01478      | 1052.14  | 6  | lines.Generic
@@ -57,9 +57,9 @@ species_ID | global_isotopologue_ID | local_isotopologue_ID | chemical_species |
 7          | 36                     | 1                     | O₂               | ¹⁶O₂           | 66        | 0.995262          | 31.98983      | 215.73   | 1  | lines.Generic
 7          | 37                     | 2                     | O₂               | ¹⁶O¹⁸O         | 68        | 0.003991          | 33.994076     | 455.23   | 1  | lines.Generic
 7          | 38                     | 3                     | O₂               | ¹⁶O¹⁷O         | 67        | 7.422350e-4       | 32.994045     | 2658.12  | 6  | lines.Generic
-8          | 39                     | 1                     | NO               | ¹⁴N¹⁶O         | 46        | 0.993974          | 29.997989     | 1142.13  | 3  | lines.Generic
-8          | 40                     | 2                     | NO               | ¹⁵N¹⁶O         | 56        | 0.003654          | 30.995023     | 789.26   | 2  | lines.Generic
-8          | 41                     | 3                     | NO               | ¹⁴N¹⁸O         | 48        | 0.001993          | 32.002234     | 1204.44  | 3  | lines.Generic
+8          | 39                     | 1                     | NO               | ¹⁴N¹⁶O         | 46        | 0.993974          | 29.997989     | 1142.13  | 3  | lines.Diatomic
+8          | 40                     | 2                     | NO               | ¹⁵N¹⁶O         | 56        | 0.003654          | 30.995023     | 789.26   | 2  | lines.Diatomic
+8          | 41                     | 3                     | NO               | ¹⁴N¹⁸O         | 48        | 0.001993          | 32.002234     | 1204.44  | 3  | lines.Diatomic
 9          | 42                     | 1                     | SO₂              | ³²S¹⁶O₂        | 626       | 0.945678          | 63.961901     | 6340.30  | 1  | lines.Generic
 9          | 43                     | 2                     | SO₂              | ³⁴S¹⁶O₂        | 646       | 0.041950          | 65.957695     | 6368.98  | 1  | lines.Generic
 10         | 44                     | 1                     | NO₂              | ¹⁴N¹⁶O₂        | 646       | 0.991616          | 45.992904     | 13577.48 | 3  | lines.Generic
