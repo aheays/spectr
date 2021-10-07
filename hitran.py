@@ -9,6 +9,7 @@ from .tools import *
 from . import kinetics
 from . import dataset
 from . import database
+from . import quantum_numbers
 from .dataset import Dataset
 from. exceptions import DatabaseException
 
@@ -106,11 +107,9 @@ def calc_spectrum(
         ax.set_xlabel('Wavenumber (cm-1)')
         ax.set_ylabel('Absorption coefficient')
     return ν,coef
-    
-
 
 def load(filename):
-    """Load HITRAN .data file into a dictionary of numpy arrays."""
+    """Load HITRAN .data file into a Dataset."""
     data = np.genfromtxt(
         expand_path(filename),
         dtype=[
