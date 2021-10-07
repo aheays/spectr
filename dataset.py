@@ -1214,7 +1214,7 @@ class Dataset(optimise.Optimiser):
             raise Exception(f'Multiple matching rows found: {matching_keys_vals=}')
         return i[0]
 
-    def matching_row(self,return_index=False,**matching_keys_vals):
+    def unique_row(self,return_index=False,**matching_keys_vals):
         """Return uniquely-matching row as a dictionary."""
         i = self.find_unique(**matching_keys_vals)
         d = self.as_flat_dict(index=i)
@@ -1223,7 +1223,7 @@ class Dataset(optimise.Optimiser):
         else:
             return d
 
-    def matching_value(self,key,**matching_keys_vals):
+    def unique_value(self,key,**matching_keys_vals):
         """Return value of key from a row that uniquely matches
         keys_vals."""
         i = self.find_unique(**matching_keys_vals)
