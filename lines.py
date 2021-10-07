@@ -776,7 +776,7 @@ class Generic(levels.Base):
         ## interpret into transition quantities common to all transitions
         new = Dataset(
             ν0=data['ν'],
-            # Ae=data['A'],  # Ae data is incomplete but S296K will be complete
+            ## Ae=data['A'],  # Ae data is incomplete but S296K will be complete
             S296K=data['S'],
             E_l=data['E_l'],
             g_u=data['g_u'],
@@ -791,7 +791,7 @@ class Generic(levels.Base):
         for d,i in data.unique_dicts_match('Mol','Iso'):
             di = hitran.get_molparam(species_ID=d['Mol'],local_isotopologue_ID=d['Iso'])
             assert len(di) == 1,f'Should be unique mol/iso combination {d["Mol"]},{d["Iso"]}'
-            new['species',i] =  di['isotopologue',0]
+            new['species',i] =  di['species',0]
             new['S296K',i] =  new['S296K',i]/di['natural_abundance',0]
         ## remove natural abundance weighting
         self.extend(**new)
@@ -1457,43 +1457,86 @@ class Diatomic(Linear):
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
         from . import hitran
-        data = hitran.load_lines(filename)
-        species = np.unique(hitran.translate_codes_to_species(data['Mol']))
-        assert len(species)==1,'Cannot handle mixed species HITRAN linelist.'
-        species = species[0]
+        data = hitran.load(filename)
         ## interpret into transition quantities common to all transitions
-        kw = {
-            'ν':data['ν'],
-            'Ae':data['A'],
-            'E'+'_l':data['E_l'],
-            'g'+'_u':data['g_u'],
-            'g'+'_l':data['g_l'],
-            'γ0air':data['γair'], #  HWHM
-            'nair':data['nair'],
-            'δ0air':data['δair'],
-            'γ0self':data['γself'], #  HWHM
-        }
-        ## get species
-        assert len(np.unique(data['Mol']))==1
-        try:
-            ## full isotopologue
-            kw['species'] = hitran.translate_codes_to_species(data['Mol'],data['Iso'])
-        except KeyError:
-            assert len(np.unique(data['Iso']))==1,'Cannot identify isotopologues and multiple are present.'
-            kw['species'] = hitran.translate_codes_to_species(data['Mol'])
-        ## interpret quantum numbers and insert into some kind of transition, this logic is in its infancy
+        new = Dataset(
+            ν0=data['ν'],
+            # Ae=data['A'],  # Ae data is incomplete but S296K will be complete
+            S296K=data['S'],
+            E_l=data['E_l'],
+            g_u=data['g_u'],
+            g_l=data['g_l'],
+            γ0air=data['γair'], 
+            nγ0air=data['nair'],
+            δ0air=data['δair'],
+            γ0self=data['γself'],
+        )
+        ## get species and remove natural abundance scaling of S296K
+        new['species'] = np.full(len(data),'')
+        new['chemical_species'] = np.full(len(data),'')
+        chemical_species = np.unique(new['chemical_species'])
+        if len(chemical_species) != 1:
+            raise Exception(f'Non-unique chemical species: {chemical_species!r}')
+        chemical_species = chemical_species[0]
+        for d,i in data.unique_dicts_match('Mol','Iso'):
+            t = hitran.get_molparam().unique_row(species_ID=d['Mol'],local_isotopologue_ID=d['Iso'])
+            new['species',i] =  t['species']
+            new['chemical_species',i] =  t['chemical_species']
+            new['S296K',i] =  new['S296K',i]/t['natural_abundance']
+            
+
+        ## interpret quantum numbers a nd insert into some kind of transition, this logic is in its infancy
         ## standin for diatomics
-        kw['v'+'_u'] = data['V_u']
-        kw['v'+'_l'] = data['V_l']
-        branches = {'P':-1,'Q':0,'R':+1}
-        ΔJ,J_l = [],[]
-        for Q_l in data['Q_l']:
-            branchi,Jli = Q_l.split()
-            ΔJ.append(branches[branchi])
-            J_l.append(Jli)
-        kw['ΔJ'] = np.array(ΔJ,dtype=int)
-        kw['J'+'_l'] = np.array(J_l,dtype=float)
-        self.extend(**kw)
+        if chemical_species in ('NO'):
+            ## V_u
+            qn = {'label_u':[],'v_u':[],'Ω_u':[]}
+            for V_u in data['V_u']:
+                if r:=re.match(r'^.*([a-zA-Z]+)([0-9./]+) *([0-9]+) *$',V_u):
+                    qn['label_u'].append(r.group(1))
+                    if '/' in r.group(2):
+                        import fractions
+                        qn['Ω_u'].append(float(fractions.Fraction(r.group(2))))
+                    else:
+                        qn['Ω_u'].append(float(r.group(2)))
+                    qn['v_u'].append(r.group(3))
+                else:
+                    raise Exception(f'Cannot interpret quantum number: {V_u=}')
+            for key in qn:
+                new[key] = qn[key]
+            ## V_l
+            qn = {'label_l':[],'v_l':[],'Ω_l':[]}
+            for V_l in data['V_l']:
+                if r:=re.match(r'^.*([a-zA-Z]+)([0-9./]+) *([0-9]+) *$',V_l):
+                    qn['label_l'].append(r.group(1))
+                    if '/' in r.group(2):
+                        import fractions
+                        qn['Ω_l'] = float(fractions.Fraction(r.group(2)))
+                    else:
+                        qn['Ω_l'] = float(r.group(2))
+                    qn['v_l'].append(r.group(3))
+                else:
+                    raise Exception(f'Cannot interpret quantum number: {V_l=}')
+            for key in qn:
+                new[key] = qn[key]
+            ## Q_l
+            qn = {'ΔJ':[],'ΔN':[],'ef_l':[],'J_l':[]}
+            for Q_l in data['Q_l']:
+                if r:=re.match(r'^ *([OPQRS])?([OPQRS]) *([0-9.]+)([ef])? *([0-9.]+)?$',Q_l):
+                    qn['ΔJ'].append(quantum_numbers.decode_ΔJ(r.group(2)))
+                    if r.group(1) is None:
+                        qn['ΔN'].append(qn['ΔJ'][-1])
+                    else:
+                        qn['ΔN'].append(quantum_numbers.decode_ΔJ(r.group(1)))
+                    qn['J_l'].append(float(r.group(3)))
+                    qn['ef_l'].append(quantum_numbers.decode_ef(r.group(4)))
+                    ## qn['N_l'].append(float(r.group(5)))
+                else:
+                    raise Exception(f'Cannot interpret quantum number: {Q_l=}')
+            for key in qn:
+                new[key] = qn[key]
+        ## add to self
+        self.extend(**new)
+        return data             # return raw HITRAN data
 
     def load_from_duo(self,filename,intensity_type):
         """Load an output line list computed by DUO (yurchenko2016)."""

@@ -71,36 +71,56 @@ def normalise_term_symbol(term):
     ## not implemented
     return term
 
-@vectorise_decode
-@tools.cache
-def decode_rotational_transition(branch):
-    """Expect e.g., P13ee, P11, P1, P. Return as dict."""
-    branch = branch.strip()
-    if r:=re.match(r'^([OPQRS])([0-9])([0-9])([ef])([ef])$',branch):
-        return {'ΔJ': decode_ΔJ(r.group(1)),
-                'Fi_u': int(r.group(2)),
-                'Fi_l': int(r.group(3)),
-                'ef_u': decode_ef(r.group(4)),
-                'ef_l': decode_ef(r.group(5))}
-    elif r:=re.match(r'^([OPQRS])([0-9])([0-9])$',branch):
-        return {'ΔJ': decode_ΔJ(r.group(1)),
-                'Fi_u': int(r.group(2)),
-                'Fi_l': int(r.group(3)),}
-    elif r:=re.match(r'^([OPQRS])$',branch):
-        return {'ΔJ': decode_ΔJ(r.group(1)),}
-    else:
-        raise InvalidEncodingException(f"Cannot decode branch: {repr(branch)}")
+# @vectorise_decode
+# @tools.cache
+# def decode_rotational_transition(branch):
+    # """Expect e.g., P13ee, P11, P1, P. Return as dict."""
+    # branch = branch.strip()
+    # if r:=re.match(r'^([OPQRS])([0-9])([0-9])([ef])([ef])$',branch):
+        # return {'ΔJ': decode_ΔJ(r.group(1)),
+                # 'Fi_u': int(r.group(2)),
+                # 'Fi_l': int(r.group(3)),
+                # 'ef_u': decode_ef(r.group(4)),
+                # 'ef_l': decode_ef(r.group(5))}
+    # elif r:=re.match(r'^([OPQRS])([0-9])([0-9])$',branch):
+        # return {'ΔJ': decode_ΔJ(r.group(1)),
+                # 'Fi_u': int(r.group(2)),
+                # 'Fi_l': int(r.group(3)),}
+    # elif r:=re.match(r'^([OPQRS])$',branch):
+        # return {'ΔJ': decode_ΔJ(r.group(1)),}
+    # elif r:=re.match(r'^([OPQRSopqrs])([OPQRS])([0-9])([0-9])([ef])([ef])$',branch):
+        # return {
+            # 'ΔN': decode_ΔJ(r.group(1)),
+            # 'ΔJ': decode_ΔJ(r.group(2)),
+            # 'Fi_u': int(r.group(3)),
+            # 'Fi_l': int(r.group(4)),
+            # 'ef_u': decode_ef(r.group(5)),
+            # 'ef_l': decode_ef(r.group(6)),
+        # }
+    # elif r:=re.match(r'^([OPQRSopqrs])([OPQRS])([0-9])([0-9])$',branch):
+        # return {
+            # 'ΔN': decode_ΔJ(r.group(1)),
+            # 'ΔJ': decode_ΔJ(r.group(2)),
+            # 'Fi_u': int(r.group(3)),
+            # 'Fi_l': int(r.group(4)),
+        # }
+    # elif r:=re.match(r'^([OPQRSopqrs])([OPQRS])$',branch):
+        # return {
+            # 'ΔN': decode_ΔJ(r.group(1)),
+            # 'ΔJ': decode_ΔJ(r.group(2)),
+        # }
+    # else:
+        # raise InvalidEncodingException(f"Cannot decode branch: {repr(branch)}")
 
-decode_branch = decode_rotational_transition # deprecated
+# decode_branch = decode_rotational_transition # deprecated
 
-_translate_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
 
 def encode_rotational_transition(qn,mathtext=False):
     """Encode rotational transition for ΔJ, J_u, J_l, ef_l, ef_u, Fi_l,
     and Fi_u"""
     if 'ΔJ' not in qn and 'J_l' in qn and 'J_u' in qn:
         qn['ΔJ'] = qn['J_u']-qn['J_l']
-    ΔJ = _translate_ΔJ[qn['ΔJ']]
+    ΔJ = _encode_ΔJ[qn['ΔJ']]
     FFefef = ''
     if 'Fi_u' and 'Fi_l' in qn:
         FFefef += format(qn['Fi_u'],'g')+format(qn['Fi_l'],'g')
@@ -112,9 +132,11 @@ def encode_rotational_transition(qn,mathtext=False):
         retval = f'{ΔJ}{FFefef}'
     return retval
 
-_decode_ΔJ = {'O':-2,'P':-1,'Q':0,'R':1,'S':2}
+_decode_ΔJ = {'O':-2,'P':-1,'Q':0,'R':1,'S':2,'o':-2,'p':-1,'q':0,'r':1,'s':2}
 def decode_ΔJ(encoded):
     return _decode_ΔJ[encoded]
+
+_encode_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
 
 _decode_Λ = {'Σ':0,'Σ⁺':0,'Σ⁻':0,'Π':1,'Φ':2,'Γ':3}
 def decode_Λ(encoded):
@@ -158,19 +180,21 @@ def decode_comma_separated_equalities(encoded):
 def decode_rotational_transition(encoded):
     """Expect e.g., P13ee25, P, P13ee, P25. Return as dict."""
     ## e.g, P, P5, P13ee, P13ee5, P13ee5.5 
-    if r:=re.match(r'^([OPQRS])([0-9][0-9][ef][ef])?([0-9]+(?:\.[05])?)?$',encoded):
+    if r:=re.match(r'^([opqrsOPQRS])?([OPQRS])([0-9][0-9][ef][ef])?([0-9]+(?:\.[05])?)?$',encoded):
         qn = {}
-        qn['ΔJ'] = decode_ΔJ(r.group(1))
-        if r.group(2) is not None:
-            qn['Fi_u'] = int(r.group(2)[0])
-            qn['Fi_l'] = int(r.group(2)[1])
-            qn['ef_u'] = decode_ef(r.group(2)[2])
-            qn['ef_l'] = decode_ef(r.group(2)[3])
+        if r.group(1) is not None:
+            qn['ΔN'] = decode_ΔJ(r.group(1))
+        qn['ΔJ'] = decode_ΔJ(r.group(2))
         if r.group(3) is not None:
+            qn['Fi_u'] = int(r.group(3)[0])
+            qn['Fi_l'] = int(r.group(3)[1])
+            qn['ef_u'] = decode_ef(r.group(3)[2])
+            qn['ef_l'] = decode_ef(r.group(3)[3])
+        if r.group(4) is not None:
             try:
-                qn['J_l'] = int(r.group(3))
+                qn['J_l'] = int(r.group(4))
             except ValueError:
-                qn['J_l'] = float(r.group(3))
+                qn['J_l'] = float(r.group(4))
     else:
         raise InvalidEncodingException(f'Could not decode rotational transition: {repr(encoded)}')
     return qn
@@ -400,7 +424,6 @@ def decode_transition(transition):
             retval['Δ'+key] = val
     return retval
 
-_translate_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
 def encode_transition(
         qn=None,
         qnl=None,
@@ -428,7 +451,7 @@ def encode_transition(
         qnl.pop('species')
     retval = encode_level(qnu)+'-'+encode_level(qnl)
     if 'ΔJ' in qn:
-        retval += '_'+_translate_ΔJ[qn['ΔJ']] 
+        retval += '_'+_encode_ΔJ[qn['ΔJ']] 
     return retval
     
 def encode_level(qn):

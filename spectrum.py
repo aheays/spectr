@@ -305,7 +305,6 @@ class Experiment(Optimiser):
             ax = plotting.subplot()
             plotting.plot_hist_with_fitted_gaussian(r,ax=ax)
             ax.set_title(f'noise distribution\n{self.name}')
-        return rms
 
     def plot(
             self,
@@ -622,7 +621,7 @@ class Model(Optimiser):
             **kwargs,
             
     ):
-        line = hitran.get_lines(species,match=match)
+        line = hitran.get_line(species,match=match)
         line.clear_format_input_functions()
         self.add_line(line,*args,**kwargs)
         self.pop_format_input_function()
@@ -1084,7 +1083,6 @@ class Model(Optimiser):
             xjoin=10, # specified interval join points or distance separating them
             xbeg=None,xend=None, # limit to this range
             vary=False,Avary=False, # vary phase, frequencey and/or amplitude
-            Aspline= True,          # amplitude is splined, else pieces wise constant
     ):
         """Automatically find regions for use in
         scale_by_piecewise_sinusoid."""
@@ -1108,25 +1106,28 @@ class Model(Optimiser):
         ## loop over all regions, gettin dominant frequency and phase
         ## from the residual error power spectrum
         regions = []
+        x,y = self.x,self.y
+        if self._interpolate_factor is not None:
+            x,y = x[::self._interpolate_factor],y[::self._interpolate_factor]
+            
         for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
-            i = slice(*np.searchsorted(self.x,[xbegi,xendi]))
-            # i = (self.x>=xbegi)&(self.x<=xendi)
-            residual = self.yexp[i] - self.y[i]
+            i = slice(*np.searchsorted(x,[xbegi,xendi]))
+            residual = self.yexp[i] - y[i]
             FT = fft.fft(residual)
             imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
             phase = np.arctan(FT.imag[imax]/FT.real[imax])
             if FT.real[imax]<0:
                 phase += π
-            dx = (self.x[i][-1]-self.x[i][0])/(len(self.x[i])-1)
+            dx = (x[i][-1]-x[i][0])/(len(x[i])-1)
             frequency = 1/dx*imax/len(FT)
-            amplitude = tools.rms(residual)/self.y[i].mean()
+            amplitude = tools.rms(residual)/y[i].mean()
             # amplitude = tools.rms(residual)
             regions.append([
                 xbegi,xendi,
                 P(amplitude,Avary,1e-5),
                 P(frequency,vary,frequency*1e-3),
                 P(phase,vary,2*π*1e-3),])
-        self.scale_by_piecewise_sinusoid(regions,Aspline=Aspline)
+        self.scale_piecewise_sinusoid(regions)
         return regions
 
     @optimise_method()
@@ -2160,7 +2161,7 @@ class FitReferenceAbsorption():
     }
 
     characteristic_lines = {
-        'H2O':[[1550,1580],],
+        'H2O':[[1700,1750],[1550,1580],],
         # 'H2O':[[1550,1580],[3880,3882]],
         'CO2':[[2310,2330],],
         'CO':[[2160,2180],],
@@ -2206,7 +2207,10 @@ class FitReferenceAbsorption():
         self.p.setdefault('noise',{})
         self.p['noise'].setdefault('xbeg',self.experiment.x[-1]-20)
         self.p['noise'].setdefault('xend',self.experiment.x[-1])
-        self.p['noise'].setdefault('rms', self.experiment.fit_noise(xbeg=self.p['noise']['xbeg'],xend=self.p['noise']['xend'],n=3,make_plot=False))
+        self.p['noise'].setdefault('rms',None)
+        if self.p['noise']['rms'] is None:
+            self.experiment.fit_noise(xbeg=self.p['noise']['xbeg'],xend=self.p['noise']['xend'],n=3,make_plot=False)
+            self.p['noise']['rms'] = self.experiment.experimental_parameters['noise_rms']
         self.experiment.experimental_parameters['noise_rms'] = p['noise']['rms']
         self.experiment.residual_scale_factor = 1/p['noise']['rms']
         ## bin data for speed
@@ -2261,7 +2265,8 @@ class FitReferenceAbsorption():
         """Full model."""
         print('fit_regions')
         p = self.p
-        xbeg = p['xbeg']
+        xbeg = max(p['xbeg'],self.experiment.x[0])
+        xend = min(p['xend'],self.experiment.x[-1])
         while xbeg < p['xend']:
             xend = min(xbeg+width,p['xend'])
             model = self.make_model(xbeg,xend,**make_model_kwargs)
@@ -2545,12 +2550,12 @@ class FitReferenceAbsorption():
                 p['N'][species].vary =False
                 p['pair'][species].vary =False
             ## load data from HITRAN linelists
-            tline = hitran.get_lines(species)
+            tline = hitran.get_line(species)
             ## Trim lines that are too weak to matter
             if species in species_to_fit:
                 ## Remove very weak lines that probably wont
                 ## contribute at any reasonable column density
-                tline.limit_to_match(S296K_min=1e-25)
+                tline.limit_to_match(min_S296K=1e-25)
             else:
                 ## if species not fit then lines can be trimmed to a minimum τ
                 τpeak_min = 1e-3    # approx minimum peak τ to include a line
@@ -2560,12 +2565,12 @@ class FitReferenceAbsorption():
                     ## if this species is to fitted make sure at least
                     ## some lines are included
                     S296K_min = min(S296K_min,np.max(tline['S296K'])/10) 
-                tline = tline.matches(S296K_min=S296K_min)
+                tline = tline.matches(min_S296K=S296K_min)
             ## add lines
             model.add_line(
                 tline,
                 Teq=p['Teq'],
-                Nself=p['N'][species],
+                Nchemical_species=p['N'][species],
                 pair=p['pair'][species],
                 ymin=None,
                 ncpus=self.ncpus,
@@ -2612,12 +2617,13 @@ class FitReferenceAbsorption():
         ##             # freqi.vary = phasei.vary = amplitudei.vary =  True
         ##     # model.add_piecewise_sinusoid(p['second_intensity_sinusoid'])
         ## instrument broadening
-        if 'instrument_gaussian' in p or fit_instrument:
-            p.setdefault('instrument_gaussian',P(0.02,True,1e-5,nan,(0.01,0.1)))
-            p['instrument_gaussian'].vary = fit_instrument
-            model.convolve_with_gaussian(p['instrument_gaussian'])
-        else:
-            model.convolve_with_blackman_harris()
+        # if 'instrument_gaussian' in p or fit_instrument:
+            # p.setdefault('instrument_gaussian',P(0.02,True,1e-5,nan,(0.01,0.1)))
+            # p['instrument_gaussian'].vary = fit_instrument
+            # model.convolve_with_gaussian(p['instrument_gaussian'])
+        # else:
+            # model.convolve_with_blackman_harris()
+        model.convolve_with_sinc()
         ## build it now
         model.construct()
         return model
@@ -2640,8 +2646,7 @@ def auto_fit(
         filename,
         xbeg=600,
         xend=6000,
-        species_to_fit=('H2O','CO','CO2','NH3','SO2','H2S','CH4','CS2','HCN',
-                        'N2O','NO','NO2','OCS','C2H2','C2H6','HCOOH',),
+        species_to_fit=('H2O','CO','CO2','NH3','SO2','H2S','CH4','CS2','HCN', 'N2O','NO','NO2','OCS','C2H2','C2H6','HCOOH',),
         verbose=False,
         make_plot=True,
         prefit=True,

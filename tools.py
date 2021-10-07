@@ -244,12 +244,16 @@ def format_dict(
         newline_depth=inf,
         blank_depth=-1,
         _depth=0,
+        keys=None,
 ):
     """pprint dict recursively but repr non-dict elements."""
     indent = '    '
     lines = ['{']
     ## add all values, either on new line, or as subdict
-    for i,(key,val) in enumerate(input_dict.items()):
+    if keys is None:
+        keys = list(input_dict.keys())
+    for i,key in enumerate(keys):
+        val = input_dict[key]
         if blank_depth >= _depth:
             prefix = '\n'+indent
         else:
