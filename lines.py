@@ -645,7 +645,7 @@ class Generic(levels.Base):
             if dx is not None:
                 x = np.arange(max(0,self[xkey].min()-10.),self[xkey].max()+10.,dx)
             else:
-                x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,nx)
+                x = np.linspace(max(0,self[xkey].min()-10.),self[xkey].max()+10.,int(nx))
         else:
             x = np.asarray(x)
         ## branch to calc separate spectrum for unique combinations of
@@ -1461,7 +1461,7 @@ class Diatomic(Linear):
         ## interpret into transition quantities common to all transitions
         new = Dataset(
             ν0=data['ν'],
-            # Ae=data['A'],  # Ae data is incomplete but S296K will be complete
+            ## Ae=data['A'],  # Ae data is incomplete but S296K will be complete
             S296K=data['S'],
             E_l=data['E_l'],
             g_u=data['g_u'],
@@ -1471,23 +1471,21 @@ class Diatomic(Linear):
             δ0air=data['δair'],
             γ0self=data['γself'],
         )
-        ## get species and remove natural abundance scaling of S296K
+        ## get species and chemical_species
         new['species'] = np.full(len(data),'')
         new['chemical_species'] = np.full(len(data),'')
+        for d,i in data.unique_dicts_match('Mol','Iso'):
+            t = hitran.get_molparam().unique_row(species_ID=d['Mol'],local_isotopologue_ID=d['Iso'])
+            dataset_classname = t['dataset_classname']
+            new['species',i] =  t['species']
+            new['chemical_species',i] =  t['chemical_species']
+            new['S296K',i] =  new['S296K',i]/t['natural_abundance']
         chemical_species = np.unique(new['chemical_species'])
         if len(chemical_species) != 1:
             raise Exception(f'Non-unique chemical species: {chemical_species!r}')
         chemical_species = chemical_species[0]
-        for d,i in data.unique_dicts_match('Mol','Iso'):
-            t = hitran.get_molparam().unique_row(species_ID=d['Mol'],local_isotopologue_ID=d['Iso'])
-            new['species',i] =  t['species']
-            new['chemical_species',i] =  t['chemical_species']
-            new['S296K',i] =  new['S296K',i]/t['natural_abundance']
-            
-
-        ## interpret quantum numbers a nd insert into some kind of transition, this logic is in its infancy
-        ## standin for diatomics
-        if chemical_species in ('NO'):
+        ## interpret quantum numbers
+        if dataset_classname == 'lines.Diatomic':
             ## V_u
             qn = {'label_u':[],'v_u':[],'Ω_u':[]}
             for V_u in data['V_u']:
@@ -1498,11 +1496,15 @@ class Diatomic(Linear):
                         qn['Ω_u'].append(float(fractions.Fraction(r.group(2))))
                     else:
                         qn['Ω_u'].append(float(r.group(2)))
-                    qn['v_u'].append(r.group(3))
+                    qn['v_u'].append(int(r.group(3)))
+                elif r:=re.match(r'^ *([0-9]+) *$',V_u):
+                    qn['label_u'].append('X')
+                    qn['Ω_u'].append(0)
+                    qn['v_u'].append(int(r.group(1)))
                 else:
                     raise Exception(f'Cannot interpret quantum number: {V_u=}')
             for key in qn:
-                new[key] = qn[key]
+                data[key] = qn[key]
             ## V_l
             qn = {'label_l':[],'v_l':[],'Ω_l':[]}
             for V_l in data['V_l']:
@@ -1514,10 +1516,14 @@ class Diatomic(Linear):
                     else:
                         qn['Ω_l'] = float(r.group(2))
                     qn['v_l'].append(r.group(3))
+                elif r:=re.match(r'^ *([0-9]+) *$',V_l):
+                    qn['label_l'].append('X')
+                    qn['Ω_l'].append(0)
+                    qn['v_l'].append(int(r.group(1)))
                 else:
                     raise Exception(f'Cannot interpret quantum number: {V_l=}')
             for key in qn:
-                new[key] = qn[key]
+                data[key] = qn[key]
             ## Q_l
             qn = {'ΔJ':[],'ΔN':[],'ef_l':[],'J_l':[]}
             for Q_l in data['Q_l']:
@@ -1528,15 +1534,22 @@ class Diatomic(Linear):
                     else:
                         qn['ΔN'].append(quantum_numbers.decode_ΔJ(r.group(1)))
                     qn['J_l'].append(float(r.group(3)))
-                    qn['ef_l'].append(quantum_numbers.decode_ef(r.group(4)))
-                    ## qn['N_l'].append(float(r.group(5)))
+                    if r.group(4) is None:
+                        qn['ef_l'].append(1)
+                    else:
+                        qn['ef_l'].append(quantum_numbers.decode_ef(r.group(4)))
+                elif r:=re.match(r'^ *([OPQRS]) *([0-9.]+)q *$',Q_l):
+                    ## N2 quadrupole -- q means quadrupole?
+                    qn['ΔJ'].append(quantum_numbers.decode_ΔJ(r.group(1))) 
+                    qn['ΔN'].append(0) 
+                    qn['ef_l'].append(1) 
+                    qn['J_l'].append(float(r.group(2))) 
                 else:
                     raise Exception(f'Cannot interpret quantum number: {Q_l=}')
             for key in qn:
-                new[key] = qn[key]
+                data[key] = qn[key]
         ## add to self
         self.extend(**new)
-        return data             # return raw HITRAN data
 
     def load_from_duo(self,filename,intensity_type):
         """Load an output line list computed by DUO (yurchenko2016)."""
