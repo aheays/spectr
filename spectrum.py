@@ -25,7 +25,6 @@ from . import levels
 from . import exceptions
 from . import dataset
 from . import database
-from . import fortran_tools
 from .dataset import Dataset
 
 
@@ -86,6 +85,7 @@ class Experiment(Optimiser):
             ## check for regular x grid
             t0,t1 = np.diff(x).min(),np.diff(x).max()
             assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
+            self.experimental_parameters.setdefault('filetype','unknown')
             self.experimental_parameters.update(experimental_parameters)
             ## verbose info
             if self.verbose:
@@ -198,6 +198,7 @@ class Experiment(Optimiser):
         _cache['has_run'] = True
         x,y,header = load_soleil_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
+        self.experimental_parameters['filetype'] = 'DESIRS FTS'
         self.experimental_parameters.update(header)
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
@@ -508,6 +509,7 @@ class Model(Optimiser):
         """If the model has been interpolated then restore it to
         original grid. If average=True then average the values in each
         interpolated interval."""
+        from .fortran_tools import fortran_tools
         if self._interpolate_factor is not None:
             self.x = self.x[::self._interpolate_factor]
             if average:
@@ -1190,211 +1192,30 @@ class Model(Optimiser):
         """Shift by a constant amount."""
         self.y += float(shift)
 
-    @optimise_method()
-    def convolve_with_gaussian(self,width=1,fwhms_to_include=20):
-        """Convolve with gaussian."""
-        ## get x-grid -- skip whole convolution if it does not exist
-        if len(self.x) == 0:
-            return
-        x,y = self.x,self.y
-        if width == 0:
-            ## nothing to be done
-            return
-        abswidth = abs(width)
-        max_width = 1
-        if abswidth > 1e2:
-            raise Exception(f'Gaussian width > 100')
-        if self.verbose and abswidth < 3*np.diff(self.x).min(): 
-            warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
-        ## get padded spectrum to minimise edge effects
-        dx = (x[-1]-x[0])/(len(x)-1)
-        padding = np.arange(dx,fwhms_to_include*abswidth+dx,dx)
-        xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-        ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-        ## generate gaussian to convolve with
-        xconv_beg = -fwhms_to_include*abswidth
-        xconv_end =  fwhms_to_include*abswidth
-            # warnings.warn('Convolution domain length very long.')
-        xconv = np.arange(xconv_beg,xconv_end,dx)
-        if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-        yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abswidth**2) # peak normalised gaussian
-        yconv = yconv/yconv.sum() # sum normalised
-        ## convolve and return, discarding padding
-        self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        ## self.y = signal.fftconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        ## self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
-    @optimise_method()
-    def convolve_with_gaussian_sum(self,widths_areas_offsets,fwhms_to_include=10):
-        """Convolve with a sum of Gaussians of different widths and (positive)
-        areas in a list [[width1,area1],...] but together normalised to 1."""
-        ## maximum width
-        width = sum([width for width,area,offset in widths_areas_offsets])
-        ## get padded spectrum to minimise edge effects
-        dx = (self.x[-1]-self.x[0])/(len(self.x)-1)
-        padding = np.arange(dx,fwhms_to_include*width+dx,dx)
-        xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
-        ypad = np.concatenate((self.y[0]*np.ones(padding.shape,dtype=float),self.y,self.y[-1]*np.ones(padding.shape,dtype=float)))
-        ## generate x grid to convolve with, ensure there is a centre
-        ## zero
-        xconv_beg = -fwhms_to_include*width
-        xconv_end =  fwhms_to_include*width
-        xconv = np.arange(xconv_beg,xconv_end,dx)
-        if len(xconv)%2==0:
-            xconv = xconv[0:-1]
-        xconv = xconv-xconv.mean()
-        ## normalised sum of gaussians
-        yconv = np.full(xconv.shape,0.0)
-        for width,area,offset in widths_areas_offsets:
-            yconv += lineshapes.gaussian(xconv,float(offset),float(area),abs(width))
-        yconv /= yconv.sum() 
-        ## convolve padded y and substitute into self
-        self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(self.x)]
-
-    def convolve_with_lorentzian(self,width,fwhms_to_include=100):
-        """Convolve with lorentzian."""
-        p = self.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
-        self.add_format_input_function(lambda: f'{self.name}.convolve_with_lorentzian({p.format_input()})')
-        ## check if there is a risk that subsampling will ruin the convolution
-        def f():
-            x,y = self.x,self.y
-            width = np.abs(p['width'])
-            if self.verbose and width < 3*np.diff(self.x).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
-            ## get padded spectrum to minimise edge effects
-            dx = (x[-1]-x[0])/(len(x)-1)
-            padding = np.arange(dx,fwhms_to_include*width+dx,dx)
-            xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-            ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-            ## generate function to convolve with
-            xconv = np.arange(-fwhms_to_include*width,fwhms_to_include*width,dx)
-            if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-            yconv = lineshapes.lorentzian(xconv,xconv.mean(),1.,width)
-            yconv = yconv/yconv.sum() # sum normalised
-            ## convolve and return, discarding padding
-            self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        self.add_construct_function(f)
-
-    @optimise_method()
-    def convolve_with_sinc(self,width=None,fwhms_to_include=100,_cache=None):
-        """Convolve with sinc function, width is FWHM."""
-        ## check if there is a risk that subsampling will ruin the convolution
-        if (self._clean_construct
-            or width is None
-            or 'width' not in _cache
-            or _cache['width'] != width):
-            if width is None:
-                if 'sinc_FWHM' in self.experiment.experimental_parameters:
-                    width = self.experiment.experimental_parameters['sinc_FWHM']
-                else:
-                    raise Exception("Width is None and could not be inferred from experimental_parameters")
-            dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
-            xconv = np.arange(0,fwhms_to_include*width,dx)
-            xconv = np.concatenate((-xconv[-1:0:-1],xconv))
-            yconv = lineshapes.sinc(xconv,Γ=width)
-            yconv = yconv/yconv.sum() # sum normalised
-            ## convolve and return, discarding padding
-            _cache['xconv'] = xconv
-            _cache['yconv'] = yconv
-            _cache['width'] = float(width)
-        self.y = tools.convolve_with_padding(self.x,self.y,_cache['xconv'],_cache['yconv'])
-
-    def convolve_with_instrument_function(
-            self,
-            sinc_fwhm=0,
-            gaussian_fwhm=0,
-            lorentzian_fwhm=0,
-            signum_magnitude=0,
-            sinc_fwhms_to_include=200,
-            gaussian_fwhms_to_include=10,
-            lorentzian_fwhms_to_include=10,
-    ):
-        """Convolve with sinc function, width is FWHM."""
-        ## check if there is a risk that subsampling will ruin the convolution
-        p = self.add_parameter_set(
-            'convolve_with_instrument_function',
-            sinc_fwhm=sinc_fwhm,
-            gaussian_fwhm=gaussian_fwhm,
-            lorentzian_fwhm=lorentzian_fwhm,
-            signum_magnitude=signum_magnitude,
-            step_default={
-                'sinc_fwhm':1e-3,
-                'gaussian_fwhm':1e-3,
-                'lorentzian_fwhm':1e-3,
-                'signum_magnitude':1e-4,
-            },)
-        ## get auto width from experimental data and make sure
-        ## consistent with what is given in the input of this function
-        if 'sinc_FWHM' in self.experimental_parameters:
-            if p['sinc_fwhm']==0:
-                p.get_parameter('sinc_fwhm').p = self.experimental_parameters['sinc_FWHM']
-            else:
-                if np.abs(np.log(p['sinc_fwhm']/self.experimental_parameters['sinc_FWHM']))>1e-3:
-                    warnings.warn(f"Input parameter sinc FWHM {repr(p['sinc_fwhm'])} does not match experimental_parameters sinc_FWHM {repr(self.experimental_parameters['sinc_FWHM'])}")
-        ## rewrite input line
-        def f():
-            # retval = f'{self.name}.convolve_with_instrument_function({p.format_input()}'
-            retval = f'{self.name}.convolve_with_instrument_function({p.format_multiline()}'
-            if p['sinc_fwhm']      !=0: retval += f',sinc_fwhms_to_include={sinc_fwhms_to_include}'
-            if p['gaussian_fwhm']  !=0: retval += f',gaussian_fwhms_to_include={gaussian_fwhms_to_include}'
-            if p['lorentzian_fwhm']!=0: retval += f',lorentzian_fwhms_to_include={lorentzian_fwhms_to_include}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(f)
-        instrument_function_cache = dict(y=None,width=None,) # for persistence between optimsiation function calls
-        def f():
-            dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
-            ## get cached instrument function or recompute
-            # if instrument_function_cache['y'] is None or p.has_changed():
-            if instrument_function_cache['y'] is None or p.timestamp>self.timestamp:
-                ## get total extent of instrument function
-                width = abs(p['sinc_fwhm'])*sinc_fwhms_to_include + abs(p['gaussian_fwhm'])*gaussian_fwhms_to_include
-                instrument_function_cache['width'] = width
-                ## if necessary compute instrument function on a reduced
-                ## subsampling to ensure accurate convolutions -- this wont
-                ## help with an accurate convolution against the actual
-                ## data!
-                required_points_per_fwhm = 10
-                subsample_factor = int(np.ceil(max(
-                    1,
-                    (required_points_per_fwhm*dx/p['sinc_fwhm'] if p['sinc_fwhm']!=0. else 1),
-                    (required_points_per_fwhm*dx/p['gaussian_fwhm'] if p['gaussian_fwhm']!=0. else 1),
-                    )))
-                ## create the instrument function on a regular grid -- odd length with 0 in the middle
-                x = np.arange(0,width+dx/subsample_factor*0.5,dx/subsample_factor,dtype=float)
-                x = np.concatenate((-x[-1:0:-1],x))
-                imidpoint = int((len(x)-1)/2)
-                ## initial function is a delta function
-                y = np.full(x.shape,0.)
-                y[imidpoint] = 1.
-                ## convolve with sinc function
-                if p['sinc_fwhm']!=0:
-                    y = signal.oaconvolve(y,lineshapes.sinc(x,Γ=abs(p['sinc_fwhm'])),'same')
-                ## convolve with gaussian function
-                if p['gaussian_fwhm']!=0:
-                    y = signal.oaconvolve(y,lineshapes.gaussian(x,Γ=abs(p['gaussian_fwhm'])),'same')
-                ## convolve with lorentzian function
-                if p['lorentzian_fwhm']!=0:
-                    y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(p['lorentzian_fwhm'])),'same')
-                ## if necessary account for phase correction by convolving with a signum
-                if p['signum_magnitude']!=0:
-                    ty = 1/x*p['signum_magnitude'] # hyperbolically decaying signum on either side
-                    ty[imidpoint] = 1 # the central part  -- a delta function
-                    y = signal.oaconvolve(y,ty,'same')
-                ## convert back to data grid if it has been subsampled
-                if subsample_factor!=1:
-                    a = y[imidpoint-subsample_factor:0:-subsample_factor][::-1]
-                    b = y[imidpoint::subsample_factor]
-                    b = b[:len(a)+1] 
-                    y = np.concatenate((a,b))
-                ## normalise 
-                y = y/y.sum()
-                instrument_function_cache['y'] = y
-            ## convolve model with instrument function
-            padding = np.arange(dx,instrument_function_cache['width']+dx, dx)
-            xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
-            ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-            self.y = signal.oaconvolve(ypad,instrument_function_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
-        self.add_construct_function(f)
+    # @optimise_method
+    # def convolve_with_lorentzian(self,width,fwhms_to_include=100):
+        # """Convolve with lorentzian."""
+        # p = self.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
+        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_lorentzian({p.format_input()})')
+        # ## check if there is a risk that subsampling will ruin the convolution
+        # def f():
+            # x,y = self.x,self.y
+            # width = np.abs(p['width'])
+            # if self.verbose and width < 3*np.diff(self.x).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+            # ## get padded spectrum to minimise edge effects
+            # dx = (x[-1]-x[0])/(len(x)-1)
+            # padding = np.arange(dx,fwhms_to_include*width+dx,dx)
+            # xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+            # ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
+            # ## generate function to convolve with
+            # xconv = np.arange(-fwhms_to_include*width,fwhms_to_include*width,dx)
+            # if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
+            # yconv = lineshapes.lorentzian(xconv,xconv.mean(),1.,width)
+            # yconv = yconv/yconv.sum() # sum normalised
+            # ## convolve and return, discarding padding
+            # self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        # self.add_construct_function(f)
 
     def apodise(
             self,
@@ -1462,10 +1283,95 @@ class Model(Optimiser):
         self.add_format_input_function(lambda: f'{self.name}.apodise({repr(apodisation_function)},{interpolation_factor},{tools.dict_to_kwargs(kwargs_specific_to_apodisation_function)})')
 
     @optimise_method()
+    def convolve_with_gaussian(self,width=1,fwhms_to_include=20):
+        """Convolve with gaussian."""
+        ## get x-grid -- skip whole convolution if it does not exist
+        if len(self.x) == 0:
+            return
+        x,y = self.x,self.y
+        if width == 0:
+            ## nothing to be done
+            return
+        abswidth = abs(width)
+        max_width = 1
+        if abswidth > 1e2:
+            raise Exception(f'Gaussian width > 100')
+        if self.verbose and abswidth < 3*np.diff(self.x).min(): 
+            warnings.warn('Convolving gaussian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
+        ## get padded spectrum to minimise edge effects
+        dx = (x[-1]-x[0])/(len(x)-1)
+        padding = np.arange(dx,fwhms_to_include*abswidth+dx,dx)
+        xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
+        ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
+        ## generate gaussian to convolve with
+        xconv_beg = -fwhms_to_include*abswidth
+        xconv_end =  fwhms_to_include*abswidth
+            # warnings.warn('Convolution domain length very long.')
+        xconv = np.arange(xconv_beg,xconv_end,dx)
+        if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
+        yconv = np.exp(-(xconv-xconv.mean())**2*4*np.log(2)/abswidth**2) # peak normalised gaussian
+        yconv = yconv/yconv.sum() # sum normalised
+        ## convolve and return, discarding padding
+        self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        ## self.y = signal.fftconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+        ## self.y = signal.convolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
+
+    @optimise_method()
+    def convolve_with_gaussian_sum(self,widths_areas_offsets,fwhms_to_include=10):
+        """Convolve with a sum of Gaussians of different widths and (positive)
+        areas in a list [[width1,area1],...] but together normalised to 1."""
+        ## maximum width
+        width = sum([width for width,area,offset in widths_areas_offsets])
+        ## get padded spectrum to minimise edge effects
+        dx = (self.x[-1]-self.x[0])/(len(self.x)-1)
+        padding = np.arange(dx,fwhms_to_include*width+dx,dx)
+        xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
+        ypad = np.concatenate((self.y[0]*np.ones(padding.shape,dtype=float),self.y,self.y[-1]*np.ones(padding.shape,dtype=float)))
+        ## generate x grid to convolve with, ensure there is a centre
+        ## zero
+        xconv_beg = -fwhms_to_include*width
+        xconv_end =  fwhms_to_include*width
+        xconv = np.arange(xconv_beg,xconv_end,dx)
+        if len(xconv)%2==0:
+            xconv = xconv[0:-1]
+        xconv = xconv-xconv.mean()
+        ## normalised sum of gaussians
+        yconv = np.full(xconv.shape,0.0)
+        for width,area,offset in widths_areas_offsets:
+            yconv += lineshapes.gaussian(xconv,float(offset),float(area),abs(width))
+        yconv /= yconv.sum() 
+        ## convolve padded y and substitute into self
+        self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(self.x)]
+
+    @optimise_method()
+    def convolve_with_sinc(self,width=None,fwhms_to_include=100,_cache=None):
+        """Convolve with sinc function, width is FWHM."""
+        ## check if there is a risk that subsampling will ruin the convolution
+        if (self._clean_construct
+            # or width is None
+            or 'width' not in _cache
+            or _cache['width'] != width):
+            # if width is None:
+                # if 'sinc_FWHM' in self.experiment.experimental_parameters:
+                    # width = self.experiment.experimental_parameters['sinc_FWHM']
+                # else:
+                    # raise Exception("Width is None and could not be inferred from experimental_parameters")
+            dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
+            xconv = np.arange(0,fwhms_to_include*width,dx)
+            xconv = np.concatenate((-xconv[-1:0:-1],xconv))
+            yconv = lineshapes.sinc(xconv,Γ=width)
+            yconv = yconv/yconv.sum() # sum normalised
+            ## convolve and return, discarding padding
+            _cache['xconv'] = xconv
+            _cache['yconv'] = yconv
+            _cache['width'] = float(width)
+        self.y = tools.convolve_with_padding(self.x,self.y,_cache['xconv'],_cache['yconv'])
+
+    @optimise_method()
     def convolve_with_blackman_harris(
             self,
+            resolution,
             terms=3,
-            resolution=None,
             fwhms_to_include=10,
             _cache=None,
     ):
@@ -1478,14 +1384,14 @@ class Model(Optimiser):
         # if self._clean_construct or self._xchanged:
         if self._clean_construct:
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
-            if resolution is not None:
-                pass
-            # elif self.experiment is not None and 'resolution' in self.experiment.experimental_parameters:
-            #     resolution = self.experiment.experimental_parameters['resolution']
-            elif self.experiment is not None and 'sinc_FWHM' in self.experiment.experimental_parameters:
-                resolution = self.experiment.experimental_parameters['sinc_FWHM']*1.2
-            else:
-                raise Exception('Resolution not specified as argument or in experimental data')
+            # if resolution is not None:
+                # pass
+            # # elif self.experiment is not None and 'resolution' in self.experiment.experimental_parameters:
+            # #     resolution = self.experiment.experimental_parameters['resolution']
+            # elif self.experiment is not None and 'sinc_FWHM' in self.experiment.experimental_parameters:
+                # resolution = self.experiment.experimental_parameters['sinc_FWHM']*1.2
+            # else:
+                # raise Exception('Resolution not specified as argument or in experimental data')
             width = resolution*0.6 # distance between sinc peak and first zero
             xconv = np.arange(0,fwhms_to_include*width,dx)
             xconv = np.concatenate((-xconv[-1:0:-1],xconv))
@@ -1542,87 +1448,113 @@ class Model(Optimiser):
         yconv /= yconv.sum()                    # normalised
         self.y[i] = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
-    @optimise_method()
-    def convolve_with_soleil_instrument_function(
-            self,
-            sinc_fwhm=None,
-            gaussian_fwhm=0.1,
-            lorentzian_fwhm=None,
-            signum_magnitude=None,
-            sinc_fwhms_to_include=200,
-            gaussian_fwhms_to_include=10,
-            lorentzian_fwhms_to_include=10,
-            _cache=None,
-    ):
-        """Convolve with soleil instrument function."""
-        ## first run only
-        # if len(_cache) == 0:
-        ## get automatically set values if not given explicitly
-        if sinc_fwhm is None:
-            sinc_fwhm = self.experiment.experimental_parameters['sinc_FWHM']
-        if abs(self.experiment.experimental_parameters['sinc_FWHM']-sinc_fwhm)>(1e-5*sinc_fwhm):
-            warnings.warn(f'sinc FWHM {float(sinc_fwhm)} does not match soleil data file header {float(self.experiment.experimental_parameters["sinc_FWHM"])}')
-        # if gaussian_fwhm is None:
-            # gaussian_fwhm = 0.1
-        ## compute instrument function
-        dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
-        _cache['dx'] = dx
-        ## get total extent of instrument function
-        width = 0.0
-        if sinc_fwhm is not None:
-            width += abs(sinc_fwhm)*sinc_fwhms_to_include
-        if gaussian_fwhm is not None:
-            width += abs(gaussian_fwhm)*gaussian_fwhms_to_include
-        if lorentzian_fwhm is not None:
-            width += abs(lorentzian_fwhm)*lorentzian_fwhms_to_include
-        _cache['width'] = width
-        ## if necessary compute instrument function on a reduced
-        ## subsampling to ensure accurate convolutions -- this wont
-        ## help with an accurate convolution against the actual
-        ## data!
-        required_points_per_fwhm = 10
-        subsample_factor = int(np.ceil(max(
-            1,
-            (required_points_per_fwhm*dx/sinc_fwhm if sinc_fwhm is not None else 1),
-            (required_points_per_fwhm*dx/gaussian_fwhm if gaussian_fwhm is not None else 1),
-            )))
-        ## create the instrument function on a regular grid -- odd length with 0 in the middle
-        x = np.arange(0,width+dx/subsample_factor*0.5,dx/subsample_factor,dtype=float)
-        x = np.concatenate((-x[-1:0:-1],x))
-        imidpoint = int((len(x)-1)/2)
-        ## initial function is a delta function
-        y = np.full(x.shape,0.)
-        y[imidpoint] = 1.
-        ## convolve with sinc function
-        if sinc_fwhm is not None:
-            y = signal.oaconvolve(y,lineshapes.sinc(x,Γ=abs(sinc_fwhm)),'same')
-        ## convolve with gaussian function
-        if gaussian_fwhm is not None:
-            y = signal.oaconvolve(y,lineshapes.gaussian(x,Γ=abs(gaussian_fwhm)),'same')
-        ## convolve with lorentzian function
-        if lorentzian_fwhm is not None:
-            y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
-        ## if necessary account for phase correction by convolving with a signum
-        if signum_magnitude is not None:
-            x[imidpoint] = 1e-99  # avoid divide by zero warning
-            ty = 1/x*signum_magnitude # hyperbolically decaying signum on either side
-            ty[imidpoint] = 1 # the central part  -- a delta function
-            y = signal.oaconvolve(y,ty,'same')
-        ## convert back to data grid if it has been subsampled
-        if subsample_factor!=1:
-            a = y[imidpoint-subsample_factor:0:-subsample_factor][::-1]
-            b = y[imidpoint::subsample_factor]
-            b = b[:len(a)+1] 
-            y = np.concatenate((a,b))
-        ## normalise 
-        y = y/y.sum()
-        _cache['y'] = y
-        ## convolve model with instrument function
-        padding = np.arange(dx,_cache['width']+dx, dx)
-        xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
-        ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-        self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
+    # @optimise_method()
+    # def convolve_with_soleil_instrument_function(
+            # self,
+            # sinc_fwhm=None,
+            # gaussian_fwhm=0.1,
+            # lorentzian_fwhm=None,
+            # signum_magnitude=None,
+            # sinc_fwhms_to_include=200,
+            # gaussian_fwhms_to_include=10,
+            # lorentzian_fwhms_to_include=10,
+            # _cache=None,
+    # ):
+        # """Convolve with soleil instrument function."""
+        # ## first run only
+        # # if len(_cache) == 0:
+        # ## get automatically set values if not given explicitly
+        # if sinc_fwhm is None:
+            # sinc_fwhm = self.experiment.experimental_parameters['sinc_FWHM']
+        # if abs(self.experiment.experimental_parameters['sinc_FWHM']-sinc_fwhm)>(1e-5*sinc_fwhm):
+            # warnings.warn(f'sinc FWHM {float(sinc_fwhm)} does not match soleil data file header {float(self.experiment.experimental_parameters["sinc_fwhmFWHM"])}')
+        # # if gaussian_fwhm is None:
+            # # gaussian_fwhm = 0.1
+        # ## compute instrument function
+        # dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
+        # _cache['dx'] = dx
+        # ## get total extent of instrument function
+        # width = 0.0
+        # if sinc_fwhm is not None:
+            # width += abs(sinc_fwhm)*sinc_fwhms_to_include
+        # if gaussian_fwhm is not None:
+            # width += abs(gaussian_fwhm)*gaussian_fwhms_to_include
+        # if lorentzian_fwhm is not None:
+            # width += abs(lorentzian_fwhm)*lorentzian_fwhms_to_include
+        # _cache['width'] = width
+        # ## if necessary compute instrument function on a reduced
+        # ## subsampling to ensure accurate convolutions -- this wont
+        # ## help with an accurate convolution against the actual
+        # ## data!
+        # required_points_per_fwhm = 10
+        # subsample_factor = int(np.ceil(max(
+            # 1,
+            # (required_points_per_fwhm*dx/sinc_fwhm if sinc_fwhm is not None else 1),
+            # (required_points_per_fwhm*dx/gaussian_fwhm if gaussian_fwhm is not None else 1),
+            # )))
+        # ## create the instrument function on a regular grid -- odd length with 0 in the middle
+        # x = np.arange(0,width+dx/subsample_factor*0.5,dx/subsample_factor,dtype=float)
+        # x = np.concatenate((-x[-1:0:-1],x))
+        # imidpoint = int((len(x)-1)/2)
+        # ## initial function is a delta function
+        # y = np.full(x.shape,0.)
+        # y[imidpoint] = 1.
+        # ## convolve with sinc function
+        # if sinc_fwhm is not None:
+            # y = signal.oaconvolve(y,lineshapes.sinc(x,Γ=abs(sinc_fwhm)),'same')
+        # ## convolve with gaussian function
+        # if gaussian_fwhm is not None:
+            # y = signal.oaconvolve(y,lineshapes.gaussian(x,Γ=abs(gaussian_fwhm)),'same')
+        # ## convolve with lorentzian function
+        # if lorentzian_fwhm is not None:
+            # y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
+        # ## if necessary account for phase correction by convolving with a signum
+        # if signum_magnitude is not None:
+            # x[imidpoint] = 1e-99  # avoid divide by zero warning
+            # ty = 1/x*signum_magnitude # hyperbolically decaying signum on either side
+            # ty[imidpoint] = 1 # the central part  -- a delta function
+            # y = signal.oaconvolve(y,ty,'same')
+        # ## convert back to data grid if it has been subsampled
+        # if subsample_factor!=1:
+            # a = y[imidpoint-subsample_factor:0:-subsample_factor][::-1]
+            # b = y[imidpoint::subsample_factor]
+            # b = b[:len(a)+1] 
+            # y = np.concatenate((a,b))
+        # ## normalise 
+        # y = y/y.sum()
+        # _cache['y'] = y
+        # ## convolve model with instrument function
+        # padding = np.arange(dx,_cache['width']+dx, dx)
+        # xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
+        # ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
+        # self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
 
+    @optimise_method()
+    def auto_convolve_with_instrument_function(self,_cache=None,width=None):
+        """Convolve with instrument function."""
+        if self._clean_construct:
+            data = self.experiment.experimental_parameters
+            ## Bruker OPUS fts apodisation
+            if data['filetype'] == 'opus':
+                if data['apodisation_function'] == 'boxcar':
+                    if self.verbose:
+                        print(f'auto_convolve_with_instrument_function: opus sinc width={data["sinc_FWHM"]}')
+                    self.convolve_with_sinc(resolution=data['sinc_FWHM'])
+                    self.pop_format_input_function()
+                if data['apodisation_function'] == 'Blackman-Harris 3-term':
+                    if self.verbose:
+                        print(f'auto_convolve_with_instrument_function: Blackman-Harris 3-term, resolution={data["sinc_FWHM"]*1.2}')
+                    self.convolve_with_blackman_harris(resolution=data['sinc_FWHM']*1.2,terms=3)
+                    self.pop_format_input_function()
+            ## SOLEIL DESIRS FTS boxcar apodisation
+            elif d['filetype'] == 'DESIRS FTS':
+                if self.verbose:
+                    print(f'auto_convolve_with_instrument_function: DESIRS sinc width={data["sinc_FWHM"]}')
+                self.convolve_with_sinc(width=data['sinc_FWHM'])
+                self.pop_format_input_function()
+            else:
+                raise Exception(f'Cannot auto_convolve_with_instrument_function')
+    
     @optimise_method()
     def convolve_with_instrument_function(
             self,
@@ -1634,13 +1566,6 @@ class Model(Optimiser):
             _cache=None,
     ):
         """Convolve with soleil instrument function."""
-        ## get automatically set values if not given explicitly
-        if 'sinc_FWHM' in self.experiment.experimental_parameters:
-            if sinc_fwhm is None:
-                sinc_fwhm = self.experiment.experimental_parameters['sinc_FWHM']
-            else:
-                if abs(self.experiment.experimental_parameters['sinc_FWHM']-sinc_fwhm)>(1e-5*sinc_fwhm):
-                    warnings.warn(f'sinc FWHM {float(sinc_fwhm)} does not match soleil data file header {float(self.experiment.experimental_parameters["sinc_FWHM"])}')
         ## compute instrument function
         dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
         ## instrument function grid
@@ -2201,7 +2126,6 @@ class FitReferenceAbsorption():
         self.experiment.set_spectrum_from_opus_file(p['filename'])
         ## scale x coordinate
         if 'scalex' in p:
-            p['scalex'].vary = False
             self.experiment.scalex(p['scalex'])
         ## fit noise level
         self.p.setdefault('noise',{})
@@ -2318,7 +2242,8 @@ class FitReferenceAbsorption():
                     model_no_absorption = self.make_model(xbeg,xend,[species],neglect_species_to_fit=True)
                     models.append((model,model_no_absorption))
                 if len(models) == 0:
-                    raise Exception(f'Cannot fit species {species}, no regions defined in range {xbeg} to {xend}')
+                    print(f'Cannot fit species {species}, no regions defined in range {xbeg} to {xend}')
+                    continue
                 ## optimise plot indiviudal speciesmodels
                 residual = main.optimise(make_plot=self.make_plot,max_nfev=max_nfev,verbose=self.verbose)
                 for model,model_no_absorption in models:
@@ -2398,7 +2323,8 @@ class FitReferenceAbsorption():
                     fit_instrument=fit_instrument,
                     fit_intensity=fit_intensity,
                     fit_temperature=fit_temperature,
-                    max_nfev=max_nfev)
+                    max_nfev=max_nfev,
+                )
             self.fit_species(
                 species_to_fit,
                 regions='lines',
@@ -2508,13 +2434,14 @@ class FitReferenceAbsorption():
         p = self.p
         if neglect_species_to_fit:
             p = deepcopy(p)
-        ## ensure experiment loaded
-        if self.experiment is None:
-            self.load_experiment()
-        ## fit experiment frequency scale
+        ## whether to adjust experiment frequency scale
+        p.setdefault('scalex',P(1,False,1e-9))
         if 'scalex' not in p:
             p['scalex'] = P(1,False,1e-9)
         p['scalex'].vary = fit_scalex
+        ## ensure experiment loaded
+        if self.experiment is None:
+            self.load_experiment()
         ## start model
         model = Model(
             name='_'.join(['make_model',*species_to_fit]),
@@ -2623,7 +2550,10 @@ class FitReferenceAbsorption():
             # model.convolve_with_gaussian(p['instrument_gaussian'])
         # else:
             # model.convolve_with_blackman_harris()
-        model.convolve_with_sinc()
+        # model.convolve_with_sinc()
+        # model.convolve_with_instrument_function()
+        model.auto_convolve_with_instrument_function()
+
         ## build it now
         model.construct()
         return model
