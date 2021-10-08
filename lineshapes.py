@@ -197,8 +197,10 @@ def sinc(x,x0=0,S=1,Γ=1):
 _lorentzian_k = 2*constants.pi
 def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None,method='fortran'): 
     """Lorentzian profile."""
-    if method == 'fortran' and fortran_tools is None:
-        method = 'python'
+    if method == 'fortran':
+        from .fortran_tools import fortran_tools
+    # if method == 'fortran' and fortran_tools is None:
+        # method = 'python'
     if nfwhm is None:
         ## whole domain
         if yin is None:

@@ -690,6 +690,7 @@ class Optimiser:
             self._rms_minimum = rms
         ## update plot of rms
         if self._make_plot is not None:
+            from . import plotting
             n = self._number_of_optimisation_function_calls
             fig = self._make_plot['fig']
             ax = self._make_plot['ax']
@@ -758,7 +759,7 @@ class Optimiser:
         if number_of_parameters > 0:
             ## monitor decreasing RMS on a plot
             if make_plot:
-                import matplotlib.pyplot as plt
+                from . import plotting
                 fig = plotting.qfig(9999,preset='screen',figsize='quarter screen',show=True)
                 ax = fig.gca()
                 ax.set_title(f'optimiser: {self.name} nparams: {number_of_parameters}')
