@@ -80,7 +80,7 @@ class Dataset(optimise.Optimiser):
             limit_to_match=None,     # dict of things to match
             description='',          # description of this Dataset
             data=None,               # load keys_vals into self, or set with set_value if they are Parameters
-            **data_kwargs,                # added to data
+            **data_kwargs,           # added to data
     ):
         ## init as optimiser, make a custom form_input_function, save
         ## some extra stuff if output to directory
@@ -143,10 +143,6 @@ class Dataset(optimise.Optimiser):
         if data is None:
             data = {}
         data |= data_kwargs
-        # if data is not None:
-            # for key,val in data.items():
-                # self[key] = val
-        # ## kwargs set data somehow
         for key,val in data.items():
             if isinstance(val,optimise.Parameter):
                 ## an optimisable parameter (input function already
@@ -2012,6 +2008,7 @@ class Dataset(optimise.Optimiser):
             ykeys_re=None,
             fig=None,           # otherwise automatic
             axes=None,            # otherwise automatic
+            xnewaxes=True,      # plot x-keys on separates axes -- else as different lines
             ynewaxes=True,      # plot y-keys on separates axes -- else as different lines
             znewaxes=False,     # plot z-keys on separates axes -- else as different lines
             legend=True,        # plot a legend or not
@@ -2038,7 +2035,7 @@ class Dataset(optimise.Optimiser):
             return
         ## re-use or make a new figure/axes
         if axes is not None:
-            ynewaxes,znewaxes = False,False
+            xnewaxes = ynewaxes = znewaxes = False
             fig = axes.figure
         if fig is None:
             fig = plt.gcf()
@@ -2053,31 +2050,21 @@ class Dataset(optimise.Optimiser):
         if zkeys is None:
             zkeys = self.default_zkeys
         zkeys = list(tools.ensure_iterable(zkeys))
-        # ykeys = [key for key in ykeys if key not in xkeys+zkeys]
-        # zkeys = [t for t in tools.ensure_iterable(zkeys) if t not in ykeys and t!=xkey and self.is_known(t)] # remove xkey and ykeys from zkeys
         zkeys = [key for key in zkeys if key not in xkeys+ykeys and self.is_known(key)] # remove xkey and ykeys from zkeys
         for t in xkeys+ykeys+zkeys:
             self.assert_known(t)
         ## total number of subplots in figure
-        nsubplots = len(xkeys)
+        nsubplots = 1
+        if xnewaxes:
+            nsubplots *= len(xkeys)
         if ynewaxes:
             nsubplots *= len(ykeys)
         if znewaxes:
             nsubplots *= len(zkeys)
         ## plot each xkey/ykey/zkey combination
         for ix,xkey in enumerate(xkeys):
-            ## set xlabel
-            xlabel = xkey
-            if self.is_known(xkey,'units'):
-                xlabel += ' ('+self[xkey,'units']+')'
-            ymin = {}
-            auto_title = None
-            for iy,ykey in enumerate(tools.ensure_iterable(ykeys)):
+            for iy,ykey in enumerate(ykeys):
                 for iz,(dz,z) in enumerate(self.unique_dicts_matches(*zkeys)):
-                    ## get ylabel -- may be deleted below
-                    ylabel = ykey
-                    if self.is_known(ykey,'units'):
-                        ylabel += ' ('+self[ykey,'units']+')'
                     ## sort data
                     if xsort == True:
                         z.sort(xkey)
@@ -2085,37 +2072,63 @@ class Dataset(optimise.Optimiser):
                         pass
                     else:
                         z.sort(xsort)
-                    ## get zlabel
+                    ## get axes
+                    if axes is None:
+                        isubplot = 0
+                        subplot_multiplier = 1
+                        if xnewaxes:
+                            isubplot += subplot_multiplier*ix
+                            subplot_multiplier *= len(xkeys)
+                        if ynewaxes:
+                            isubplot += subplot_multiplier*iy
+                            subplot_multiplier *= len(ykeys)
+                        if znewaxes:
+                            isubplot += subplot_multiplier*ix
+                            subplot_multiplier *= len(zkeys)
+                        ax = plotting.subplot(n=isubplot,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                    else:
+                        ax = axes 
+                    ## get axis labels and perhaps convert them to legend labesl
+                    label = ''
+                    ## x-axis
+                    xlabel = xkey
+                    if self.is_known(xkey,'units'):
+                        xlabel += ' ('+self[xkey,'units']+')'
+                    if not xnewaxes:
+                        label += f' {xlabel}'
+                        xlabel = None
+                    ## y-axis
+                    ylabel = ykey
+                    if self.is_known(ykey,'units'):
+                        ylabel += ' ('+self[ykey,'units']+')'
+                    if not ynewaxes:
+                        label += f' {ylabel}'
+                        ylabel = None
+                    ## z-axis
                     if zlabel_format_function is None:
                         # zlabel_format_function = self.default_zlabel_format_function
                         zlabel_format_function = tools.dict_to_kwargs
                     zlabel = zlabel_format_function(dz)
-                    if ynewaxes and znewaxes:
-                        ax = plotting.subplot(n=iz+len(zkeys)*iy,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                    if not xnewaxes:
+                        label += f' {zlabel}'
+                        zlabel = None
+                    ## get color/marker/linestyle
+                    if xnewaxes and ynewaxes and znewaxes:
                         color,marker,linestyle = plotting.newcolor(0),plotting.newmarker(0),plotting.newlinestyle(0)
-                        label = None
-                        if title is None:
-                            auto_title = zlabel
-                    elif ynewaxes and not znewaxes:
-                        ax = plotting.subplot(n=iy,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
-                        color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(iz),plotting.newlinestyle(iz)
-                        label = (zlabel if len(zkeys)>0 else None) 
-                        if title is None:
-                            auto_title = ylabel
-                    elif not ynewaxes and znewaxes:
-                        ax = plotting.subplot(n=iz,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                    elif not xnewaxes and ynewaxes and znewaxes:
+                        color,marker,linestyle = plotting.newcolor(ix),plotting.newmarker(0),plotting.newlinestyle(0)
+                    elif xnewaxes and not ynewaxes and znewaxes:
                         color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(0),plotting.newlinestyle(0)
-                        label = ylabel
-                        ylabel = None
-                        if title is None:
-                            auto_title = zlabel
-                    elif not ynewaxes and not znewaxes:
-                        ax = plotting.subplot(n=ix,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                    elif xnewaxes and ynewaxes and not znewaxes:
+                        color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(0),plotting.newlinestyle(0)
+                    elif not xnewaxes and not ynewaxes and znewaxes:
+                        color,marker,linestyle = plotting.newcolor(ix),plotting.newmarker(iy),plotting.newlinestyle(iy)
+                    elif not xnewaxes and ynewaxes and not znewaxes:
+                        color,marker,linestyle = plotting.newcolor(ix),plotting.newmarker(iz),plotting.newlinestyle(iz)
+                    elif xnewaxes and not ynewaxes and not znewaxes:
                         color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
-                        label = ylabel+' '+zlabel
-                        ylabel = None
-                    if axes is not None:
-                        ax = axes 
+                    elif not xnewaxes and not ynewaxes and not znewaxes:
+                        color,marker,linestyle = plotting.newcolor(ix),plotting.newmarker(iy),plotting.newlinestyle(iz)
                     ## plotting kwargs
                     kwargs = copy(plot_kwargs)
                     kwargs.setdefault('marker',marker)
@@ -2178,8 +2191,8 @@ class Dataset(optimise.Optimiser):
                                 plt.annotate(annotation,(x[i],y[i]),fontsize='x-small',in_layout=False)
                     if title is not None:
                         ax.set_title(title)
-                    elif auto_title is not None:
-                        ax.set_title(auto_title)
+                    # elif auto_title is not None:
+                        # ax.set_title(auto_title)
                     if ylabel is not None:
                         ax.set_ylabel(ylabel)
                     if xlabel is not None:
@@ -2260,6 +2273,24 @@ class Dataset(optimise.Optimiser):
             self.get(ykey,index=index),
             self.get(ykey,'unc',index=index),
             **polyfit_kwargs)
+
+
+    def __ior__(self,other_dict_like):
+        """In place addition of key or substitution like a dictionary using |=."""
+        for key in other_dict_like.keys():
+            self[key] = other_dict_like[key]
+        return self
+
+    def __iadd__(self,other_dataset):
+        """Concatenate self with another dataset using +=."""
+        self.concatenate(other_dataset)
+        return self
+
+    ## other possible in place operators: __iadd__ __isub__ __imul__
+    ##  __imatmul__ __itruediv__ __ifloordiv__ __imod__ __ipow__
+    ##  __ilshift__ __irshift__ __iand__ __ixor__ __ior__
+    
+
 
 def find_common(x,y,keys=None,verbose=False):
     """Return indices of two Datasets that have uniquely matching
