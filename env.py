@@ -39,6 +39,7 @@ from . import convert
 from .tools import *
 from .dataset import Dataset
 from .convert import units
-from .plotting import *
 from matplotlib.pyplot import * # before plotting
 from .optimise import Optimiser,Parameter,P,Fixed
+from .plotting import *
+from . import plotting
