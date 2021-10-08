@@ -62,6 +62,9 @@ class AutoDict:
             yield key,val
 
 
+
+
+
 #######################################################
 ## decorators / decorator factories / function tools ##
 #######################################################
@@ -322,7 +325,10 @@ def load_dict(filename,*names):
     del module
     return retval
 
-def save_dict(filename,header=None,**names_dicts,):
+def save_dict(
+        filename,
+        header='from numpy import nan,inf\nfrom spectr.optimise import P\n',
+        **names_dicts,):
     """Write names_dicts as into filename preceeded by header.  Designed
     to be imported as valid python."""
     mkdir(os.path.split(filename)[0])
@@ -5269,8 +5275,8 @@ def piecewise_sinusoid(x,regions,order=3):
         A = np.full(x.shape,float(As[0]))
         f = np.full(x.shape,float(fs[0]))
     else:
-        A = tools.spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
-        f = tools.spline(xmid,fs,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=1)
+        A = spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
+        f = spline(xmid,fs,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=1)
     retval = A*np.cos(2*constants.pi*xs*f+p)
     return retval
 
