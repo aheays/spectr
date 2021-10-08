@@ -860,6 +860,7 @@ class Dataset(optimise.Optimiser):
             self,
             source,
             keys=None,
+            keys_re=None,
             index=None,
             match=None,
             subkeys=None,
@@ -869,6 +870,12 @@ class Dataset(optimise.Optimiser):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
         self.clear()            # total data reset
+        if keys_re is not None:
+            if keys is None:
+                keys = []
+            else:
+                keys = list(keys)
+            keys.extend(source.match_keys(regex=keys_re))
         if keys is None:
             if copy_inferred_data:
                 keys = source.keys()
@@ -2122,13 +2129,13 @@ class Dataset(optimise.Optimiser):
                     elif xnewaxes and ynewaxes and not znewaxes:
                         color,marker,linestyle = plotting.newcolor(iz),plotting.newmarker(0),plotting.newlinestyle(0)
                     elif not xnewaxes and not ynewaxes and znewaxes:
-                        color,marker,linestyle = plotting.newcolor(ix),plotting.newmarker(iy),plotting.newlinestyle(iy)
+                        color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(ix),plotting.newlinestyle(iy)
                     elif not xnewaxes and ynewaxes and not znewaxes:
                         color,marker,linestyle = plotting.newcolor(ix),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     elif xnewaxes and not ynewaxes and not znewaxes:
                         color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     elif not xnewaxes and not ynewaxes and not znewaxes:
-                        color,marker,linestyle = plotting.newcolor(ix),plotting.newmarker(iy),plotting.newlinestyle(iz)
+                        color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(ix),plotting.newlinestyle(iz)
                     ## plotting kwargs
                     kwargs = copy(plot_kwargs)
                     kwargs.setdefault('marker',marker)
