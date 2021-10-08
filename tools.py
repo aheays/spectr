@@ -1,5 +1,3 @@
-import functools
-from functools import lru_cache,wraps
 import re
 import os
 import warnings
@@ -9,18 +7,19 @@ import itertools
 import io
 import inspect
 import sys
+import functools
 
-from scipy import interpolate,constants,linalg,stats,signal,fft
-import csv
-import glob as glob_module
+## from scipy import interpolate,constants,linalg,stats,signal,fft
+## import csv
+## import glob as glob_module
 import numpy as np
 from numpy import array,arange,nan,inf
-import h5py
-from sympy.printing.pycode import pycode
+## import h5py
+# from sympy.printing.pycode import pycode
 
-from . import plotting
-from . import fortran_tools
-from .plotting import *
+# from . import plotting
+# from . import fortran_tools
+# from .plotting import *
 
 
 class AutoDict:
@@ -67,7 +66,7 @@ class AutoDict:
 ## decorators / decorator factories / function tools ##
 #######################################################
 
-cache = lru_cache
+cache = functools.lru_cache
 
 def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
     """Vectorise a scalar-argument scalar-return value function.  If all
@@ -76,14 +75,15 @@ def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
     arguments. If dtype is given return value is an array of this
     type, else a list is returned. If cache is True then cache
     indivdual scalar function calls."""
+    import functools
     def actual_decorator(function):
         ## get a cached version fo the function if requested
         if cache:
             ## will not work with dill for some reason
-            function_maybe_cached = lru_cache(function)
+            function_maybe_cached = functools.lru_cache(function)
         else:
             function_maybe_cached = function
-        @wraps(function)
+        @functools.wraps(function)
         def vectorised_function(*args,**kwargs):
             ## this block subtitutes into kwargs with keys taken from
             ## the function signature.  get signature arguments -- skip
@@ -127,7 +127,7 @@ def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
                 else:
                     ## if dtype return as array, only compute for unique array combinations
                     retval = np.empty(length,dtype=dtype)
-                    # unique_combinations_masks(*vector_kwargs.values())
+                    unique_combinations_masks(*vector_kwargs.values())
                     for values,index in unique_combinations_masks(*vector_kwargs.values()):
                         retval[index] = function_maybe_cached(
                             **scalar_kwargs,
@@ -1265,6 +1265,7 @@ def hdf5_to_array(filename,unpack=False,dataset=None,usecols=None):
 
 def hdf5_get_attributes(filename):
     """Get top level attributes."""
+    import h5py
     with h5py.File(expand_path(filename_or_hdf5_object),'r') as fid:
         return {key:val for key,val in fid.attrs.items()}
 
@@ -1287,6 +1288,7 @@ def hdf5_to_numpy(value):
 def numpy_to_hdf5(value):
     ## deal with missing unicode type in hdft
     ## http://docs.h5py.org/en/stable/strings.html#what-about-numpy-s-u-type
+    import h5py
     if not np.isscalar(value) and value.dtype.kind=='U':
         value = np.array(value, dtype=h5py.string_dtype(encoding='utf-8'))
     return value
@@ -1294,6 +1296,7 @@ def numpy_to_hdf5(value):
 def hdf5_to_dict(fid,load_attributes=True):
     """Load all elements in hdf5 into a dictionary. Groups define
     subdictionaries. Scalar data set as attributes."""
+    import h5py
     ## open file if necessary
     if isinstance(fid,str):
         with h5py.File(expand_path(fid),'r') as fid2:
@@ -1314,6 +1317,7 @@ def hdf5_to_dict(fid,load_attributes=True):
 def dict_to_hdf5(fid,data,compress=False,verbose=True):
     """Save all elements of a dictionary as datasets, attributes, or
     subgropus in an hdf5 file."""
+    import h5py
     if isinstance(fid,str):
         ## open file if necessary
         fid = expand_path(fid)
@@ -1346,6 +1350,7 @@ def dict_to_hdf5(fid,data,compress=False,verbose=True):
 def dict_to_hdf5(fid,data,compress=False,verbose=True):
     """Save all elements of a dictionary as datasets, attributes, or
     subgropus in an hdf5 file."""
+    import h5py
     if isinstance(fid,str):
         ## open file if necessary
         fid = expand_path(fid)
@@ -1865,6 +1870,7 @@ def pa():
 def glob(path='*',regexp=None):
     """Shortcut to glob.glob(os.path.expanduser(path)). Returns a list
     of matching paths. Also sed alphabetically. If re is provided filter names accordingly."""
+    import glob as glob_module
     retval = sorted(glob_module.glob(os.path.expanduser(path)))
     if regexp is not None:
         retval = [t for t in retval if re.match(regexp,t)]
@@ -1873,6 +1879,7 @@ def glob(path='*',regexp=None):
 def glob_unique(path):
     """Match glob and return as one file. If zero or more than one file
     matched raise an error."""
+    import glob as glob_module
     filenames = glob_module.glob(os.path.expanduser(path))
     if len(filenames)==1:
         return(filenames[0])
@@ -1961,6 +1968,7 @@ def polyfit(
                 (or greater ones given the standard errors dy with the
                 proposed polynomial model.
     """
+    import scipy
     x,y = np.array(x),np.array(y) # ensure types
     if dy is None: dy = np.full(x.shape,1.,dtype=float) # default uncertainty if Noneprovided
     if type(dy) in [float,int,np.float64,np.int64]: dy = dy*np.ones(y.shape) # vectorise dy if constant given
@@ -1984,7 +1992,7 @@ def polyfit(
         A = At.transpose()
         AtW = np.dot(At,W)
         AtWA = np.dot(AtW,A)
-        invAtWA = linalg.inv(AtWA)
+        invAtWA = scipy.linalg.inv(AtWA)
         invAtWAdotAtW  = np.dot(invAtWA,AtW)
         p = np.dot(invAtWAdotAtW,y)
     else:
@@ -1997,7 +2005,7 @@ def polyfit(
         A = At.transpose()
         AtW = np.dot(At,W)
         AtWA = np.dot(AtW,A)
-        invAtWA = linalg.inv(AtWA)
+        invAtWA = scipy.linalg.inv(AtWA)
         invAtWAdotAtW  = np.dot(invAtWA,AtW)
         p_reduced = list(np.dot(invAtWAdotAtW,y_reduced))
         p = []
@@ -2019,8 +2027,8 @@ def polyfit(
     else:
         chisq = (residuals[i]**2/dy**2).sum()
         chisqnorm = chisq/(len(x)-order-1-1)
-        # chisqprob = stats.chisqprob(chisq,len(x)-order-1-1)
-        chisqprob = stats.distributions.chi2.sf(chisq,len(x)-order-1-1)
+        # chisqprob = scipy.stats.chisqprob(chisq,len(x)-order-1-1)
+        chisqprob = scipy.stats.distributions.chi2.sf(chisq,len(x)-order-1-1)
     ## stdandard error paramters (IGNORING CORRELATION!)
     if dy is None:
         dp = None
@@ -2098,6 +2106,7 @@ def spline(
     is spline tension. Order is degree of spline. Silently defaults to 2 or 1
     if only 3 or 2 data points given.
     """
+    from scipy import interpolate
     order = min(order,len(xi)-1)
     xi,yi,x = np.array(xi,ndmin=1),np.array(yi,ndmin=1),np.array(x,ndmin=1)
     if ignore_nan_data:
@@ -2237,6 +2246,7 @@ def array_to_hdf5(
 ):
     """Column stack arrays in args and save in an hdf5 file. In a
     single data set named 'data'. Overwrites existing files."""
+    import h5py
     filename = expand_path(filename)
     ## kwargs.setdefault('compression',"gzip") # slow
     ## kwargs.setdefault('compression_opts',9) # slow
@@ -3182,6 +3192,7 @@ def match_lines(string,regexp):
 
 def normal_distribution(x,μ=0.,σ=1):
     """Normal distribution."""
+    from scipy import constants
     return(1/np.sqrt(constants.pi*σ**2)*np.exp(-(x-μ)**2/(2*σ**2)))
 
 def fit_normal_distribution(x,bins=None,figure=None):
@@ -3232,6 +3243,7 @@ def gaussian(x,fwhm=1.,mean=0.,norm='area'):
 
 def convolve_with_padding(x,y,xconv,yconv):
     """Convolve function (x,y) with (xconv,yconv) returning length of (x,y)."""
+    import scipy
     if len(xconv) == 0:
         raise Exception('Length of convolving array is zero.')
     elif len(xconv) == 1:
@@ -3248,7 +3260,7 @@ def convolve_with_padding(x,y,xconv,yconv):
         npadding = len(padding)
         xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
         ypad = np.concatenate((np.full(padding.shape,y[0]),y,np.full(padding.shape,y[-1])))
-    yout = signal.oaconvolve(ypad,yconv,mode='same')[npadding:npadding+len(x)]
+    yout = scipy.signal.oaconvolve(ypad,yconv,mode='same')[npadding:npadding+len(x)]
     return yout
 
 def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=False):
@@ -4101,7 +4113,7 @@ def file_to_dict(filename,*args,filetype=None,**kwargs):
 def infer_filetype(filename):
     """Determine type of datafile from the name or possibly its
     contents."""
-    filename = tools.expand_path(filename)
+    filename = expand_path(filename)
     extension = os.path.splitext(filename)[1]
     if extension=='.npy':
         return 'npy'
@@ -4628,6 +4640,7 @@ def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
     and leading commentChar.\n\nSpecify ods/xls sheet with
     sheet_name=name.\n\nIf return_all_tables, return a dict of dicts,
     with keys given by all table names found in sheet. """
+    import csv
     ## deprecated kwargs
     if 'tableName' in kwargs:
         kwargs['table_name'] = kwargs.pop('tableName')
@@ -5232,6 +5245,7 @@ def fit_spline_to_extrema_or_median(
 
 def piecewise_sinusoid(x,regions,order=3):
     """"""
+    from scipy import constants
     # sinusoid = np.full(x.shape,0.0)
     xmid = []
     As = []
@@ -5263,6 +5277,7 @@ def piecewise_sinusoid(x,regions,order=3):
 def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
     """Define piecewise sinusoids for regions joined by points xi (or on
     grid with interval xi)."""
+    import scipy
     ## get join points between regions and begining and ending points
     if np.isscalar(xi):
         xi = np.linspace(x[0],x[-1],max(2,int(np.ceil((x[-1]-x[0])/xi))))
@@ -5275,11 +5290,11 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
         shift[i] = np.mean(y[i])
         xti = x[i]
         yi = y[i] - shift[i]
-        FT = fft.fft(yi)
+        FT = scipy.fft.fft(yi)
         imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
         phase = np.arctan(FT.imag[imax]/FT.real[imax])
         if FT.real[imax]<0:
-            phase += constants.pi
+            phase += scipy.constants.pi
         dx = (xti[-1]-xti[0])/(len(xti)-1)
         frequency = 1/dx*imax/len(FT)
         amplitude = rms(yi)
@@ -5290,7 +5305,7 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
     if make_optimisation:
         from .optimise import Optimiser,P,_collect_parameters_and_optimisers
         optimiser = Optimiser()
-        region_parameters = [[xbeg,xend,P(amplitude,True),P(frequency,True),P(phase,True,2*constants.pi*1e-5),]
+        region_parameters = [[xbeg,xend,P(amplitude,True),P(frequency,True),P(phase,True,2*scipy.constants.pi*1e-5),]
                              for (xbeg,xend,amplitude,frequency,phase) in regions]
         for parameter in _collect_parameters_and_optimisers(region_parameters)[0]:
             optimiser.add_parameter(parameter)
@@ -5505,9 +5520,10 @@ def lambdify_sympy_expression(
         **kwargs,               # key=val, set to kwarg arguments of lambda function
 ): 
     """An alternative to sympy lambdify.  ."""
+    import sympy
     ## make into a python string
     # t =  cached_pycode(sympy_expression,fully_qualified_modules=False)
-    t =  pycode(sympy_expression,fully_qualified_modules=False)
+    t =  sympy.printing.pycode.pycode(sympy_expression,fully_qualified_modules=False)
     ## replace math functions
     for t0,t1 in (('sqrt','np.sqrt'),):
         t = t.replace(t0,t1)

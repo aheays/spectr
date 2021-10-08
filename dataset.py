@@ -9,8 +9,6 @@ import ast
 
 import numpy as np
 from numpy import nan,arange,linspace,array
-from immutabledict import immutabledict as idict
-import h5py
 
 from . import tools
 from .exceptions import InferException
@@ -72,17 +70,18 @@ class Dataset(optimise.Optimiser):
 
     def __init__(
             self,
-            name=None,
-            permit_nonprototyped_data = True,
-            permit_indexing = True,
-            prototypes = None,  # a dictionary of prototypes
-            load_from_file = None,
-            load_from_string = None,
-            copy_from = None,
-            limit_to_match=None, # dict of things to match
-            description='',
-            data=None,
-            **kwargs):
+            name=None,          # name of this Dataset
+            permit_nonprototyped_data = True, # allow addition of data that is not prototyped -- kind will be guessed
+            permit_indexing = True, # allow the dataset to shrink or grow -- after any init data added
+            prototypes = None,      # a dictionary of prototypes
+            load_from_file = None,  # load from a file -- guess type
+            load_from_string = None, # load from formatted string
+            copy_from = None,        # copy form another dataset
+            limit_to_match=None,     # dict of things to match
+            description='',          # description of this Dataset
+            data=None,               # load keys_vals into self, or set with set_value if they are Parameters
+            **data_kwargs,                # added to data
+    ):
         ## init as optimiser, make a custom form_input_function, save
         ## some extra stuff if output to directory
         optimise.Optimiser.__init__(self)
@@ -99,7 +98,7 @@ class Dataset(optimise.Optimiser):
             self.permit_nonprototyped_data = self.default_permit_nonprototyped_data
         else:
             self.permit_nonprototyped_data = permit_nonprototyped_data
-        self.permit_indexing = permit_indexing # Data can be added to the end of arrays, but not removal or rearranging of data
+        self.permit_indexing = True # Data can be added to the end of arrays, but not removal or rearranging of data
         self.verbose = False                             # print extra information at various places
         ## get prototypes from defaults and then input argument
         self.prototypes = copy(self.default_prototypes)
@@ -140,12 +139,15 @@ class Dataset(optimise.Optimiser):
         ## argument
         if load_from_string is not None:
             self.load_from_string(load_from_string)
-        ## load data in dict if provided
-        if data is not None:
-            for key,val in data.items():
-                self[key] = val
-        ## kwargs set data somehow
-        for key,val in kwargs.items():
+        ## load input data
+        if data is None:
+            data = {}
+        data |= data_kwargs
+        # if data is not None:
+            # for key,val in data.items():
+                # self[key] = val
+        # ## kwargs set data somehow
+        for key,val in data.items():
             if isinstance(val,optimise.Parameter):
                 ## an optimisable parameter (input function already
                 ## handled)
@@ -157,6 +159,9 @@ class Dataset(optimise.Optimiser):
         ## limit to matching data somehow loaded above
         if limit_to_match is not None:
             self.limit_to_match(**limit_to_match)
+        ## possible set non-permission for indexing after initial data
+        ## added
+        self.permit_indexing = permit_indexing
 
     ## name is adjusted to be proper python symbol when set
     def _set_name(self,name):
@@ -728,9 +733,9 @@ class Dataset(optimise.Optimiser):
                 tkey,tsubkey,tindex = key[0],'value',key[1]
         elif len(key) == 3:
                 tkey,tsubkey,tindex = key[0],key[1],key[2]
-        ## maybe a key:subkey encoded key
-        if tsubkey == 'value' and ':' in tkey:
-            tkey,tsubkey = tkey.split(':')
+        # ## maybe a key:subkey encoded key
+        # if tsubkey == 'value' and ':' in tkey:
+            # tkey,tsubkey = tkey.split(':')
         self.set(tkey,tsubkey,value,tindex)
        
     def clear(self):
@@ -1643,15 +1648,6 @@ class Dataset(optimise.Optimiser):
         if txt_to_dict_kwargs is None:
             txt_to_dict_kwargs = {}
         txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':labels_commented}
-        # if txt_to_dict_kwargs['delimiter'] is None:
-            # if re.match(r'.*\.csv',filename):
-                # txt_to_dict_kwargs['delimiter'] = ','
-            # elif re.match(r'.*\.rs',filename):
-                # txt_to_dict_kwargs['delimiter'] = '␞'
-            # elif re.match(r'.*\.psv',filename):
-                # txt_to_dict_kwargs['delimiter'] = '|'
-            # elif re.match(r'.*\.tsv',filename):
-                # txt_to_dict_kwargs['delimiter'] = '\t'
         filename = tools.expand_path(filename)
         data = {}
         metadata = {}

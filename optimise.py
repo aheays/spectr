@@ -2,22 +2,15 @@ from time import perf_counter as timestamp
 import inspect
 import re
 import os
-# import sys
 from pprint import pprint,pformat
 from copy import copy,deepcopy
 import warnings
-import types
-import multiprocessing
 import functools
 
 import numpy as np
 from numpy import nan,inf,array,arange,linspace
-from scipy import optimize,linalg
-from immutabledict import immutabledict as idict
 
-# from . import dataset
 from . import tools
-from . import plotting
 
 class _Store(dict):
     """An object very similar to a dictionary, except that it knows the
@@ -510,9 +503,9 @@ class Optimiser:
 
     def plot_residual(self,ax=None,**plot_kwargs):
         """Plot residual error."""
-        import matplotlib.pyplot as plt
+        from . import plotting        
         if ax is None:
-            fig = plt.gcf()
+            fig = plotting.plt.gcf()
             ax = fig.gca()
         plot_kwargs.setdefault('marker','o')
         previous_xend = 0
@@ -527,10 +520,10 @@ class Optimiser:
 
     def plot(self,first_figure_number=1):
         """Plot all plot functions in separate figures."""
-        import matplotlib.pyplot as plt
+        from . import plotting        
         for suboptimiser in self.get_all_suboptimisers():
             for function in suboptimiser._plot_functions:
-                fig = plt.figure(first_figure_number)
+                fig = plotting.plt.figure(first_figure_number)
                 fig.clf()
                 function()
                 first_figure_number += 1
@@ -738,6 +731,7 @@ class Optimiser:
             **least_squares_options
     ):
         """Optimise parameters."""
+        import scipy
         ## multiprocessing cpus
         self._ncpus = ncpus
         ## get initial values or parameters
@@ -764,6 +758,7 @@ class Optimiser:
         if number_of_parameters > 0:
             ## monitor decreasing RMS on a plot
             if make_plot:
+                import matplotlib.pyplot as plt
                 fig = plotting.qfig(9999,preset='screen',figsize='quarter screen',show=True)
                 ax = fig.gca()
                 ax.set_title(f'optimiser: {self.name} nparams: {number_of_parameters}')
@@ -829,7 +824,7 @@ class Optimiser:
             try:
                 if verbose or self.verbose:
                     print('method:',least_squares_options['method'])
-                result = optimize.least_squares(**least_squares_options)
+                result = scipy.optimize.least_squares(**least_squares_options)
                 self._optimisation_function(result['x'])
                 if verbose or self.verbose:
                     print('optimisation complete')
@@ -928,6 +923,7 @@ class Optimiser:
             jacobian = np.transpose(jacobian)
         else:
             ## multiprocessing, requires serialisation
+            import multiprocessing
             import dill
             manager = multiprocessing.Manager()
             shared_namespace = manager.Namespace()
@@ -972,6 +968,7 @@ class Optimiser:
     ):
         """Compute 1σ uncertainty by first computing forward-difference
         Jacobian.  Only accurate for a well-optimised model."""
+        import scipy
         ## whether or not to multiprocess
         if ncpus is not None:
             self._ncpus = ncpus
@@ -998,7 +995,7 @@ class Optimiser:
                         print('All parameters have no effect, uncertainties not calculated')
                 else:
                     t = jacobian[:,inonzero]
-                    covariance = linalg.inv(np.dot(t.T,t))
+                    covariance = scipy.linalg.inv(np.dot(t.T,t))
                     ## if np.any(covariance<0):
                     ##           raise linalg.LinAlgError
                     if rms_noise is None:
@@ -1007,7 +1004,7 @@ class Optimiser:
                         rms_noise = np.sqrt(chisq/dof)
                     unc[inonzero] = np.sqrt(covariance.diagonal())*rms_noise
                 break
-            except linalg.LinAlgError as error:
+            except scipy.linalg.LinAlgError as error:
                 if min_valid == 0:
                     min_valid = 1e-10
                 else:
@@ -1157,6 +1154,7 @@ def _substitute_parameters_and_optimisers(x,translate):
 def _deepcopy_function(function,translate_defaults=None):
     """Make a new function copy.  Substitute default parameters by id
     from those in translate_defaults."""
+    import types
     ## get default -- including substitutions
     defaults = function.__defaults__
     if translate_defaults is not None:

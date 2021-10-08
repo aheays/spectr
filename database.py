@@ -5,12 +5,8 @@ from pprint import pprint
 
 
 import numpy as np
-from scipy import constants
-import periodictable
-from tinydb import TinyDB, Query
 
 from . import tools
-from .tools import cache,vectorise
 from . import dataset
 from . import kinetics
 from . import convert
@@ -24,43 +20,6 @@ from . import kinetics
 
 
 data_directory = tools.expand_path('~/src/python/spectr/data/')
-
-
-# global _boltzmann_population_cache
-# global _boltzmann_partition_function_cache
-# _electronic_state_propety_data_cache = None   # lots of data about individual electronic states
-# _level_data = dict()                           # level objects indexed by tuple (species,state)
-# _boltzmann_population_cache = dict()
-# _boltzmann_partition_function_cache = dict()
-
-# electronic_states = TinyDB(f'{data_directory}/electronic_states.json')
-
-
-
-# # @cachetools.cached(cache=cachetools.LRUCache(1e3))
-# @functools.lru_cache(maxsize=1024)
-# def _get_electronic_state_property_scalar(species,label,prop):
-    # species = get_species_property(species,'iso_indep') # currently the data should be isotopologue independent
-    # ## Load data from cache if possible or from disk if necessary.
-    # global _electronic_state_propety_data_cache
-    # if _electronic_state_propety_data_cache is None:
-        # _electronic_state_propety_data_cache = tools.file_to_recarray(data_directory+'/electronic_states.csv',table_name='linear molecules')
-    # ## find result
-    # retval = _electronic_state_propety_data_cache[prop][
-        # (_electronic_state_propety_data_cache['species']==species)
-        # &(_electronic_state_propety_data_cache['label']==label)]
-    # if len(retval)==1:
-        # retval = retval[0]
-        # ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
-        # if ((np.isreal(retval) and np.isnan(retval))
-            # or retval=='nan'): 
-            # raise DatabaseException(f"Property is unknown: {repr(species)}, {repr(label)}, {repr(prop)}")
-        # return(retval)
-    # elif len(retval)==0:
-        # raise DatabaseException('No match found for species and label: '+repr(species)+' '+repr(label))
-    # elif len(retval)>1:
-        # raise Exception('Non-unique matches found for species and label: '+repr(species)+' '+repr(label))
-
 
 @tools.vectorise(cache=True,dtype='U30')
 def normalise_species(species):
@@ -101,17 +60,6 @@ def get_electronic_state_property(species,label,prop):
         raise DatabaseException(f"Cannot find property {prop=} for electronic state with {species=} {label=}")
     return data[prop]
 
-# # @cachetools.cached(cache=cachetools.LRUCache(1e3))
-# @functools.lru_cache(maxsize=1024)
-# def get_species_data(species):
-#     """Get a dictionary of data for this species."""
-#     species = normalise_species(species)
-#     data = tools.file_to_recarray(data_directory+'/species.csv',table_name='data')
-#     if species not in data['species']:
-#         raise DatabaseException(f"Species unknown: {repr(species)}")
-#     return data[data['species']==species] 
-# @cachetools.cached(cache=cachetools.LRUCache(1e3))
-
 _species_data_cache = None
 @functools.lru_cache(maxsize=1024)
 def get_species_data(species):
@@ -138,7 +86,7 @@ def get_species_property(species,prop):
         raise DatabaseException(f"Property is unknown: {repr(species)}, {repr(prop)}")
     return retval
 
-@cache
+@tools.cache
 def get_level(species):
     """Load a Level object containing data about a species (all
     isotopologues)."""
@@ -176,8 +124,9 @@ def get_partition_function(
         Eref=0,      # Energy referenced to lowest energy level
 ):             
     """Get partition function."""
+    import scipy
     level = get_level(species)
-    kB = convert.units(constants.Boltzmann,'J','cm-1')
+    kB = convert.units(scipy.constants.Boltzmann,'J','cm-1')
     Z = np.sum(level['g']*np.exp(-(level['E']+level['Eref']-Eref)/(kB*Tex)))
     return Z
 
@@ -185,6 +134,7 @@ def get_partition_function(
 def get_isotopes(element_name):
     """Return an ordered list of mass numbers and fractional abundances of
     element given as a string name."""
+    import  periodictable
     element = getattr(periodictable,element_name)
     isotopes = [(mass_number,element[mass_number].abundance/100.)
                 for mass_number in element.isotopes]
@@ -194,6 +144,7 @@ def get_isotopes(element_name):
 @lru_cache
 def get_most_abundant_isotope_mass_number(element_name):
     """Return mass number of the most abundance isotope of an element."""
+    import periodictable
     element = getattr(periodictable,element_name)
     i = np.argmax([element[m].abundance
                    for m in element.isotopes])
@@ -216,7 +167,7 @@ def get_lines(species):
     data.name = tools.make_valid_python_symbol_name(f'lines_{species}')
     return data
 
-@cache
+@tools.cache
 def get_hitran_lines(species,**match):
     """Load spectral lines from reference data."""
     from . import hitran
