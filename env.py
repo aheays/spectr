@@ -24,6 +24,8 @@ from . import dataset
 from . import optimise
 from . import plotting
 from . import database
+from . import levels
+from . import lines
 from . import spectrum
 from . import kinetics
 from . import thermochemistry
