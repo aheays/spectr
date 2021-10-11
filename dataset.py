@@ -1604,6 +1604,7 @@ class Dataset(optimise.Optimiser):
                 data[key].append(val)
         self.load_from_dict(data,flat=True)
 
+
     def _load_from_directory(self,filename,**load_from_dict_kwargs):
         """Load data stored in a structured directory tree."""
         data = tools.directory_to_dict(filename)
@@ -2008,7 +2009,6 @@ class Dataset(optimise.Optimiser):
 
     def plot(
             self,
-            # xkey=None,               # key to use for x-axis data
             xkeys=None,         # key to use for x-axis data
             ykeys=None,         # list of keys to use for y-axis data
             zkeys=None,         # plot x-y data separately for unique combinations of zkeys
@@ -2116,7 +2116,7 @@ class Dataset(optimise.Optimiser):
                         # zlabel_format_function = self.default_zlabel_format_function
                         zlabel_format_function = tools.dict_to_kwargs
                     zlabel = zlabel_format_function(dz)
-                    if not xnewaxes:
+                    if not znewaxes:
                         label += f' {zlabel}'
                         zlabel = None
                     ## get color/marker/linestyle
@@ -2206,7 +2206,7 @@ class Dataset(optimise.Optimiser):
                         ax.set_xlabel(xlabel)
                     if 'label' in kwargs:
                         if legend:
-                            plotting.legend(fontsize='x-small',loc=legend_loc,show_style=True,ax=ax)
+                            plotting.legend(fontsize='small',loc=legend_loc,show_style=True,ax=ax)
                         if annotate_lines:
                             plotting.annotate_line(line=line)
                     if xlim is not None:
