@@ -312,13 +312,18 @@ def format_dict(
                     # val,maxdepth=3,separate_with_blanks_depth=-1))
             # fid.write('\n')
 
-def load_dict(filename,*names):
-    """Import filename and return a dictionary of its named attributes."""
+def load_dict(filename,name_or_names):
+    """Import filename and return a dictionary of its named attributes. If
+    name is a string, return the value of that attribute.  If it is a
+    list of strings then return a dictionary of attribute.."""
     ## import file as 'temporary_module'
     from importlib.machinery import SourceFileLoader
     module = SourceFileLoader('_import_data_temporary_module',filename).load_module()
     ## get requested attributes
-    retval = {name:getattr(module,name) for name in names}
+    if isinstance(name_or_names,str):
+        retval = getattr(module,name_or_names)
+    else:
+        retval = {name:getattr(module,name) for name in name_or_names}
     ## as far as possible unimport module so different data can be
     ## loaded/reloaded with this function
     sys.modules.pop('_import_data_temporary_module')
@@ -1803,6 +1808,7 @@ def directory_to_dict(directory):
 
 def get_clipboard():
     """Get a string from clipboard."""
+    import subprocess
     status,output = subprocess.getstatusoutput("xsel --output --clipboard")
     assert status==0, 'error getting clipboard: '+output
     return output
