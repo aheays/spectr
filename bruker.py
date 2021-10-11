@@ -80,7 +80,8 @@ class OpusData:
             retval /= 2
         elif kind == 'fwhm':
             ## convert to fwhm of sinc central peak
-            retval /= 1.2     
+            # retval /= 1.2
+            pass                # confuse
         return retval
 
     def plot_interferogram(self,ax=None,**plot_kwargs):
