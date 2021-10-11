@@ -329,8 +329,7 @@ class Optimiser:
                 self.pop_format_input_function()
         if not isinstance(parameter,Parameter):
             parameter = Parameter(*tools.tools.ensure_iterable(parameter),*args,**kwargs)
-        if parameter not in self.parameters:
-            self.parameters.append(parameter)
+        self.parameters.append(parameter)
         return parameter
     
     
