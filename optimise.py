@@ -356,6 +356,7 @@ class Optimiser:
             self._construct_functions[timestamp()] = f
             if construct_on_add and self.permit_construct_on_add: 
                 f()
+                self._last_construct_time = timestamp()
 
     def add_post_construct_function(self,*functions):
         """Add one or more functions that is run after normal construct
@@ -592,6 +593,27 @@ class Optimiser:
                         optimiser.set(key,'unc',dp.pop(0),index=i)
 
     construct_functions = property(lambda self: list(self._construct_functions.values()) + list(self._post_construct_functions.values())[::-1])
+
+    def _get_last_change_time(self):
+        """Compute when the design or any inputs into the model was last
+        changed."""
+        ## last time constructed
+        retval = self._last_construct_time
+        ## Parameters changed
+        for p in self.parameters:
+            retval = max(retval,p._last_modify_value_time)
+        ## if dataset will have this attribute -- unsafe - type check?
+        if hasattr(self,'global_modify_time'): 
+            retval = max(retval,self.global_modify_time)
+        ## if suboptimiser has change
+        for o in self.get_all_suboptimisers(include_self=False):
+            retval = max(retval,o._last_construct_time)
+        return retval
+
+    last_change_time = property(_get_last_change_time)
+
+    ## get last_construct_time in a protected way
+    last_construct_time = property(lambda self: self._last_construct_time)
 
     def construct(self,clean=False):
         """Run all construct functions and return collected residuals. If
