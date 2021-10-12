@@ -2110,9 +2110,9 @@ def ensure_iterable(x):
 def spline(
         xi,yi,x,s=0,order=3,
         check_bounds=True,
-        set_out_of_bounds_to_zero=True,
         sort_data=True,
         ignore_nan_data=False,
+        out_of_bounds='extrapolate', # 'extrapolate','zero','error'
 ):
     """Evaluate spline interpolation of (xi,yi) at x. Optional argument s
     is spline tension. Order is degree of spline. Silently defaults to 2 or 1
@@ -2128,17 +2128,19 @@ def spline(
     if sort_data:
         i = np.argsort(xi)
         xi,yi = xi[i],yi[i]
-    if set_out_of_bounds_to_zero:
-        i = (x>=xi[0])&(x<=xi[-1])
-        y = np.zeros(x.shape)
-        if any(i):
-            y[i] = spline(xi,yi,x[i],s=s,order=order,set_out_of_bounds_to_zero=False,sort_data=False)
-        return(y)
-    if check_bounds:
-        assert x[0]>=xi[0],'Splined lower limit outside data range: '+str(x[0])+' < '+str(xi[0])
-        assert x[-1]<=xi[-1],'Splined upper limit outside data range: '+format(x[-1],'0.10g')+' > '+format(xi[-1],'0.10g')
-    ys = interpolate.UnivariateSpline(xi, yi, k=order, s=s)(x)
-    return ys
+    y = interpolate.UnivariateSpline(xi, yi, k=order, s=s)(x)
+    ## out of bounds logic
+    iout = (x<xi[0])|(x>xi[-1])
+    if np.any(iout):
+        if out_of_bounds == 'error':
+            raise Exception('Data to spline is out of bounds')
+        elif out_of_bounds == 'zero':
+            y[iout] = 0.0
+        elif out_of_bounds == 'extrapolate':
+            pass
+        else:
+            raise Exception(f'Invalid {out_of_bounds=}')
+    return y
 
 # def splinef(xi,yi,s=0,order=3,sort_data=True):
     # """Return spline function for points (xi,yi). Will return order
@@ -4149,6 +4151,8 @@ def infer_filetype(filename):
         return 'opus'
     elif os.path.exists(filename) and os.path.isdir(filename):
         return 'directory'
+    elif extension == 'dataset':
+        return 'directory'
     else:
         return None
     return(d)
@@ -5167,7 +5171,7 @@ def fit_spline_to_extrema_or_median(
         interval_fraction=0.4,  # select a value from this half-interval around xi
         refit_median =  True,
         order=3,            # spline order
-        make_plot=True,     # show what was done
+        make_plot=False,     # show what was done
 ):
     """Fit a spline to (x,y) with knots in intervals around points
     xi. Knots are at either the maximum or minimum y value in each
@@ -5209,7 +5213,7 @@ def fit_spline_to_extrema_or_median(
             raise Exception(f'Invalid value {fit=}, expecint "min", "max", or "median"')
         xspline.append(xi[j])
         yspline.append(yi[j])
-    yf = spline(xspline,yspline,x,order=order,check_bounds=False,set_out_of_bounds_to_zero=False,)
+    yf = spline(xspline,yspline,x,order=order)
     if refit_median:
         ## refit data to the median of each 
         xspline,yspline = [],[]
@@ -5222,7 +5226,7 @@ def fit_spline_to_extrema_or_median(
             j = argmedian(yresiduali)
             xspline.append(xi[j])
             yspline.append(yi[j])
-        yf = spline(xspline,yspline,x,order=order,check_bounds=False,set_out_of_bounds_to_zero=False,)
+        yf = spline(xspline,yspline,x,order=order)
     if make_plot:
         ## summarise the results
         gca().plot(x,y,label='data')
@@ -5232,6 +5236,14 @@ def fit_spline_to_extrema_or_median(
         ## for ibegi,iendi in zip(ibeg,iend):
         ##     gca().plot(x[ibegi:iendi],y[ibegi:iendi],color='black')
         legend()
+    ## returen as a list of (xspline,yspline) pairs where yspline
+    ## points are Parameter object, or return three lists
+    ## (xspline,yspline,yfit).
+    # if return_as_parameters:
+        # from .optimise import Parameter
+        # return [[xi,Parameter(yi)] for xi,yi in zip(xspline,yspline)]
+    # else:
+        # return xspline,yspline,yf
     return xspline,yspline,yf
 
 # def piecewise_sinusoid(x,regions,order=3):
