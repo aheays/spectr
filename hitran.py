@@ -193,7 +193,8 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     else:
         line.name = name
     ## limit data
-    line.limit_to_match(match,**match_kwargs)
+    if match is not None or len(match_kwargs) > 0:
+        line.limit_to_match(match,**match_kwargs)
     ## replace format input function with a reference to this function
     line.clear_format_input_functions()
     def f():
