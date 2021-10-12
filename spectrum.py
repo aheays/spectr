@@ -339,9 +339,8 @@ class Experiment(Optimiser):
         return ax
 
     @optimise_method()
-    def fit_background(self,xi=100,make_plot=False,**fit_kwargs):
+    def fit_background_spline(self,xi=100,xbeg=None,xend=None,make_plot=False,**fit_kwargs):
         """Use fit_spline_to_extrema_or_median to fit the background in the presence of lines."""
-        # if self._clean_construct:
         xs,ys,yf = tools.fit_spline_to_extrema_or_median(self.x,self.y,xi=xi,make_plot=make_plot,**fit_kwargs)
         self.background = yf
 
@@ -966,9 +965,8 @@ class Model(Optimiser):
         """Shift by a spline defined function."""
         self.y += float(intensity)
 
-    def add_intensity(self,*args,**kwargs):
-        """Deprecated"""
-        self.add_constant(*args,**kwargs)
+    shift_by_constant = add_constant # deprecated
+    add_intensity_constant = add_constant # deprecated
 
     @optimise_method()
     def add_from_file(self,filename,scale=1,_cache=None):
@@ -1005,24 +1003,6 @@ class Model(Optimiser):
         self.add_spline(knots)
         return knots
 
-    @optimise_method()
-    def add_spline(self,knots=None,order=3,_cache=None,_parameters=None,):
-        """Add a spline."""
-        if self._clean_construct:
-            xs = [t[0] for t in knots]
-            ys = [t[1] for t in knots]
-            i = (self.x >= np.min(xs)) & (self.x <= np.max(xs))
-            _cache['i'] = i
-            _cache['xs'] = xs
-            _cache['ys'] = ys
-        if (self._clean_construct 
-            or np.any([t._last_modify_value_time > self._last_construct_time
-                       for t in _parameters])):
-            y = tools.spline(_cache['xs'],_cache['ys'],self.x[_cache['i']],order=order)
-            _cache['y'] = y
-        self.y[_cache['i']] += _cache['y']
-
-    add_intensity_spline = add_spline # deprecated
 
     def auto_multiply_spline(self,x=1000.,y=None,vary=True,order=3,construct=True):
         """Quickly add an evenly-spaced spline to multiply . If x is a vector
@@ -1052,19 +1032,10 @@ class Model(Optimiser):
         return knots
     
     @optimise_method()
-    def multiply_spline(self,knots=None,order=3,_cache=None,_parameters=None):
+    def multiply_spline(self,knots=None,order=3,_cache=None,autovary_in_range=False):
         """Multiple y by a spline function."""
-        ## make the spline if necessary
-        if 'spline' not in _cache:
-            spline = Spline(f'{self.name}_multiply_spline',knots,order)
-            self.add_suboptimiser(spline)
-            self.pop_format_input_function()
-            spline.clear_format_input_functions()
-            _cache['spline'] = spline
-        spline = _cache['spline'] 
-        ## compute the  spline if necessary
-        # if self._clean_construct or self._xchanged:
         if self._clean_construct:
+            spline = Spline(knots=knots,order=order)
             i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
             ## a quick hack to prevent round off errors missing the
             ## first or last points of the splined domain
@@ -1072,13 +1043,117 @@ class Model(Optimiser):
                 i[0] = True
             if not i[-1] and i[-2]:
                 i[-1] = True
-            ## end of hack
-            spline.set_x(self.x[i])
-            spline.clear_format_input_functions()
+            ## to be implemented propertly
+            i = np.full(len(self.x),True)
             _cache['i'] = i
+            _cache['spline'] = spline
         i = _cache['i']
+        spline = _cache['spline']
+        if autovary_in_range:
+            self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
+        if spline.last_change_time > self.last_construct_time:
+            _cache['yspline'] = spline[self.x[i]]
         ## add to y
-        self.y[i] *= spline.y  
+        self.y[i] *= _cache['yspline']
+    
+    @optimise_method()
+    def add_spline(self,knots=None,order=3,_cache=None,autovary_in_range=False):
+        """Multiple y by a spline function."""
+        if self._clean_construct:
+            spline = Spline(knots=knots,order=order)
+            i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
+            ## a quick hack to prevent round off errors missing the
+            ## first or last points of the splined domain
+            if not i[0] and i[1]:
+                i[0] = True
+            if not i[-1] and i[-2]:
+                i[-1] = True
+            _cache['i'] = i
+            _cache['spline'] = spline
+        i = _cache['i']
+        spline = _cache['spline']
+        if autovary_in_range:
+            self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
+        if spline.last_change_time > self.last_construct_time:
+            _cache['yspline'] = spline[self.x[i]]
+        ## add to y
+        self.y[i] += _cache['yspline']
+    
+    def autovary_in_range(
+            self,
+            parameters,                 # list of lists, [x,rest..]
+            xbeg=None, xend=None,       # range to set to vary
+            vary=True,                  # set to this vary if in range
+            vary_outside_range = False, # set to this vary if outside range, None to do nothing to these Parameters
+            include_neighbouring=True, # include points immediately outside range
+    ):
+        """Set Parameters in list of lists to vary if in defined x range."""
+        ## default to entire model
+        if xbeg is None:
+            xbeg = self.x[0]
+        if xend is None:
+            xend = self.x[-1]
+        ## decide if in or out of range and parameter varies
+        for i,(x,*rest) in enumerate(parameters):
+            in_range = (
+                ( (x >= xbeg) and (x <= xend) ) # in fit range
+                or ( include_neighbouring and i < (len(parameters)-1) and x < xbeg and parameters[i+1][0] > xbeg ) # right before fit range
+                or ( include_neighbouring and i > 0                   and x > xend and parameters[i-1][0] < xend ) # right after fit range
+                )
+            for p in parameters[i]:
+                if isinstance(p,Parameter):
+                    if in_range:
+                        p.vary = vary
+                    elif vary_outside_range is not None:
+                        p.vary = vary_outside_range
+
+    @optimise_method()
+    def scale_and_shift_from_unity_splines(
+            self,
+            total_knots=None,
+            shift_knots=None,
+            order=3,
+            autovary_in_range=False,
+            _cache=None,
+    ):
+        """Assuming a self.y is normalised in some sense, shift it by
+        shift_knots and scale it so that a unity corresponds to
+        total_knots."""
+        if self._clean_construct:
+            ## make splines objects
+            total_spline = Spline(f'{self.name}_total_spline',total_knots,order)
+            shift_spline = Spline(f'{self.name}_shift_spline',shift_knots,order)
+            ## update indices on clean construct
+            i = ((self.x >= max(np.min(total_spline.xs),np.min(shift_spline.xs)))
+                 & (self.x <= min(np.max(total_spline.xs),np.max(shift_spline.xs))))
+            ## a quick hack to prevent round off errors missing the
+            ## first or last points of the splined domain
+            if not i[0] and i[1]:
+                i[0] = True
+            if not i[-1] and i[-2]:
+                i[-1] = True
+            ## if autovary then set spline parameters to be varied if
+            ## in the range of i or the immediate points outside range
+            if autovary_in_range:
+                txbeg,txend = self.x[i][0],self.x[i][-1]
+                self.autovary_in_range(total_knots,txbeg,txend)
+                self.autovary_in_range(shift_knots,txbeg,txend)
+            _cache['i'] = i
+            _cache['total_spline'] = total_spline
+            _cache['shift_spline'] = shift_spline
+        ## compute
+        i = _cache['i']
+        total_spline = _cache['total_spline']
+        shift_spline = _cache['shift_spline']
+        ## recompute spline if necessary
+        if total_spline.last_change_time > self.last_construct_time:
+            _cache['ytotal'] = total_spline[self.x[i]]
+        ytotal = _cache['ytotal']
+        if shift_spline.last_change_time > self.last_construct_time:
+            _cache['yshift'] = shift_spline[self.x[i]]
+        yshift = _cache['yshift']
+        ## compute scaled and shifted y
+        self.y[i] = self.y[i]*(ytotal-yshift) + yshift
 
     def auto_scale_piecewise_sinusoid(
             self,
@@ -1187,10 +1262,10 @@ class Model(Optimiser):
         i = _cache['i']
         self.y[i] += sinusoid
 
-    @optimise_method()
-    def shift_by_constant(self,shift):
-        """Shift by a constant amount."""
-        self.y += float(shift)
+    # @optimise_method()
+    # def shift_by_constant(self,shift):
+        # """Shift by a constant amount."""
+        # self.y += float(shift)
 
 
     # @optimise_method
@@ -1529,32 +1604,27 @@ class Model(Optimiser):
         # ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
         # self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
 
-    @optimise_method()
-    def auto_convolve_with_instrument_function(self,_cache=None,width=None):
+    def auto_convolve_with_instrument_function(self,vary=False,**kwargs):
         """Convolve with instrument function."""
-        if self._clean_construct:
-            data = self.experiment.experimental_parameters
-            ## Bruker OPUS fts apodisation
-            if data['filetype'] == 'opus':
-                if data['apodisation_function'] == 'boxcar':
-                    if self.verbose:
-                        print(f'auto_convolve_with_instrument_function: opus sinc width={data["sinc_FWHM"]}')
-                    self.convolve_with_sinc(resolution=data['sinc_FWHM'])
-                    self.pop_format_input_function()
-                if data['apodisation_function'] == 'Blackman-Harris 3-term':
-                    if self.verbose:
-                        print(f'auto_convolve_with_instrument_function: Blackman-Harris 3-term, resolution={data["sinc_FWHM"]*1.2}')
-                    self.convolve_with_blackman_harris(resolution=data['sinc_FWHM']*1.2,terms=3)
-                    self.pop_format_input_function()
-            ## SOLEIL DESIRS FTS boxcar apodisation
-            elif d['filetype'] == 'DESIRS FTS':
-                if self.verbose:
-                    print(f'auto_convolve_with_instrument_function: DESIRS sinc width={data["sinc_FWHM"]}')
-                self.convolve_with_sinc(width=data['sinc_FWHM'])
-                self.pop_format_input_function()
-            else:
-                raise Exception(f'Cannot auto_convolve_with_instrument_function')
-    
+        data = self.experiment.experimental_parameters
+        ## Bruker OPUS fts apodisation
+        if data['filetype'] == 'opus':
+            if data['apodisation_function'] == 'boxcar':
+                kwargs |= {'sinc_fwhm':P(data['sinc_FWHM'],vary,bounds=(0,inf))}
+            if data['apodisation_function'] == 'Blackman-Harris 3-term':
+                kwargs |= {
+                    'blackman_harris_resolution':P(data['sinc_FWHM'],vary,bounds=(0,inf)),
+                    'blackman_harris_order':3,
+                }
+        ## SOLEIL DESIRS FTS boxcar apodisation0
+        elif d['filetype'] == 'DESIRS FTS':
+            kwargs |= {'sinc_fwhm,':P(data['sinc_FWHM'],vary,bounds=(0,inf))}
+        else:
+            raise Exception(f'Cannot auto_convolve_with_instrument_function')
+        ## call function
+        self.convolve_with_instrument_function(**kwargs)
+        return kwargs
+
     @optimise_method()
     def convolve_with_instrument_function(
             self,
@@ -1562,6 +1632,8 @@ class Model(Optimiser):
             gaussian_fwhm=None,
             lorentzian_fwhm=None,
             signum_magnitude=None,
+            blackman_harris_resolution=None,
+            blackman_harris_order=None,
             width=None,
             _cache=None,
     ):
@@ -1570,7 +1642,8 @@ class Model(Optimiser):
         dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
         ## instrument function grid
         if width is None:
-            width = (self.x[-1]-self.x[0])/2
+            ## width = (self.x[-1]-self.x[0])/2
+            width = 10
         x = np.arange(0,width+dx*0.5,dx,dtype=float)
         x = np.concatenate((-x[-1:0:-1],x))
         imidpoint = int((len(x)-1)/2)
@@ -1586,6 +1659,27 @@ class Model(Optimiser):
         ## convolve with lorentzian function
         if lorentzian_fwhm is not None:
             y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
+        ## convolve with sinc fucntions corresponding to
+        ## Blackman-Harris apodisation
+        if blackman_harris_resolution is not None:
+            twidth = blackman_harris_resolution*0.6
+            if blackman_harris_order == 3:
+                yconv =  0.42323*np.sinc(x/twidth)
+                yconv += 0.5*0.49755*np.sinc(x/twidth-1) 
+                yconv += 0.5*0.49755*np.sinc(x/twidth+1)
+                yconv += 0.5*0.07922*np.sinc(x/twidth-2)
+                yconv += 0.5*0.07922*np.sinc(x/twidth+2)
+            elif blackman_harris_order == 4:
+                yconv =  0.35875*np.sinc(x/twidth)
+                yconv += 0.5*0.48829*np.sinc(x/twidth-1) 
+                yconv += 0.5*0.48829*np.sinc(x/twidth+1)
+                yconv += 0.5*0.14128*np.sinc(x/twidth-2)
+                yconv += 0.5*0.14128*np.sinc(x/twidth+2)
+                yconv += 0.5*0.01168*np.sinc(x/twidth-3)
+                yconv += 0.5*0.01168*np.sinc(x/twidth+3)
+            else: 
+                raise Exception("Only 3 and 4 Blackman-Harris terms implemented.")
+            y = signal.oaconvolve(y,yconv, 'same')
         ## if necessary account for phase correction by convolving with a signum
         if signum_magnitude is not None:
             x[imidpoint] = 1e-99  # avoid divide by zero warning
@@ -1994,17 +2088,12 @@ class Spline(Optimiser):
             self.xs.append(x)
             self.ys.append(y)
 
-    @optimise_method()
-    def set_x(self,x):
-        """Compute spline at x. Store internally."""
+    def __getitem__(self,x):
+        """Compute value of spline at x."""
         xs = np.array([float(t) for t in self.xs])
         ys = np.array([float(t) for t in self.ys])
-        self.x = x
-        self.y = tools.spline(xs,ys,x,order=self.order)
-
-    def __getitem__(self,x):
-        self.set_x(x)
-        return self.y
+        y = tools.spline(xs,ys,x,order=self.order)
+        return y
 
 def load_spectrum(filename,**kwargs):
     """Use a heuristic method to load a directory output by
@@ -2028,6 +2117,7 @@ class Spectrum(Dataset):
     }
 
 
+
 class FitReferenceAbsorption():
 
     def __init__(
@@ -2046,23 +2136,35 @@ class FitReferenceAbsorption():
         if p is None:
             p = {}
         self.p = p
-        ## update with kwrags
+        ## update with kwargs
         self.p |= parameters
-        ## set defaults
-        # for key,val in {
-                # 'xbeg':600,
-                # 'xend':6000,
-                # 'interpolate_model':0.001,
-                # # 'min_S296K' :1e-23,
-                # # 'noise':{'xbeg':5951.26,'xend':5959.4},
-        # }.items():
-            # self.p.setdefault(key,val)
-        # ## prepare other variables
+        ## initialise control variables
         self.verbose = verbose
         self.make_plot =  make_plot
         self.figure_number = figure_number
         self.ncpus = ncpus
         self.experiment = None
+        self.model = None
+
+    default_species = [
+        'H2O',
+        'CO2',
+        'CO',
+        # 'NO2',
+        # 'NO',
+        'N2O',
+        # 'NH3',
+        # 'HCN',
+        # 'CH4',
+        # 'C2H2',
+        # 'C2H6',
+        # 'HCOOH',
+        # 'SO2',
+        'H2S',
+        'CS2',
+        'OCS',
+    ]
+
 
     characteristic_bands = {
         'H2O':[[1400,1750],[3800,4000],],
@@ -2086,23 +2188,31 @@ class FitReferenceAbsorption():
     }
 
     characteristic_lines = {
-        'H2O':[[1700,1750],[1550,1580],],
-        # 'H2O':[[1550,1580],[3880,3882]],
-        'CO2':[[2310,2330],],
-        'CO':[[2160,2180],],
-        # 'CO':[[2160,2180],[4285,4292]],
-        ## 'NH3':[[920,980],],
+        'H2O':[
+            [1550,1580],
+            # [1700,1750],
+            # [3880,3882]
+        ],
+        'CO2':[
+            [2315,2320],],
+        'CO':[
+            [2160,2180],
+            # [4285,4292],
+        ],
         'NH3':[[950,970],],
         'HCN':[[710,730],],
-        ## 'SO2':[[1350,1370],[1100,1150],],
-        'SO2':[[1350,1370],],
+        'SO2':[
+            # [1100,1150],
+            [1350,1370],
+        ],
         'NO2':[[1590,1610],],
         'NO':[[1830,1850],],
         'N2O':[[2199,2210],],
-        ##'CH4':[[3000,3030],],
         'CH4':[[3010,3020],],
-        ## 'H2S':[[1250,1300],[3700,3750],],
-        'H2S':[[1275,1300],],
+        'H2S':[
+            [1275,1300],
+            [3700,3750],
+        ],
         'CS2':[[1530,1550],],
         'C2H2':[[3255,3260],],
         'OCS':[[2070,2080],],
@@ -2118,13 +2228,29 @@ class FitReferenceAbsorption():
         if self.verbose:
             print(*args,**kwargs)
 
-    def load_experiment(self):
+    def load_experiment(self,filename=None,xi_intensity=5,xbeg=None,xend=None):
         print('loading experiment')
         p = self.p
+        if xbeg is not None:
+            p['xbeg'] = xbeg
+        if xend is not None:
+            p['xend'] = xend
+        if filename is not None:
+            p['filename'] = filename
         ## load exp data
         self.experiment = Experiment('experiment')
-        self.experiment.set_spectrum_from_opus_file(p['filename'])
+        ## use provided x range or entire spectrum
+        if 'xbeg' not in p and 'xend' not in p:
+            self.experiment.set_spectrum_from_opus_file(p['filename'])
+        elif 'xbeg' in p and 'xend' in p:
+            self.experiment.set_spectrum_from_opus_file(p['filename'],xbeg=p['xbeg'],xend=p['xend'])
+        else:
+            assert False
+        ## ensure limited to exp if preset
+        p['xbeg'] = self.experiment.x[0]
+        p['xend'] = self.experiment.x[-1]
         ## scale x coordinate
+        p.setdefault('scalex',P(1,False,1e-9))
         if 'scalex' in p:
             self.experiment.scalex(p['scalex'])
         ## fit noise level
@@ -2140,13 +2266,18 @@ class FitReferenceAbsorption():
         ## bin data for speed
         if 'bin_experiment' in p:
             self.experiment.bin_data(width=p['bin_experiment'],mean=True)
-
-    def auto_intensity(self,xi=5):
-        """Automatic background. Not optimised."""
-        print('auto_intensity_spline')
-        model = self.make_model(xbeg=self.p['xbeg'],xend=self.p['xend'])
-        model.construct()
-        self.p['intensity_spline'] = model.auto_multiply_spline(x=xi,construct=False,vary=False,)
+        # ## fit a background and make adjustable Parameters
+        # if 'intensity_spline' not in p:
+            # xs,ys,yf = tools.fit_spline_to_extrema_or_median(self.experiment.x,self.experiment.y,xi=xi_intensity,make_plot=False)
+            # p['intensity_spline'] = [[xsi,P(ysi,False)] for (xsi,ysi) in zip(xs,ys)]
+            
+    # def auto_intensity(self,xi=5):
+        # """Automatic background fit to entire experimental spectrum."""
+        # print('auto_intensity_spline')
+        # p = self.p
+        # model = self.make_model(xbeg=p['xbeg'],xend=p['xend'])
+        # model.construct()
+        # p['intensity_spline'] = model.auto_multiply_spline(x=xi,construct=False,vary=False,)
 
     def auto_sinusoid(self,xi=10):
         """Automatic background. Not optimised."""
@@ -2175,32 +2306,37 @@ class FitReferenceAbsorption():
         model.optimise(make_plot=self.make_plot,monitor_frequency='rms decrease',verbose=self.verbose,max_nfev=max_nfev)
         model_no_absorption = self.make_model(xbeg,xend,list(self.p['N']),neglect_species_to_fit=True)
         self.plot(model,model_no_absorption)
-        return model,model_no_absorption
+        self.model = model
 
-    def fit_region(self,xbeg,xend,max_nfev=5,**make_model_kwargs):
+    def fit_region(self, max_nfev=5,**make_model_kwargs):
         """Full model."""
-        print('fit_region',xbeg,xend)
-        model = self.make_model(xbeg,xend,**make_model_kwargs)
-        model.name = f'fit_region_{int(xbeg)}_{int(xend)}'
+        print('fit_region')
+        model = self.make_model(**make_model_kwargs)
         model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
         self.plot(model)
 
-    def fit_regions(self,width=100,overlap=0.9,max_nfev=5,**make_model_kwargs):
+    def fit_regions(self,xbeg=-inf,xend=inf,width=100,overlap_factor=0.1,max_nfev=5,**make_model_kwargs):
         """Full model."""
         print('fit_regions')
         p = self.p
-        xbeg = max(p['xbeg'],self.experiment.x[0])
-        xend = min(p['xend'],self.experiment.x[-1])
-        while xbeg < p['xend']:
-            xend = min(xbeg+width,p['xend'])
-            model = self.make_model(xbeg,xend,**make_model_kwargs)
+        ## get overlapping regions
+        xbeg = max(xbeg,p['xbeg'])
+        xend = min(xend,p['xend'])
+        xi = linspace(xbeg,xend,int((xend-xbeg)/width)+2)
+        xbegs = copy(xi[:-1])
+        xends = copy(xi[1:])
+        xbegs[1:] -= (width*overlap_factor)/2
+        xends[:-1] += (width*overlap_factor)/2
+        first_plot = True
+        for region in zip(xbegs,xends):
+            model = self.make_model(region,**make_model_kwargs)
             model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
-            self.plot(model)
-            xbeg += overlap*width
+            self.plot(model,clf=first_plot)
+            first_plot = False 
 
     def fit_species(
             self,
-            species_to_fit=None,
+            species_to_fit='default',
             regions='lines',
             fit_species_individually=True,
             max_nfev=20,
@@ -2210,8 +2346,12 @@ class FitReferenceAbsorption():
         preset regions, or the 'full' region."""
         print('fit_species',regions,end=" ")
         p = self.p
-        ## get species list
-        if len(species_to_fit) == 0:
+        ## get default species list
+        if species_to_fit is None:
+            species_to_fit = []
+        if species_to_fit == 'default':
+            species_to_fit = self.default_species
+        if species_to_fit == 'existing':
             species_to_fit = list(p['N'])
         species_to_fit = tools.ensure_iterable(species_to_fit)
         ## fit species individually to all regions or fit all species at once
@@ -2221,25 +2361,27 @@ class FitReferenceAbsorption():
                 print(species,end=" ",flush=True)
                 ## get region list
                 if regions == 'lines':
-                    regions_to_fit = self.characteristic_lines[species]
+                    species_regions = self.characteristic_lines[species]
                 elif regions == 'bands':
-                    regions_to_fit = self.characteristic_bands[species]
+                    species_regions = self.characteristic_bands[species]
                 elif regions == 'full':
-                    regions_to_fit = [[p['xbeg'],p['end']]]
+                    species_regions = [[p['xbeg'],p['xend']]]
+                elif len(regions) == 2 and np.isscalar(regions[0]):
+                    species_regions = [[*regions]]
                 else:
-                    assert False
-                main = Optimiser(name=species)
+                    species_regions = regions
+                main = Optimiser(name=f'fit_species_{species}')
                 models = []
-                for (xbeg,xend) in regions_to_fit:
-                    ## get xbeg,xend in scan ragne
+                for (xbeg,xend) in species_regions:
+                    ## limit fit x range to global xbeg/xend
                     xbeg = max(xbeg,p['xbeg'])
                     xend = min(xend,p['xend'])
                     if xend - xbeg <= 0:
                         continue
                     ## make optimise model
-                    model = self.make_model(xbeg,xend,[species],**make_model_kwargs)
+                    model = self.make_model([xbeg,xend],[species],**make_model_kwargs)
                     main.add_suboptimiser(model)
-                    model_no_absorption = self.make_model(xbeg,xend,[species],neglect_species_to_fit=True)
+                    model_no_absorption = self.make_model([xbeg,xend],[species],neglect_species_to_fit=True)
                     models.append((model,model_no_absorption))
                 if len(models) == 0:
                     print(f'Cannot fit species {species}, no regions defined in range {xbeg} to {xend}')
@@ -2251,6 +2393,7 @@ class FitReferenceAbsorption():
                     first_plot = False
             print()
         else:
+            assert False
             ## get region list
             if regions == 'lines':
                 regions_to_fit = []
@@ -2289,45 +2432,65 @@ class FitReferenceAbsorption():
             species_to_fit=None,
             prefit=True,
             cycles=3,
+            regions='bands',
+            reference_species='H2O',
+            max_nfev=5,
             fit_intensity=True,
             fit_sinusoid=True,
-            regions='bands',
             fit_full_model=False,
-            reference_species='H2O',
             fit_instrument=True,
             fit_scalex=False,
             fit_temperature=False,
-            max_nfev=5,
     ):
         """Fit spectrum in a standardised way."""
         print('auto_fit')
         time = timestamp()
+        ## load experimental spectrum
+        if self.experiment is None:
+            self.load_experiment()
         if prefit:
-            ## first fit background and species roughly, replace
+            ## delete existing background and species data
             ## existing fit data
-            for key in ('pair','N','instrument_gaussian'):
+            for key in ('pair','N'):
                 if key in self.p:
-                    self.p.pop(key)
+                    for species in species_to_fit:
+                        if species in self.p[key]:
+                            self.p[key].pop(species)
+            if fit_instrument and 'instrument_function' in self.p:
+                self.p.pop('instrument_function')
             if fit_sinusoid and 'intensity_sinusoid' in self.p:
                 self.p.pop('intensity_sinusoid')
-            if fit_intensity and 'intensity_spline' in self.p:
-                self.p.pop('intensity_spline')
-            if fit_intensity:
-                self.auto_intensity()
+            if fit_intensity and 'intensity' in self.p:
+                self.p.pop('intensity')
+            ## fit reference species -- species first then insturment function
             if fit_instrument or fit_temperature:
                 self.fit_species(
                     reference_species,
-                    regions='lines',
+                    name='prefit_reference_species',
+                    regions=regions,
                     fit_N=True,
                     fit_pair=True,
-                    fit_instrument=fit_instrument,
                     fit_intensity=fit_intensity,
+                    fit_instrument=False,
+                    fit_temperature=False,
+                    max_nfev=max_nfev,
+                )
+                self.fit_species(
+                    reference_species,
+                    name='prefit_instrument_function_temperature',
+                    regions=regions,
+                    fit_N=False,
+                    fit_pair=False,
+                    fit_intensity=False,
+                    fit_instrument=fit_instrument,
                     fit_temperature=fit_temperature,
                     max_nfev=max_nfev,
                 )
+            ## rough fitted species
             self.fit_species(
                 species_to_fit,
-                regions='lines',
+                name='prefit_species',
+                regions=regions,
                 fit_N=True,
                 fit_pair=True,
                 fit_intensity=fit_intensity,
@@ -2337,14 +2500,12 @@ class FitReferenceAbsorption():
             ## background
             if fit_sinusoid:
                 self.auto_sinusoid()
-            ## # if fit_intensity:
-            ##     # self.auto_intensity()
             if fit_sinusoid or fit_intensity:
                 self.fit_regions(
                     fit_intensity=fit_intensity,
                     fit_sinusoid=fit_sinusoid,
                     max_nfev=max_nfev,)
-            ## instrument function etc
+            ## fit reference species
             if fit_instrument or fit_scalex or fit_temperature:
                 self.fit_species(
                     reference_species,
@@ -2356,9 +2517,8 @@ class FitReferenceAbsorption():
                     fit_intensity=fit_intensity,
                     fit_sinusoid=fit_sinusoid,
                     fit_temperature=fit_temperature,
-                    max_nfev=max_nfev,
-                )
-            ## all species
+                    max_nfev=max_nfev,)
+            ## fit each species individually
             self.fit_species(
                 species_to_fit,
                 regions=regions,
@@ -2366,17 +2526,15 @@ class FitReferenceAbsorption():
                 fit_pair=True,
                 fit_intensity=fit_intensity,
                 fit_sinusoid=fit_sinusoid,
-                max_nfev=max_nfev,
-            )
+                max_nfev=max_nfev,)
         ## make final model
         if fit_full_model:
             self.full_model(
                 species_to_fit,
                 fit_N=True,
                 fit_pair=True,
-                max_nfev=max_nfev,
-            )
-        print('Time elapsed:',format(timestamp()-time,'12.6f'))
+                max_nfev=max_nfev,)
+        print(f'Time to auto_fit: {timestamp()-time:12.6f} s')
 
     def plot(
             self,
@@ -2409,16 +2567,17 @@ class FitReferenceAbsorption():
                 # label=f'model_no_absorption: full/noabs={tools.rms(model.get_residual()):0.3e}/{tools.rms(model_no_absorption.get_residual()):0.3e}',
                 zorder=-2)
             # ax.legend()
-        fig.suptitle(self.name)
+        # fig.suptitle(self.name)
         ax.axhline(0,color='gray',zorder=-5)
         plotting.qupdate(fig)
 
     def make_model(
             self,
-            xbeg,xend,
+            region='full',
             species_to_fit=None,
             species_to_model=None,
             fit_intensity=False,
+            fit_intensity_shift=False,
             fit_N=False,
             fit_pair=False,
             fit_scalex=False,
@@ -2428,23 +2587,29 @@ class FitReferenceAbsorption():
             neglect_species_to_fit=False,
             verbose=False,
     ):
-        if species_to_fit is None:
-            species_to_fit = []
         ## get parameters — protect from if necessary
         p = self.p
         if neglect_species_to_fit:
             p = deepcopy(p)
-        ## whether to adjust experiment frequency scale
-        p.setdefault('scalex',P(1,False,1e-9))
-        if 'scalex' not in p:
-            p['scalex'] = P(1,False,1e-9)
-        p['scalex'].vary = fit_scalex
+        ## get region
+        if region == 'full':
+            region = (self.p['xbeg'],self.p['xend'])
+        xbeg,xend = region
+        ## get species_to_fit list
+        if species_to_fit is None:
+            species_to_fit = []
+        if species_to_fit == 'default':
+            species_to_fit = self.default_species
+        if species_to_fit == 'existing':
+            species_to_fit = list(p['N'])
         ## ensure experiment loaded
         if self.experiment is None:
             self.load_experiment()
+        ## whether to adjust experiment frequency scale
+        p['scalex'].vary = fit_scalex
         ## start model
         model = Model(
-            name='_'.join(['make_model',*species_to_fit]),
+            name='_'.join(['make_model',str(int(xbeg)),str(int(xend)),*species_to_fit]),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
         model.permit_construct_on_add =  True
@@ -2453,9 +2618,9 @@ class FitReferenceAbsorption():
         if p['interpolate_model'] is not None:
             model.interpolate(p['interpolate_model'])
         ## add unit intensity
-        model.add_intensity(1)
+        model.add_constant(1)
         ## add absorption lines
-        p.setdefault('Teq',P(296,False,1,nan,(285,305)))
+        p.setdefault('Teq',P(296,False,1,nan,(20,1000)))
         p['Teq'].vary = fit_temperature
         p.setdefault('N',{})
         p.setdefault('pair',{})
@@ -2465,11 +2630,10 @@ class FitReferenceAbsorption():
         for species in species_to_model:
             if neglect_species_to_fit and species in species_to_fit:
                 continue
-            # self.verbose_printrint( f' {species}',end='')
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
             p['N'].setdefault(species,P(1e16, False,1e13 ,nan,(0,np.inf)))
-            p['pair'].setdefault(species,P(500, False,1e0,nan,(1e-3,10000),))
+            p['pair'].setdefault(species,P(500, False,1e0,nan,(1e-3,2e4),))
             if species in species_to_fit:
                 p['N'][species].vary = fit_N
                 p['pair'][species].vary = fit_pair
@@ -2477,54 +2641,48 @@ class FitReferenceAbsorption():
                 p['N'][species].vary =False
                 p['pair'][species].vary =False
             ## load data from HITRAN linelists
-            tline = hitran.get_line(species)
-            ## Trim lines that are too weak to matter
+            # tline = hitran.get_line(species)
+            # ## Trim lines that are too weak to matter
             if species in species_to_fit:
-                ## Remove very weak lines that probably wont
-                ## contribute at any reasonable column density
-                tline.limit_to_match(min_S296K=1e-25)
+                min_S296K=1e-25
             else:
-                ## if species not fit then lines can be trimmed to a minimum τ
                 τpeak_min = 1e-3    # approx minimum peak τ to include a line
-                # τpeak_min = 1e-5    # approx minimum peak τ to include a line
-                S296K_min = τpeak_min*1e-3/p['N'][species]    # resulting approx min S296K
-                if species in species_to_fit:
-                    ## if this species is to fitted make sure at least
-                    ## some lines are included
-                    S296K_min = min(S296K_min,np.max(tline['S296K'])/10) 
-                tline = tline.matches(min_S296K=S296K_min)
+                min_S296K = τpeak_min*1e-3/p['N'][species]    # resulting approx min S296K
+            # tline.limit_to_match(min_S296K=min_S296K)
             ## add lines
-            model.add_line(
-                tline,
+            model.add_hitran_line(
+                species,
                 Teq=p['Teq'],
                 Nchemical_species=p['N'][species],
                 pair=p['pair'][species],
-                ymin=None,
+                match={'min_S296K':min_S296K},
                 ncpus=self.ncpus,
                 nfwhmL=3000,
                 lineshape='voigt',
-                verbose=False,
             )
         ## uninterpolate model grid
         if p['interpolate_model'] is not None:
             model.uninterpolate(average= True)
+
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
-        if fit_intensity and 'intensity_spline' not in p:
-            p['intensity_spline'] = self.auto_intensity()
-        if 'intensity_spline' in p:
-            for i,(xi,yi) in enumerate(p['intensity_spline']):
-                yi.vary = False
-                if fit_intensity:
-                    if xi >= xbeg and  xi <= xend:
-                        yi.vary = True
-                    if i > 0:
-                        xprev,yprev = p['intensity_spline'][i-1]
-                        if xi >= xbeg and xprev < xbeg:
-                            yprev.vary = True
-                        if xi >= xend and xprev < xend:
-                            yi.vary = True
-            model.multiply_spline(p['intensity_spline'])
+        if 'intensity' not in p:
+            xstep = 20
+            xspline,yspline,t = tools.fit_spline_to_extrema_or_median(self.experiment.x,self.experiment.y,xi=xstep)
+            p['intensity'] = [[tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
+        model.autovary_in_range(p['intensity'],vary=fit_intensity)
+        model.multiply_spline(knots=p['intensity'],order=3)
+
+        ## shift entires spectrum -- light leakage or inteferometry
+        ## problem that adds signal and shifts zero baseline
+        if fit_intensity_shift or 'intensity_shift' in p:
+            xstep = 500
+            if 'intensity_shift' not in p:
+                xspline = linspace(p['xbeg'],p['xend'],int((p['xend']-p['xbeg'])/xstep)+2)
+                p['intensity_shift'] = [[tx,P(0.0,False,1e-5)] for tx in xspline]
+            model.autovary_in_range(p['intensity_shift'],vary=fit_intensity_shift)
+            model.add_spline(knots=p['intensity_shift'],order=1)
+
         ## scale by sinusoidal background, vary points completely within range
         if fit_sinusoid and 'intensity_sinusoid' not in p:
             p['intensity_sinusoid'] = self.auto_sinusoid()
@@ -2534,30 +2692,41 @@ class FitReferenceAbsorption():
                 if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
                     freqi.vary = phasei.vary = amplitudei.vary =  True
             model.add_piecewise_sinusoid(p['intensity_sinusoid'])
-        ## # ## scale by sinusoidal background, vary points completely within range
-        ## # if fit_second_sinusoid:
-        ##     # p.setdefault('second_intensity_sinusoid',self.auto_sinusoid())
-        ## # if 'second_intensity_sinusoid' in p:
-        ##     # for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['second_intensity_sinusoid']):
-        ##         # freqi.vary = phasei.vary = amplitudei.vary = False
-        ##         # if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
-        ##             # freqi.vary = phasei.vary = amplitudei.vary =  True
-        ##     # model.add_piecewise_sinusoid(p['second_intensity_sinusoid'])
-        ## instrument broadening
-        # if 'instrument_gaussian' in p or fit_instrument:
-            # p.setdefault('instrument_gaussian',P(0.02,True,1e-5,nan,(0.01,0.1)))
-            # p['instrument_gaussian'].vary = fit_instrument
-            # model.convolve_with_gaussian(p['instrument_gaussian'])
-        # else:
-            # model.convolve_with_blackman_harris()
-        # model.convolve_with_sinc()
-        # model.convolve_with_instrument_function()
-        model.auto_convolve_with_instrument_function()
+
+        ## instrument function
+        if 'instrument_function' not in p:
+            p['instrument_function'] = model.auto_convolve_with_instrument_function(vary=fit_instrument)
+        else:
+            for key,val in p['instrument_function'].items():
+                if isinstance(val,Parameter):
+                    val.vary = fit_instrument
+                    val.bounds = (1e-4,1)  
+            model.convolve_with_instrument_function(**p['instrument_function'])
 
         ## build it now
         model.construct()
         return model
         
+    def load_parameters(self,filename):
+        """Save parameters to a file."""
+        self.p = tools.load_dict(filename,'parameters')
+        
+    def save_parameters(self,filename):
+        """Save parameters to a file."""
+        tools.save_dict(filename,parameters=self.p)
+
+    def save_to_directory(self,directory):
+        self.save_parameters(f'{directory}/parameters.py')
+        if self.model is not None:
+            Dataset(
+                x=xmodel.x,
+                ymod=model.y,
+                yexp=model.yexp,
+                yres=model.get_residual(),
+            ).save(f'{directory}/spectrum.dataset')
+        
+
+
 def _similar_within_fraction(x,y,maxfrac=1e14):
     """Test if nonzero values of x and y are similar within a maximum fraction abs(x/y)."""
     i = (x!=0)&(y!=0)
@@ -2591,11 +2760,9 @@ def auto_fit(
         reference_species='H2O',
         interpolate_model=0.001,
         max_nfev=5,
-        
+        save_to_directory=None
 ):
-
-    
-
+    ## make a  FitReferenceAbsorption
     o = FitReferenceAbsorption(
         filename=filename,
         xbeg=xbeg,
@@ -2604,9 +2771,9 @@ def auto_fit(
         make_plot=make_plot,
         interpolate_model=interpolate_model,
         )
-    
     o.figure_number = plotting.gcf().number
     o.ncpus = 1
+    ## auto fit it
     o.auto_fit(
         species_to_fit=species_to_fit,
         prefit=prefit,
@@ -2621,5 +2788,20 @@ def auto_fit(
         reference_species=reference_species,
         max_nfev=max_nfev,
     )
-    o.full_model()
-    return o
+    ## full model
+    model,model_no_absorption = o.full_model()
+    data = Dataset(
+        data={
+            'x':model.x,
+            'ymod':model.y,
+            'yexp':model.yexp,
+            'yres':model.get_residual(),
+            'yres_no_absorption':model_no_absorption.get_residual(),
+        })
+    ## save fitted parameters and spectrum to a directory
+    if save_to_directory:
+        o.save_parameters(f'{save_to_directory}/parameters.py')
+        data.save(f'{save_to_directory}/data',filetype='directory')
+        
+    return o,data
+
