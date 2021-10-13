@@ -1,5 +1,4 @@
 import re
-from time import perf_counter as timestamp
 import ast
 from copy import copy,deepcopy
 from pprint import pprint,pformat
@@ -11,6 +10,7 @@ import numpy as np
 from numpy import nan,arange,linspace,array
 
 from . import tools
+from .tools import timestamp
 from .exceptions import InferException
 from . import convert
 from . import optimise
@@ -607,22 +607,22 @@ class Dataset(optimise.Optimiser):
     def explicitly_set_keys(self):
         return [key for key in self if not self.is_inferred(key)]
 
-    def match_keys(self,regex=None,beg=None,end=None,):
+    def match_keys(self,regexp=None,beg=None,end=None,):
         """Return a list of keys matching any of regex or beginning/ending string beg/end."""
         keys = []
-        if regex is not None:
-            keys += [key for key in self if re.match(regex,key)]
+        if regexp is not None:
+            keys += [key for key in self if re.match(regexp,key)]
         if beg is not None:
             keys += [key for key in self if len(key)>=len(beg) and key[:len(beg)] == beg]
         if end is not None:
             keys += [key for key in self if len(key)>=len(end) and key[-len(end):] == end]
         return keys
             
-    def match_keys_matches(self,regex):
-        """Return a list of keys matching any of regex or beginning/ending string beg/end."""
+    def match_keys_matches(self,regexp):
+        """Return a list of keys matching any of regexp or beginning/ending string beg/end."""
         retval = []
         for key in self:
-            if r:=re.match(regex,key):
+            if r:=re.match(regexp,key):
                 retval.append((key,*r.groups()))
         return retval 
 
@@ -875,7 +875,7 @@ class Dataset(optimise.Optimiser):
                 keys = []
             else:
                 keys = list(keys)
-            keys.extend(source.match_keys(regex=keys_re))
+            keys.extend(source.match_keys(regexp=keys_re))
         if keys is None:
             if copy_inferred_data:
                 keys = source.keys()
@@ -942,7 +942,7 @@ class Dataset(optimise.Optimiser):
                     else:
                         self.set(key,subkey,source[key,subkey])
 
-    def match_regexp(self,keys_vals=None,**kwarg_keys_vals):
+    def match_re(self,keys_vals=None,**kwarg_keys_vals):
         """Match string keys to regular expressions."""
         if keys_vals is None:
             keys_vals = {}
@@ -986,9 +986,9 @@ class Dataset(optimise.Optimiser):
                 elif len(key) > 4 and key[:4] == 'max_':
                     ## find all smaller values
                     i &= (self[key[4:]] <= val)
-                elif len(key) > 7 and key[:7] == 'regexp_':
+                elif len(key) > 3 and key[:3] == 're_':
                     ## recursively get reverse match for this key
-                    i &= self.match_regexp({key[7:]:val})
+                    i &= self.match_re({key[3:]:val})
                 else:
                     ## total failure
                     raise Exception(f'Could not match key: {repr(key)}')
@@ -1252,6 +1252,7 @@ class Dataset(optimise.Optimiser):
     def format(
             self,
             keys=None,
+            keys_re=None,
             delimiter=' | ',
             simple=False,       # ifFalse then just print data in a table, no metadata
             unique_values_in_header=False,
@@ -1261,9 +1262,14 @@ class Dataset(optimise.Optimiser):
     ):
         """Format data into a string representation."""
         if keys is None:
-            keys = self.keys()
-            if not include_keys_with_leading_underscore:
-                keys = [key for key in keys if key[0]!='_']
+            if keys_re is None:
+                keys = self.keys()
+                if not include_keys_with_leading_underscore:
+                    keys = [key for key in keys if key[0]!='_']
+            else:
+                keys = []
+        if keys_re is not None:
+            keys = {*keys,*self.match_keys(regexp=keys_re)}
         ##
         for key in keys:
             self.assert_known(key)
@@ -1447,7 +1453,7 @@ class Dataset(optimise.Optimiser):
             flat=False,
             metadata=None,
             translate_keys=None, # from key in file to key in self, None for skip
-            translate_keys_regexps=None, # a list of (regexp,subs) pairs to translate keys -- operate successively on each key
+            translate_keys_regexp=None, # a list of (regexp,subs) pairs to translate keys -- operate successively on each key
             translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
             load_classname_only=False,
     ):
@@ -1477,10 +1483,10 @@ class Dataset(optimise.Optimiser):
                 else:
                     data[to_key] = data.pop(from_key)
         ## translate keys with regexps
-        if translate_keys_regexps is not None:
+        if translate_keys_regexp is not None:
             for key in list(data.keys()):
                 original_key = key
-                for match_re,sub_re in translate_keys_regexps:
+                for match_re,sub_re in translate_keys_regexp:
                     key = re.sub(match_re,sub_re,key)
                 if key != original_key:
                     data[key] = data.pop(original_key)
