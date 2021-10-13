@@ -2,7 +2,6 @@ from copy import copy,deepcopy
 from pprint import pprint
 from functools import lru_cache
 import itertools
-from time import perf_counter as timestamp
 import warnings
 
 import numpy as np
@@ -16,7 +15,7 @@ from . import tools
 from . import dataset
 from . import plotting
 from .dataset import Dataset
-from .tools import find,cache
+from .tools import find,cache,timestamp
 from .optimise import Optimiser,P,Parameter,optimise_method
 from .kinetics import get_species,Species
 

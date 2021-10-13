@@ -16,6 +16,7 @@ import numpy as np
 from numpy import array,arange,nan,inf
 ## import h5py
 # from sympy.printing.pycode import pycode
+from time import perf_counter as timestamp
 
 # from . import plotting
 # from . import fortran_tools
@@ -5527,6 +5528,7 @@ part of the algorithm to work. """
             ipeak = [ii for ii in ipeak if ii!=-1]
     ipeak = np.array(ipeak)
     return ipeak
+
 
 
 #################
