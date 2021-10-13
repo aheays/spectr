@@ -1,4 +1,3 @@
-from time import perf_counter as timestamp
 import inspect
 import re
 import os
@@ -11,6 +10,7 @@ import numpy as np
 from numpy import nan,inf,array,arange,linspace
 
 from . import tools
+from .tools import timestamp
 
 class _Store(dict):
     """An object very similar to a dictionary, except that it knows the
@@ -712,6 +712,7 @@ class Optimiser:
         ## update plot of rms
         if self._make_plot is not None:
             from . import plotting
+            previous_current_figure_number = plotting.plt.gcf().number # save and restore current figure
             n = self._number_of_optimisation_function_calls
             fig = self._make_plot['fig']
             ax = self._make_plot['ax']
@@ -737,6 +738,7 @@ class Optimiser:
             ax.draw_artist(line)
             fig.canvas.flush_events()
             fig.canvas.update()
+            plotting.plt.figure(previous_current_figure_number) # save and restore current figure
         return residuals
 
     number_of_parameters = property(lambda self:self._get_parameters()[1])
@@ -781,12 +783,14 @@ class Optimiser:
             ## monitor decreasing RMS on a plot
             if make_plot:
                 from . import plotting
+                previous_current_figure_number = plotting.plt.gcf().number # save and restore current figure
                 fig = plotting.qfig(9999,preset='screen',figsize='quarter screen',show=True)
                 ax = fig.gca()
                 ax.set_title(f'optimiser: {self.name} nparams: {number_of_parameters}')
                 line, = ax.plot([],[])
                 plotting.qupdate(fig)
                 self._make_plot = {'n':0,'fig':fig,'ax':ax,'line':line}
+                plotting.plt.figure(previous_current_figure_number) # save and restore current figure
             else:
                 self._make_plot = None    
             ## collect options for  least squares fit
