@@ -968,8 +968,14 @@ class Dataset(optimise.Optimiser):
                 ## negate match
                 i &= ~self.match({key[4:]:val})
             elif not np.isscalar(val):
-                ## multiple possibilities to match against
-                i &= np.any([self.match({key:vali}) for vali in val],0)
+                if len(key) > 6 and key[:6] == 'range_' and not self.is_known(key):
+                    ## find all values in a the range of a pair
+                    if len(val) != 2:
+                        raise Exception(r'Invalid range: {val!r}')
+                    i &= (self[key[6:]] >= val[0]) & (self[key[6:]] <= val[1])
+                else:
+                    ## multiple possibilities to match against
+                    i &= np.any([self.match({key:vali}) for vali in val],0)
             else:
                 ## a single value to match against
                 if self.is_known(key):
