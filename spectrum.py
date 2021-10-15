@@ -493,7 +493,6 @@ class Model(Optimiser):
         overlap with experimental points. Always an odd number of
         intervals / even number of interstitial points. DELETES
         CURRENT Y!"""
-        # if self._clean_construct or self._xchanged:
         if self._clean_construct:
             xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
             interpolate_factor = int(np.ceil(xstep/dx))
@@ -503,8 +502,9 @@ class Model(Optimiser):
             _cache['y'] = np.zeros(_cache['x'].shape,dtype=float)
             _cache['interpolate_factor'] = interpolate_factor
         self._interpolate_factor = _cache['interpolate_factor']
-        self.x = _cache['x']
-        self.y = _cache['y'].copy() # delete current y!!
+        if self._interpolate_factor != 1:
+            self.x = _cache['x']
+            self.y = _cache['y'].copy() # delete current y!!
 
     @optimise_method()
     def uninterpolate(self,average=None):
@@ -617,14 +617,9 @@ class Model(Optimiser):
         self.add_construct_function(f)
 
     @format_input_method()
-    def add_hitran_line(
-            self,
-            species,
-            match=None,
-            *args,
-            **kwargs,
-            
-    ):
+    def add_hitran_line(self,species,match=None,*args,**kwargs):
+        """Automatically load a HITRAN linelist for a species
+        (isotopologue or natural abundance) and then call add_line."""
         line = hitran.get_line(species,match=match)
         line.clear_format_input_functions()
         self.add_line(line,*args,**kwargs)
@@ -2312,6 +2307,7 @@ class FitAbsorption():
         species_to_fit = tools.ensure_iterable(species_to_fit)
         if self.make_plot:
             plotting.plt.clf()
+            isubplot = 0
         for species in species_to_fit:
             print(species,end=" ",flush=True)
             ## get region list
@@ -2340,7 +2336,8 @@ class FitAbsorption():
                 for imodel,(model,ref_model) in enumerate(zip(models,ref_models)):
                     self.plot(model=model,
                               ref_model=ref_model,
-                              ax=plotting.subplot(imodel))
+                              ax=plotting.subplot(isubplot))
+                    isubplot += 1
         print()
 
     # def auto_fit(
@@ -2601,7 +2598,7 @@ class FitAbsorption():
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
         if 'intensity' not in p:
-            p['intensity'] = {'spline_step':20, 'spline_order':3,}
+            p['intensity'] = {'spline_step':10, 'spline_order':3,}
             xspline,yspline,t = tools.fit_spline_to_extrema_or_median(
                 self.experiment.x,
                 self.experiment.y,
@@ -2650,15 +2647,16 @@ class FitAbsorption():
         """Save parameters to a file."""
         tools.save_dict(filename,parameters=self.p)
 
-    def save_to_directory(self,directory):
+    def save(self,directory):
+        tools.mkdir(directory,trash_existing=True)
         self.save_parameters(f'{directory}/parameters.py')
         if self.model is not None:
             Dataset(
-                x=xmodel.x,
-                ymod=model.y,
-                yexp=model.yexp,
-                yres=model.get_residual(),
-            ).save(f'{directory}/spectrum.dataset')
+                x=self.model.x,
+                ymod=self.model.y,
+                yexp=self.model.yexp,
+                yres=self.model.get_residual(),
+            ).save(f'{directory}/spectrum',filetype='directory')
         
 
 

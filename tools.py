@@ -685,8 +685,10 @@ def trash(filename):
     import shlex
     os.system('trash-put '+shlex.quote(filename)+' > /dev/null 2>&1')
 
-def mkdir(*directories,trash_existing=False,
-          override_trash_existing_safety_check=False,):
+def mkdir(
+        *directories,
+        trash_existing=False,
+        override_trash_existing_safety_check=False,):
     """Create directory tree (or multiple) if it doesn't exist."""
     ## if multiple loop through them
     if len(directories)>1:
@@ -2110,10 +2112,9 @@ def ensure_iterable(x):
 
 def spline(
         xi,yi,x,s=0,order=3,
-        check_bounds=True,
         sort_data=True,
         ignore_nan_data=False,
-        out_of_bounds='extrapolate', # 'extrapolate','zero','error'
+        out_of_bounds='extrapolate', # 'extrapolate','zero','error', 'constant'
 ):
     """Evaluate spline interpolation of (xi,yi) at x. Optional argument s
     is spline tension. Order is degree of spline. Silently defaults to 2 or 1
@@ -2137,10 +2138,14 @@ def spline(
             raise Exception('Data to spline is out of bounds')
         elif out_of_bounds == 'zero':
             y[iout] = 0.0
+        elif out_of_bounds == 'constant':
+            ## Regions above and below spline domain fixed to extreme
+            ## spline points.
+            raise NotImplementedError
         elif out_of_bounds == 'extrapolate':
             pass
         else:
-            raise Exception(f'Invalid {out_of_bounds=}')
+            raise Exception(f'Invalid {out_of_bounds=}. Try "error", "zero", "constant", "extrapolate".')
     return y
 
 # def splinef(xi,yi,s=0,order=3,sort_data=True):
@@ -5161,7 +5166,7 @@ def fit_spline_to_extrema(
         yspline.append(y[ispline])
     # xspline,yspline = np.array(xspline),np.array(yspline)
     xspline[0],xspline[-1] = x[0],x[-1] # ensure endpoints are included
-    yf = spline(xspline,yspline,x,order=order,s=s,check_bounds=False)
+    yf = spline(xspline,yspline,x,order=order,s=s)
     return xspline,yspline,yf
 
 def fit_spline_to_extrema_or_median(
@@ -5294,8 +5299,8 @@ def piecewise_sinusoid(x,regions,order=3):
         A = np.full(x.shape,float(As[0]))
         f = np.full(x.shape,float(fs[0]))
     else:
-        A = spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
-        f = spline(xmid,fs,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=1)
+        A = spline(xmid,As,x,out_of_bounds='extrapolate',order=order)
+        f = spline(xmid,fs,x,out_of_bounds='extrapolate',order=1)
     retval = A*np.cos(2*constants.pi*xs*f+p)
     return retval
 
