@@ -799,7 +799,8 @@ class Optimiser:
                 if pi==0:
                     pi = stepi
                 x0.append(pi)
-                diff_step.append(stepi/abs(pi))
+                # diff_step.append(stepi/abs(pi))
+                diff_step = stepi
             least_squares_options |= {
                 'fun':self._optimisation_function,
                 'x0':x0,
