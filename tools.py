@@ -2111,28 +2111,37 @@ def ensure_iterable(x):
     # raise Exception("Could not flip array, shape is wrong probably.")
 
 def spline(
-        xi,yi,x,s=0,order=3,
+        xs,ys,x,s=0,order=3,
         sort_data=True,
         ignore_nan_data=False,
         out_of_bounds='extrapolate', # 'extrapolate','zero','error', 'constant'
 ):
-    """Evaluate spline interpolation of (xi,yi) at x. Optional argument s
+    """Evaluate spline interpolation of (xs,ys) at x. Optional argument s
     is spline tension. Order is degree of spline. Silently defaults to 2 or 1
     if only 3 or 2 data points given.
     """
     from scipy import interpolate
-    order = min(order,len(xi)-1)
-    xi,yi,x = np.array(xi,ndmin=1),np.array(yi,ndmin=1),np.array(x,ndmin=1)
+    order = min(order,len(xs)-1)
+    xs,ys,x = np.array(xs,ndmin=1),np.array(ys,ndmin=1),np.array(x,ndmin=1)
     if ignore_nan_data:
-        i = np.isnan(xi)|np.isnan(yi)
+        i = np.isnan(xs)|np.isnan(ys)
         if any(i):
-            xi,yi = xi[~i],yi[~i]
+            xs,ys = xs[~i],ys[~i]
     if sort_data:
-        i = np.argsort(xi)
-        xi,yi = xi[i],yi[i]
-    y = interpolate.UnivariateSpline(xi, yi, k=order, s=s)(x)
+        i = np.argsort(xs)
+        xs,ys = xs[i],ys[i]
+    if order == 0:
+        ## piecewise constant interpolation
+        y = np.empty(len(x),dtype=float)
+        ## find indices of endpoints and  midpoints
+        ixs = np.concatenate(([0], np.searchsorted(x, (xs[1:]+xs[:-1])/2), [len(x)],))
+        for ia,ib,yi in zip(ixs[:-1],ixs[1:],ys):
+            y[ia:ib] = yi
+    else:
+        ## actual spline
+        y = interpolate.UnivariateSpline(xs, ys, k=order, s=s)(x)
     ## out of bounds logic
-    iout = (x<xi[0])|(x>xi[-1])
+    iout = (x<xs[0])|(x>xs[-1])
     if np.any(iout):
         if out_of_bounds == 'error':
             raise Exception('Data to spline is out of bounds')
@@ -5273,35 +5282,63 @@ def fit_spline_to_extrema_or_median(
     # retval = A*sinusoid
     # return retval
 
-def piecewise_sinusoid(x,regions,order=3):
+# def piecewise_sinusoid(x,regions,order=3):
+    # """"""
+    # from scipy import constants
+    # # sinusoid = np.full(x.shape,0.0)
+    # xmid = []
+    # As = []
+    # fs = []
+    # p = np.full(x.shape,0.0)
+    # xs = []
+    # for iregion,(xbeg,xend,amplitude,frequency,phase) in enumerate(regions):
+        # i = slice(*np.searchsorted(x,[xbeg,xend]))
+        # if iregion == len(regions)-1:
+            # i = slice(*np.searchsorted(x,[xbeg,xend+np.inf]))
+        # p[i] = float(phase)
+        # xs.append(x[i]-xbeg)
+        # xmid.append((xbeg+xend)/2)
+        # fs.append(float(frequency))
+        # As.append(float(amplitude))
+    # xs = np.concatenate(xs)     # phase adjusted x scale
+    # ## spline interpolate amplitude and frequency. Phase is kept
+    # ## pieciewise-constant
+    # if len(As) == 1:
+        # ## no spline -- one value only
+        # A = np.full(x.shape,float(As[0]))
+        # f = np.full(x.shape,float(fs[0]))
+    # else:
+        # A = spline(xmid,As,x,out_of_bounds='extrapolate',order=order)
+        # f = spline(xmid,fs,x,out_of_bounds='extrapolate',order=1)
+    # retval = A*np.cos(2*constants.pi*xs*f+p)
+    # return retval
+
+def piecewise_sinusoid(x,regions,Aorder=3,forder=1):
     """"""
     from scipy import constants
-    # sinusoid = np.full(x.shape,0.0)
     xmid = []
     As = []
     fs = []
     p = np.full(x.shape,0.0)
-    xs = []
+    xs = np.full(x.shape,0.0)
     for iregion,(xbeg,xend,amplitude,frequency,phase) in enumerate(regions):
         i = slice(*np.searchsorted(x,[xbeg,xend]))
-        if iregion == len(regions)-1:
-            i = slice(*np.searchsorted(x,[xbeg,xend+np.inf]))
+        # if iregion == len(regions)-1:
+            # i = slice(*np.searchsorted(x,[xbeg,xend+np.inf]))
         p[i] = float(phase)
-        xs.append(x[i]-xbeg)
+        xs[i] = x[i]-xbeg
         xmid.append((xbeg+xend)/2)
         fs.append(float(frequency))
         As.append(float(amplitude))
-    xs = np.concatenate(xs)     # phase adjusted x scale
-    ## spline interpolate amplitude and frequency. Phase is kept
-    ## pieciewise-constant
-    if len(As) == 1:
-        ## no spline -- one value only
-        A = np.full(x.shape,float(As[0]))
-        f = np.full(x.shape,float(fs[0]))
-    else:
-        A = spline(xmid,As,x,out_of_bounds='extrapolate',order=order)
-        f = spline(xmid,fs,x,out_of_bounds='extrapolate',order=1)
-    retval = A*np.cos(2*constants.pi*xs*f+p)
+    ## compute sinusoid -- zero outside defined regions
+    i0,i1  = np.searchsorted(x,(regions[0][0],regions[-1][1]))
+    i = slice(i0,i1+1)
+    retval = np.full(x.shape,0.0)
+    retval[i] = (
+        spline(xmid,As,x[i],order=Aorder)
+        *np.cos(
+            2*constants.pi*xs[i]*spline(xmid,fs,x[i],order=forder)
+            +p[i]))
     return retval
 
 def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
@@ -5330,7 +5367,6 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
         amplitude = rms(yi)
         regions.append((xbegi,xendi,amplitude,frequency,phase))
     yf = piecewise_sinusoid(x,regions) + shift
-    
     ## nonlinear optimisation of  sinusoid parameters 
     if make_optimisation:
         from .optimise import Optimiser,P,_collect_parameters_and_optimisers
@@ -5353,7 +5389,6 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
         ax.plot(x,y-yf,label='residual')
         plotting.legend()
         plotting.show()
-
     return regions
 
 # def localmax(x):

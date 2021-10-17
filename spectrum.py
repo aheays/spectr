@@ -1050,7 +1050,7 @@ class Model(Optimiser):
         if autovary_in_range:
             self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
         if spline.last_change_time > self.last_construct_time:
-            _cache['yspline'] = spline[self.x[i]]
+            _cache['yspline'] = spline(self.x[i])
         ## add to y
         self.y[i] *= _cache['yspline']
     
@@ -1073,7 +1073,7 @@ class Model(Optimiser):
         if autovary_in_range:
             self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
         if spline.last_change_time > self.last_construct_time:
-            _cache['yspline'] = spline[self.x[i]]
+            _cache['yspline'] = spline(self.x[i])
         ## add to y
         self.y[i] += _cache['yspline']
     
@@ -1161,6 +1161,7 @@ class Model(Optimiser):
     ):
         """Automatically find regions for use in
         scale_by_piecewise_sinusoid."""
+        warnings.warn('deprecated in favour of add_sinusoid_spline, or modify to match')
         ## get join points between regions and begining and ending points
         if np.isscalar(xjoin):
             if xbeg is None:
@@ -1184,7 +1185,6 @@ class Model(Optimiser):
         x,y = self.x,self.y
         if self._interpolate_factor is not None:
             x,y = x[::self._interpolate_factor],y[::self._interpolate_factor]
-            
         for xbegi,xendi in zip(xjoin[:-1],xjoin[1:]):
             i = slice(*np.searchsorted(x,[xbegi,xendi]))
             residual = self.yexp[i] - y[i]
@@ -1196,7 +1196,7 @@ class Model(Optimiser):
             dx = (x[i][-1]-x[i][0])/(len(x[i])-1)
             frequency = 1/dx*imax/len(FT)
             amplitude = tools.rms(residual)/y[i].mean()
-            # amplitude = tools.rms(residual)
+            ## amplitude = tools.rms(residual)
             regions.append([
                 xbegi,xendi,
                 P(amplitude,Avary,1e-5),
@@ -1210,6 +1210,7 @@ class Model(Optimiser):
         """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
+        warnings.warn('deprecated in favour of add_sinusoid_spline, or modify to match')
         ## spline interpolated amplitudes
         if (
                 self._clean_construct
@@ -1225,32 +1226,39 @@ class Model(Optimiser):
         i = _cache['i']
         self.y[i] *= scale
 
-    def auto_add_piecewise_sinusoid(self,xi=10,make_plot=False,vary=False,optimise=False):
+    def auto_add_piecewise_sinusoid(
+            self,
+            xi=10,
+            make_plot=False,
+            vary=False,
+            add_construct=True,
+    ):
         """Fit a spline interpolated sinusoid to current model residual, and
         add it to the model."""
-        ## refit intensity_sinusoid
         regions = tools.fit_piecewise_sinusoid(
             self.x,
             self.get_residual(),
             xi=xi,
             make_plot=make_plot,
-            make_optimisation=optimise,
+            make_optimisation=False,
         )
-        region_parameters = [[xbeg,xend,P(amplitude,vary),P(frequency,vary),P(phase,vary,2*π*1e-5),]
-                             for (xbeg,xend,amplitude,frequency,phase) in regions]
-        self.add_piecewise_sinusoid(region_parameters)
-        return region_parameters
+        regions = [
+            [xbeg,xend,P(amplitude,vary),P(frequency,vary),P(phase,vary,2*π*1e-5),]
+                    for (xbeg,xend,amplitude,frequency,phase) in regions]
+        if add_construct:
+            self.add_piecewise_sinusoid(regions)
+        return regions
 
     @optimise_method()
-    def add_piecewise_sinusoid(self,regions,_cache=None,_parameters=None):
+    def add_piecewise_sinusoid(self,regions,autovary=False,_cache=None,_parameters=None):
         """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
-        if (
-                self._clean_construct
+        if self._clean_construct and autovary:
+            self.autovary_in_range(regions)
+        if (self._clean_construct
                 or np.any([t._last_modify_value_time > self._last_construct_time
-                           for t in _parameters])
-        ):
+                           for t in _parameters])):
             ## get spline points and compute splien
             i = (self.x >= regions[0][0]) & (self.x <= regions[-1][1]) # x-indices defined by regions
             sinusoid = tools.piecewise_sinusoid(self.x[i],regions)
@@ -1260,11 +1268,89 @@ class Model(Optimiser):
         i = _cache['i']
         self.y[i] += sinusoid
 
-    # @optimise_method()
-    # def shift_by_constant(self,shift):
-        # """Shift by a constant amount."""
-        # self.y += float(shift)
+    # def auto_add_sinusoid_spline(
+            # self,
+            # xi=10,
+            # xbeg=None,xend=None,
+            # make_plot=False,
+            # vary=False,
+            # add_construct=True,
+    # ):
+        # """Fit a spline interpolated sinusoid to current model residual, and
+        # optionally add it to the model."""
+        # import scipy
+        # ## xrange of spline
+        # if xbeg is None:
+            # xbeg = self.x[0]
+        # if xend is None:
+            # xend = self.x[-1]
+        # xspline = linspace(xbeg,xend,max(int((xend-xbeg)/xi),2))
+        # ## loop over all regions, gettin dominant frequency and phase
+        # ## from the residual error power spectrum
+        # x,y = self.x,self.yexp-self.y
+        # knots = []
+        # shift = np.full(x.shape,0.0)
+        # previous_phase,previous_frequency = None,None
+        # for ix in range(len(xspline)):
+            # ## get interval around this spline point
+            # if ix == 0:
+                # xbegi = xspline[ix]
+                # xendi = (xspline[ix+1]+xspline[ix])/2
+            # elif ix == len(xspline)-1:
+                # xbegi = (xspline[ix]+xspline[ix-1])/2
+                # xendi = xspline[ix]
+            # else:
+                # xbegi = (xspline[ix]   + xspline[ix-1]) / 2
+                # xendi = (xspline[ix+1] + xspline[ix]  ) / 2
+            # ## fit sinusoid in invterval
+            # i = slice(*np.searchsorted(x,[xbegi,xendi]))
+            # shift[i] = np.mean(y[i])
+            # xti = x[i]
+            # dx = (xti[-1]-xti[0])/(len(xti)-1)
+            # yi = y[i] - shift[i]
+            # FT = scipy.fft.fft(yi)
+            # imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
+            # amplitude = tools.rms(yi)
+            # frequency = 2*constants.pi/dx*(imax)/len(FT)
+            # phase = np.arctan(FT.imag[imax]/FT.real[imax])
+            # # if FT.real[imax]>0:
+                # # phase -= scipy.constants.pi
+            # phase += frequency*xbegi
+            # knots.append([xspline[ix],P(abs(amplitude), vary,bounds=(0,inf)), P(frequency, vary), P(phase, vary,1e-5)])
+        # if add_construct:
+            # self.add_sinusoid_spline(knots=knots)
+        # return knots
 
+    # @optimise_method()
+    # def add_sinusoid_spline(self,knots=None,Aorder=3,_cache=None,autovary_in_range=False):
+        # """Add a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set or
+        # regions = [(xa,A,f,φ),...].  Probably should initialise with
+        # auto_add_sinusoid_spline."""
+        # if self._clean_construct:
+            # ## vary knots in x-range
+            # if autovary_in_range:
+                # self.autovary_in_range(knots)
+            # ## make amplitude, frequency, phase splines
+            # _cache['Aspline'] = Spline(xs=[t[0] for t in knots], ys=[t[1] for t in knots], order=Aorder)
+            # _cache['fspline'] = Spline(xs=[t[0] for t in knots], ys=[t[2] for t in knots], order=0)
+            # _cache['pspline'] = Spline(xs=[t[0] for t in knots], ys=[t[3] for t in knots], order=0)
+        # ## get cache
+        # Aspline = _cache['Aspline']
+        # fspline = _cache['fspline']
+        # pspline = _cache['pspline']
+        # ## update splines if Parameters have changed
+        # Achanged = Aspline.last_change_time > self.last_construct_time
+        # fchanged = fspline.last_change_time > self.last_construct_time
+        # pchanged = pspline.last_change_time > self.last_construct_time
+        # x = self.x
+        # if Achanged: Aspline(x)
+        # if fchanged: fspline(x)
+        # if pchanged: pspline(x)
+        # ## update sinusoid if parameters have chagned
+        # if Achanged or fchanged or pchanged:
+            # _cache['sinusoid'] = Aspline.y*np.cos(x*fspline.y+pspline.y)
+        # ## add to y
+        # self.y += _cache['sinusoid']
 
     # @optimise_method
     # def convolve_with_lorentzian(self,width,fwhms_to_include=100):
@@ -2058,39 +2144,50 @@ class Spline(Optimiser):
     """A spline curve with optimisable knots.  Internally stores last
     calculated x and y."""
 
-    def __init__(self,name='spline',knots=None,order=3):
+    def __init__(
+            self,
+            name='spline',
+            xs=None,
+            ys=None,
+            knots=None,         # [(xsi,ysi),..] pairs
+            order=3,
+    ):
         optimise.Optimiser.__init__(self,name)
         self.clear_format_input_functions()
         self.automatic_format_input_function()
         self.order = order
-        ## spline knots
-        self.xs = []
-        self.ys = []
-        self.set_knots(knots)
         ## spline domain and value
         self.x = None
         self.y = None
-
+        self.xs = []
+        self.ys = []
+        ## set knots
+        if xs is not None:
+            self.set_knots(xs,ys)
+        if knots is not None:
+            self.set_knots([t[0] for t in knots],[t[1] for t in knots])
+            
     @optimise_method()
-    def add_knot(self,x,y):
+    def add_knots(self,x,y):
         """Add one spline knot."""
         self.xs.append(x)
         self.ys.append(y)
-
+        
     @optimise_method()
-    def set_knots(self,knots):
-        """Add multiple spline knots."""
+    def set_knots(self,xs,ys):
+        """Set knots to multiple."""
         self.xs.clear()
         self.ys.clear()
-        for x,y in knots:
-            self.xs.append(x)
-            self.ys.append(y)
+        self.xs.extend(xs)
+        self.ys.extend(ys)
 
-    def __getitem__(self,x):
-        """Compute value of spline at x."""
+    def __call__(self,x):
+        """Compute value of spline at x. And store in self."""
         xs = np.array([float(t) for t in self.xs])
         ys = np.array([float(t) for t in self.ys])
         y = tools.spline(xs,ys,x,order=self.order)
+        self.x = x
+        self.y = y
         return y
 
 def load_spectrum(filename,**kwargs):
@@ -2121,21 +2218,21 @@ class FitAbsorption():
     def __init__(
             self,
             name='fit_reference_absorption',
-            p=None,
+            parameters=None,
             verbose=False,
             make_plot=True,
             max_nfev=5,
             figure_number=1,
             ncpus=1,
-            **parameters
+            **more_parameters
     ):
         self.name = name
         ## provided parameters
-        if p is None:
-            p = {}
-        self.p = p
+        if parameters is None:
+            parameters = {}
+        self.parameters = parameters
         ## update with kwargs
-        self.p |= parameters
+        self.parameters |= more_parameters
         ## initialise control variables
         self.verbose = verbose
         self.make_plot =  make_plot
@@ -2162,7 +2259,6 @@ class FitAbsorption():
         'CS2',
         'OCS',
     ]
-
 
     characteristic_bands = {
         'H2O':[[1400,1750],[3800,4000],],
@@ -2218,28 +2314,34 @@ class FitAbsorption():
         'HCOOH':[[1770,1780]],
     }
 
+    def __getitem__(self,key):
+        return self.parameters[key]
+
+    def __set__(self,key,value):
+        self.parameters[key] = value
+
     def pop(self,key):
         """Remove key from parameters if it is set."""
-        if key in self.p:
-            self.p.pop(key)
+        if key in self.parameters:
+            self.parameters.pop(key)
 
     def __str__(self):
-        retval = tools.dict_expanded_repr(self.p,newline_depth=3)
+        retval = tools.dict_expanded_repr(self.parameters,newline_depth=3)
         return retval
 
     def verbose_print(self,*args,**kwargs):
         if self.verbose:
             print(*args,**kwargs)
 
-    def auto_sinusoid(self,xi=10):
-        """Automatic background. Not optimised."""
-        print('auto_intensity_sinusoid')
-        ## refit intensity_sinusoid
-        if 'intensity_sinusoid' in self.p:
-            self.p.pop('intensity_sinusoid')
-        model = self.make_model(xbeg=self.p['xbeg'],xend=self.p['xend'])
-        model.construct()
-        self.p['intensity_sinusoid'] = model.auto_add_piecewise_sinusoid(xi=xi,make_plot=False,vary=False)
+    # def auto_sinusoid(self,xi=10):
+        # """Automatic background. Not optimised."""
+        # print('auto_sinusoid')
+        # ## refit intensity_sinusoid
+        # if 'intensity_sinusoid' in self.parameters:
+            # self.parameters.pop('intensity_sinusoid')
+        # model = self.make_model(xbeg=self.parameters['xbeg'],xend=self.parameters['xend'])
+        # model.construct()
+        # self.parameters['intensity_sinusoid'] = model.auto_add_piecewise_sinusoid(xi=xi,make_plot=False,vary=False)
 
     # def full_model(
             # self,
@@ -2251,12 +2353,12 @@ class FitAbsorption():
         # """Full model."""
         # print('full_model')
         # if xbeg is None:
-            # xbeg = self.p['xbeg']
+            # xbeg = self.parameters['xbeg']
         # if xend is None:
-            # xend = self.p['xend']
+            # xend = self.parameters['xend']
         # model = self.make_model(species_to_fit=species_to_fit,xbeg=xbeg,xend=xend,**make_model_kwargs)
         # model.optimise(make_plot=self.make_plot,monitor_frequency='rms decrease',verbose=self.verbose,max_nfev=max_nfev)
-        # model_no_absorption = self.make_model(xbeg,xend,list(self.p['N']),neglect_species_to_fit=True)
+        # model_no_absorption = self.make_model(xbeg,xend,list(self.parameters['N']),neglect_species_to_fit=True)
         # self.plot(model,model_no_absorption)
         # self.model = model
 
@@ -2265,15 +2367,16 @@ class FitAbsorption():
         print('fit_region')
         model = self.make_model(**make_model_kwargs)
         model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
-        self.plot(model)
+        if self.make_plot:
+            self.plot(model)
 
     def fit_regions(self,xbeg=-inf,xend=inf,width=100,overlap_factor=0.1,max_nfev=5,**make_model_kwargs):
         """Full model."""
         print('fit_regions')
-        p = self.p
+        p = self.parameters
         ## get overlapping regions
-        xbeg = max(xbeg,p['xbeg'])
-        xend = min(xend,p['xend'])
+        # xbeg = max(xbeg,p['xbeg'])
+        # xend = min(xend,p['xend'])
         xi = linspace(xbeg,xend,int((xend-xbeg)/width)+2)
         xbegs = copy(xi[:-1])
         xends = copy(xi[1:])
@@ -2296,7 +2399,7 @@ class FitAbsorption():
         """Fit species_to_fit individually using their 'lines' or 'bands'
         preset regions, or the 'full' region."""
         print('fit_species',regions,end=" ")
-        p = self.p
+        p = self.parameters
         ## get default species list
         if species_to_fit is None:
             species_to_fit = []
@@ -2365,16 +2468,16 @@ class FitAbsorption():
             # ## delete existing background and species data
             # ## existing fit data
             # for key in ('pair','N'):
-                # if key in self.p:
+                # if key in self.parameters:
                     # for species in species_to_fit:
-                        # if species in self.p[key]:
-                            # self.p[key].pop(species)
-            # if fit_instrument and 'instrument_function' in self.p:
-                # self.p.pop('instrument_function')
-            # if fit_sinusoid and 'intensity_sinusoid' in self.p:
-                # self.p.pop('intensity_sinusoid')
-            # if fit_intensity and 'intensity' in self.p:
-                # self.p.pop('intensity')
+                        # if species in self.parameters[key]:
+                            # self.parameters[key].pop(species)
+            # if fit_instrument and 'instrument_function' in self.parameters:
+                # self.parameters.pop('instrument_function')
+            # if fit_sinusoid and 'intensity_sinusoid' in self.parameters:
+                # self.parameters.pop('intensity_sinusoid')
+            # if fit_intensity and 'intensity' in self.parameters:
+                # self.parameters.pop('intensity')
             # ## fit reference species -- species first then insturment function
             # if fit_instrument or fit_temperature:
                 # self.fit_species(
@@ -2460,7 +2563,7 @@ class FitAbsorption():
         } | plot_kwargs
         if ax is None:
             ax = plotting.gca()
-        p = self.p
+        p = self.parameters
         if model is None:
             model = self.model
         model.plot(ax=ax,**plot_kwargs)
@@ -2497,7 +2600,7 @@ class FitAbsorption():
             verbose=False,
     ):
         ## get parameters — protect from if necessary
-        p = self.p
+        p = self.parameters
         if neglect_species_to_fit:
             p = deepcopy(p)
         ## load experiment
@@ -2528,9 +2631,10 @@ class FitAbsorption():
                 self.experiment.bin_data(width=p['bin_experiment'],mean=True)
         ## get region
         if region == 'full':
-            region = (self.p['xbeg'],self.p['xend'])
+            region = (self.parameters['xbeg'],self.parameters['xend'])
         xbeg,xend = region
         ## get species_to_fit list
+        p.setdefault('N',{})
         if species_to_fit is None:
             species_to_fit = []
         if species_to_fit == 'default':
@@ -2547,7 +2651,7 @@ class FitAbsorption():
         if not neglect_species_to_fit:
             self.model = model
         ## set interpolated model grid
-        self.p.setdefault('interpolate_model',0.001)
+        self.parameters.setdefault('interpolate_model',0.001)
         if p['interpolate_model'] is not None:
             model.interpolate(p['interpolate_model'])
         ## add unit intensity
@@ -2555,7 +2659,6 @@ class FitAbsorption():
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(20,1000)))
         p['Teq'].vary = fit_temperature
-        p.setdefault('N',{})
         p.setdefault('pair',{})
         if species_to_model == 'existing':
             species_to_model = set(p['N'])
@@ -2616,15 +2719,28 @@ class FitAbsorption():
                 p['shift']['spline'] = [[tx,P(0.0,False,1e-5)] for tx in xspline]
             model.autovary_in_range(p['shift']['spline'],vary=fit_shift)
             model.add_spline(knots=p['shift']['spline'],order=p['shift']['spline_order'])
+
         ## scale by sinusoidal background, vary points completely within range
-        if fit_sinusoid and 'intensity_sinusoid' not in p:
-            p['intensity_sinusoid'] = self.auto_sinusoid()
-        if 'intensity_sinusoid' in p:
-            for i,(xbegi,xendi,freqi,phasei,amplitudei) in enumerate(p['intensity_sinusoid']):
-                freqi.vary = phasei.vary = amplitudei.vary = False
-                if fit_sinusoid and xbegi >= xbeg and xendi <= xend:
-                    freqi.vary = phasei.vary = amplitudei.vary =  True
-            model.add_piecewise_sinusoid(p['intensity_sinusoid'])
+        if fit_sinusoid and 'sinusoid' not in p:
+                ## add new sinusoid spline
+                p['sinusoid'] = {'spline_step':5}
+                p['sinusoid']['spline'] = model.auto_add_piecewise_sinusoid(xi=p['sinusoid']['spline_step'],vary=False,add_construct=False)
+        if 'sinusoid' in p:
+            ## extend range of spline if necessary
+            
+            if p['sinusoid']['spline'][0][0] - xbeg > 1:
+                xa,xb = xbeg,p['sinusoid']['spline'][0][0]
+                x = linspace(xa,xb, max(2,int((xb-xa)/p['sinusoid']['spline_step'])))
+                p['sinusoid']['spline'] = (model.auto_add_piecewise_sinusoid(xi=x,vary=False,add_construct=False) + p['sinusoid']['spline'])
+            if xend - p['sinusoid']['spline'][-1][1] > 1:
+                xa,xb = p['sinusoid']['spline'][-1][1],xend
+                x = linspace(xa,xb, max(2,int((xb-xa)/p['sinusoid']['spline_step'])))
+                p['sinusoid']['spline'] += model.auto_add_piecewise_sinusoid(xi=x,vary=False,add_construct=False)
+            pprint(p['sinusoid']['spline'])
+            # ## add sinusoid to model
+            model.add_piecewise_sinusoid(regions=p['sinusoid']['spline'],autovary=fit_sinusoid)
+            # model.add_piecewise_sinusoid(regions=p['sinusoid']['spline'],autovary=False)
+
         ## instrument function
         if 'instrument_function' not in p:
             p['instrument_function'] = model.auto_convolve_with_instrument_function(vary=fit_instrument)
@@ -2634,18 +2750,17 @@ class FitAbsorption():
                     val.vary = fit_instrument
                     val.bounds = (1e-4,1)  
             model.convolve_with_instrument_function(**p['instrument_function'])
-
         ## build it now
         model.construct()
         return model
         
     def load_parameters(self,filename):
         """Save parameters to a file."""
-        self.p = tools.load_dict(filename,'parameters')
+        self.parameters = tools.load_dict(filename,'parameters')
         
     def save_parameters(self,filename):
         """Save parameters to a file."""
-        tools.save_dict(filename,parameters=self.p)
+        tools.save_dict(filename,parameters=self.parameters)
 
     def save(self,directory):
         tools.mkdir(directory,trash_existing=True)
