@@ -265,6 +265,7 @@ def presetRcParams(
         'ytick.labelsize'      :8.,
         'ytick.labelsize'      :8.,
     })
+    presets['beamer'] = presets['beamer_large']
     presets['beamer_large_twinx']=deepcopy(presets['beamer_large'])
     presets['beamer_large_twinx'].update({
         'figure.figsize'       :(4.5,2.5), # 5.0393701,3.7795276 beamer size
