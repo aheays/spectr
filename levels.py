@@ -30,9 +30,22 @@ prototypes['author'] = dict(description="Author of data or printed file" ,kind='
 prototypes['reference'] = dict(description="Reference",kind='U',infer=[])
 prototypes['date'] = dict(description="Date data collected or printed" ,kind='U' ,infer=[])
 
+
+def _f0(species):
+    """Cast species using normalise species if the data is not too
+    much (it is slow)."""
+    if np.isscalar(species):
+        ## a scalara species -- normalise it 
+        return kinetics.get_species(species).name
+    elif len(species) < 10000:
+        ## a short list of species -- normalise them
+        return database.normalise_species(species)
+    else:
+        ## too long -- no normalisation -- WITHOUT WARNING
+        return np.asarray(species,dtype=str)
 prototypes['species'] = dict(description="Chemical species with isotope specification" ,kind='U',infer=[],
                              # cast=database.normalise_species,
-                             )
+                             cast=_f0,)
 prototypes['_species_hash'] = dict(description="Hash of species", kind='i',infer=[('species',lambda self,species:[hash(t) for t in species]),])
 
 @vectorise(cache=True,vargs=(1,))
