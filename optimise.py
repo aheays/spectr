@@ -422,7 +422,7 @@ class Optimiser:
             suboptimisers.extend([optimiser for t in optimiser._format_input_functions])
         ## evaluate input lines sorted by timestamp
         lines = []
-        lines.append('from spectr import *') # general import at beginning of formatted input
+        lines.append('from spectr.env import *') # general import at beginning of formatted input
         if extra_newlines:
             lines.append('')
         previous_suboptimiser = None
@@ -436,7 +436,7 @@ class Optimiser:
                 lines.append('')
             lines.append(functions[i]())
             previous_suboptimiser = suboptimisers[i]
-        retval = '\n'.join(lines)
+        retval = '\n'.join(lines)+'\n'
         return retval
 
     def print_input(self,match_lines_regexp=None):
@@ -799,8 +799,8 @@ class Optimiser:
                 if pi==0:
                     pi = stepi
                 x0.append(pi)
-                # diff_step.append(stepi/abs(pi))
-                diff_step = stepi
+                diff_step.append(stepi/abs(pi))
+                # diff_step.append(stepi)
             least_squares_options |= {
                 'fun':self._optimisation_function,
                 'x0':x0,
