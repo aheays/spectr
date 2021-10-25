@@ -1780,9 +1780,13 @@ class Dataset(optimise.Optimiser):
                 skiprows=iline,
                 try_cast_numeric=False,
                 **txt_to_dict_kwargs))
-        ## a blank key with all nan data indicates a leading or trailing delimiter -- delete it
-        if '' in data and np.all(np.isnan(data[''])):
+        # ## a blank key with all nan data indicates a leading or trailing delimiter -- delete it
+        # if '' in data and np.all(np.isnan(data[''])):
+        #     data.pop('')
+        ## a blank key indicates a leading or trailing delimiter -- delete it
+        if '' in data:
             data.pop('')
+        ## load classname and description
         if classname is not None:
             data['classname'] = classname
         if description is not None:
@@ -2026,7 +2030,7 @@ class Dataset(optimise.Optimiser):
             zkeys=None,         # plot x-y data separately for unique combinations of zkeys
             ykeys_re=None,
             fig=None,           # otherwise automatic
-            axes=None,            # otherwise automatic
+            ax=None,            # otherwise automatic
             xnewaxes=True,      # plot x-keys on separates axes -- else as different lines
             ynewaxes=True,      # plot y-keys on separates axes -- else as different lines
             znewaxes=False,     # plot z-keys on separates axes -- else as different lines
@@ -2053,9 +2057,9 @@ class Dataset(optimise.Optimiser):
         if len(self)==0:
             return
         ## re-use or make a new figure/axes
-        if axes is not None:
+        if ax is not None:
             xnewaxes = ynewaxes = znewaxes = False
-            fig = axes.figure
+            fig = ax.figure
         if fig is None:
             fig = plt.gcf()
             fig.clf()
@@ -2092,7 +2096,7 @@ class Dataset(optimise.Optimiser):
                     else:
                         z.sort(xsort)
                     ## get axes
-                    if axes is None:
+                    if ax is None:
                         isubplot = 0
                         subplot_multiplier = 1
                         if xnewaxes:
@@ -2104,9 +2108,9 @@ class Dataset(optimise.Optimiser):
                         if znewaxes:
                             isubplot += subplot_multiplier*ix
                             subplot_multiplier *= len(zkeys)
-                        ax = plotting.subplot(n=isubplot,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
+                        tax = plotting.subplot(n=isubplot,fig=fig,ncolumns=ncolumns,ntotal=nsubplots)
                     else:
-                        ax = axes 
+                        tax = ax 
                     ## get axis labels and perhaps convert them to legend labesl
                     label = ''
                     ## x-axis
@@ -2181,7 +2185,7 @@ class Dataset(optimise.Optimiser):
                         ## plot errorbars
                         kwargs.setdefault('mfc','none')
                         i = ~np.isnan(x) & ~np.isnan(y)
-                        ax.errorbar(x[i],y[i],dy[i],dx[i],**kwargs)
+                        tax.errorbar(x[i],y[i],dy[i],dx[i],**kwargs)
                         ## plot zero/undefined uncertainty data as filled symbols
                         i = np.isnan(dy)|(dy==0)
                         if np.any(i):
@@ -2193,11 +2197,11 @@ class Dataset(optimise.Optimiser):
                             else:
                                 kwargs['linestyle'] = ''
                             kwargs['label'] = None
-                            line = ax.plot(x[i],z[ykey][i],**kwargs)
+                            line = tax.plot(x[i],z[ykey][i],**kwargs)
                     else:
                         kwargs.setdefault('mfc',kwargs['color'])
                         kwargs.setdefault('fillstyle','full')
-                        line = ax.plot(x,y,**kwargs)
+                        line = tax.plot(x,y,**kwargs)
                     if annotate_points_keys is not None:
                         ## annotate all points with the value of this key
                         # for li,xi,yi in zip(z[annotate_points_keys],x,y): 
@@ -2209,50 +2213,50 @@ class Dataset(optimise.Optimiser):
                                 # annotation = pformat({tkey:format(z[tkey][i]) for tkey in tools.ensure_iterable(annotate_points_keys)})
                                 plt.annotate(annotation,(x[i],y[i]),fontsize='x-small',in_layout=False)
                     if title is not None:
-                        ax.set_title(title)
+                        tax.set_title(title)
                     # elif auto_title is not None:
-                        # ax.set_title(auto_title)
+                        # tax.set_title(auto_title)
                     if ylabel is not None:
-                        ax.set_ylabel(ylabel)
+                        tax.set_ylabel(ylabel)
                     if xlabel is not None:
-                        ax.set_xlabel(xlabel)
+                        tax.set_xlabel(xlabel)
                     if 'label' in kwargs:
                         if legend:
-                            plotting.legend(fontsize='small',loc=legend_loc,show_style=True,ax=ax)
+                            plotting.legend(fontsize='small',loc=legend_loc,show_style=True,ax=tax)
                         if annotate_lines:
                             plotting.annotate_line(line=line)
                     if xlim is not None:
-                        ax.set_xlim(*xlim)
+                        tax.set_xlim(*xlim)
                     if xlog:
-                        ax.set_xscale('log')
+                        tax.set_xscale('log')
                     if ylog:
-                        ax.set_yscale('log')
-                    ax.grid(True,color='gray',zorder=-5)
+                        tax.set_yscale('log')
+                    tax.grid(True,color='gray',zorder=-5)
                     if self[xkey,'kind'] == 'U':
                         plotting.set_tick_labels_text(
                             xkey_unique_strings,
                             axis='x',
-                            ax=ax,
+                            ax=tax,
                             rotation=70,
                             fontsize='x-small',
                             ha='right',
                         )
                 ## set ylim for all axes
                 if ylim is not None:
-                    for ax in fig.axes:
+                    for tax in fig.axes:
                         if ylim == 'data':
-                            t,t,ybeg,yend = plotting.get_data_range(ax)
-                            ax.set_ylim(ybeg,yend)
+                            t,t,ybeg,yend = plotting.get_data_range(tax)
+                            tax.set_ylim(ybeg,yend)
                         elif tools.isiterable(ylim) and len(ylim) == 2:
                             ybeg,yend = ylim
                             if ybeg is not None:
                                 if ybeg == 'data':
-                                    t,t,ybeg,t = plotting.get_data_range(ax)
-                                ax.set_ylim(ymin=ybeg)
+                                    t,t,ybeg,t = plotting.get_data_range(tax)
+                                tax.set_ylim(ymin=ybeg)
                             if yend is not None:
                                 if yend == 'data':
-                                    t,t,t,yend = plotting.get_data_range(ax)
-                                ax.set_ylim(ymax=yend)
+                                    t,t,t,yend = plotting.get_data_range(tax)
+                                tax.set_ylim(ymax=yend)
         if show:
             plotting.show()
         return fig
