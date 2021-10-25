@@ -174,8 +174,8 @@ for key in ('J','N','S','Λ','Ω','Σ','v'):
 
 ## add calculation of column density from optical path length and pressure
 prototypes['L'] = dict(description="Optical path length",units="m", kind='f', fmt='0.5f', infer=[])
-prototypes['Nchemical_species']['infer'].append((('pchemical_species','L','Teq'), lambda self,pchemical_species,L,Teq: convert.units((pchemical_species*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
-prototypes['Nspecies']['infer'].append((         ('pspecies','L','Teq'), lambda self,pspecies,L,Teq: convert.units((pspecies*L)/(database.constants.Boltzmann*Teq),'m-2','cm-2'),))
+prototypes['Nchemical_species']['infer'].append((('pchemical_species','L','Teq'), lambda self,pchemical_species,L,Teq: convert.units((pchemical_species*L)/(constants.Boltzmann*Teq),'m-2','cm-2'),))
+prototypes['Nspecies']['infer'].append((         ('pspecies','L','Teq'), lambda self,pspecies,L,Teq: convert.units((pspecies*L)/(constants.Boltzmann*Teq),'m-2','cm-2'),))
 
 
 ####################################
@@ -597,11 +597,12 @@ class Generic(levels.Base):
 
     def calculate_spectrum(
             self,
-            x=None,        # frequency grid (must be regular, I think), if None then construct a reasonable grid
-            xkey='ν',      # strength to use, i.e., "ν", or "λ"
-            ykey=None,      # strength to use, i.e., "σ", "τ", or "I"
-            zkeys=None,    # if not None then calculate separate spectra for unique combinations of these keys
+            x=None, # frequency grid (must be regular, I think), if None then construct a reasonable grid
+            xkey='ν',        # strength to use, i.e., "ν", or "λ"
+            ykey=None,       # strength to use, i.e., "σ", "τ", or "I"
+            zkeys=None, # if not None then calculate separate spectra for unique combinations of these keys
             lineshape=None, # None for auto selection, or else one of ['voigt','gaussian','lorentzian','hartmann-tran']
+            xedge=0, # # include lines within this much of the domain edges
             nfwhmG=20, # how many Gaussian FWHMs to include in convolution
             nfwhmL=100,         # how many Lorentzian FWHMs to compute
             dx=None, # grid step to use if x grid computed automatically
@@ -669,8 +670,8 @@ class Generic(levels.Base):
             i[index] = True
         else:
             i = np.full(len(self),True)
-        ## neglect lines out of x-range -- NO ACCOUNTING FOR EDGES!!!!
-        i &= (self[xkey]>x[0]) & (self[xkey]<x[-1])
+        ## neglect lines out of x-range
+        i &= (self[xkey]>(x[0]-xedge)) & (self[xkey]<(x[-1]+xedge))
         ## neglect lines out of y-range
         if ymin is not None:
             i &= self[ykey] > ymin
