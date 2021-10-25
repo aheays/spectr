@@ -50,8 +50,16 @@ class Experiment(Optimiser):
         self.x = None
         self.y = None
         self.experimental_parameters = {} # a dictionary containing any additional known experimental parameters
+        ## if filename give then load the data -- some limited attempt
+        ## to interpret the filetype correctly
         if filename is not None:
-            self.set_spectrum_from_file(filename,xbeg=xbeg,xend=xend)
+            filetype = tools.infer_filetype(filename)
+            if filetype == 'opus':
+                self.set_spectrum_from_opus_file(filename,xbeg=xbeg,xend=xend)
+            else:
+                self.set_spectrum_from_file(filename,xbeg=xbeg,xend=xend)
+            self.pop_format_input_function()
+        ## spectrum given as arrays
         if x is not None and y is not None:
             self.set_spectrum(x,y,xbeg,xend)
         if noise_rms is not None:
@@ -630,13 +638,14 @@ class Model(Optimiser):
             self,
             line,               # lines.Generic or a subclass
             kind='absorption',  # 'absorption', 'emission' or else any other key defined in line
-            nfwhmL=20,          # number of Lorentzian fwhms to include
+            nfwhmL=inf,          # number of Lorentzian fwhms to include
             nfwhmG=10,          # number of Gaussian fwhms to include
             ymin=0,             # minimum value of ykey to include
             lineshape=None,     # as in lineshapes.py, or will be automatically selected
             ncpus=1,            # for multiprocessing
             verbose=None,       # print info 
             match=None,         # only include lines matching keys:vals in this dictionary
+            xedge=1, # include lines within this much of the domain edges
             _cache=None,
             **set_keys_vals
     ):
@@ -646,9 +655,9 @@ class Model(Optimiser):
         if self._clean_construct:
             ## first run — initalise local copy of lines data, do not
             ## set keys if they are in set_keys_vals
-            tmatch = {} if match is None else copy(match)
-            tmatch.setdefault('min_ν',(self.x[0]-1))
-            tmatch.setdefault('max_ν',(self.x[-1]+1))
+            tmatch = ({} if match is None else copy(match))
+            tmatch.setdefault('min_ν',(self.x[0] -xedge))
+            tmatch.setdefault('max_ν',(self.x[-1]+xedge))
             imatch = line.match(**tmatch)
             nmatch = np.sum(imatch)
             keys = [key for key in line.explicitly_set_keys() if key not in set_keys_vals]
@@ -673,7 +682,8 @@ class Model(Optimiser):
                     return np.full(len(self.x),0.0)
                 x,y = line.calculate_spectrum(
                     x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=ymin, ncpus=ncpus, lineshape=lineshape,index=index)
+                    ymin=ymin, ncpus=ncpus, lineshape=lineshape,index=index,
+                    xedge=xedge)
                 if kind == 'absorption':
                     y = np.exp(-y)
                 return y
@@ -1607,102 +1617,28 @@ class Model(Optimiser):
         yconv /= yconv.sum()                    # normalised
         self.y[i] = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
 
-    # @optimise_method()
-    # def convolve_with_soleil_instrument_function(
-            # self,
-            # sinc_fwhm=None,
-            # gaussian_fwhm=0.1,
-            # lorentzian_fwhm=None,
-            # signum_magnitude=None,
-            # sinc_fwhms_to_include=200,
-            # gaussian_fwhms_to_include=10,
-            # lorentzian_fwhms_to_include=10,
-            # _cache=None,
-    # ):
-        # """Convolve with soleil instrument function."""
-        # ## first run only
-        # # if len(_cache) == 0:
-        # ## get automatically set values if not given explicitly
-        # if sinc_fwhm is None:
-            # sinc_fwhm = self.experiment.experimental_parameters['sinc_FWHM']
-        # if abs(self.experiment.experimental_parameters['sinc_FWHM']-sinc_fwhm)>(1e-5*sinc_fwhm):
-            # warnings.warn(f'sinc FWHM {float(sinc_fwhm)} does not match soleil data file header {float(self.experiment.experimental_parameters["sinc_fwhmFWHM"])}')
-        # # if gaussian_fwhm is None:
-            # # gaussian_fwhm = 0.1
-        # ## compute instrument function
-        # dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
-        # _cache['dx'] = dx
-        # ## get total extent of instrument function
-        # width = 0.0
-        # if sinc_fwhm is not None:
-            # width += abs(sinc_fwhm)*sinc_fwhms_to_include
-        # if gaussian_fwhm is not None:
-            # width += abs(gaussian_fwhm)*gaussian_fwhms_to_include
-        # if lorentzian_fwhm is not None:
-            # width += abs(lorentzian_fwhm)*lorentzian_fwhms_to_include
-        # _cache['width'] = width
-        # ## if necessary compute instrument function on a reduced
-        # ## subsampling to ensure accurate convolutions -- this wont
-        # ## help with an accurate convolution against the actual
-        # ## data!
-        # required_points_per_fwhm = 10
-        # subsample_factor = int(np.ceil(max(
-            # 1,
-            # (required_points_per_fwhm*dx/sinc_fwhm if sinc_fwhm is not None else 1),
-            # (required_points_per_fwhm*dx/gaussian_fwhm if gaussian_fwhm is not None else 1),
-            # )))
-        # ## create the instrument function on a regular grid -- odd length with 0 in the middle
-        # x = np.arange(0,width+dx/subsample_factor*0.5,dx/subsample_factor,dtype=float)
-        # x = np.concatenate((-x[-1:0:-1],x))
-        # imidpoint = int((len(x)-1)/2)
-        # ## initial function is a delta function
-        # y = np.full(x.shape,0.)
-        # y[imidpoint] = 1.
-        # ## convolve with sinc function
-        # if sinc_fwhm is not None:
-            # y = signal.oaconvolve(y,lineshapes.sinc(x,Γ=abs(sinc_fwhm)),'same')
-        # ## convolve with gaussian function
-        # if gaussian_fwhm is not None:
-            # y = signal.oaconvolve(y,lineshapes.gaussian(x,Γ=abs(gaussian_fwhm)),'same')
-        # ## convolve with lorentzian function
-        # if lorentzian_fwhm is not None:
-            # y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
-        # ## if necessary account for phase correction by convolving with a signum
-        # if signum_magnitude is not None:
-            # x[imidpoint] = 1e-99  # avoid divide by zero warning
-            # ty = 1/x*signum_magnitude # hyperbolically decaying signum on either side
-            # ty[imidpoint] = 1 # the central part  -- a delta function
-            # y = signal.oaconvolve(y,ty,'same')
-        # ## convert back to data grid if it has been subsampled
-        # if subsample_factor!=1:
-            # a = y[imidpoint-subsample_factor:0:-subsample_factor][::-1]
-            # b = y[imidpoint::subsample_factor]
-            # b = b[:len(a)+1] 
-            # y = np.concatenate((a,b))
-        # ## normalise 
-        # y = y/y.sum()
-        # _cache['y'] = y
-        # ## convolve model with instrument function
-        # padding = np.arange(dx,_cache['width']+dx, dx)
-        # xpad = np.concatenate((self.x[0]-padding[-1::-1],self.x,self.x[-1]+padding))
-        # ypad = np.concatenate((np.full(padding.shape,self.y[0]),self.y,np.full(padding.shape,self.y[-1])))
-        # self.y = signal.oaconvolve(ypad,_cache['y'],mode='same')[len(padding):len(padding)+len(self.x)]
-
-    def auto_convolve_with_instrument_function(self,vary=False,**kwargs):
+    def auto_convolve_with_instrument_function(self,vary=None,**kwargs):
         """Convolve with instrument function."""
         data = self.experiment.experimental_parameters
         ## Bruker OPUS fts apodisation
         if data['filetype'] == 'opus':
             if data['apodisation_function'] == 'boxcar':
-                kwargs |= {'sinc_fwhm':P(data['sinc_FWHM'],vary,bounds=(0,inf))}
+                if vary is None:
+                    kwargs['sinc_fwhm'] = float(data['sinc_FWHM'])
+                else:
+                    kwargs['sinc_fwhm'] = P(data['sinc_FWHM'],vary,bounds=(0,inf))
             if data['apodisation_function'] == 'Blackman-Harris 3-term':
-                kwargs |= {
-                    'blackman_harris_resolution':P(data['sinc_FWHM'],vary,bounds=(0,inf)),
-                    'blackman_harris_order':3,
-                }
+                kwargs['blackman_harris_order'] = 3
+                if vary is None:
+                    kwargs['blackman_harris_resolution'] = float(data['sinc_FWHM'])
+                else:
+                    kwargs['blackman_harris_resolution'] = P(data['sinc_FWHM'],vary,bounds=(0,inf))
         ## SOLEIL DESIRS FTS boxcar apodisation0
-        elif d['filetype'] == 'DESIRS FTS':
-            kwargs |= {'sinc_fwhm,':P(data['sinc_FWHM'],vary,bounds=(0,inf))}
+        elif data['filetype'] == 'DESIRS FTS':
+            if vary is None:
+                kwargs['sinc_fwhm'] = float(data['sinc_FWHM'])
+            else:
+                kwargs['sinc_fwhm'] = P(data['sinc_FWHM'],vary,bounds=(0,inf))
         else:
             raise Exception(f'Cannot auto_convolve_with_instrument_function')
         ## call function
@@ -1766,9 +1702,15 @@ class Model(Optimiser):
             y = signal.oaconvolve(y,yconv, 'same')
         ## if necessary account for phase correction by convolving with a signum
         if signum_magnitude is not None:
-            x[imidpoint] = 1e-99  # avoid divide by zero warning
-            ty = 1/x*signum_magnitude # hyperbolically decaying signum on either side
-            ty[imidpoint] = 1 # the central part  -- a delta function
+            # x[imidpoint] = 1e-99  # avoid divide by zero warning
+            ## hyperbolically decaying signum on either side. Use this
+            ## preallocation to avoid calculation at imidpoint which
+            ## will be a divide-by-zero warning
+            ty = np.full(x.shape,1.0)
+            for i in (slice(0,imidpoint),slice(imidpoint+1,len(x))):
+                ty[i] = signum_magnitude/x[i]*dx
+            # ty = 1/x*signum_magnitude
+            # ty[imidpoint] = 1 # the central part  -- a delta function
             y = signal.oaconvolve(y,ty,'same')
         ## normalise 
         y = y/y.sum()
@@ -1982,7 +1924,7 @@ class Model(Optimiser):
             t = ax.set_title(title,fontsize='x-small')
             t.set_in_layout(False)
         if plot_legend:
-            tools.legend_colored_text(loc='upper left')
+            plotting.legend_colored_text(loc='upper left')
         ax.set_xlim(xmin,xmax)
         ax.set_ylim(ymin,ymax)
         ax.grid(True,color='gray')
@@ -2560,6 +2502,7 @@ class FitAbsorption():
             'plot_legend':False,
             'plot_title': True,
             'plot_text': True,
+            'plot_kwargs':{'linewidth': 1},
         } | plot_kwargs
         if ax is None:
             ax = plotting.gca()
