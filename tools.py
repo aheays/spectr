@@ -666,11 +666,13 @@ def expand_path(path):
 def tmpfile():
     """Create a secure named temporary file which will be
     automatically deleted. Object is returned."""
+    import tempfile
     return tempfile.NamedTemporaryFile()
 
 def tmpdir():
     """Create a temporary directory which will not be
     automatically deleted. Pathname is returned."""
+    import tempfile
     return tempfile.mkdtemp()
 
 # def cp(src,dest):
@@ -762,6 +764,36 @@ def subscript_numerals(s):
         if y in s:
             s = s.replace(y,x)
     return s
+
+
+
+def align(string,input_delimiter_re=' +',output_delimiter=' '):
+    """Realign string on input regexp with given output delimiter and
+    padded with spaces. Blank lines removed."""
+    ## decode if string given
+    if isinstance(string,str):
+        data = []
+        for line in string.split('\n'):
+            line = line.strip()
+            if len(line) > 0:
+                data.append(list(re.split(' *'+input_delimiter_re+' *',line)))
+    ## get column widths
+    column_widths = None
+    for iline,line in enumerate(data):
+        widths = [len(t) for t in line]
+        if column_widths is not None and len(column_widths) != len(widths):
+            raise Exception(f'Wrong number of columns on line {iline+1}.')
+        if iline == 0:
+            column_widths = widths
+        else:
+            column_widths = [max(t0,t1) for t0,t1 in zip(column_widths,widths)]
+    ## format cells
+    for line in data:
+        for icell,(cell,width) in enumerate(zip(line,column_widths)):
+            line[icell] = format(cell,f'<{width:d}')
+    ## make aligned string
+    string = '\n'.join([output_delimiter.join(line) for line in data])
+    return string
 
 # def decode_format_string(s):
     # """Get the different arts of a format string, return as dictionary."""
@@ -1027,8 +1059,6 @@ def format_string_or_general_numeric(x):
                             # [0]+list(find(np.diff(x)>separation)+1),
                             # list(find(np.diff(x)>separation)+1)+[len(x)])]))
 
-
-
 def format_columns(
         data,                   # list or dict (for labels)
         fmt='>11.5g',
@@ -1171,6 +1201,8 @@ def printcols(*columns):
         # datarow=_tabulate.DataRow("", ", ", ""),
         # padding=0, with_header_hide=None)
     # return(_tabulate.tabulate(tabular_data,headers,tablefmt,floatfmt,numalign,stralign,missingval))
+
+
 
 #####################################
 ## save / load /convert array data ##

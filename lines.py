@@ -1104,7 +1104,6 @@ class Generic(levels.Base):
                 # ichanged = np.any(val != self[key][ilines])
                 # self.set(key,val[ichanged],index=ilines[ichanged])
 
-    @optimise_method()
     def generate_from_levels(
             self,
             levelu,levell,      # upper and lower level objects
@@ -1112,16 +1111,16 @@ class Generic(levels.Base):
             matchu=None,     # only use matching upper levels
             matchl=None,     # only use matching lower levels
             add_duplicate=False, # whether to add a duplicate if line is already present
-            _cache=None,
+            # _cache=None,
             optimise=False,
             **defaults
     ):
         """Combine upper and lower levels into a line list, only including
         dipole-allowed transitions. SLOW IMPLEMENTATION"""
-        if 'has_run' in cache:
-            ## only run once
-            return
-        cache['has_run'] = True
+        # if 'has_run' in cache:
+            # ## only run once
+            # return
+        # cache['has_run'] = True
         if isinstance(levell,str):
             qn = quantum_numbers.decode_linear_level(levell)
             levell = database.get_level(qn['species'])

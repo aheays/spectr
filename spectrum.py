@@ -192,7 +192,7 @@ class Experiment(Optimiser):
         if 'Acquisition' in d:
             ## opus resolution is zero-to-zero of central sinc function peak
             ##self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
-            self.experimental_parameters['sinc_FWHM'] = opusdata.get_resolution()
+            self.experimental_parameters['sinc_fwhm'] = opusdata.get_resolution()
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
         # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
@@ -1521,8 +1521,8 @@ class Model(Optimiser):
             or 'width' not in _cache
             or _cache['width'] != width):
             # if width is None:
-                # if 'sinc_FWHM' in self.experiment.experimental_parameters:
-                    # width = self.experiment.experimental_parameters['sinc_FWHM']
+                # if 'sinc_fwhm' in self.experiment.experimental_parameters:
+                    # width = self.experiment.experimental_parameters['sinc_fwhm']
                 # else:
                     # raise Exception("Width is None and could not be inferred from experimental_parameters")
             dx = (self.x[-1]-self.x[0])/(len(self.x)-1) # ASSUMES EVEN SPACED GRID
@@ -1557,8 +1557,8 @@ class Model(Optimiser):
                 # pass
             # # elif self.experiment is not None and 'resolution' in self.experiment.experimental_parameters:
             # #     resolution = self.experiment.experimental_parameters['resolution']
-            # elif self.experiment is not None and 'sinc_FWHM' in self.experiment.experimental_parameters:
-                # resolution = self.experiment.experimental_parameters['sinc_FWHM']*1.2
+            # elif self.experiment is not None and 'sinc_fwhm' in self.experiment.experimental_parameters:
+                # resolution = self.experiment.experimental_parameters['sinc_fwhm']*1.2
             # else:
                 # raise Exception('Resolution not specified as argument or in experimental data')
             width = resolution*0.6 # distance between sinc peak and first zero
@@ -1624,21 +1624,21 @@ class Model(Optimiser):
         if data['filetype'] == 'opus':
             if data['apodisation_function'] == 'boxcar':
                 if vary is None:
-                    kwargs['sinc_fwhm'] = float(data['sinc_FWHM'])
+                    kwargs['sinc_fwhm'] = float(data['sinc_fwhm'])
                 else:
-                    kwargs['sinc_fwhm'] = P(data['sinc_FWHM'],vary,bounds=(0,inf))
+                    kwargs['sinc_fwhm'] = P(data['sinc_fwhm'],vary,bounds=(0,inf))
             if data['apodisation_function'] == 'Blackman-Harris 3-term':
                 kwargs['blackman_harris_order'] = 3
                 if vary is None:
-                    kwargs['blackman_harris_resolution'] = float(data['sinc_FWHM'])
+                    kwargs['blackman_harris_resolution'] = float(data['sinc_fwhm'])
                 else:
-                    kwargs['blackman_harris_resolution'] = P(data['sinc_FWHM'],vary,bounds=(0,inf))
+                    kwargs['blackman_harris_resolution'] = P(data['sinc_fwhm'],vary,bounds=(0,inf))
         ## SOLEIL DESIRS FTS boxcar apodisation0
         elif data['filetype'] == 'DESIRS FTS':
             if vary is None:
-                kwargs['sinc_fwhm'] = float(data['sinc_FWHM'])
+                kwargs['sinc_fwhm'] = float(data['sinc_fwhm'])
             else:
-                kwargs['sinc_fwhm'] = P(data['sinc_FWHM'],vary,bounds=(0,inf))
+                kwargs['sinc_fwhm'] = P(data['sinc_fwhm'],vary,bounds=(0,inf))
         else:
             raise Exception(f'Cannot auto_convolve_with_instrument_function')
         ## call function
@@ -2045,7 +2045,7 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     else:
         raise Exception(f"bad extension: {repr(extension)}")
     ## compute instrumental resolution, FWHM
-    header['sinc_FWHM'] = 1.2*header['interpolation_factor']*header['ds'] 
+    header['sinc_fwhm'] = 1.2*header['interpolation_factor']*header['ds'] 
     ## get spectrum
     if extension=='.TXT':
         x,y = [],[]
@@ -2670,7 +2670,6 @@ class FitAbsorption():
                 p['sinusoid']['spline'] = model.auto_add_piecewise_sinusoid(xi=p['sinusoid']['spline_step'],vary=False,add_construct=False)
         if 'sinusoid' in p:
             ## extend range of spline if necessary
-            
             if p['sinusoid']['spline'][0][0] - xbeg > 1:
                 xa,xb = xbeg,p['sinusoid']['spline'][0][0]
                 x = linspace(xa,xb, max(2,int((xb-xa)/p['sinusoid']['spline_step'])))
@@ -2679,11 +2678,8 @@ class FitAbsorption():
                 xa,xb = p['sinusoid']['spline'][-1][1],xend
                 x = linspace(xa,xb, max(2,int((xb-xa)/p['sinusoid']['spline_step'])))
                 p['sinusoid']['spline'] += model.auto_add_piecewise_sinusoid(xi=x,vary=False,add_construct=False)
-            pprint(p['sinusoid']['spline'])
-            # ## add sinusoid to model
+            ## add sinusoid to model
             model.add_piecewise_sinusoid(regions=p['sinusoid']['spline'],autovary=fit_sinusoid)
-            # model.add_piecewise_sinusoid(regions=p['sinusoid']['spline'],autovary=False)
-
         ## instrument function
         if 'instrument_function' not in p:
             p['instrument_function'] = model.auto_convolve_with_instrument_function(vary=fit_instrument)

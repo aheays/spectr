@@ -120,9 +120,9 @@ class Dataset(optimise.Optimiser):
             retval = f'{self.name} = {self.classname}({repr(self.name)},'
             if load_from_file is not None:
                 retval += f'load_from_file={repr(load_from_file)},'
-            if len(kwargs)>0:
+            if len(data_kwargs)>0:
                 retval += '\n'
-            for key,val in kwargs.items():
+            for key,val in data_kwargs.items():
                 retval += f'    {key}={repr(val)},\n'
             retval += ')'
             return retval
@@ -580,13 +580,15 @@ class Dataset(optimise.Optimiser):
         ## set the data
         self.set(key,'value',value,index=combined_index,set_changed_only= True)
         if self._clean_construct and isinstance(value,Parameter):
-            self.set(key,'unc',value.unc,index=combined_index)
+            self.set(key,'unc' ,value.unc ,index=combined_index)
             self.set(key,'step',value.step,index=combined_index)
-        ## set vary to False if set, but only on the first execution
-        if 'not_first_execution' not in _cache:
-            if 'vary' in self._data[key]:
-                self.set(key,'vary',False,index=combined_index)
-            _cache['not_first_execution'] = True
+            self.set(key,'vary',False     ,index=combined_index)
+            
+        # ## set vary to False if set, but only on the first execution
+        # if 'not_first_execution' not in _cache:
+            # if 'vary' in self._data[key]:
+                # self.set(key,'vary',False,index=combined_index)
+            # _cache['not_first_execution'] = True
 
     def keys(self):
         return list(self._data.keys())
@@ -1260,6 +1262,7 @@ class Dataset(optimise.Optimiser):
             keys=None,
             keys_re=None,
             delimiter=' | ',
+            line_ending='\n',
             simple=False,       # ifFalse then just print data in a table, no metadata
             unique_values_in_header=False,
             subkeys=('value','unc','vary','step','ref','description','units','fmt','kind'),
@@ -1335,7 +1338,7 @@ class Dataset(optimise.Optimiser):
         if columns != []:
             if len(retval) > 0:
                 retval += '\n[data]\n'
-            retval += '\n'.join([delimiter.join(t) for t in zip(*columns)])+'\n'
+            retval += line_ending.join([delimiter.join(t) for t in zip(*columns)])+line_ending
         return retval
 
     def format_as_list(self):
@@ -1370,9 +1373,9 @@ class Dataset(optimise.Optimiser):
         return self.format(simple=True)
 
     def __repr__(self):
-        if len(self)>50:
-            return(self.name)
-        return f"{self.classname}(load_from_string='''\n{self.format_flat()}''')"
+        # if len(self)>50:
+        return self.name
+        # return f"{self.classname}(load_from_string='''\n{self.format_flat()}''')"
             
     def save(
             self,

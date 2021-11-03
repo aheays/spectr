@@ -2466,7 +2466,7 @@ def annotate_spectrum(
             namekwargs['fontsize'] = namesize # possibly override textkwargs
         name_pad_left,name_pad_right = '',''
         if namepos=='float':
-            tline,tlabel = tools.annotate_hline(
+            tline,tlabel = annotate_hline(
                 str(name),
                 ylevel,ax=ax,
                 linewidth=0,

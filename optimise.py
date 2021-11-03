@@ -591,7 +591,7 @@ class Optimiser:
                     for i in tools.find(vary):
                         optimiser.set(key,'value',p.pop(0),index=i)
                         optimiser.set(key,'unc',dp.pop(0),index=i)
-
+                    
     construct_functions = property(lambda self: list(self._construct_functions.values()) + list(self._post_construct_functions.values())[::-1])
 
     def _get_last_change_time(self):

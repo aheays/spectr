@@ -69,7 +69,7 @@ def get_species_data(species):
     if _species_data_cache is None:
         _species_data_cache = dataset.load(data_directory+'/species.psv')
     data = _species_data_cache
-    retval = data.matching_row(species=normalise_species(species))
+    retval = data.unique_row(species=normalise_species(species))
     return retval
 
 @tools.vectorise()
