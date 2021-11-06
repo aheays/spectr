@@ -977,48 +977,58 @@ def align(string,input_delimiter_re=' +',output_delimiter=' '):
     # return(f'\\np{{{format(x,fmt)}}}')
 
 # def format_float_with_sigfigs(
-        # x,
-        # sigfigs,
-        # tex=False,
-        # fmt='f',                # or 'e'
+#         x,
+#         sigfigs,
+#         tex=False,
+#         fmt='f',                # or 'e'
 # ):
-    # """Convert a float to a float format string with a certain number of
-    # significant figures. This is different to numpy float formatting
-    # which controls the number of decimal places."""
-    # assert sigfigs>0
-    # if tex:
-        # thousands_separator = r'\,'
-    # else:
-        # thousands_separator = ''
-    # ## get number of sigfigs rounded and printed into a string, special case for x=0
-    # if x!=0:
-        # x = float(x)
-        # sign_x = np.sign(x)
-        # x = np.abs(x)
-        # x = float(x)
-        # exponent = int(np.floor(np.log10(x)))
-        # decimal_part = max(0,sigfigs-exponent-1)
-        # s = format(sign_x*np.round(x/10**(exponent+1-sigfigs))*10**(exponent+1-sigfigs),'0.{0:d}f'.format(decimal_part))
-    # else:
-        # if sigfigs==1:
-            # s = '0'
-        # else:
-            # s = '0.'+''.join(['0' for t in range(sigfigs-1)])
-    # ## Split into >=1. <1 components
-    # if s.count('.')==1:
-        # greater,lesser = s.split('.')
-        # sep = '.'
-    # else:
-        # greater,sep,lesser = s,'',''
-    # ## add thousands separator, if number is bigger than 9999
-    # if len(greater)>4:
-        # indices_to_add_thousands_separator = list(range(len(greater)-3,0,-3))[-1::-1]
-        # greater = thousands_separator.join([greater[a:b] for (a,b) in zip(
-            # [0]+indices_to_add_thousands_separator,
-            # indices_to_add_thousands_separator+[len(greater)])])
-    # ## recomprise
-    # s = greater+sep+lesser
-    # return(s)
+#     """Convert a float to a float format string with a certain number of
+#     significant figures. This is different to numpy float formatting
+#     which controls the number of decimal places."""
+#     assert sigfigs>0
+#     if tex:
+#         thousands_separator = r'\,'
+#     else:
+#         thousands_separator = ''
+#     ## get number of sigfigs rounded and printed into a string, special case for x=0
+#     if x!=0:
+#         x = float(x)
+#         sign_x = np.sign(x)
+#         x = np.abs(x)
+#         x = float(x)
+#         exponent = int(np.floor(np.log10(x)))
+#         decimal_part = max(0,sigfigs-exponent-1)
+#         s = format(sign_x*np.round(x/10**(exponent+1-sigfigs))*10**(exponent+1-sigfigs),'0.{0:d}f'.format(decimal_part))
+#     else:
+#         if sigfigs==1:
+#             s = '0'
+#         else:
+#             s = '0.'+''.join(['0' for t in range(sigfigs-1)])
+#     ## Split into >=1. <1 components
+#     if s.count('.')==1:
+#         greater,lesser = s.split('.')
+#         sep = '.'
+#     else:
+#         greater,sep,lesser = s,'',''
+#     ## add thousands separator, if number is bigger than 9999
+#     if len(greater)>4:
+#         indices_to_add_thousands_separator = list(range(len(greater)-3,0,-3))[-1::-1]
+#         greater = thousands_separator.join([greater[a:b] for (a,b) in zip(
+#             [0]+indices_to_add_thousands_separator,
+#             indices_to_add_thousands_separator+[len(greater)])])
+#     ## recomprise
+#     s = greater+sep+lesser
+#     return(s)
+
+@vectorise()
+def round_to_significant_figures(x,significant_figures):
+    """Round x to a a limited number of significant decimal figures."""
+    if x==0:
+        retval = 0
+    else:
+        scale = 10**(significant_figures-np.floor(np.log10(np.abs(x)))-1)
+        retval = np.round(x*scale)/scale
+    return retval
 
 # def format_fixed_width(x,sigfigs,width=None):
     # """Creates a exponential form floating point number with given
