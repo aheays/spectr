@@ -1504,7 +1504,7 @@ class Diatomic(Linear):
                 else:
                     raise Exception(f'Cannot interpret quantum number: {V_u=}')
             for key in qn:
-                data[key] = qn[key]
+                new[key] = qn[key]
             ## V_l
             qn = {'label_l':[],'v_l':[],'Ω_l':[]}
             for V_l in data['V_l']:
@@ -1523,7 +1523,7 @@ class Diatomic(Linear):
                 else:
                     raise Exception(f'Cannot interpret quantum number: {V_l=}')
             for key in qn:
-                data[key] = qn[key]
+                new[key] = qn[key]
             ## Q_l
             qn = {'ΔJ':[],'ΔN':[],'ef_l':[],'J_l':[]}
             for Q_l in data['Q_l']:
@@ -1547,7 +1547,7 @@ class Diatomic(Linear):
                 else:
                     raise Exception(f'Cannot interpret quantum number: {Q_l=}')
             for key in qn:
-                data[key] = qn[key]
+                new[key] = qn[key]
         ## add to self
         self.extend(**new)
 

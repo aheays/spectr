@@ -999,7 +999,7 @@ class Dataset(optimise.Optimiser):
                     i &= self.match_re({key[3:]:val})
                 else:
                     ## total failure
-                    raise Exception(f'Could not match key: {repr(key)}')
+                    raise InferException(f'Could not match key: {repr(key)}')
         return i
 
     def find(self,*match_args,**match_kwargs):
