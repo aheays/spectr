@@ -64,7 +64,6 @@ contains
   subroutine single_channel_numerov(U,T,F,chi,N)
     !! Iteratively computes the matrices used in the renormalised
     !! Numerov method for wave function calculation.
-    implicit none
     integer :: N
     real*8,intent(inout),dimension(N) :: U,T,F,chi
     integer :: i
@@ -82,7 +81,6 @@ contains
   subroutine single_channel_renormalised_numerov(U,T,F,chi,RR,N)
     !! Iteratively computes the matrices used in the renormalised
     !! Numerov method for wave function calculation.
-    implicit none
     integer :: N
     real*8,intent(inout),dimension(0:N-1) :: U,T,F,chi,RR
     ! real*8,parameter :: MAXCHI=1e10
@@ -108,7 +106,6 @@ contains
   subroutine compute_single_channel_renormalised_numerov(mu,dR,V,E,chi,N)
     !! Iteratively computes the matrices used in the renormalised
     !! Numerov method for wave function calculation.
-    implicit none
     integer :: N                           !grid length
     real*8,intent(in),dimension(N) :: V !potential energy
     real*8,intent(out),dimension(N) :: chi !wavefunction
@@ -140,7 +137,6 @@ contains
 
   subroutine calculate_single_channel_wavefunction(type,chi,V,dR,mu,E,ibeg,iend,N)
     !! Compute the wavefunction for a single channel bound state.
-    implicit none
     integer,intent(inout) :: N
     real*8,intent(in),dimension(N) :: V      !potential energy curve
     real*8,intent(inout),dimension(N) :: chi !computed wavefunction
@@ -236,7 +232,6 @@ contains
 
   subroutine find_single_channel_bound_levels(nodes,E,chi,nfound,V,dR,mu,Emin,Emax,Estep,Etol,N)
     !! Find all bound states between Emin and Emax. 
-    implicit none
     integer,parameter :: MAXSOLUTIONS=1000 !must be this size in calling function -- yuck
     integer :: N
     real*8,intent(in),dimension(N) :: V
@@ -313,7 +308,6 @@ contains
   ! !! Solve the coupled Schrodinger equation outwards using the
   ! !! Johnson renormalised method for multiple energies, E. No
   ! !! normalisation.  This might require a lot of memory!
-  ! implicit none
   ! integer :: nR                ! number of grid points
   ! integer :: nV               ! number of coupled states
   ! integer :: nE               ! number of energies
@@ -331,7 +325,6 @@ contains
   subroutine calculate_multi_channel_wavefunction(V,E,dR,mu,chi,nR,nV)
     !! Solve the coupled Schrodinger equation outwards using the
     !! Johnson renormalised method. No normalisation.
-    implicit none
     integer :: nR                ! number of grid points
     integer :: nV               ! number of coupled states
     real*8 :: E                 ! energy (cm-1)
@@ -416,7 +409,6 @@ contains
   subroutine stepwise_gaussian(center,area,fwhm,x,y,nx)
     !! Compute a Gaussian on grid with the correct (trapezium) rule
     !! integral. Note adds to y!
-    implicit none
     real*8,intent(in) :: center !center frequency of lines
     real*8,intent(in) :: area !integrated strength of lines
     real*8,intent(in) :: fwhm !full-width half-maximum of lines
@@ -467,7 +459,6 @@ contains
     !! stepwise function on the input regular grid.  This is useful
     !! where the line center is unresolved. Optionally limit to a
     !! maximum number of full-width half-maximums to include.
-    implicit none
     integer*8 :: nlines           !number of lines
     real*8,intent(in),dimension(nlines) :: x0 !center frequency of lines
     real*8,intent(in),dimension(nlines) :: yint !integrated strength of lines
@@ -508,7 +499,6 @@ contains
 
   subroutine calculate_gaussian_spectrum(x0,yint,xwid,x,y,nfwhm,nx,nlines)
     !! Compute sum of all Gaussian on given domain, on any grid.
-    implicit none
     integer*8 :: nlines           !number of lines
     real*8,intent(in),dimension(nlines) :: x0 !center frequency of lines
     real*8,intent(in),dimension(nlines) :: yint !integrated strength of lines
@@ -659,7 +649,6 @@ contains
   subroutine stepwise_lorentzian(center,area,fwhm,x,y,nx)
     !! Compute a Lorentzian on grid with the correct (trapezium) rule
     !! integral. Note adds to y!
-    implicit none
     real*8,intent(in) :: center !center frequency of lines
     real*8,intent(in) :: area !integrated strength of lines
     real*8,intent(in) :: fwhm !full-width half-maximum of lines
@@ -698,7 +687,6 @@ contains
   ! !! stepwise function on the input regular grid.  This is useful
   ! !! where the line center is unresolved. Optionally limit to a
   ! !! maximum number of full-width half-maximums to include.
-  ! implicit none
   ! integer*8 :: nlines           !number of lines
   ! real*8,intent(in),dimension(nlines) :: x0 !center frequency of lines
   ! real*8,intent(in),dimension(nlines) :: yint !integrated strength of lines
@@ -739,7 +727,6 @@ contains
     !! stepwise function on the input regular grid.  This is useful
     !! where the line center is unresolved. Optionally limit to a
     !! maximum number of full-width half-maximums to include.
-    implicit none
     integer*8 :: nlines           !number of lines
     real*8,intent(in),dimension(nlines) :: x0 !center frequency of lines
     real*8,intent(in),dimension(nlines) :: yint !integrated strength of lines
@@ -782,7 +769,6 @@ contains
     !! Compute sum of all Lorentzian on given domain, on any
     !! grid. Optionally limit to a maximum number of full-width
     !! half-maximums to include (not renormalised)
-    implicit none
     integer*8 :: nlines           !number of lines
     real*8,intent(in),dimension(nlines) :: x0 !center frequency of lines
     real*8,intent(in),dimension(nlines) :: yint !integrated strength of lines
@@ -823,7 +809,6 @@ contains
   subroutine calculate_lorentzian_spectrum_approximate_wings(x0,yint,xwid,x,y,nfwhminner,nmerge,nx,nlines)
     !! Compute sum of all Lorentzian on given domain with linewing
     !! approximation, on regular monotonic grid.
-    implicit none
     integer :: nlines           !number of lines
     real*8,intent(in),dimension(nlines) :: x0 !center frequency of lines
     real*8,intent(in),dimension(nlines) :: yint !integrated strength of lines
@@ -917,7 +902,6 @@ contains
   ! subroutine convolve_with_doppler(mass,temperature,nfwhm,x,yin,yout,nx)
   ! !! Convolve with Doppler broadening, accurate but approx widths,
   ! !! on regular, monotonic grid.
-  ! implicit none
   ! integer*8,intent(in):: nx   !length of freuency array 
   ! real*8 :: xstep  !regula step in frequneny scale
   ! real*8,intent(in),dimension(nx) :: x       !frequencies (cm-1)
@@ -970,7 +954,6 @@ contains
   subroutine convolve_with_doppler(mass,temperature,nfwhm,x,yin,yout,nx)
     !! Convolve with Doppler broadening, accurate but approx widths,
     !! on regular, monotonic grid.
-    implicit none
     integer*8,intent(in):: nx   !length of freuency array 
     real*8 :: xstep  !regula step in frequneny scale
     real*8,intent(in),dimension(nx) :: x       !frequencies (cm-1)
@@ -1049,7 +1032,6 @@ contains
   !! Based on convolve_doppler.f90 - just changed fwhm definition and inputs
   ! subroutine convolve_with_doppler_irregular_grid(xin,yin,nin,xout,yout,nout,fwhm_without_energy,dxout) 
   subroutine convolve_with_doppler_irregular_grid(xin,yin,nin,xout,yout,nout,fwhm_without_energy) 
-    implicit none
     integer :: i
     real*8 :: a,b,c,d,p,q,r,s,u,v
     integer :: iout        !range of output arrays currently in use
@@ -1102,11 +1084,20 @@ contains
     end do
   end subroutine convolve_with_doppler_irregular_grid
 
+  
+  ! !! Convolve array with a signum function: zj = yj +
+  ! !! aj*Σi[yi/(xj-xi)] where aj is the magnitude of the spline which
+  ! !! varies with i coordinate.
+  ! subroutine convolve_with_variable_signum_regular_grid(x,y,a,z,n)
+    ! integer, intent(inout) :: n
+    ! real*8, intent(inout) :: x(n),y(n),a(n),z(n)
+  ! end subroutine convolve_with_variable_signum_regular_grid
+  
+
   !! Return indices of x (i0,i1) which bracket the points x0 and x1 in
   !! sorted array x. ACTUALLY THIS IS NOT COMPLETELY ACCURATE -- MIGTH
   !! MISS BOUNDS BY ONE OR TWO POINTS.
   subroutine find_in_range_sorted(x,n,x0,x1,i0,i1)
-     implicit none
      integer, intent(inout) :: n
      integer, intent(inout):: i0,i1
      real*8, intent(inout) :: x(n),x0,x1
@@ -1192,7 +1183,6 @@ contains
    !! 2008-03-19T14:10:45+1100, Alan Heays
    !! Based on convolve_doppler.f90 - just changed fwhm definition and inputs
    subroutine convolve_with_gaussian(xin,yin,nin,xout,yout,nout,fwhm) 
-     implicit none
      integer :: i
      real*8 :: a,b,c,d,p,q,r,s,u,v
      integer :: iout        !range of output arrays currently in use
@@ -1257,7 +1247,6 @@ contains
      !! Returns indices of y that match values in x. Assumes both x and y
      !! are sorted. Only works on floats. Returns as zero-indexed
      !! array. Unfound values of x are indexed as -1.
-     implicit none
      real*8, intent(inout) :: x(nx),y(ny) !input arrays
      integer*8, intent(inout) :: nx,ny      !length of input arrsy
      real*8, intent(inout) :: d          !tolerance for equality
@@ -1323,7 +1312,6 @@ contains
   !! Sorts a list in place. Also returns the reordering order.  Begin
   !! at left_end and right_end indices.
   recursive subroutine quicksort(list,order,left_end,right_end)
-    implicit none
     real*8, dimension (:), intent(inout)  :: list
     integer, dimension (:), intent(inout)  :: order
     integer, intent(in) :: left_end, right_end
@@ -1373,7 +1361,6 @@ contains
 
   !! I forget what this does.
   recursive subroutine argsort_int(list,order,left_end,right_end)
-    implicit none
     integer, dimension (:), intent(in)  :: list
     integer, allocatable,dimension (:)   :: list_copy
     integer, dimension (:), intent(out)  :: order
@@ -1389,7 +1376,6 @@ contains
 
   !! I forget what this does.
   recursive subroutine quicksort_int(list,order,left_end,right_end)
-    implicit none
     integer, dimension (:), intent(inout)  :: list
     integer, dimension (:), intent(inout)  :: order
     integer, intent(in) :: left_end, right_end
@@ -1440,7 +1426,6 @@ contains
   !! Compute integral of y using trapezium rule assuming y on a
   !! regular grid of step dx.
   subroutine integrate_trapz_uniform_grid(y,dx,yint,ny)
-    implicit none
     real*8, intent(inout),dimension(ny) :: y
     real*8, intent(in) :: dx
     real*8, intent(inout) :: yint !the result
@@ -1457,7 +1442,6 @@ contains
   !! Compute integral of y using trapezium rule assuming y on a
   !! regular grid of step dx. Uses OPENMP if available.
   subroutine integrate_trapz_uniform_grid_two_dimensional(y,dx,yint,ny1,ny2)
-    implicit none
     real*8, intent(inout),dimension(ny1,ny2) :: y
     real*8, intent(in) :: dx
     real*8, intent(inout),dimension(ny2) :: yint !the result
@@ -1479,7 +1463,6 @@ contains
   !! correlation. NO ERROR CHECKING FOR SEGMENTATION FAULT. Attempts
   !! to use OMP for parallel computation
   subroutine cross_correlate(x,y,c,imax_shift,iwidth,nx,ny,nc)
-    implicit none
     real*8, intent(in),dimension(nx) :: x
     real*8, intent(in),dimension(ny) :: y
     real*8, intent(inout),dimension(nc) :: c
@@ -1506,7 +1489,6 @@ contains
   !! window of points around each interpolated point.  Reversing the
   !! interpolation with averaging.
   subroutine uninterpolate_with_averaging(yin,yout,factor,nin,nout)
-    implicit none
     real*8, intent(in),dimension(nin) :: yin
     real*8, intent(inout),dimension(nout) :: yout
     integer, intent(in) :: nin,nout,factor
@@ -1526,7 +1508,6 @@ contains
   
   !! bin data in xin into bins of width nbin, save in xout
   subroutine bin_data(xin,xout,nbin,nin,nout)
-    implicit none
     real*8, intent(in),dimension(nin) :: xin
     real*8, intent(inout),dimension(nout) :: xout
     integer, intent(in) :: nbin,nin,nout
@@ -1542,7 +1523,6 @@ contains
 
   !! a little bit faster than x = np.multiply(x,y)
   subroutine in_place_array_multiplication(x,y,n)
-    implicit none
     real*8, intent(inout),dimension(n) :: x
     real*8, intent(inout),dimension(n) :: y
     integer, intent(in) :: n
