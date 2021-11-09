@@ -169,33 +169,50 @@ class Experiment(Optimiser):
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function()
 
-    @optimise_method()
+    @format_input_method()
     def set_spectrum_from_opus_file(self,filename,xbeg=None,xend=None,_cache=None):
-        """Load a spectrum in an Bruker opus binary file."""
-        ## only runs once
-        if 'has_run' in _cache:
-            return
-        _cache['has_run'] = True
+        """Load a spectrum in an Bruker opus binary file. If filename is a
+        list of filenames then compute the average."""
+        self.experimental_parameters['filename'] = filename
+        ## divide first filename from the rest for averaging
+        if isinstance(filename,str):
+            other_filenames = []
+        else:
+            filename,other_filenames = filename[0],filename[1:]
+        ## load first filename
         opusdata = bruker.OpusData(filename)
         x,y = opusdata.get_spectrum()
         d = opusdata.data
-        self.experimental_parameters['filename'] = filename
         self.experimental_parameters['filetype'] = 'opus'
+        translate_apodisation_function = {'BX':'boxcar','B3':'Blackman-Harris 3-term',}
         if 'Fourier Transformation' in d:
             self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
-            if d['Fourier Transformation']['APF'] == 'BX':
-                self.experimental_parameters['apodisation_function'] = 'boxcar'
-            elif d['Fourier Transformation']['APF'] == 'B3':
-                self.experimental_parameters['apodisation_function'] = 'Blackman-Harris 3-term'
-            else:
-                warnings.warn(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
+            self.experimental_parameters['apodisation_function'] = translate_apodisation_function[d['Fourier Transformation']['APF']]
         if 'Acquisition' in d:
             ## opus resolution is zero-to-zero of central sinc function peak
             ##self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
             self.experimental_parameters['sinc_fwhm'] = opusdata.get_resolution()
+        ## if necessary load further filenames and average
+        if len(other_filenames) > 0:
+            for filename in other_filenames: 
+                opusdata = bruker.OpusData(filename)
+                xnew,ynew = opusdata.get_spectrum()
+                if not np.all(xnew==x):
+                    raise Exception(f'x-grid of {filename} does not match {self.experimental_parameters["filename"]}')
+                y += ynew
+                d = opusdata.data
+                if 'interpolation_factor' in self.experimental_parameters:
+                    if self.experimental_parameters['interpolation_factor'] != float(d['Fourier Transformation']['ZFF']):
+                        raise Exception(f'Interpolation factor of {filename} does not match {self.experimental_parameters["filename"]}')
+                if 'apodisation_function' in  self.experimental_parameters:
+                    if self.experimental_parameters['apodisation_function'] != translate_apodisation_function[d['Fourier Transformation']['APF']]:
+                        raise Exception(f'Apodisation function of {filename} does not match {self.experimental_parameters["filename"]}')
+                if 'sinc_fwhm' in  self.experimental_parameters:
+                    if self.experimental_parameters['sinc_fwhm'] != opusdata.get_resolution():
+                        raise Exception(f'Sinc FWHM function of {filename} does not match {self.experimental_parameters["filename"]}')
+            y /= len(other_filenames)+1
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
-        # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_opus_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)})')
     
     @optimise_method()
     def set_spectrum_from_soleil_file(self,filename,xbeg=None,xend=None,_cache=None):
@@ -276,7 +293,15 @@ class Experiment(Optimiser):
         return len(self.x)
 
     @format_input_method(format_multi_line=inf)
-    def fit_noise(self,xbeg=None,xend=None,xedge=None,n=1,make_plot=False,figure_number=None):
+    def fit_noise(
+            self,
+            xbeg=None,
+            xend=None,
+            xedge=None,
+            n=1,
+            make_plot=False,
+            figure_number=None,
+    ):
         """Estimate the noise level by fitting a polynomial of order n
         between xbeg and xend to the experimental data. Also rescale
         if the experimental data has been interpolated."""
@@ -1277,6 +1302,27 @@ class Model(Optimiser):
         sinusoid = _cache['sinusoid']
         i = _cache['i']
         self.y[i] += sinusoid
+
+    @optimise_method()
+    def convolve_spline_signum(self,amplitude_spline,spline_order=3,_cache=None):
+        """Convolve with a signum function with spline-varying amplitude."""
+        if self._clean_construct:
+            if np.isscalar(amplitude_spline):
+                amplitude_spline = [
+                    [x,P(0,False,1e-3)]
+                    for x in linspace(
+                            self.x[0],
+                            self.x[-1],
+                            int((self.x[-1]-self.x[0])/amplitude_spline))
+                ]
+            # i = (self.x >= regions[0][0]) & (self.x <= regions[-1][1]) # x-indices defined by regions
+            # sinusoid = tools.piecewise_sinusoid(self.x[i],regions)
+            # scale = 1 + sinusoid
+            # _cache['scale'] = scale
+            # _cache['i'] = i
+        # scale = _cache['scale']
+        # i = _cache['i']
+        # self.y[i] *= scale
 
     # def auto_add_sinusoid_spline(
             # self,
