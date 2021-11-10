@@ -1303,26 +1303,27 @@ class Model(Optimiser):
         i = _cache['i']
         self.y[i] += sinusoid
 
-    @optimise_method()
-    def convolve_spline_signum(self,amplitude_spline,spline_order=3,_cache=None):
+    def auto_convolve_spline_signum(
+            self,
+            spline_step,
+            amplitude=1e-3,
+            vary=False,
+            **convolve_spline_signum_kwargs
+    ):
         """Convolve with a signum function with spline-varying amplitude."""
-        if self._clean_construct:
-            if np.isscalar(amplitude_spline):
-                amplitude_spline = [
-                    [x,P(0,False,1e-3)]
-                    for x in linspace(
-                            self.x[0],
-                            self.x[-1],
-                            int((self.x[-1]-self.x[0])/amplitude_spline))
-                ]
-            # i = (self.x >= regions[0][0]) & (self.x <= regions[-1][1]) # x-indices defined by regions
-            # sinusoid = tools.piecewise_sinusoid(self.x[i],regions)
-            # scale = 1 + sinusoid
-            # _cache['scale'] = scale
-            # _cache['i'] = i
-        # scale = _cache['scale']
-        # i = _cache['i']
-        # self.y[i] *= scale
+        amplitude_spline = []
+        for x in linspace(self.x[0],self.x[-1],int((self.x[-1]-self.x[0])/spline_step)):
+            y = P(amplitude,vary,1e-6)
+            self.add_parameter(y)
+            amplitude_spline.append([x,y])
+        self.convolve_spline_signum(amplitude_spline,**convolve_spline_signum_kwargs)
+        return amplitude_spline
+
+    @optimise_method()
+    def convolve_spline_signum(self,amplitude_spline,order=3,xmax=10,_cache=None):
+        """Convolve with a signum function with spline-varying amplitude."""
+        self.y = tools.convolve_with_spline_signum_regular_grid(
+            self.x,self.y,amplitude_spline,order=order,xmax=float(xmax))
 
     # def auto_add_sinusoid_spline(
             # self,

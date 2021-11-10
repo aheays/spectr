@@ -3371,6 +3371,20 @@ def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=Fals
         y = spline(x,y,x_original)
     return y
 
+def convolve_with_spline_signum_regular_grid(
+        x,y,                    # input data
+        spline_point_list,      # signum amplitude spline points
+        xmax,                   # how far to perormm the signum convolution
+        **spline_kwargs,        # for computing signum spline
+):
+    from .fortran_tools import fortran_tools
+    x = np.asarray(x,dtype=float)
+    y = np.asarray(y,dtype=float)
+    yconv = np.full(x.shape,0,dtype=float)
+    s = spline(*zip(*spline_point_list),x,**spline_kwargs)
+    fortran_tools.convolve_with_variable_signum_regular_grid(x,y,s,xmax,yconv)
+    return yconv
+
 # def convolve_with_gaussian_to_grid(x,y,xout,fwhm):
     # """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate
     # convolution after a certain number of fwhms. x must be on a
