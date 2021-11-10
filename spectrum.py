@@ -1113,11 +1113,11 @@ class Model(Optimiser):
         self.y[i] += _cache['yspline']
     
     def autovary_in_range(
-            self,
-            parameters,                 # list of lists, [x,rest..]
-            xbeg=None, xend=None,       # range to set to vary
-            vary=True,                  # set to this vary if in range
-            vary_outside_range = False, # set to this vary if outside range, None to do nothing to these Parameters
+            self,               
+            parameters,         # list of lists, [x,rest..]
+            xbeg=None,xend=None, # range to set to vary, defaults to current range of Model
+            vary=True,           # set to this vary if in range
+            vary_outside_range=False, # set to this vary if outside range, None to do nothing to these Parameters
             include_neighbouring=True, # include points immediately outside range
     ):
         """Set Parameters in list of lists to vary if in defined x range."""
@@ -1320,8 +1320,9 @@ class Model(Optimiser):
         return amplitude_spline
 
     @optimise_method()
-    def convolve_spline_signum(self,amplitude_spline,order=3,xmax=10,_cache=None):
+    def convolve_spline_signum(self,amplitude_spline,order=3,xmax=10,autovary=False,_cache=None):
         """Convolve with a signum function with spline-varying amplitude."""
+        self.autovary_in_range(amplitude_spline)
         self.y = tools.convolve_with_spline_signum_regular_grid(
             self.x,self.y,amplitude_spline,order=order,xmax=float(xmax))
 
