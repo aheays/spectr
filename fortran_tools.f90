@@ -1083,46 +1083,6 @@ contains
        iin = iin+1
     end do
   end subroutine convolve_with_doppler_irregular_grid
-  
-  !! Convolve array with a signum function: zj = yj +
-  !! aj*Σi[yi/(xj-xi)] where aj is the magnitude of the spline which
-  !! varies with i coordinate.
-  subroutine convolve_with_variable_signum_regular_grid(x,y,a,xmax,z,n)
-    integer, intent(inout) :: n
-    real*8 , intent(inout) :: x(n) ! x grid
-    real*8 , intent(inout) :: y(n) ! y data
-    real*8 , intent(inout) :: a(n) ! signum amplitude
-    real*8 , intent(inout) :: z(n) ! output y data convolved with signum
-    real*8 , intent(inout) :: xmax ! xrange to consider in signum convolution
-    integer :: i,j,nconvolve
-    real*8  :: dx
-    !! x grid step
-    dx = (x(n)-x(1))/(n-1)
-    !! loop through all points
-    z = 0
-    do i=1,n
-       !! how many points before signum hyperbola drops to 1%, limit
-       !! to distance to domain boundary
-       nconvolve = int(xmax/dx)
-       nconvolve = min(nconvolve,i-1)
-       nconvolve = min(nconvolve,n-i)
-       !! convolved data
-       if ((a(i).ne.0e0).and.(nconvolve.ne.0)) then
-          !! compute left hyperbola limb
-          do j=i-nconvolve,i-1
-             z(i) = z(i) + y(j)/(x(j)-x(i))
-          end do
-          !! compute right hyperbola limb
-          do j=i+1,i+nconvolve
-             z(i) = z(i) + y(j)/(x(j)-x(i))
-          end do
-          !! scale by signum magnitude and normalise by number of data points
-          z(i) = a(i)*z(i)*dx
-       end if
-       !! add middle point δ-function 
-       z(i) = z(i) + y(i)
-    end do
-  end subroutine convolve_with_variable_signum_regular_grid
 
   !! Return indices of x (i0,i1) which bracket the points x0 and x1 in
   !! sorted array x. ACTUALLY THIS IS NOT COMPLETELY ACCURATE -- MIGTH

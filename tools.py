@@ -2199,6 +2199,12 @@ def spline(
             raise Exception(f'Invalid {out_of_bounds=}. Try "error", "zero", "constant", "extrapolate".')
     return y
 
+def spline_from_list(spline_points,x,**spline_kwargs):
+    """Rather than provide x and y spline points provide a list of pairs:
+    [[x0,y0],[x1,y1],...]."""
+    xspline,yspline = zip(*spline_points)
+    return spline(xspline,yspline,x,**spline_kwargs)
+    
 # def splinef(xi,yi,s=0,order=3,sort_data=True):
     # """Return spline function for points (xi,yi). Will return order
     # or (less if fewer points). Sort data for convenience (takes time)."""
@@ -3384,6 +3390,29 @@ def convolve_with_spline_signum_regular_grid(
     s = spline(*zip(*spline_point_list),x,**spline_kwargs)
     fortran_tools.convolve_with_variable_signum_regular_grid(x,y,s,xmax,yconv)
     return yconv
+
+def convolve_with_spline_signum_regular_grid_2(
+        x,y,                    # input data
+        spline_point_list,      # signum amplitude spline points
+        xmax,                   # how far to perormm the signum convolution
+        **spline_kwargs,        # for computing signum spline
+):
+    dx = (x[-1]-x[0])/(len(x)-1) # grid step -- x must be regular
+    ## get hyperbola to convolve -- Δx=0 is zero
+    xconv = arange(dx,xmax,dx)
+    yconv = 1/xconv
+    xconv = np.concatenate((-xconv[::-1],[0],xconv))
+    yconv = np.concatenate((-yconv[::-1],[0],yconv))
+    ## scale y but signum magnitude
+    yscaled =y*spline_from_list(spline_point_list,x,**spline_kwargs)*dx
+    ## get convolved asymmetric y to add to self 
+    yadd = convolve_with_padding(x,yscaled,xconv,yconv,)
+    ## full signum added spectrum
+    ynew = y + yadd
+    return ynew
+
+    # fortran_tools.convolve_with_variable_signum_regular_grid(x,y,s,xmax,yconv)
+    # return yconv
 
 # def convolve_with_gaussian_to_grid(x,y,xout,fwhm):
     # """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate

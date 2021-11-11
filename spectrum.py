@@ -191,7 +191,8 @@ class Experiment(Optimiser):
         if 'Acquisition' in d:
             ## opus resolution is zero-to-zero of central sinc function peak
             ##self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
-            self.experimental_parameters['sinc_fwhm'] = opusdata.get_resolution()
+            self.experimental_parameters['resolution'] = opusdata.get_resolution(kind='resolution')
+            self.experimental_parameters['sinc_fwhm'] = opusdata.get_resolution(kind='fwhm')
         ## if necessary load further filenames and average
         if len(other_filenames) > 0:
             for filename in other_filenames: 
@@ -207,8 +208,8 @@ class Experiment(Optimiser):
                 if 'apodisation_function' in  self.experimental_parameters:
                     if self.experimental_parameters['apodisation_function'] != translate_apodisation_function[d['Fourier Transformation']['APF']]:
                         raise Exception(f'Apodisation function of {filename} does not match {self.experimental_parameters["filename"]}')
-                if 'sinc_fwhm' in  self.experimental_parameters:
-                    if self.experimental_parameters['sinc_fwhm'] != opusdata.get_resolution():
+                if 'resolution' in  self.experimental_parameters:
+                    if self.experimental_parameters['resolution'] != opusdata.get_resolution():
                         raise Exception(f'Sinc FWHM function of {filename} does not match {self.experimental_parameters["filename"]}')
             y /= len(other_filenames)+1
         self.set_spectrum(x,y,xbeg,xend)
@@ -1270,6 +1271,7 @@ class Model(Optimiser):
     ):
         """Fit a spline interpolated sinusoid to current model residual, and
         add it to the model."""
+        warnings.warn('Deprecated function in favour of auto_convolve_spline_signum'
         regions = tools.fit_piecewise_sinusoid(
             self.x,
             self.get_residual(),
@@ -1289,6 +1291,7 @@ class Model(Optimiser):
         """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
+        warnings.warn('Deprecated function in favour of convolve_spline_signum'
         if self._clean_construct and autovary:
             self.autovary_in_range(regions)
         if (self._clean_construct
@@ -1313,7 +1316,7 @@ class Model(Optimiser):
         """Convolve with a signum function with spline-varying amplitude."""
         amplitude_spline = []
         for x in linspace(self.x[0],self.x[-1],int((self.x[-1]-self.x[0])/spline_step)):
-            y = P(amplitude,vary,1e-6)
+            y = P(amplitude,vary,1e-8)
             self.add_parameter(y)
             amplitude_spline.append([x,y])
         self.convolve_spline_signum(amplitude_spline,**convolve_spline_signum_kwargs)
@@ -1322,117 +1325,21 @@ class Model(Optimiser):
     @optimise_method()
     def convolve_spline_signum(self,amplitude_spline,order=3,xmax=10,autovary=False,_cache=None):
         """Convolve with a signum function with spline-varying amplitude."""
-        self.autovary_in_range(amplitude_spline)
-        self.y = tools.convolve_with_spline_signum_regular_grid(
-            self.x,self.y,amplitude_spline,order=order,xmax=float(xmax))
-
-    # def auto_add_sinusoid_spline(
-            # self,
-            # xi=10,
-            # xbeg=None,xend=None,
-            # make_plot=False,
-            # vary=False,
-            # add_construct=True,
-    # ):
-        # """Fit a spline interpolated sinusoid to current model residual, and
-        # optionally add it to the model."""
-        # import scipy
-        # ## xrange of spline
-        # if xbeg is None:
-            # xbeg = self.x[0]
-        # if xend is None:
-            # xend = self.x[-1]
-        # xspline = linspace(xbeg,xend,max(int((xend-xbeg)/xi),2))
-        # ## loop over all regions, gettin dominant frequency and phase
-        # ## from the residual error power spectrum
-        # x,y = self.x,self.yexp-self.y
-        # knots = []
-        # shift = np.full(x.shape,0.0)
-        # previous_phase,previous_frequency = None,None
-        # for ix in range(len(xspline)):
-            # ## get interval around this spline point
-            # if ix == 0:
-                # xbegi = xspline[ix]
-                # xendi = (xspline[ix+1]+xspline[ix])/2
-            # elif ix == len(xspline)-1:
-                # xbegi = (xspline[ix]+xspline[ix-1])/2
-                # xendi = xspline[ix]
-            # else:
-                # xbegi = (xspline[ix]   + xspline[ix-1]) / 2
-                # xendi = (xspline[ix+1] + xspline[ix]  ) / 2
-            # ## fit sinusoid in invterval
-            # i = slice(*np.searchsorted(x,[xbegi,xendi]))
-            # shift[i] = np.mean(y[i])
-            # xti = x[i]
-            # dx = (xti[-1]-xti[0])/(len(xti)-1)
-            # yi = y[i] - shift[i]
-            # FT = scipy.fft.fft(yi)
-            # imax = np.argmax(np.abs(FT)[1:])+1 # exclude 0
-            # amplitude = tools.rms(yi)
-            # frequency = 2*constants.pi/dx*(imax)/len(FT)
-            # phase = np.arctan(FT.imag[imax]/FT.real[imax])
-            # # if FT.real[imax]>0:
-                # # phase -= scipy.constants.pi
-            # phase += frequency*xbegi
-            # knots.append([xspline[ix],P(abs(amplitude), vary,bounds=(0,inf)), P(frequency, vary), P(phase, vary,1e-5)])
-        # if add_construct:
-            # self.add_sinusoid_spline(knots=knots)
-        # return knots
-
-    # @optimise_method()
-    # def add_sinusoid_spline(self,knots=None,Aorder=3,_cache=None,autovary_in_range=False):
-        # """Add a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set or
-        # regions = [(xa,A,f,φ),...].  Probably should initialise with
-        # auto_add_sinusoid_spline."""
-        # if self._clean_construct:
-            # ## vary knots in x-range
-            # if autovary_in_range:
-                # self.autovary_in_range(knots)
-            # ## make amplitude, frequency, phase splines
-            # _cache['Aspline'] = Spline(xs=[t[0] for t in knots], ys=[t[1] for t in knots], order=Aorder)
-            # _cache['fspline'] = Spline(xs=[t[0] for t in knots], ys=[t[2] for t in knots], order=0)
-            # _cache['pspline'] = Spline(xs=[t[0] for t in knots], ys=[t[3] for t in knots], order=0)
-        # ## get cache
-        # Aspline = _cache['Aspline']
-        # fspline = _cache['fspline']
-        # pspline = _cache['pspline']
-        # ## update splines if Parameters have changed
-        # Achanged = Aspline.last_change_time > self.last_construct_time
-        # fchanged = fspline.last_change_time > self.last_construct_time
-        # pchanged = pspline.last_change_time > self.last_construct_time
-        # x = self.x
-        # if Achanged: Aspline(x)
-        # if fchanged: fspline(x)
-        # if pchanged: pspline(x)
-        # ## update sinusoid if parameters have chagned
-        # if Achanged or fchanged or pchanged:
-            # _cache['sinusoid'] = Aspline.y*np.cos(x*fspline.y+pspline.y)
-        # ## add to y
-        # self.y += _cache['sinusoid']
-
-    # @optimise_method
-    # def convolve_with_lorentzian(self,width,fwhms_to_include=100):
-        # """Convolve with lorentzian."""
-        # p = self.add_parameter_set('convolve_with_lorentzian',width=width,step_default={'width':0.01})
-        # self.add_format_input_function(lambda: f'{self.name}.convolve_with_lorentzian({p.format_input()})')
-        # ## check if there is a risk that subsampling will ruin the convolution
-        # def f():
-            # x,y = self.x,self.y
-            # width = np.abs(p['width'])
-            # if self.verbose and width < 3*np.diff(self.x).min(): warnings.warn('Convolving Lorentzian with width close to sampling frequency. Consider setting a higher interpolate_model_factor.')
-            # ## get padded spectrum to minimise edge effects
-            # dx = (x[-1]-x[0])/(len(x)-1)
-            # padding = np.arange(dx,fwhms_to_include*width+dx,dx)
-            # xpad = np.concatenate((x[0]-padding[-1::-1],x,x[-1]+padding))
-            # ypad = np.concatenate((y[0]*np.ones(padding.shape,dtype=float),y,y[-1]*np.ones(padding.shape,dtype=float)))
-            # ## generate function to convolve with
-            # xconv = np.arange(-fwhms_to_include*width,fwhms_to_include*width,dx)
-            # if len(xconv)%2==0: xconv = xconv[0:-1] # easier if there is a zero point
-            # yconv = lineshapes.lorentzian(xconv,xconv.mean(),1.,width)
-            # yconv = yconv/yconv.sum() # sum normalised
-            # ## convolve and return, discarding padding
-            # self.y = signal.oaconvolve(ypad,yconv,mode='same')[len(padding):len(padding)+len(x)]
-        # self.add_construct_function(f)
+        if autovary:
+            self.autovary_in_range(amplitude_spline)
+        x,y = self.x,self.y
+        dx = (x[-1]-x[0])/(len(x)-1) # grid step -- x must be regular
+        ## get hyperbola to convolve -- Δx=0 is zero
+        xconv = arange(dx,xmax,dx)
+        yconv = 1/xconv
+        xconv = np.concatenate((-xconv[::-1],[0],xconv))
+        yconv = np.concatenate((-yconv[::-1],[0],yconv))
+        ## scale y but signum magnitude
+        yscaled = y*tools.spline_from_list(amplitude_spline,x,order=order)*dx
+        ## get convolved asymmetric y to add to self 
+        yadd = tools.convolve_with_padding(x,yscaled,xconv,yconv,)
+        ## full signum added spectrum
+        self.y += yadd
 
     def apodise(
             self,
@@ -1678,9 +1585,9 @@ class Model(Optimiser):
             if data['apodisation_function'] == 'Blackman-Harris 3-term':
                 kwargs['blackman_harris_order'] = 3
                 if vary is None:
-                    kwargs['blackman_harris_resolution'] = float(data['sinc_fwhm'])
+                    kwargs['blackman_harris_resolution'] = float(data['resolution'])
                 else:
-                    kwargs['blackman_harris_resolution'] = P(data['sinc_fwhm'],vary,bounds=(0,inf))
+                    kwargs['blackman_harris_resolution'] = P(data['resolution'],vary,bounds=(0,inf))
         ## SOLEIL DESIRS FTS boxcar apodisation0
         elif data['filetype'] == 'DESIRS FTS':
             if vary is None:
@@ -1727,10 +1634,10 @@ class Model(Optimiser):
         ## convolve with lorentzian function
         if lorentzian_fwhm is not None:
             y = signal.oaconvolve(y,lineshapes.lorentzian(x,Γ=abs(lorentzian_fwhm)),'same')
-        ## convolve with sinc fucntions corresponding to
+        ## convolve with sinc functions corresponding to
         ## Blackman-Harris apodisation
         if blackman_harris_resolution is not None:
-            twidth = blackman_harris_resolution*0.6
+            twidth = blackman_harris_resolution*0.6*1.2 # factor is confusing 
             if blackman_harris_order == 3:
                 yconv =  0.42323*np.sinc(x/twidth)
                 yconv += 0.5*0.49755*np.sinc(x/twidth-1) 

@@ -60,9 +60,8 @@ class OpusData:
         else:
             raise Exception(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
 
-    def get_resolution(self,kind='fwhm'):
-        """Return spectral resolution as a full-width half-maximum of the sinc
-        function central peak assuming a boxcar apodisation."""
+    def get_resolution(self,kind='resolution'):
+        """Return spectral resolution."""
         ## get spectrum grid step (cm-1)
         retval = ((self.data[f'ScSm Data Parameter']['LXV']
                -self.data[f'ScSm Data Parameter']['FXV'])
@@ -70,17 +69,19 @@ class OpusData:
         ## account for interpolation
         retval = retval*int(self.data['Fourier Transformation']['ZFF'])
         ## fixed to powers of 2 of 1e-3cm-1
-        retval = 2**round(np.log2(retval*1000))/1000
+        # retval = 2**round(np.log2(retval*1000))/1000
         ## convert to full-width half-maximum if requested
-        if kind == 'zero-to-zero':
-            ## distance between central zeros of sinc
+        # if kind == 'zero-to-zero':
+            # ## distance between central zeros of sinc
+            # pass
+        if kind == 'resolution':
+            ## distance between peak and first zero of sinc -- this is
+            ## the definition of resolution in Opus
             pass
-        elif kind == 'peak-to-zero':
-            ## distance between peak and first zero of sinc
-            retval /= 2
         elif kind == 'fwhm':
-            ## convert to fwhm of sinc central peak
-            # retval /= 1.2
+            ## convert to fwhm of sinc central peak 
+           # retval /= 1.2
+            retval *= 1.2
             pass                # confuse
         return retval
 
