@@ -184,19 +184,12 @@ prototypes['conf'] = dict(description="Electronic configuration", kind='U', fmt=
 
 ## partition function
 _valid_Zsource = ("self", "HITRAN", "database")
-def _f0(Zsource):
-    """Check for valid Zsource."""
-    Zsource = np.array(Zsource,dtype=str,ndmin=1)
-    i = np.any([Zsource!=key for key in _valid_Zsource],0)
-    if np.sum(i) > 0:
-        raise Exception(f'Invalid Zsource: {repr(np.unique(Zsource[i]))}. Valid values: {_valid_Zsource}')
-# prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', kind='U', fmt='8s',infer=[((),lambda self:'self')])
+_Zsource_char_length = max(*[len(t) for t in _valid_Zsource])
 def _f2(Zsource):
-    retval = np.asarray(Zsource,dtype=str,)
-    allowed_Zsource = ('self','HITRAN','database')
+    retval = np.asarray(Zsource,dtype=f'U{_Zsource_char_length}')
     for Zsourcei in np.unique(Zsource):
-        if Zsourcei not in allowed_Zsource:
-            raise Exception(f'Invalid Zsource {repr(Zsourcei)}. Allowed Zsource: {repr(allowed_Zsource)}')
+        if Zsourcei not in _valid_Zsource:
+            raise Exception(f'Invalid Zsource: {Zsourcei!r}. Valid: {_valid_Zsource!r}')
     return retval
 prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', cast=_f2,kind='U', fmt='8s',default='self',infer=[])
 
