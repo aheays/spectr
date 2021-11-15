@@ -11,7 +11,7 @@ from numpy import nan,arange,linspace,array
 
 from . import tools
 from .tools import timestamp
-from .exceptions import InferException
+from .exceptions import InferException,NonUniqueValueException
 from . import convert
 from . import optimise
 from .optimise import optimise_method,Parameter,Fixed
@@ -254,7 +254,7 @@ class Dataset(optimise.Optimiser):
         for tkey,tval in self.data_kinds[kind].items():
             self.prototypes[key].setdefault(tkey,tval)
 
-    @optimise_method(format_multi_line=99)
+    @optimise_method(format_multi_line=3)
     def set_spline(
             self,
             xkey,
@@ -568,6 +568,7 @@ class Dataset(optimise.Optimiser):
             value,          # a scalar or Parameter
             index=None,         # only apply to these indices
             match=None,
+            default=None,
             _cache=None,
             **match_kwargs
     ):
@@ -576,14 +577,17 @@ class Dataset(optimise.Optimiser):
         ## cache matching indices
         if self._clean_construct:
             _cache['combined_index'] = self._get_combined_index(index,match,match_kwargs)
+            ## set a default value if key is not currently known
+            if not self.is_known(key) and default is not None:
+                self[key] = default
         combined_index = _cache['combined_index']
         ## set the data
         self.set(key,'value',value,index=combined_index,set_changed_only= True)
-        if self._clean_construct and isinstance(value,Parameter):
+        if isinstance(value,Parameter):
             self.set(key,'unc' ,value.unc ,index=combined_index)
-            self.set(key,'step',value.step,index=combined_index)
-            self.set(key,'vary',False     ,index=combined_index)
-            
+            if self._clean_construct:
+                self.set(key,'step',value.step,index=combined_index)
+                self.set(key,'vary',False     ,index=combined_index)
         # ## set vary to False if set, but only on the first execution
         # if 'not_first_execution' not in _cache:
             # if 'vary' in self._data[key]:
@@ -869,8 +873,7 @@ class Dataset(optimise.Optimiser):
             copy_inferred_data=False,
             **match_kwargs
     ):
-        """Copy all values and uncertainties from source Dataset and update if
-        source changes during optimisation."""
+        """Copy all values and uncertainties from source Dataset."""
         self.clear()            # total data reset
         if keys_re is not None:
             if keys is None:
@@ -1225,9 +1228,9 @@ class Dataset(optimise.Optimiser):
         """Return index of a uniquely matching row."""
         i = self.find(**matching_keys_vals)
         if len(i) == 0:
-            raise Exception(f'No matching row found: {matching_keys_vals=}')
+            raise NonUniqueValueException(f'No matching row found: {matching_keys_vals=}')
         if len(i) > 1:
-            raise Exception(f'Multiple matching rows found: {matching_keys_vals=}')
+            raise NonUniqueValueException(f'Multiple matching rows found: {matching_keys_vals=}')
         return i[0]
 
     def unique_row(self,return_index=False,**matching_keys_vals):
@@ -1831,84 +1834,95 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
 
-    def concatenate(self,new_dataset,keys='old'):
+    def concatenate(self,new_dataset,keys=None,defaults=None):
         """Extend self by new_dataset using keys existing in self. New data updated
         on optimisaion if new_dataset changes."""
+        ## process defaults, keys that are missing a subkey are
+        ## converted to (key,'value').
+        if defaults is None:
+            defaults = {}
+        for key in list(defaults):
+            if isinstance(key,str):
+                defaults[key,'value'] = defaults.pop(key)
+        ## test if there is currently any data
         if len(self.keys()) == 0:
-            self.copy_from(new_dataset)
-            return 
-        ## limit to keys
-        if keys == 'old':
-            keys = list(self.explicitly_set_keys())
-        elif keys == 'new':
-            keys = list(new_dataset.explicitly_set_keys())
-        elif keys == 'all':
-            keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
+            ## if currently no data at all then copy from new_dataset and return
+            if keys is None:
+                keys = new_dataset.keys()
+            self.copy_from(new_dataset,keys)
+            return
         else:
-            keys = keys
-        ## make sure necessary keys are known
-        for key in keys:
-            self.assert_known(key)
-        self.unlink_inferences(keys)
-        for key in list(self):
-            if key not in keys:
-                self.unset(key)
-        ## set new data
-        old_length = len(self)
-        new_length = len(new_dataset)
-        total_length = len(self) + len(new_dataset)
-        self._reallocate(total_length)
-        ## set extending data 
-        for key,data in self._data.items():
-            for subkey in data:
-                if subkey in self.vector_subkinds:
-                    if new_dataset.is_known(key,subkey):
-                        new_val = new_dataset[key,subkey]
-                    elif self._has_attribute(key,subkey,'default'):
-                        new_val = self._get_attribute(key,subkey,'default')
-                    else:
-                        raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
-                    data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
-
-    def join(self,new_dataset):
-        """Join keys form new data set onto this one.  No overlap allowed."""
-        ## error checks
-        if len(self) != len(new_dataset):
-            raise Exception(f'Length mismatch between self and new dataset: {len(self)} and {len(new_dataset)}')
-        i,j = tools.common(self.keys(),new_dataset.keys())
-        if len(i)>0:
-            raise Exception(f'Overlapping keys between self and new dataset: {repr(self.keys()[i])}')
-        ## add from new_dataset
-        for key in new_dataset:
-            if key in self.prototypes:
-                self[key] = new_dataset[key]
-            else:
-                if not self.permit_nonprototyped_data:
-                    raise Exception(f'Key from new dataset is not prototyped in self: {repr(key)}')
-                self._data[key] = deepcopy(new_dataset._data[key])
-
-    @optimise_method()
-    def concatenate_and_optimise(self,new_dataset,keys='old',_cache=None):
-        """Extend self by new_dataset using keys existing in self. New data updated
-        on optimisaion if new_dataset changes."""
-        if self._clean_construct and 'total_length' not in _cache:
-            ## concatenate data if it hasn't been done before
-            ## limit to keys
-            if keys == 'old':
-                keys = list(self.explicitly_set_keys())
-            elif keys == 'new':
-                keys = list(new_dataset.explicitly_set_keys())
-            elif keys == 'all':
-                keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
+            ## else concatenate to existing data
+            if keys is None:
+                ## get combined key list if not given
+                keys = list({*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()})
+            ## make sure necessary keys are known
+            for key in keys:
+                self.assert_known(key)
+            self.unlink_inferences(keys)
+            for key in list(self):
+                if key not in keys:
+                    self.unset(key)
+            ## set new data
             old_length = len(self)
             new_length = len(new_dataset)
             total_length = len(self) + len(new_dataset)
+            self._reallocate(total_length)
+            ## set extending data 
+            for key,data in self._data.items():
+                for subkey in data:
+                    if subkey in self.vector_subkinds:
+                        if new_dataset.is_known(key,subkey):
+                            new_val = new_dataset[key,subkey]
+                        elif self._has_attribute(key,subkey,'default'):
+                            new_val = self._get_attribute(key,subkey,'default')
+                        elif (key,subkey) in defaults:
+                            new_val = defaults[key,subkey]
+                        else:
+                            raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
+                        data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
+
+    @optimise_method()
+    def concatenate_and_optimise(self,new_dataset,keys=None,_cache=None):
+        """Extend self by new_dataset using keys existing in self. New data updated
+        on optimisaion if new_dataset changes."""
+        # if self._clean_construct and 'total_length' not in _cache:
+        #     if keys is None:
+        #         keys = list({*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()})
+        #     # ## concatenate data if it hasn't been done before
+        #     # ## limit to keys
+        #     # if keys == 'old':
+        #         # keys = list(self.explicitly_set_keys())
+        #     # elif keys == 'new':
+        #         # keys = list(new_dataset.explicitly_set_keys())
+        #     # elif keys == 'all':
+        #         # keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
+        #     old_length = len(self)
+        #     new_length = len(new_dataset)
+        #     total_length = len(self) + len(new_dataset)
+        #     self.concatenate(new_dataset,keys)
+        #     _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
+        #     self.permit_indexing = False
+        if self._clean_construct and 'new_length' not in _cache:
+            # if keys is None:
+                # keys = list({*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()})
+            # ## concatenate data if it hasn't been done before
+            # ## limit to keys
+            # if keys == 'old':
+                # keys = list(self.explicitly_set_keys())
+            # elif keys == 'new':
+                # keys = list(new_dataset.explicitly_set_keys())
+            # elif keys == 'all':
+                # keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
+            _cache['old_length'] = len(self)
+            _cache['new_length'] = len(self) + len(new_dataset)
             self.concatenate(new_dataset,keys)
-            _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
             self.permit_indexing = False
+            _cache['keys'] = [*self.keys()]
+            
         else:
             ## update data in place
-            index = slice(_cache['old_length'],_cache['total_length'])
+            index = slice(_cache['old_length'],_cache['new_length'])
             for key in _cache['keys']:
                 self.set(key,'value',new_dataset[key],index,set_changed_only=True)
                 if self.is_set(key,'unc'):
@@ -1993,6 +2007,23 @@ class Dataset(optimise.Optimiser):
             self.set(key,'value',keys_vals[key],index)
         for (key,subkey),val in subkeys_vals.items():
             self.set(key,subkey,val,index)
+
+    def join(self,new_dataset):
+        """Join keys form new data set onto this one.  No overlap allowed."""
+        ## error checks
+        if len(self) != len(new_dataset):
+            raise Exception(f'Length mismatch between self and new dataset: {len(self)} and {len(new_dataset)}')
+        i,j = tools.common(self.keys(),new_dataset.keys())
+        if len(i)>0:
+            raise Exception(f'Overlapping keys between self and new dataset: {repr(self.keys()[i])}')
+        ## add from new_dataset
+        for key in new_dataset:
+            if key in self.prototypes:
+                self[key] = new_dataset[key]
+            else:
+                if not self.permit_nonprototyped_data:
+                    raise Exception(f'Key from new dataset is not prototyped in self: {repr(key)}')
+                self._data[key] = deepcopy(new_dataset._data[key])
 
     def _reallocate(self,new_length):
         """Lengthen data arrays."""

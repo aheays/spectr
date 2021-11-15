@@ -9,3 +9,8 @@ class DatabaseException(InferException):
 class InvalidEncodingException(InferException):
     """Invalid encoding of level or transition name."""
     pass
+
+class NonUniqueValueException(Exception):
+    """A non-unique value is found in a Dataset when a unique value is expected.."""
+    pass
+

@@ -10,7 +10,7 @@ from . import tools
 from . import dataset
 from . import kinetics
 from . import convert
-from .exceptions import DatabaseException
+from .exceptions import DatabaseException,NonUniqueValueException
 
 ## module data and caches
 from . import kinetics
@@ -69,7 +69,10 @@ def get_species_data(species):
     if _species_data_cache is None:
         _species_data_cache = dataset.load(data_directory+'/species.psv')
     data = _species_data_cache
-    retval = data.unique_row(species=normalise_species(species))
+    try:
+        retval = data.unique_row(species=normalise_species(species))
+    except NonUniqueValueException as err:
+        raise DatabaseException(err)
     return retval
 
 @tools.vectorise()
