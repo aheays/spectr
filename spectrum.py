@@ -787,7 +787,7 @@ class Model(Optimiser):
                     if verbose:
                         print(f'add_line: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
-                else:
+                elif nchanged > 0:
                     ## a few lines have changed, update these only
                     if verbose:
                         print(f'add_line: {nchanged} lines have changed, recalculate these')
@@ -802,6 +802,9 @@ class Model(Optimiser):
                         y = y * ynew / yold
                     else:
                         y = y + ynew - yold
+                else:
+                    ## nothing changed keep old spectrum
+                    pass
             else:
                 ## nothing changed keep old spectrum
                 pass
@@ -2112,16 +2115,54 @@ class Spectrum(Dataset):
 
 class FitAbsorption():
 
+    """Fit molecular absorption to an experimental spectrum. All data is
+    stored in the "parameters" attribute which has valid values.  Most
+    numerical values can be included replaced with an optimisation
+    parameter, e.g., xscale=1 for a fixed xscaling or xscal=P(1,True)
+    to fit this value.
+
+    Values that may appear in parameters dict:
+
+    (a/b is a subdict, e.g., parameters['a']['b'])
+
+     - 'filename': path to experimental data (required)
+     - 'xbeg': experimental from this value (defaults to beginning of file)
+     - 'xend': experimental to this value (defaults to endof file)
+     - 'scalex': scale x-axis of experimental data by this amount
+     - 'noise'/'rms': noise rms, used to compute uncertainties,
+                      default value is fitted to the last 20cm-1 of the experimental
+                      spectrum (requiring no absorption in this region to be
+                      accurate, or be settiung noise/xbeg noise/xend)
+     - 'interpolate_model': Interpolate to at least this grid (cm-1)
+     - 'Teq': Equiblibrium temperature
+     - 'N'/species: Column density of species by name (cm-2)
+     - 'pair'/species: Effect air pressure for broadeing of species by name (Pa)
+     - 'intensity'/'spline': Spline points defining background intensity
+                             [[x0,y0],[x1,y1],...]
+     - 'intensity'/'spline_step': Separation of spline grid for fitting background 
+                                  intensity if 'intensity'/'spline' is not present.
+     - 'intensity'/'spline_order': Order of spline
+     - 'sinusoid'/'spline': Spline points defining background sinusoid intensity
+                            [[x0,amplitude0,frequency0,phase0],...]
+     - 'sinusoid'/'spline_step': Separation of spline grid for fitting sinusoid 
+                                 intensity if 'intensity'/'sinusoid' is not present.
+     - 'instrument_function': Parameters controlling the instrumental lineshape.
+                              These are the arguments of convolve_with_instrument_function
+                              and will be deduced automatically (hopefully) if
+                              not present.
+    
+
+"""
+
     def __init__(
             self,
             name='fit_reference_absorption',
-            parameters=None,
-            verbose=False,
-            make_plot=True,
-            max_nfev=5,
-            figure_number=1,
-            ncpus=1,
-            **more_parameters
+            parameters=None,    # pass in values to parameters
+            verbose=False,      # print more information for debugging
+            make_plot=True,     # plot results of every fit
+            max_nfev=20,         # iterate optimiser up to this many times
+            ncpus=1,            # compute Voigt spectrum with 1 or more cpus
+            **more_parameters   # some other values in parameters as kwargs
     ):
         self.name = name
         ## provided parameters
@@ -2133,7 +2174,7 @@ class FitAbsorption():
         ## initialise control variables
         self.verbose = verbose
         self.make_plot =  make_plot
-        self.figure_number = figure_number
+        self.max_nfev = max_nfev
         self.ncpus = ncpus
         self.experiment = None
         self.model = None
@@ -2214,7 +2255,7 @@ class FitAbsorption():
     def __getitem__(self,key):
         return self.parameters[key]
 
-    def __set__(self,key,value):
+    def __setitem__(self,key,value):
         self.parameters[key] = value
 
     def pop(self,key):
@@ -2223,7 +2264,13 @@ class FitAbsorption():
             self.parameters.pop(key)
 
     def __str__(self):
-        retval = tools.dict_expanded_repr(self.parameters,newline_depth=3)
+        retval = tools.format_dict(
+            self.parameters,
+            newline_depth=3,
+            # blank_depth=-1,
+            # _depth=0,
+            # keys=None,
+        )
         return retval
 
     def verbose_print(self,*args,**kwargs):
@@ -2259,43 +2306,44 @@ class FitAbsorption():
         # self.plot(model,model_no_absorption)
         # self.model = model
 
-    def fit_region(self,max_nfev=5,**make_model_kwargs):
-        """Full model."""
-        print('fit_region')
+    def fit(self,**make_model_kwargs):
+        """Fit a model.  Defaults are the same as in make_model."""
+        print(f'fit {make_model_kwargs=}')
         model = self.make_model(**make_model_kwargs)
-        model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
+        model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=self.max_nfev)
         if self.make_plot:
             self.plot(model)
 
-    def fit_regions(self,xbeg=-inf,xend=inf,width=100,overlap_factor=0.1,max_nfev=5,**make_model_kwargs):
+    def fit_regions(self,xbeg=-inf,xend=inf,width=1000,overlap_factor=0.1,**make_model_kwargs):
         """Full model."""
-        print('fit_regions')
+        print(f'fit_regions {xbeg=} {xend=} {width=} {overlap_factor=} {make_model_kwargs=}')
         p = self.parameters
-        ## get overlapping regions
-        # xbeg = max(xbeg,p['xbeg'])
-        # xend = min(xend,p['xend'])
+        ## determine overlapping region intervals between xbeg and
+        ## xend
+        xbeg = max(xbeg,p['xbeg'])
+        xend = min(xend,p['xend'])
         xi = linspace(xbeg,xend,int((xend-xbeg)/width)+2)
         xbegs = copy(xi[:-1])
         xends = copy(xi[1:])
         xbegs[1:] -= (width*overlap_factor)/2
         xends[:-1] += (width*overlap_factor)/2
-        for region in zip(xbegs,xends):
+        regions = [*zip(xbegs,xends)]
+        for iregion,region in enumerate(regions):
+            print(f'region {iregion:3d} of {len(regions)} {region!r}')
             model = self.make_model(region,**make_model_kwargs)
-            model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=max_nfev)
+            model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=self.max_nfev)
             if self.make_plot:
-                self.plot()
+                self.plot(ax=plotting.subplot(iregion))
 
     def fit_species(
             self,
-            species_to_fit='default',
-            regions='lines',
-            fit_species_individually=True,
-            max_nfev=20,
+            species_to_fit='default', # 'default','existing', or a list of species names
+            regions='lines',          # 'lines','bands','full' or a list of regions [[xbeg0,xend0],[xbeg1,xend1],...]'
             **make_model_kwargs,
     ):
-        """Fit species_to_fit individually using their 'lines' or 'bands'
-        preset regions, or the 'full' region."""
-        print('fit_species',regions,end=" ")
+        """Fit list of species individually from one another using their
+        preset 'lines' or 'bands' regions, or the full region."""
+        print(f'fit_species {species_to_fit=} {regions=} {make_model_kwargs=}')
         p = self.parameters
         ## get default species list
         if species_to_fit is None:
@@ -2308,6 +2356,7 @@ class FitAbsorption():
         if self.make_plot:
             plotting.plt.clf()
             isubplot = 0
+        ## fit species one by one
         for species in species_to_fit:
             print(species,end=" ",flush=True)
             ## get region list
@@ -2321,17 +2370,26 @@ class FitAbsorption():
                 species_regions = [[*regions]]
             else:
                 species_regions = regions
+            ## make and optimise models for this species
             main = Optimiser(name=f'fit_species_{species}')
             models = []
-            ref_models = []
             for region in species_regions:
-                ## make optimise model
                 model = self.make_model(region,[species],**make_model_kwargs)
                 main.add_suboptimiser(model)
                 models.append(model)
-                ref_models.append(self.make_model(region,[species],neglect_species_to_fit=True))
-            ## optimise plot indiviudal speciesmodels
-            residual = main.optimise(make_plot=self.make_plot,max_nfev=max_nfev,verbose=self.verbose)
+            residual = main.optimise(
+                make_plot=self.make_plot,
+                max_nfev=self.max_nfev,
+                verbose=self.verbose)
+            ## make reference models neglecting the fitted species
+            ref_models = []
+            for region in species_regions:
+                ref_models.append(
+                    self.make_model(
+                        region,[species],
+                        neglect_species_to_fit=True,
+                        **make_model_kwargs))
+            ## plot 
             if self.make_plot:
                 for imodel,(model,ref_model) in enumerate(zip(models,ref_models)):
                     self.plot(model=model,
@@ -2339,115 +2397,6 @@ class FitAbsorption():
                               ax=plotting.subplot(isubplot))
                     isubplot += 1
         print()
-
-    # def auto_fit(
-            # self,
-            # species_to_fit=None,
-            # prefit=True,
-            # cycles=3,
-            # regions='bands',
-            # reference_species='H2O',
-            # max_nfev=5,
-            # fit_intensity=True,
-            # fit_sinusoid=True,
-            # fit_full_model=False,
-            # fit_instrument=True,
-            # fit_scalex=False,
-            # fit_temperature=False,
-    # ):
-        # """Fit spectrum in a standardised way."""
-        # print('auto_fit')
-        # time = timestamp()
-        # ## load experimental spectrum
-        # if self.experiment is None:
-            # self.load_experiment()
-        # if prefit:
-            # ## delete existing background and species data
-            # ## existing fit data
-            # for key in ('pair','N'):
-                # if key in self.parameters:
-                    # for species in species_to_fit:
-                        # if species in self.parameters[key]:
-                            # self.parameters[key].pop(species)
-            # if fit_instrument and 'instrument_function' in self.parameters:
-                # self.parameters.pop('instrument_function')
-            # if fit_sinusoid and 'intensity_sinusoid' in self.parameters:
-                # self.parameters.pop('intensity_sinusoid')
-            # if fit_intensity and 'intensity' in self.parameters:
-                # self.parameters.pop('intensity')
-            # ## fit reference species -- species first then insturment function
-            # if fit_instrument or fit_temperature:
-                # self.fit_species(
-                    # reference_species,
-                    # name='prefit_reference_species',
-                    # regions=regions,
-                    # fit_N=True,
-                    # fit_pair=True,
-                    # fit_intensity=fit_intensity,
-                    # fit_instrument=False,
-                    # fit_temperature=False,
-                    # max_nfev=max_nfev,
-                # )
-                # self.fit_species(
-                    # reference_species,
-                    # name='prefit_instrument_function_temperature',
-                    # regions=regions,
-                    # fit_N=False,
-                    # fit_pair=False,
-                    # fit_intensity=False,
-                    # fit_instrument=fit_instrument,
-                    # fit_temperature=fit_temperature,
-                    # max_nfev=max_nfev,
-                # )
-            # ## rough fitted species
-            # self.fit_species(
-                # species_to_fit,
-                # name='prefit_species',
-                # regions=regions,
-                # fit_N=True,
-                # fit_pair=True,
-                # fit_intensity=fit_intensity,
-                # max_nfev=max_nfev,)
-        # ## then cycle on careful fit
-        # for n in range(cycles):
-            # ## background
-            # if fit_sinusoid:
-                # self.auto_sinusoid()
-            # if fit_sinusoid or fit_intensity:
-                # self.fit_regions(
-                    # fit_intensity=fit_intensity,
-                    # fit_sinusoid=fit_sinusoid,
-                    # max_nfev=max_nfev,)
-            # ## fit reference species
-            # if fit_instrument or fit_scalex or fit_temperature:
-                # self.fit_species(
-                    # reference_species,
-                    # regions=regions,
-                    # fit_N=True,
-                    # fit_pair=True,
-                    # fit_scalex=fit_scalex,
-                    # fit_instrument=fit_instrument,
-                    # fit_intensity=fit_intensity,
-                    # fit_sinusoid=fit_sinusoid,
-                    # fit_temperature=fit_temperature,
-                    # max_nfev=max_nfev,)
-            # ## fit each species individually
-            # self.fit_species(
-                # species_to_fit,
-                # regions=regions,
-                # fit_N=True,
-                # fit_pair=True,
-                # fit_intensity=fit_intensity,
-                # fit_sinusoid=fit_sinusoid,
-                # max_nfev=max_nfev,)
-        # ## make final model
-        # if fit_full_model:
-            # self.full_model(
-                # species_to_fit,
-                # fit_N=True,
-                # fit_pair=True,
-                # max_nfev=max_nfev,)
-        # print(f'Time to auto_fit: {timestamp()-time:12.6f} s')
 
     def plot(self,model=None,ref_model=None,ax=None,**plot_kwargs):
         """Plot the results of some models on individual subplots. Residuals
@@ -2483,21 +2432,23 @@ class FitAbsorption():
 
     def make_model(
             self,
-            region='full',
-            species_to_fit=None,
-            species_to_model='existing',
-            fit_intensity=False,
-            fit_shift=False,
-            fit_N=False,
-            fit_pair=False,
-            fit_scalex=False,
-            fit_sinusoid=False,
-            fit_instrument=False,
-            fit_temperature=False,
-            neglect_species_to_fit=False,
-            verbose=False,
+            region='full',       # 'full', or (xbeg,xend)
+            species_to_fit=None, # None or a list of species names
+            species_to_model='existing', # 'existing', 'default' or a list of names
+            fit_intensity=False,         # fit background intensity spline
+            fit_shift=False,             # fit baseline shift
+            fit_N=False,                 # fit species_to_fit column densities
+            fit_pair=False,              # fit species_to_fit pressure broadening (air coefficients)
+            fit_scalex=False,            # fit uniformly scaled frequency  
+            fit_sinusoid=False,          # fit sinusoidally varying intensity
+            fit_instrument=False,        # fit instrumental broadening
+            fit_temperature=False,       # fit excitation/Doppler temperature
+            neglect_species_to_fit=False, # special cse: do not even include species in species_to_fit
+            verbose=False,                # print more info for debugging
     ):
-        ## get parameters — protect from if necessary
+        """Make a model for fitting to the experimental spectrum.  Probably
+        not called directly, instead used by various fit* methods."""
+        ## get parameters — protect from changes if necessary
         p = self.parameters
         if neglect_species_to_fit:
             p = deepcopy(p)
@@ -2524,9 +2475,9 @@ class FitAbsorption():
                 p['noise']['rms'] = self.experiment.experimental_parameters['noise_rms']
             self.experiment.experimental_parameters['noise_rms'] = p['noise']['rms']
             self.experiment.residual_scale_factor = 1/p['noise']['rms']
-            ## bin data for speed
-            if 'bin_experiment' in p:
-                self.experiment.bin_data(width=p['bin_experiment'],mean=True)
+            # ## bin data for speed
+            # if 'bin_experiment' in p:
+                # self.experiment.bin_data(width=p['bin_experiment'],mean=True)
         ## get region
         if region == 'full':
             region = (self.parameters['xbeg'],self.parameters['xend'])
@@ -2535,15 +2486,17 @@ class FitAbsorption():
         p.setdefault('N',{})
         if species_to_fit is None:
             species_to_fit = []
-        if species_to_fit == 'default':
+        elif species_to_fit == 'default':
             species_to_fit = self.default_species
-        if species_to_fit == 'existing':
+        elif species_to_fit == 'existing':
             species_to_fit = list(p['N'])
+        elif isinstance(species_to_fit,str):
+            species_to_fit = [species_to_fit]
         ## whether to adjust experiment frequency scale
         p['scalex'].vary = fit_scalex
         ## start model
         model = Model(
-            name='_'.join(['make_model',str(int(xbeg)),str(int(xend)),*species_to_fit]),
+            name='_'.join(['model',str(int(xbeg)),str(int(xend)),*species_to_fit]),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
         if not neglect_species_to_fit:
@@ -2589,7 +2542,7 @@ class FitAbsorption():
                 Teq=p['Teq'],
                 Nchemical_species=p['N'][species],
                 pair=p['pair'][species],
-                match={'min_S296K':min_S296K},
+                match={'min_S296K':min_S296K,},
                 ncpus=self.ncpus,
                 nfwhmL=3000,
                 lineshape='voigt',)
@@ -2611,10 +2564,9 @@ class FitAbsorption():
         ## problem that adds signal and shifts zero baseline
         if fit_shift or 'shift' in p:
             if 'shift' not in p:
-                p['shift'] = {'spline_step':10000, 'spline_order':3,}
-                xspline = linspace(p['xbeg'], p['xend'],
-                                   int((p['xend']-p['xbeg'])/p['shift']['spline_step'])+2)
-                p['shift']['spline'] = [[tx,P(0.0,False,1e-5)] for tx in xspline]
+                p['shift'] = {'spline_step':500, 'spline_order':3,}
+                xspline = linspace(p['xbeg'],p['xend'],int((p['xend']-p['xbeg'])/p['shift']['spline_step'])+2)
+                p['shift']['spline'] = [[tx,P(0,False,1e-7)] for tx in xspline]
             model.autovary_in_range(p['shift']['spline'],vary=fit_shift)
             model.add_spline(knots=p['shift']['spline'],order=p['shift']['spline_order'])
 
@@ -2649,7 +2601,7 @@ class FitAbsorption():
         return model
         
     def load_parameters(self,filename):
-        """Save parameters to a file."""
+        """Load parameters from a file."""
         self.parameters = tools.load_dict(filename,'parameters')
         
     def save_parameters(self,filename):
@@ -2657,6 +2609,8 @@ class FitAbsorption():
         tools.save_dict(filename,parameters=self.parameters)
 
     def save(self,directory):
+        """Save parameters and experimental and model spectrum to a
+        directory."""
         tools.mkdir(directory,trash_existing=True)
         self.save_parameters(f'{directory}/parameters.py')
         if self.model is not None:
@@ -2682,68 +2636,4 @@ def _similar_within_fraction(x,y,maxfrac=1e14):
     else:
         total_fractional_range = abs((fracmax-fracmin)/((fracmax+fracmin)/2))
     return total_fractional_range < maxfrac
-
-# def auto_fit(
-        # filename,
-        # xbeg=600,
-        # xend=6000,
-        # species_to_fit=('H2O','CO','CO2','NH3','SO2','H2S','CH4','CS2','HCN', 'N2O','NO','NO2','OCS','C2H2','C2H6','HCOOH',),
-        # verbose=False,
-        # make_plot=True,
-        # prefit=True,
-        # cycles=3,
-        # fit_intensity=True,
-        # fit_sinusoid=False,
-        # fit_instrument=True,
-        # fit_scalex=False,
-        # fit_temperature=False,
-        # regions='bands',
-        # fit_full_model=False,
-        # reference_species='H2O',
-        # interpolate_model=0.001,
-        # max_nfev=5,
-        # save_to_directory=None
-# ):
-    # ## make a  FitAbsorption
-    # o = FitAbsorption(
-        # filename=filename,
-        # xbeg=xbeg,
-        # xend=xend,
-        # verbose=verbose,
-        # make_plot=make_plot,
-        # interpolate_model=interpolate_model,
-        # )
-    # o.figure_number = plotting.gcf().number
-    # o.ncpus = 1
-    # ## auto fit it
-    # o.auto_fit(
-        # species_to_fit=species_to_fit,
-        # prefit=prefit,
-        # cycles=cycles,
-        # fit_intensity=fit_intensity,
-        # fit_sinusoid=fit_sinusoid,
-        # fit_instrument=fit_instrument,
-        # fit_temperature=fit_temperature,
-        # fit_scalex=fit_scalex,
-        # regions=regions,
-        # fit_full_model=fit_full_model,
-        # reference_species=reference_species,
-        # max_nfev=max_nfev,
-    # )
-    # ## full model
-    # model,model_no_absorption = o.full_model()
-    # data = Dataset(
-        # data={
-            # 'x':model.x,
-            # 'ymod':model.y,
-            # 'yexp':model.yexp,
-            # 'yres':model.get_residual(),
-            # 'yres_no_absorption':model_no_absorption.get_residual(),
-        # })
-    # ## save fitted parameters and spectrum to a directory
-    # if save_to_directory:
-        # o.save_parameters(f'{save_to_directory}/parameters.py')
-        # data.save(f'{save_to_directory}/data',filetype='directory')
-        
-    # return o,data
 
