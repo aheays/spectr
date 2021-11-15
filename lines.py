@@ -294,8 +294,6 @@ prototypes['E_u']['infer'].append((('E_l','ν'),lambda self,El,ν: El+ν))
 prototypes['Ee_l']['infer'].append((('Ee_u','ν'),lambda self,Eu,ν: Eu-ν))
 prototypes['Ee_u']['infer'].append((('Ee_l','ν'),lambda self,El,ν: El+ν))
 
-
-
 ## vibrational transition frequencies
 prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
 prototypes['λv'] = dict(description="Electronic-vibrational transition wavelength",units="nm",kind='f', fmt='>11.4f', infer=[(('νv',), lambda self,νv: convert_units(νv,'cm-1','nm'),)],)
@@ -485,6 +483,7 @@ class Generic(levels.Base):
             ax=None,
             plot_kwargs=None,
             plot_labels=False,
+            plot_legend=None,
             zkeys=(),
             **calculate_spectrum_kwargs
     ):
@@ -503,9 +502,9 @@ class Generic(levels.Base):
                 ax.plot(
                     x,y,
                     label=tools.dict_to_kwargs(qn),
-                    # label=self._encode_qn(qn),
                     **plot_kwargs)
-            plotting.legend(loc='upper left')
+            # if plot_legend or (plot_legend is None and not plot_labels):
+                # plotting.legend(loc='upper left')
         else:
             ## single spectrum only
             x,y = spectrum
@@ -522,7 +521,7 @@ class Generic(levels.Base):
                 length=-0.02,
                 labelsize='xx-small',namesize='x-small', namepos='float',)
             ax.set_ylim(ymin,ymax+ystep*(len(branch_annotations)+1))
-        if not plot_labels:
+        if plot_legend or (plot_legend is None and not plot_labels):
             plotting.legend(ax=ax,fontsize='x-small')
         return ax
 
@@ -1111,16 +1110,14 @@ class Generic(levels.Base):
             matchu=None,     # only use matching upper levels
             matchl=None,     # only use matching lower levels
             add_duplicate=False, # whether to add a duplicate if line is already present
-            # _cache=None,
             optimise=False,
+            concatenate=False,
             **defaults
     ):
         """Combine upper and lower levels into a line list, only including
         dipole-allowed transitions. SLOW IMPLEMENTATION"""
-        # if 'has_run' in cache:
-            # ## only run once
-            # return
-        # cache['has_run'] = True
+        ## lower level can be a string-encoded level, e.g.,
+        ## "¹⁴N¹⁵N_X(v=0,J=3)"
         if isinstance(levell,str):
             qn = quantum_numbers.decode_linear_level(levell)
             levell = database.get_level(qn['species'])
@@ -1145,7 +1142,7 @@ class Generic(levels.Base):
             ## indices of common species
             tiu = iu[levelu['species'][iu]==species]
             til = il[levell['species'][il]==species]
-            for Δefabs,ΔJ in ((0,+1), (0,-1),(2,0),):
+            for Δefabs,ΔJ in ((0,+1),(0,-1),(2,0)):
                 ## look for allowed Δef/ΔJ transitions
                 for ju in tiu:
                     for jl in til[(np.abs(levell['ef',til]-levelu['ef',ju]) == Δefabs)
@@ -1169,7 +1166,10 @@ class Generic(levels.Base):
         for key in defaults:
             data[key] = defaults[key]
         ## add to self
-        self.concatenate(data)
+        if concatenate:
+            self.concatenate(data)
+        else:
+            self.copy_from(data)
         ## set data to be copied
         if optimise:
             self.copy_level_data(levelu)
