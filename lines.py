@@ -288,11 +288,11 @@ prototypes['ν'] = dict(description="Transition wavenumber",units="cm-1", kind='
 ])
 
 ## further infer fucntion connecting energy and frequency
-prototypes['ν']['infer'].extend([(('E_u','E_l'),lambda self,Eu,El: Eu-El),(('Ee_u','Ee_l'),lambda self,Eu,El: Eu-El)])
-prototypes['E_l']['infer'].append((('E_u','ν'),lambda self,Eu,ν: Eu-ν))
-prototypes['E_u']['infer'].append((('E_l','ν'),lambda self,El,ν: El+ν))
-prototypes['Ee_l']['infer'].append((('Ee_u','ν'),lambda self,Eu,ν: Eu-ν))
-prototypes['Ee_u']['infer'].append((('Ee_l','ν'),lambda self,El,ν: El+ν))
+prototypes['ν0']['infer'].extend([(('E_u','E_l'),lambda self,Eu,El: Eu-El),(('Ee_u','Ee_l'),lambda self,Eu,El: Eu-El)])
+prototypes['E_l']['infer'].append((('E_u','ν0'),lambda self,Eu,ν0: Eu-ν0))
+prototypes['E_u']['infer'].append((('E_l','ν0'),lambda self,El,ν0: El+ν0))
+prototypes['Ee_l']['infer'].append((('Ee_u','ν0'),lambda self,Eu,ν0: Eu-ν0))
+prototypes['Ee_u']['infer'].append((('Ee_l','ν0'),lambda self,El,ν0: El+ν0))
 
 ## vibrational transition frequencies
 prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
