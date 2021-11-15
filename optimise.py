@@ -1121,14 +1121,14 @@ class Parameter():
 
     def __repr__(self):
         retval = 'P('+format(self.value,self.fmt)
-        retval += ','+repr(self.vary)
+        retval += ','+format(repr(self.vary),'5s')
         retval += ','+format(self.step,'0.2g')
         include_unc = self.unc not in (0,nan)
         include_bounds = self.bounds[0]!=-inf  or self.bounds[1]!=inf
         if include_unc or include_bounds:
             retval += ','+format(self.unc,'0.2g')
         if include_bounds:
-            retval += f', ({self.bounds[0]:0.2g},{self.bounds[1]:0.2g})'
+            retval += f',({self.bounds[0]:0.2g},{self.bounds[1]:0.2g})'
         retval += ')'
         return retval
 
