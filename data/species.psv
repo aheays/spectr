@@ -1,102 +1,113 @@
 [classname]
 levels.Generic
 [data]
-
-species   | chemical_species | mass          | isotopologue_ratio | isotopologue_ratio:ref | reduced_mass | point_group | Inuclear | Eref      | Eref:ref  | E0
-¹²C       | C                | 12.0107       | nan                |                        | nan          | K           | nan      |           |           | nan
-¹⁶O       | O                | 15.994915     | nan                |                        | nan          | K           | nan      |           |           | nan
-¹⁷O       | O                | 16.999131     | nan                |                        | nan          | K           | nan      |           |           | nan
-¹⁸O       | O                | 17.999159     | nan                |                        | nan          | K           | nan      |           |           | nan
-³²S       | S                | 31.97207070   | nan                |                        | nan          | K           | nan      |           |           | nan
-³³S       | S                | 32.97145843   | nan                |                        | nan          | K           | nan      |           |           | nan
-³⁴S       | S                | 33.96786665   | nan                |                        | nan          | K           | nan      |           |           | nan
-³⁶S       | S                | 35.96708062   | nan                |                        | nan          | K           | nan      |           |           | nan
-¹⁴N       | N                | 14.003074     | nan                |                        |              | K           |          |           |           | nan
-¹⁵N       | N                | 15.0001088982 | nan                |                        |              | K           |          |           |           | nan
-Na        | Na               | 22.9898       | nan                |                        |              | K           |          |           |           | nan
-Ar        | Ar               | 39.948        | nan                |                        |              | K           |          |           |           | nan
-¹²C¹⁶O    | CO               | 28.           | 0.986544           | NIST                   | 6.8562       | C∞v         | nan      | 1081.7756 | coxon2004 | 1081.775631
-¹²C¹⁷O    | CO               | 29.           | 0.000367867        | NIST                   | 7.0343       | C∞v         | nan      | 1068.0310 | coxon2004 | 1068.031015
-¹²C¹⁸O    | CO               | 30.           | 0.00197822         | NIST                   | 7.1998       | C∞v         | nan      | 1055.7172 | coxon2004 | 1055.717274
-¹³C¹⁶O    | CO               | 29.           | 0.0110836          | NIST                   | 7.1724       | C∞v         | nan      | 1057.7268 | coxon2004 | 1057.726807
-¹³C¹⁷O    | CO               | 30.           | 4.13292e-06        | NIST                   | 7.3675       | C∞v         | nan      | 1043.6628 | coxon2004 | 1043.662809
-¹³C¹⁸O    | CO               | 31.           | 2.2225e-05         | NIST                   | 7.5493       | C∞v         | nan      | 1031.0556 | coxon2004 | 1031.055619
-¹⁴C¹⁶O    | CO               | 29.998        | 0                  |                        | 7.46648      | C∞v         | nan      | 1036.7443 | coxon2004 | 1036.744345
-¹⁴C¹⁷O    | CO               | 31.002        | 0                  |                        | 7.6782       | C∞v         | nan      | 1022.3893 | coxon2004 | 1022.389332
-¹⁴C¹⁸O    | CO               | 32.002        | 0                  |                        | 7.8758       | C∞v         | nan      | 1009.5143 | coxon2004 | 1009.514309
-¹H₂       | H2               | 2.01588       | nan                |                        | 0.50397      | D∞h         | 0.5      |           |           | nan
-²H₂       | H2               | 4.028         | nan                |                        | 1.007        | D∞h         | 1        |           |           | nan
-D₂        | H2               | 4.028         | nan                |                        | 1.007        | D∞h         | 1        |           |           | nan
-HD        | H2               | 3.02194       | nan                |                        | 0.671751     | C∞v         | nan      |           |           | nan
-¹H²H      | H2               | 3.02194       | nan                |                        | 0.671751     | C∞v         | nan      |           |           | nan
-¹⁴N₂      | N2               | 28.006147     | nan                |                        | 7.0015372    | D∞h         | 1        | 1175.700  |           | nan
-¹⁴N¹⁵N    | N2               | 29.0032       | nan                |                        | 7.242227222  | C∞v         | nan      | 1156.091  |           | nan
-¹⁵N₂      | N2               | 30.0002       | nan                |                        | 7.50005465   | D∞h         | 0.5      | 1135.103  |           | nan
-OH        | OH               | 17.0073       | nan                |                        | 0.948169     | C∞v         | nan      |           |           | nan
-OD        | OH               | 18.0135       | nan                |                        | 1.7889       | C∞v         | nan      |           |           | nan
-OH+       | OH+              | 17.003288     | nan                |                        | 0.95         | C∞v         | nan      |           |           | nan
-CS        | CS               | 44.0767       | nan                |                        | 8.73784      | C∞v         | nan      |           |           | nan
-¹⁴N¹⁶O    | NO               | 29.997990     | nan                |                        | 7.4664331    | C∞v         | nan      |           |           | nan
-¹²C¹⁴N    | CN               | 26.018        | nan                |                        | 6.4661       | C∞v         | nan      |           |           | nan
-³²S¹⁶O    | SO               | 47.966984     | nan                |                        | 10.6613      | C∞v         | 0        | 573.79105 |           | nan
-³³S¹⁶O    | SO               | 48.9664       | nan                |                        | 10.7702      | C∞v         | 0        | 570.89075 |           | nan
-³⁴S¹⁶O    | SO               | 49.9628       | nan                |                        | 10.8744      | C∞v         | 0        | 568.15644 |           | nan
-³⁶S¹⁶O    | SO               | 51.962        | nan                |                        | 11.0714      | C∞v         | 0        | 563.09265 |           | nan
-³²S¹⁷O    | SO               | 48.9712       | nan                |                        | 11.0983      | C∞v         | 0        |           |           | nan
-³³S¹⁷O    | SO               | 49.9706       | nan                |                        | 11.2163      | C∞v         | 0        |           |           | nan
-³⁴S¹⁷O    | SO               | 50.967        | nan                |                        | 11.3294      | C∞v         | 0        |           |           | nan
-³⁶S¹⁷O    | SO               | 52.9662       | nan                |                        | 11.5434      | C∞v         | 0        |           |           | nan
-³²S¹⁸O    | SO               | 49.9712       | nan                |                        | 11.516       | C∞v         | 0        |           |           | nan
-³³S¹⁸O    | SO               | 50.9706       | nan                |                        | 11.6431      | C∞v         | 0        |           |           | nan
-³⁴S¹⁸O    | SO               | 51.967        | nan                |                        | 11.765       | C∞v         | 0        |           |           | nan
-³⁶S¹⁸O    | SO               | 53.9662       | nan                |                        | 11.996       | C∞v         | 0        |           |           | nan
-¹H³⁵Cl    | HCl              | 35.9768       | nan                |                        | 0.979701     | C∞v         | nan      |           |           | nan
-¹H³⁷Cl    | HCl              | 38            | nan                |                        |              | C∞v         | nan      |           |           | nan
-²H³⁵Cl    | HCl              | 37            | nan                |                        |              | C∞v         | nan      |           |           | nan
-²H³⁷Cl    | HCl              | 39            | nan                |                        |              | C∞v         | nan      |           |           | nan
-HI        | HI               | 127.912       | nan                |                        | 0.999998     | C∞v         | nan      |           |           | nan
-HBr       | HBr              | 80.9119       | nan                |                        | 0.995384     | C∞v         | nan      |           |           | nan
-¹⁶O₂      | O₂               | 31.9988       | nan                |                        | 7.9997       | D∞h         | 0        |           |           | nan
-³²S₂      | S₂               | 63.944141     | nan                |                        | 15.9860364   | D∞h         | 0        |           |           | nan
-NO₂       | NO₂              | 46.           | nan                |                        | nan          |             | nan      |           |           | nan
-CO₂       | CO₂              | 44.           | nan                |                        | nan          |             | nan      |           |           | nan
-¹²C¹⁶O₂   | CO₂              | 44.           | nan                |                        | nan          |             | nan      |           |           | nan
-¹³C¹⁶O₂   | CO₂              | 45.           | nan                |                        | nan          |             | nan      |           |           | nan
-¹²C¹⁸O₂   | CO₂              | 48.           | nan                |                        | nan          |             | nan      |           |           | nan
-¹H₂¹⁶O       | H2O              | 18.           | nan                |                        | nan          |             | nan      |           |           | nan
-CH₄       | CH₄              | 16.           | nan                |                        | nan          |             | nan      |           |           | nan
-¹²CH₄     | CH₄              | 16.           | nan                |                        | nan          |             | nan      |           |           | nan
-¹²C¹H₄    | CH₄              | 16.           | nan                |                        | nan          |             | nan      |           |           | nan
-¹³C¹H₄    | CH₄              | 17.           | nan                |                        | nan          |             | nan      |           |           | nan
-SO₂       | SO₂              | 63.9619       | nan                |                        | nan          |             | nan      |           |           | nan
-S¹⁷O₂     | SO₂              | 65.9703       | nan                |                        | nan          |             | nan      |           |           | nan
-S¹⁸O₂     | SO₂              | 67.9704       | nan                |                        | nan          |             | nan      |           |           | nan
-³³SO₂     | SO₂              | 64.9613       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁴SO₂     | SO₂              | 65.9577       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁶SO₂     | SO₂              | 67.9569       | nan                |                        | nan          |             | nan      |           |           | nan
-³²S¹⁶O₂   | SO₂              | 63.9619       | nan                |                        | nan          |             | nan      |           |           | nan
-³²S¹⁷O₂   | SO₂              | 65.9703       | nan                |                        | nan          |             | nan      |           |           | nan
-³²S¹⁸O₂   | SO₂              | 67.9704       | nan                |                        | nan          |             | nan      |           |           | nan
-³³S¹⁶O₂   | SO₂              | 64.9613       | nan                |                        | nan          |             | nan      |           |           | nan
-³³S¹⁷O₂   | SO₂              | 66.9697       | nan                |                        | nan          |             | nan      |           |           | nan
-³³S¹⁸O₂   | SO₂              | 68.9698       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁴S¹⁶O₂   | SO₂              | 65.9577       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁴S¹⁷O₂   | SO₂              | 67.9661       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁴S¹⁸O₂   | SO₂              | 69.9662       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁶S¹⁶O₂   | SO₂              | 67.9569       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁶S¹⁷O₂   | SO₂              | 69.9653       | nan                |                        | nan          |             | nan      |           |           | nan
-³⁶S¹⁸O₂   | SO₂              | 71.9654       | nan                |                        | nan          |             | nan      |           |           | nan
-N₂O       | N₂O              | 48.0323       | nan                |                        | nan          |             | nan      |           |           | nan
-CH₃Cl     | CH₃Cl            | 49.992329     | nan                |                        |              |             |          |           |           | nan
-¹²C¹H³⁵Cl | CH₃Cl            | 49.992329     | nan                |                        |              |             |          |           |           | nan
-¹²C¹H³⁷Cl | CH₃Cl            | 52            | nan                |                        |              |             |          |           |           | nan
-C₂H₄      | C₂H₄             | 28.031300     | nan                |                        |              |             |          |           |           | nan
-C₂H₆      | C₂H₆             | 30            | nan                |                        |              |             |          |           |           | nan
-HCN       | HCN              | 27.010899     | nan                |                        | nan          | nan         | nan      |           |           | nan
-CS₂       | CS₂              | 76            | nan                |                        |              |             |          |           |           | nan
-OCS       | OCS              | 60            | nan                |                        |              |             |          |           |           | nan
-¹⁶O¹²C³²S | OCS              | 60            | nan                |                        |              |             |          |           |           | nan
-¹⁶O¹²C³⁴S | OCS              | 62            | nan                |                        |              |             |          |           |           | nan
+species  | chemical_species| mass         | isotopologue_ratio| isotopologue_ratio:ref| reduced_mass| point_group| Inuclear| Eref     | Eref:ref | E0
+¹²C³²S₂  | CS₂             |              |                   |                       |             | D∞h        |         |          |          |
+¹²C³³S₂  | CS₂             |              |                   |                       |             | D∞h        |         |          |          |
+¹²C³⁴S₂  | CS₂             |              |                   |                       |             | D∞h        |         |          |          |
+¹³C³²S₂  | CS₂             |              |                   |                       |             | D∞h        |         |          |          |
+¹³C³³S₂  | CS₂             |              |                   |                       |             | D∞h        |         |          |          |
+¹³C³⁴S₂  | CS₂             |              |                   |                       |             | D∞h        |         |          |          |
+³²S¹²C³⁴S| CS₂             |              |                   |                       |             | C∞v        |         |          |          |
+³²S¹²C³³S| CS₂             |              |                   |                       |             | C∞v        |         |          |          |
+³³S¹²C³⁴S| CS₂             |              |                   |                       |             | C∞v        |         |          |          |
+³²S¹³C³⁴S| CS₂             |              |                   |                       |             | C∞v        |         |          |          |
+³²S¹³C³³S| CS₂             |              |                   |                       |             | C∞v        |         |          |          |
+³³S¹³C³⁴S| CS₂             |              |                   |                       |             | C∞v        |         |          |          |
+¹²C      | C               | 12.0107      | nan               |                       | nan         | K          | nan     |          |          | nan
+¹⁶O      | O               | 15.994915    | nan               |                       | nan         | K          | nan     |          |          | nan
+¹⁷O      | O               | 16.999131    | nan               |                       | nan         | K          | nan     |          |          | nan
+¹⁸O      | O               | 17.999159    | nan               |                       | nan         | K          | nan     |          |          | nan
+³²S      | S               | 31.97207070  | nan               |                       | nan         | K          | nan     |          |          | nan
+³³S      | S               | 32.97145843  | nan               |                       | nan         | K          | nan     |          |          | nan
+³⁴S      | S               | 33.96786665  | nan               |                       | nan         | K          | nan     |          |          | nan
+³⁶S      | S               | 35.96708062  | nan               |                       | nan         | K          | nan     |          |          | nan
+¹⁴N      | N               | 14.003074    | nan               |                       |             | K          |         |          |          | nan
+¹⁵N      | N               | 15.0001088982| nan               |                       |             | K          |         |          |          | nan
+Na       | Na              | 22.9898      | nan               |                       |             | K          |         |          |          | nan
+Ar       | Ar              | 39.948       | nan               |                       |             | K          |         |          |          | nan
+¹²C¹⁶O   | CO              | 28.          | 0.986544          | NIST                  | 6.8562      | C∞v        | nan     | 1081.7756| coxon2004| 1081.775631
+¹²C¹⁷O   | CO              | 29.          | 0.000367867       | NIST                  | 7.0343      | C∞v        | nan     | 1068.0310| coxon2004| 1068.031015
+¹²C¹⁸O   | CO              | 30.          | 0.00197822        | NIST                  | 7.1998      | C∞v        | nan     | 1055.7172| coxon2004| 1055.717274
+¹³C¹⁶O   | CO              | 29.          | 0.0110836         | NIST                  | 7.1724      | C∞v        | nan     | 1057.7268| coxon2004| 1057.726807
+¹³C¹⁷O   | CO              | 30.          | 4.13292e-06       | NIST                  | 7.3675      | C∞v        | nan     | 1043.6628| coxon2004| 1043.662809
+¹³C¹⁸O   | CO              | 31.          | 2.2225e-05        | NIST                  | 7.5493      | C∞v        | nan     | 1031.0556| coxon2004| 1031.055619
+¹⁴C¹⁶O   | CO              | 29.998       | 0                 |                       | 7.46648     | C∞v        | nan     | 1036.7443| coxon2004| 1036.744345
+¹⁴C¹⁷O   | CO              | 31.002       | 0                 |                       | 7.6782      | C∞v        | nan     | 1022.3893| coxon2004| 1022.389332
+¹⁴C¹⁸O   | CO              | 32.002       | 0                 |                       | 7.8758      | C∞v        | nan     | 1009.5143| coxon2004| 1009.514309
+¹H₂      | H2              | 2.01588      | nan               |                       | 0.50397     | D∞h        | 0.5     |          |          | nan
+²H₂      | H2              | 4.028        | nan               |                       | 1.007       | D∞h        | 1       |          |          | nan
+D₂       | H2              | 4.028        | nan               |                       | 1.007       | D∞h        | 1       |          |          | nan
+HD       | H2              | 3.02194      | nan               |                       | 0.671751    | C∞v        | nan     |          |          | nan
+¹H²H     | H2              | 3.02194      | nan               |                       | 0.671751    | C∞v        | nan     |          |          | nan
+¹⁴N₂     | N2              | 28.006147    | nan               |                       | 7.0015372   | D∞h        | 1       | 1175.700 |          | nan
+¹⁴N¹⁵N   | N2              | 29.0032      | nan               |                       | 7.242227222 | C∞v        | nan     | 1156.091 |          | nan
+¹⁵N₂     | N2              | 30.0002      | nan               |                       | 7.50005465  | D∞h        | 0.5     | 1135.103 |          | nan
+OH       | OH              | 17.0073      | nan               |                       | 0.948169    | C∞v        | nan     |          |          | nan
+OD       | OH              | 18.0135      | nan               |                       | 1.7889      | C∞v        | nan     |          |          | nan
+OH+      | OH+             | 17.003288    | nan               |                       | 0.95        | C∞v        | nan     |          |          | nan
+CS       | CS              | 44.0767      | nan               |                       | 8.73784     | C∞v        | nan     |          |          | nan
+¹⁴N¹⁶O   | NO              | 29.997990    | nan               |                       | 7.4664331   | C∞v        | nan     |          |          | nan
+¹²C¹⁴N   | CN              | 26.018       | nan               |                       | 6.4661      | C∞v        | nan     |          |          | nan
+³²S¹⁶O   | SO              | 47.966984    | nan               |                       | 10.6613     | C∞v        | 0       | 573.79105|          | nan
+³³S¹⁶O   | SO              | 48.9664      | nan               |                       | 10.7702     | C∞v        | 0       | 570.89075|          | nan
+³⁴S¹⁶O   | SO              | 49.9628      | nan               |                       | 10.8744     | C∞v        | 0       | 568.15644|          | nan
+³⁶S¹⁶O   | SO              | 51.962       | nan               |                       | 11.0714     | C∞v        | 0       | 563.09265|          | nan
+³²S¹⁷O   | SO              | 48.9712      | nan               |                       | 11.0983     | C∞v        | 0       |          |          | nan
+³³S¹⁷O   | SO              | 49.9706      | nan               |                       | 11.2163     | C∞v        | 0       |          |          | nan
+³⁴S¹⁷O   | SO              | 50.967       | nan               |                       | 11.3294     | C∞v        | 0       |          |          | nan
+³⁶S¹⁷O   | SO              | 52.9662      | nan               |                       | 11.5434     | C∞v        | 0       |          |          | nan
+³²S¹⁸O   | SO              | 49.9712      | nan               |                       | 11.516      | C∞v        | 0       |          |          | nan
+³³S¹⁸O   | SO              | 50.9706      | nan               |                       | 11.6431     | C∞v        | 0       |          |          | nan
+³⁴S¹⁸O   | SO              | 51.967       | nan               |                       | 11.765      | C∞v        | 0       |          |          | nan
+³⁶S¹⁸O   | SO              | 53.9662      | nan               |                       | 11.996      | C∞v        | 0       |          |          | nan
+¹H³⁵Cl   | HCl             | 35.9768      | nan               |                       | 0.979701    | C∞v        | nan     |          |          | nan
+¹H³⁷Cl   | HCl             | 38           | nan               |                       |             | C∞v        | nan     |          |          | nan
+²H³⁵Cl   | HCl             | 37           | nan               |                       |             | C∞v        | nan     |          |          | nan
+²H³⁷Cl   | HCl             | 39           | nan               |                       |             | C∞v        | nan     |          |          | nan
+HI       | HI              | 127.912      | nan               |                       | 0.999998    | C∞v        | nan     |          |          | nan
+HBr      | HBr             | 80.9119      | nan               |                       | 0.995384    | C∞v        | nan     |          |          | nan
+¹⁶O₂     | O₂              | 31.9988      | nan               |                       | 7.9997      | D∞h        | 0       |          |          | nan
+³²S₂     | S₂              | 63.944141    | nan               |                       | 15.9860364  | D∞h        | 0       |          |          | nan
+NO₂      | NO₂             | 46.          | nan               |                       | nan         |            | nan     |          |          | nan
+CO₂      | CO₂             | 44.          | nan               |                       | nan         |            | nan     |          |          | nan
+¹²C¹⁶O₂  | CO₂             | 44.          | nan               |                       | nan         |            | nan     |          |          | nan
+¹³C¹⁶O₂  | CO₂             | 45.          | nan               |                       | nan         |            | nan     |          |          | nan
+¹²C¹⁸O₂  | CO₂             | 48.          | nan               |                       | nan         |            | nan     |          |          | nan
+¹H₂¹⁶O   | H2O             | 18.          | nan               |                       | nan         |            | nan     |          |          | nan
+CH₄      | CH₄             | 16.          | nan               |                       | nan         |            | nan     |          |          | nan
+¹²CH₄    | CH₄             | 16.          | nan               |                       | nan         |            | nan     |          |          | nan
+¹²C¹H₄   | CH₄             | 16.          | nan               |                       | nan         |            | nan     |          |          | nan
+¹³C¹H₄   | CH₄             | 17.          | nan               |                       | nan         |            | nan     |          |          | nan
+SO₂      | SO₂             | 63.9619      | nan               |                       | nan         |            | nan     |          |          | nan
+S¹⁷O₂    | SO₂             | 65.9703      | nan               |                       | nan         |            | nan     |          |          | nan
+S¹⁸O₂    | SO₂             | 67.9704      | nan               |                       | nan         |            | nan     |          |          | nan
+³³SO₂    | SO₂             | 64.9613      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁴SO₂    | SO₂             | 65.9577      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁶SO₂    | SO₂             | 67.9569      | nan               |                       | nan         |            | nan     |          |          | nan
+³²S¹⁶O₂  | SO₂             | 63.9619      | nan               |                       | nan         |            | nan     |          |          | nan
+³²S¹⁷O₂  | SO₂             | 65.9703      | nan               |                       | nan         |            | nan     |          |          | nan
+³²S¹⁸O₂  | SO₂             | 67.9704      | nan               |                       | nan         |            | nan     |          |          | nan
+³³S¹⁶O₂  | SO₂             | 64.9613      | nan               |                       | nan         |            | nan     |          |          | nan
+³³S¹⁷O₂  | SO₂             | 66.9697      | nan               |                       | nan         |            | nan     |          |          | nan
+³³S¹⁸O₂  | SO₂             | 68.9698      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁴S¹⁶O₂  | SO₂             | 65.9577      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁴S¹⁷O₂  | SO₂             | 67.9661      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁴S¹⁸O₂  | SO₂             | 69.9662      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁶S¹⁶O₂  | SO₂             | 67.9569      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁶S¹⁷O₂  | SO₂             | 69.9653      | nan               |                       | nan         |            | nan     |          |          | nan
+³⁶S¹⁸O₂  | SO₂             | 71.9654      | nan               |                       | nan         |            | nan     |          |          | nan
+N₂O      | N₂O             | 48.0323      | nan               |                       | nan         |            | nan     |          |          | nan
+CH₃Cl    | CH₃Cl           | 49.992329    | nan               |                       |             |            |         |          |          | nan
+¹²C¹H³⁵Cl| CH₃Cl           | 49.992329    | nan               |                       |             |            |         |          |          | nan
+¹²C¹H³⁷Cl| CH₃Cl           | 52           | nan               |                       |             |            |         |          |          | nan
+C₂H₄     | C₂H₄            | 28.031300    | nan               |                       |             |            |         |          |          | nan
+C₂H₆     | C₂H₆            | 30           | nan               |                       |             |            |         |          |          | nan
+HCN      | HCN             | 27.010899    | nan               |                       | nan         | nan        | nan     |          |          | nan
+CS₂      | CS₂             | 76           | nan               |                       |             |            |         |          |          | nan
+OCS      | OCS             | 60           | nan               |                       |             |            |         |          |          | nan
+¹⁶O¹²C³²S| OCS             | 60           | nan               |                       |             |            |         |          |          | nan
+¹⁶O¹²C³⁴S| OCS             | 62           | nan               |                       |             |            |         |          |          | nan
 
 
 
