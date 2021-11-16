@@ -151,11 +151,22 @@ def _get_lines_internal(filename):
     line['mass']                # compute now for speed later
     return line
 
+## these are added to HITRAN data to fill in missing quantum numbesr --very hacky
+_electronic_quantum_numbers_to_add_to_hitran = {
+    'CS₂': {'label_u':'X_u','Λ_u':0,'S_u':0,'s_u':0,'ef_u':1,
+            'label_l':'X_l','Λ_l':0,'S_l':0,'s_l':0,'ef_l':1,}, # verify symmetry!
+    }
+
 def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     """Hitran linelist.  If species not an isotopologue then load a list
     of the natural abundance mixture."""
     species = database.normalise_species(species)
+    chemical_species = database.normalise_chemical_species(species)
     directory = f'{database.data_directory}/hitran/cache/{species}'
+    ## delete data directory to force download if requested
+    if force_download and os.path.exists(directory):
+        import shutil
+        shutil.rmtree(directory)
     hitran_filename = f'{directory}/hitran_linelist.data'
     line_filename = f'{directory}/lines'
     if os.path.exists(line_filename) and not force_download:
@@ -166,12 +177,13 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
         if np.any(i:=data.match(chemical_species=species)):
             ## a chemical species -- get natural abundance mixture
             for j,row in enumerate(data[i].rows()):
-                new_line = get_line(row['species'])
+                new_line = get_line(row['species'],force_download=force_download)
                 new_line['isotopologue_ratio'] = row['natural_abundance']
                 if j == 0:
                     line = new_line
                 else:
                     line.concatenate(new_line)
+            line['chemical_species'] = species
         elif np.any(i:=data.match(species=species)):
             ## an isotopologue download HITRAN linelist if necessary
             ## and convert lines
@@ -183,8 +195,14 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
             classname = get_molparam(species=species)['dataset_classname'][0]
             line = dataset.make(classname,description=f'HITRAN linelist for {species}, probably downloaded {date_string()}')
             line.load_from_hitran(hitran_filename)
+            line['species'] = species
         else:    
             raise Exception(f'Species or chemical_species unknown to hitran.py: {species!r}')
+        ## quantum number hacks
+        for key_to_try in (chemical_species,species):
+            if key_to_try in _electronic_quantum_numbers_to_add_to_hitran:
+                for key,val in _electronic_quantum_numbers_to_add_to_hitran[key_to_try].items():
+                    line[key] = val
         ## save data
         line.save(line_filename,filetype='directory')
     ## filter data
@@ -207,5 +225,18 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
         return retval
     line.add_format_input_function(f)
     return line
+
+def get_level(species,*get_line_args,**get_line_kwargs):
+    """Get upper level from HITRAN data."""
+    ## load HITRAN line data
+    line = get_line(species,*get_line_args,**get_line_kwargs)
+    ## combine upper and lower levels into a single Dataset and remove duplicates
+    required_keys=('E',)
+    level = line.get_lower_level(reduce_to='first',required_keys=required_keys)
+    level.concatenate(line.get_upper_level(reduce_to='first',required_keys=required_keys))
+    qnhash,i = np.unique(level['qnhash'],return_index=True)
+    level.index(i)
+    level.sort('E')
+    return level
 
 
