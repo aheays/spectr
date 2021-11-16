@@ -423,8 +423,8 @@ class Dataset(optimise.Optimiser):
             raise Exception(f"The value kind of {repr(key)} is {repr(data['kind'])} and is invalid for setting {repr(subkey)}")
         if subkind['kind'] == 'O':
             raise ImplementationError()
-        if self.verbose:
-            print(f'{self.name}: setting ({key}:{subkey})')
+        # if self.verbose:
+            # print(f'{self.name}: setting ({key}:{subkey})')
         ## set data
         if index is None:
             ## set entire array
@@ -1123,7 +1123,9 @@ class Dataset(optimise.Optimiser):
                         uncertainty = np.sqrt(np.sum(squared_contribution,axis=0))
                         self._set_subdata(key,'unc',uncertainty)
                         if self.verbose:
-                             print(f'{self.name}: Inferred uncertainty: {repr(key)}')
+                            print(f'{self.name}:',
+                                  ''.join(['    ' for t in range(depth)])
+                                  +f'{self.name}: Inferred uncertainty: {repr(key)}')
                 else:
                     ## args for uncertainty_function.  First is the
                     ## result of calculating keys, after that paris of
