@@ -14,3 +14,6 @@ class NonUniqueValueException(Exception):
     """A non-unique value is found in a Dataset when a unique value is expected.."""
     pass
 
+class DecodeSpeciesException(InferException):
+    """A species name could not be decoded."""
+    pass

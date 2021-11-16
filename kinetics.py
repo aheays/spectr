@@ -11,6 +11,7 @@ import scipy
 from . import tools
 from .tools import cache
 from .dataset import Dataset
+from .exceptions import DecodeSpeciesException
 from . import database
 from . import plotting
 
@@ -204,6 +205,7 @@ _inchikey_to_name = {
 
 _chemical_name_hacks = {
     'HCO₂H':'HCOOH',
+    'SCS': 'CS₂',
 }
 
 @cache
@@ -229,7 +231,10 @@ class Species:
             else:
                 if name != _inchikey_to_name[inchikey]:
                     raise Exception(f'Inconsistent {name=} and {inchikey=}')
-        self.decode_name(name)
+        try:
+            self.decode_name(name)
+        except Exception as err:
+            raise DecodeSpeciesException(f'Cannot decode species: {name!r}. Error: {err}')
         self.encode_name(self._isotopes,self._charge)
 
     def decode_name(self,name):
