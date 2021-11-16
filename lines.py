@@ -624,9 +624,13 @@ class Generic(levels.Base):
         ## no lines to add to cross section -- return quickly
         if len(self)==0:
             if x is None:
-                return np.array([]),np.array([])
+                x,y =  np.array([]),np.array([])
             else:
-                return x,np.zeros(x.shape)
+                y = np.zeros(x.shape)
+            if zkeys is None:
+                return x,y
+            else:
+                return (({},x,y),)
         ## guess a default lineshape
         if lineshape is None:
             if self.is_known('ΓG') and self.is_known('ΓL') and np.any(self['ΓL']!=0) and np.any(self['ΓG']!=0):
