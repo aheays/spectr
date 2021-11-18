@@ -300,6 +300,24 @@ class Dataset(optimise.Optimiser):
                 self.set(ykey,'vary',False,index=index)
             _cache['not_first_execution'] = True
 
+    def _increase_char_length_if_necessary(self,key,subkey,new_data):
+        """reallocate with increased unicode dtype length if new
+        strings are longer than the current array dtype"""
+        ## test if (key,subkey is set actually a string data
+        if (self.is_set(key,subkey)
+            and ((subkey == 'value' and self[key,'kind'] == 'U')
+                 or (key in self.vector_subkinds and self.vector_subkinds(subkey,'kind')=='U'))):
+            old_data = self[key,subkey]
+            ## this is a really hacky way to get the length of string in a numpy array!!!
+            old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(old_data.dtype)))
+            new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(new_data).dtype)))
+            ## reallocate array with new dtype with overallocation if necessary
+            if new_str_len > old_str_len:
+                t = np.empty(len(self)*self._over_allocate_factor,
+                             dtype=f'<U{new_str_len*self._over_allocate_factor}')
+                t[:len(self)] = old_data
+                self._data[key][subkey] = t
+
     def _set_value(self,key,value,index=None,dependencies=None,kind=None):
         """Set a value"""
         ## turn Parameter into its floating point value
@@ -320,19 +338,19 @@ class Dataset(optimise.Optimiser):
             data = self._data[key]
             if key not in self:
                 raise Exception(f'Cannot set data by index for unset key: {key}')
-            ## reallocate with increased unicode dtype length if new
-            ## strings are longer than the current array dtype
-            if self[key,'kind'] == 'U':
-                ## this is a really hacky way to get the length of string in a numpy array!!!
-                old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
-                new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(value).dtype)))
-                if new_str_len > old_str_len:
-                    ## reallocate array with new dtype with overallocation
-                    t = np.empty(
-                        len(self)*self._over_allocate_factor,
-                        dtype=f'<U{new_str_len*self._over_allocate_factor}')
-                    t[:len(self)] = self.get(key)
-                    data['value'] = t
+            ## reallocate string arrays if needed
+            self._increase_char_length_if_necessary(key,'value',value)
+            # if self[key,'kind'] == 'U':
+                # ## this is a really hacky way to get the length of string in a numpy array!!!
+                # old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
+                # new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(value).dtype)))
+                # if new_str_len > old_str_len:
+                    # ## reallocate array with new dtype with overallocation
+                    # t = np.empty(
+                        # len(self)*self._over_allocate_factor,
+                        # dtype=f'<U{new_str_len*self._over_allocate_factor}')
+                    # t[:len(self)] = self.get(key)
+                    # data['value'] = t
             ## cast scalar data correctly
             if np.isscalar(value):
                 value = self[key,'cast'](array([value]))
@@ -441,6 +459,8 @@ class Dataset(optimise.Optimiser):
                 ## set missing data outside indexed range to a default
                 ## value using the get method
                 self.get(key,subkey)
+            ## reallocate string arrays if needed
+            self._increase_char_length_if_necessary(key,subkey,value)
             ## set indexed data
             data[subkey][:len(self)][index] = subkind['cast'](value)
 
@@ -1294,7 +1314,7 @@ class Dataset(optimise.Optimiser):
             self.assert_known(key)
             if len(self) == 0:
                 break
-            formatted_key = ( "'"+key+"'" if quote else key )
+            formatted_key = ( f'"{key}"' if quote else key )
             if (
                     not simple and unique_values_in_header # input parameter switch
                     and not np.any([self.is_set(key,subkey) for subkey in subkeys if subkey in self.vector_subkinds and subkey != 'value']) # no other vector subdata 
@@ -1326,11 +1346,24 @@ class Dataset(optimise.Optimiser):
                 metadata = {}
                 if key in header_values:
                     metadata['value'] = header_values[key]
-                ## include much metadata in description
+                ## include much metadata in description. If it is
+                ## dictionary try to semi-align the keys
                 for subkey in subkeys:
                     if subkey in self.scalar_subkinds and self.is_set(key,subkey):
                         metadata[subkey] = self[key,subkey]
-                line = f'{key:20} = {repr(metadata)}'
+                if isinstance(metadata,dict):
+                    line = f'{key:20} = {{ '
+                    for tkey,tval in metadata.items():
+                        ## description length for alignment is in
+                        ## 40-char quanta, else 15 char
+                        if tkey == 'description':
+                            tfmt = str(40*((len(tval)-1)//40+1))
+                        else:
+                            tfmt= '20'
+                        line += format(f'{tkey}: {repr(tval)}, ',tfmt)
+                    line += '}'
+                else:
+                    line = f'{key:20} = {repr(metadata)}'
                 header.append(line)
         ## make full formatted string
         retval = ''
@@ -1882,6 +1915,8 @@ class Dataset(optimise.Optimiser):
                             new_val = defaults[key,subkey]
                         else:
                             raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
+                        ## increase char-length of string arrays if needed and insert new data
+                        self._increase_char_length_if_necessary(key,subkey,new_val)
                         data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
 
     @optimise_method()
