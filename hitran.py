@@ -145,17 +145,17 @@ def load(filename):
     return retval
 
 @functools.lru_cache
-def _get_lines_internal(filename):
+def _get_line_internal(filename):
     line = dataset.load(filename)
     line['Zsource'] = 'HITRAN'
     line['mass']                # compute now for speed later
     return line
 
-## these are added to HITRAN data to fill in missing quantum numbesr --very hacky
-_electronic_quantum_numbers_to_add_to_hitran = {
-    'CS₂': {'label_u':'X_u','Λ_u':0,'S_u':0,'s_u':0,'ef_u':1,
-            'label_l':'X_l','Λ_l':0,'S_l':0,'s_l':0,'ef_l':1,}, # verify symmetry!
-    }
+# ## these are added to HITRAN data to fill in missing quantum numbesr --very hacky
+# _electronic_quantum_numbers_to_add_to_hitran = {
+    # 'CS₂': {'label_u':'X','Λ_u':0,'S_u':0,'s_u':0,'ef_u':1,
+            # 'label_l':'X','Λ_l':0,'S_l':0,'s_l':0,'ef_l':1,}, # verify symmetry!
+    # }
 
 def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     """Hitran linelist.  If species not an isotopologue then load a list
@@ -171,7 +171,7 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     line_filename = f'{directory}/lines'
     if os.path.exists(line_filename) and not force_download:
         ## load existing data
-        line = deepcopy(_get_lines_internal(line_filename))
+        line = deepcopy(_get_line_internal(line_filename))
     else:
         data = get_molparam()
         if np.any(i:=data.match(chemical_species=species)):
@@ -198,16 +198,16 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
             line['species'] = species
         else:    
             raise Exception(f'Species or chemical_species unknown to hitran.py: {species!r}')
-        ## quantum number hacks
-        for key_to_try in (chemical_species,species):
-            if key_to_try in _electronic_quantum_numbers_to_add_to_hitran:
-                for key,val in _electronic_quantum_numbers_to_add_to_hitran[key_to_try].items():
-                    line[key] = val
+        # ## quantum number hacks
+        # for key_to_try in (chemical_species,species):
+            # if key_to_try in _electronic_quantum_numbers_to_add_to_hitran:
+                # for key,val in _electronic_quantum_numbers_to_add_to_hitran[key_to_try].items():
+                    # line[key] = val
         ## save data
         line.save(line_filename,filetype='directory')
     ## filter data
     if name is None:
-        line.name =f'hitran_lines_{species}'
+        line.name =f'hitran_line_{species}'
     else:
         line.name = name
     ## limit data
@@ -216,7 +216,7 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     ## replace format input function with a reference to this function
     line.clear_format_input_functions()
     def f():
-        retval = f'{line.name} = hitran.get_lines({repr(species)}'
+        retval = f'{line.name} = hitran.get_line({repr(species)}'
         if line.name is not None:
             retval += f',name={repr(name)}'
         if match is not None:
@@ -226,10 +226,10 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     line.add_format_input_function(f)
     return line
 
-def get_level(species,*get_line_args,**get_line_kwargs):
-    """Get upper level from HITRAN data."""
+@functools.lru_cache
+def _get_level_internal(species):
     ## load HITRAN line data
-    line = get_line(species,*get_line_args,**get_line_kwargs)
+    line = get_line(species)
     ## combine upper and lower levels into a single Dataset and remove duplicates
     required_keys=('E',)
     level = line.get_lower_level(reduce_to='first',required_keys=required_keys)
@@ -237,6 +237,19 @@ def get_level(species,*get_line_args,**get_line_kwargs):
     qnhash,i = np.unique(level['qnhash'],return_index=True)
     level.index(i)
     level.sort('E')
+    level.unset('qnhash')
+    return level
+    
+
+def get_level(species,name=None,match=None):
+    """Get upper level from HITRAN data."""
+    level = deepcopy(_get_level_internal(species))
+    if name is None:
+        level.name =f'hitran_level_{species}'
+    else:
+        level.name = name
+    if match is not None:
+        level.limit_to_match(match)
     return level
 
 
