@@ -22,7 +22,7 @@ class Dataset(optimise.Optimiser):
 
     """A set of data vectors of common length."""
 
-    ## The kind of data that 'value' contains.  Influences which subkinds are relevant.
+    ## The kind of data that 'value' associated with a key contains.  Influences which subkinds are relevant.
     data_kinds = {
         'f' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'float' },
         'a' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'positive float' },
@@ -33,7 +33,7 @@ class Dataset(optimise.Optimiser):
         'h' : {'cast' : lambda x                                        : np.asarray(x,dtype='S20') ,'fmt' : ''      ,'description' : 'SHA1 hash'},
     }
 
-    ##  Kinds of subdata that are vectors
+    ##  Kinds of subdata associatd with a key that are vectors of the same length as 'value'
     vector_subkinds = {
         'value'        : {'description' : 'Value of this data'},
         'unc'          : {'description' : 'Uncertainty'                         , 'kind'         : 'f' , 'valid_kinds'                : ('f','a'), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 0.0   ,},
@@ -42,10 +42,10 @@ class Dataset(optimise.Optimiser):
         'ref'          : {'description' : 'Source reference'                    , 'kind'         : 'U' ,                       'cast' : lambda x       : np.asarray(x,dtype='U20') ,'fmt'          : 's'     ,'default'               : nan   ,},
     }
 
-    ##  Kinds of subdata that are single valued but maybe complex objects
+    ##  Kinds of subdata associatd with a key that are single valued but (potentially complex) objects
     scalar_subkinds = {
         'infer'          : {'description':'List of infer functions',},
-        'kind'           : {'description':'Kind of data in value, corresponds to keys of data_kinds',},
+        'kind'           : {'description':'Kind of data in value corresponding to a key in data_kinds',},
         'cast'           : {'description':'Vectorised function to cast data',},
         'fmt'            : {'description':'Format string for printing',},
         'description'    : {'description':'Description of data',},
@@ -57,14 +57,14 @@ class Dataset(optimise.Optimiser):
         '_modify_time'   : {'description':'When this data was last modified',},
     }
 
-    ## all subdata kinds in one dictionary
+    ## all subdata kinds in one convenient dictionary
     all_subkinds = vector_subkinds | scalar_subkinds
 
-    ## prototypes on instantiation
+    ## prototypes automatically set on instantiation
     default_prototypes = {}
     default_permit_nonprototyped_data = False
 
-    ## used for plotting and sorting perhaps
+    ## used for plotting and sorting the data
     default_zkeys = ()
     default_zlabel_format_function = tools.dict_to_kwargs
 
@@ -1360,10 +1360,10 @@ class Dataset(optimise.Optimiser):
                             tfmt = str(40*((len(tval)-1)//40+1))
                         else:
                             tfmt= '20'
-                        line += format(f'{tkey}: {repr(tval)}, ',tfmt)
+                        line += format(f'{tkey!r}: {tval!r}, ',tfmt)
                     line += '}'
                 else:
-                    line = f'{key:20} = {repr(metadata)}'
+                    line = f'{key:20} = {metadata!r}'
                 header.append(line)
         ## make full formatted string
         retval = ''
@@ -2473,6 +2473,9 @@ def _get_class(classname):
         elif module == 'spectrum':
             from . import spectrum
             return getattr(spectrum,subclass)
+        elif module == 'atmosphere':
+            from . import atmosphere
+            return getattr(atmosphere,subclass)
     raise Exception(f'Could not find a class matching {classname=}')
     
 def make(classname='dataset.Dataset',*init_args,**init_kwargs):
