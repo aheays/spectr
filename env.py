@@ -20,6 +20,7 @@ except ModuleNotFoundError:
     warnings.warn("Could not import fortran_tools.  Is it compiled?")
 
 from . import tools
+from . import quantum_numbers
 from . import dataset
 from . import optimise
 from . import plotting
