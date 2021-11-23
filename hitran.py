@@ -213,6 +213,7 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     ## limit data
     if match is not None or len(match_kwargs) > 0:
         line.limit_to_match(match,**match_kwargs)
+        line.unset_inferred()
     ## replace format input function with a reference to this function
     line.clear_format_input_functions()
     def f():
