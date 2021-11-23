@@ -93,7 +93,7 @@ class Experiment(Optimiser):
             ## check for regular x grid
             t0,t1 = np.diff(x).min(),np.diff(x).max()
             assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
-            self.experimental_parameters.setdefault('filetype','unknown')
+            self.experimental_parameters.setdefault('data_source','unknown')
             self.experimental_parameters.update(experimental_parameters)
             ## verbose info
             if self.verbose:
@@ -145,12 +145,17 @@ class Experiment(Optimiser):
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function()
 
-    def set_spectrum_from_dataset(self,filename,xbeg=None,xend=None,xkey='x',ykey='y'):
+    @optimise_method()
+    def set_spectrum_from_dataset(self,filename,xbeg=None,xend=None,xkey='x',ykey='y',_cache=None):
         """Load a spectrum to fit from an x,y file."""
-        d = Dataset()
-        d.load(filename)
-        experimental_parameters = {key:val for key,val in d.items() if  key not in (xkey,ykey)}
-        self.set_spectrum(d[xkey],d[ykey],xbeg,xend,filename=filename,**d.attributes)
+        if len(_cache) == 0:
+            data = dataset.load(filename)
+            _cache['experimental_parameters'] = deepcopy(data.global_attributes)
+            _cache['experimental_parameters']['filename'] = filename
+            _cache['x'] = data[xkey]
+            _cache['y'] = data[ykey]
+        self.set_spectrum(x=_cache['x'],y=_cache['y'],xbeg=xbeg,xend=xend,**_cache['experimental_parameters'])
+        self.pop_format_input_function()
 
     @optimise_method()
     def set_spectrum_from_hdf5(self,filename,xkey='x',ykey='y',xbeg=None,xend=None,_cache=None):
@@ -183,7 +188,7 @@ class Experiment(Optimiser):
         opusdata = bruker.OpusData(filename)
         x,y = opusdata.get_spectrum()
         d = opusdata.data
-        self.experimental_parameters['filetype'] = 'opus'
+        self.experimental_parameters['data_source'] = 'opus'
         translate_apodisation_function = {'BX':'boxcar','B3':'Blackman-Harris 3-term',}
         if 'Fourier Transformation' in d:
             self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
@@ -224,7 +229,7 @@ class Experiment(Optimiser):
         _cache['has_run'] = True
         x,y,header = load_soleil_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
-        self.experimental_parameters['filetype'] = 'DESIRS FTS'
+        self.experimental_parameters['data_source'] = 'DESIRS FTS'
         self.experimental_parameters.update(header)
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
@@ -692,9 +697,13 @@ class Model(Optimiser):
                 line_copy.verbose = verbose
             if verbose:
                 print('add_line: clean construct')
-            ## set parameter/constant data
+            ## set parameter/constant data. If a vector of data is
+            ## given then its length matches the input dataset
             for key,val in set_keys_vals.items():
-                line_copy[key] = val
+                if tools.isiterable(val):
+                    line_copy[key] = val[imatch]
+                else:
+                    line_copy[key] = val
             ## get ykey
             if kind == 'absorption':
                 ykey = 'τ'
@@ -740,12 +749,15 @@ class Model(Optimiser):
             if nmatch == 0:
                 return
             ## set modified data in set_keys_vals if they have changed
-            ## from cached values.  Only update Parameters (assume
-            ## other types ## cannot change)
+            ## from cached values.  Only update Parameters that have changed
             for key,val in set_keys_vals.items():
                 if isinstance(val,Parameter):
                     if self._last_construct_time < val._last_modify_value_time:
                         line_copy[key] = val
+                elif tools.isiterable(val):
+                    line_copy.set(key,'value',val[imatch],set_changed_only=True)
+                else:
+                    line_copy.set(key,'value',val,set_changed_only=True)
             ## if the source lines data has changed then update
             ## changed rows and keys in the local copy
             if line.global_modify_time > self._last_construct_time:
@@ -1579,12 +1591,13 @@ class Model(Optimiser):
         """Convolve with instrument function."""
         data = self.experiment.experimental_parameters
         ## Bruker OPUS fts apodisation
-        if data['filetype'] == 'opus':
+        if data['data_source'] == 'opus':
             if data['apodisation_function'] == 'boxcar':
+                sinc_fwhm = data['resolution']*1.2
                 if vary is None:
-                    kwargs['sinc_fwhm'] = float(data['sinc_fwhm'])
+                    kwargs['sinc_fwhm'] = float(sinc_fwhm)
                 else:
-                    kwargs['sinc_fwhm'] = P(data['sinc_fwhm'],vary,bounds=(0,inf))
+                    kwargs['sinc_fwhm'] = P(sinc_fwhm,vary,bounds=(0,inf))
             if data['apodisation_function'] == 'Blackman-Harris 3-term':
                 kwargs['blackman_harris_order'] = 3
                 if vary is None:
@@ -1592,7 +1605,7 @@ class Model(Optimiser):
                 else:
                     kwargs['blackman_harris_resolution'] = P(data['resolution'],vary,bounds=(0,inf))
         ## SOLEIL DESIRS FTS boxcar apodisation0
-        elif data['filetype'] == 'DESIRS FTS':
+        elif data['data_source'] == 'DESIRS FTS':
             if vary is None:
                 kwargs['sinc_fwhm'] = float(data['sinc_fwhm'])
             else:
@@ -1844,7 +1857,8 @@ class Model(Optimiser):
                     zkeys=zkeys,  
                     length=-0.02, # fraction of axes coords
                     # color_by=('branch' if 'branch' in zkeys else zkeys),
-                    labelsize='xx-small',namesize='x-small', namepos='float',    
+                    # labelsize='xx-small',namesize='x-small', namepos='float',    
+                    labelsize='small',namesize='small', namepos='float',    
                     label_key=(label_key if label_key is not None else line.default_xkey),
                 )
                 ymax += ystep*(len(branch_annotations)+1)
@@ -2103,7 +2117,8 @@ class Spectrum(Dataset):
     default_xkey = 'x'
     default_zkeys = ()
     default_prototypes = {
-        'x':{'description':'x-scale'          ,  'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'x':{'description':'x-scale'          , 'kind':'f' , 'fmt':'0.8f' , 'infer':[]} , 
+        'y':{'description':'y-scale'          , 'kind':'f' , 'fmt':'0.8f' , 'infer':[]} , 
         'ν':{'description':'Wavenumber scale' , 'units':'cm-1' , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
         'λ':{'description':'Wavelength scale' , 'units':'nm'   , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
         'f':{'description':'Frequency scale'  , 'units':'MHz'  , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
