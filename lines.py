@@ -53,7 +53,7 @@ for key in (
         'Teq','Tex','Tvib','Trot',
         'Zsource', 'Eref',
         'reference',
-        'qnhash', 'qn', '_species_hash',
+        'qnhash', 'encoded_qn', '_species_hash',
 ):
     prototypes[key] = copy(levels.prototypes[key])
 
@@ -382,6 +382,28 @@ prototypes['HJSv'] = dict(description="Reduced JS coupling energy mixing two vib
 prototypes['HJSDv'] = dict(description="Higher-order reduced JS coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
 prototypes['Hev'] = dict(description="Electronic coupling energy mixing two vibronic levels.",units="cm-1", kind='f',  fmt='<+10.5e', infer=[],default=0)
 
+## bool array of whether this line is electric-dipole allowed
+def _f0(self,species_u,species_l,ef_u,ef_l,J_u,J_l,Ω_u,Ω_l,S_u,S_l,Σ_u,Σ_l):
+    electric_dipole_allowed = (
+        ## same species
+        (species_u == species_l)
+        ## ΔJ and Δef rules
+        & ((((J_u-J_l)==0) & (ef_u!=ef_l)) | ((J_u-J_l)==+1) | ((J_u-J_l)==-1) )
+        ## ΔS=0
+        & (S_u == S_l)
+        ## level exists
+        & (J_u >= Ω_u) & (J_l >= Ω_l)
+        & (S_l >= np.abs(Σ_l)) & (S_u >= np.abs(Σ_u))
+    )
+    return electric_dipole_allowed
+
+prototypes['electric_dipole_allowed'] = dict(
+    description="Electronic coupling energy mixing two vibronic levels.",
+    units="cm-1",
+    kind='b',
+    infer=[(('species_u','species_l','ef_u','ef_l','J_u','J_l','Ω_u','Ω_l','S_u','S_l','Σ_u','Σ_l',),_f0)],
+)
+
 ## parity from transition selection
 def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
     retval = copy(ef)
@@ -416,13 +438,15 @@ def _collect_prototypes(level_class,base_class,new_keys):
     if 'qnhash_l' in default_prototypes:
         default_prototypes['qnhash_l']['infer'].append(
             ([f'{key}_l' for key in level_class.defining_qn], levels._qn_hash))
-    if 'qn' in default_prototypes:
-        default_prototypes['qn']['infer'].append(
-            (defining_qn, lambda self,*defining_qn:
-                     [self.encode_qn({key:self[key][i] for key in defining_qn}) for i in range(len(self))]))
-    for key in defining_qn:
-        default_prototypes[key]['infer'].append(
-            ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
+    if 'encoded_qn' in default_prototypes:
+        default_prototypes['encoded_qn']['infer'].append(
+            (defining_qn, lambda self,*defining_qn_values:
+                     [self.encode_qn(
+                         {key:val[i] for key,val in zip(defining_qn,defining_qn_values)})
+                      for i in range(len(self))]))
+    # for key in defining_qn:
+        # default_prototypes[key]['infer'].append(
+            # ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
     return level_class,defining_qn,default_prototypes
 
 class Generic(levels.Base):
@@ -431,7 +455,7 @@ class Generic(levels.Base):
         level_class=levels.Generic,
         base_class=levels.Base,
         new_keys=(
-            'reference','qnhash','qn',
+            'reference','qnhash','encoded_qn',
             'species', 'chemical_species','isotopologue_ratio',
             'point_group','mass','Zsource','_species_hash',
             'Eref',
@@ -738,6 +762,12 @@ class Generic(levels.Base):
             retval = [(d,xt,np.exp(-yt)) for d,xt,yt in retval]
         return retval 
 
+    def get_upper_level(self,*_get_level_args,**_get_level_kwargs):
+        return self._get_level('u',*_get_level_args,**_get_level_kwargs)
+
+    def get_lower_level(self,*_get_level_args,**_get_level_kwargs):
+        return self._get_level('l',*_get_level_args,**_get_level_kwargs)
+
     def _get_level(self,u_or_l,reduce_to=None,required_keys=()):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
@@ -767,12 +797,6 @@ class Generic(levels.Base):
             else:
                 raise ImplementationError()
         return levels
-
-    def get_upper_level(self,*_get_level_args,**_get_level_kwargs):
-        return self._get_level('u',*_get_level_args,**_get_level_kwargs)
-
-    def get_lower_level(self,*_get_level_args,**_get_level_kwargs):
-        return self._get_level('l',*_get_level_args,**_get_level_kwargs)
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -1263,33 +1287,59 @@ class Generic(levels.Base):
                 ## copy all data only if it has changed
                 for key_self,key_level in keys_to_copy:
                     self.set(key_self,'value',level[key_level,ilevel],index=iline,set_changed_only= True)
-                 
-    def set_levels(self,match=None,**keys_vals):
-        """Set level data from keys_vals into self."""
-        for key,val in keys_vals.items():
-            suffix = key[-2:]
-            assert suffix in ('_u','_l')
-            qn_keys = [t+suffix for t in self._level_class.defining_qn]
-            ## find match if requested
-            if match is not None:
-                imatch = self.match(**match)
-            ## loop through all sets of common levels setting key=val
-            for d,i in self.unique_dicts_match(*qn_keys):
-                ## limit to match is requested
-                if match is not None:
-                    i &= imatch
-                    if not np.any(i):
-                        continue
-                ## make a copy of value -- and a Parameter if
-                ## necessary. Substitute current value into if is NaN
-                ## is given
-                if np.isscalar(val):
-                    vali = val
-                else:
-                    vali = Parameter(*val)
-                    if np.isnan(vali.value):
-                        vali.value = self[key][i][0]
-                self.set_parameter(key,vali,match=d)
+
+    def set_upper_level_data(self,level):
+        """Copy all data in level into self for upper quantum numbers
+        in self that match those in level."""
+        self.set_level_data(level,_suffices=('u',))
+
+    def set_lower_level_data(self,level):
+        """Copy all data in level into self for lower quantum numbers
+        in self that match those in level."""
+        self.set_level_data(level,_suffices=('l',))
+
+    def set_level_data(self,level,_suffices=('l','u')):
+        """Copy all data in level into self for upper and lower
+        quantum numbers in self that match those in level."""
+        ## both upper and lower levels
+        for suffix in _suffices:
+            ## get unique quantum numbers in self
+            t,i,j = np.unique(self[f'qnhash_{suffix}'],return_index=True,return_inverse=True)
+            ## match those to level quantum numbers
+            k,l = tools.common(self[f'qnhash_{suffix}'][i],level['qnhash'])
+            if len(k) < len(i):
+                raise Exception(f'Some of the {suffix!r} quantum numbers in self are not specified in the input level.')
+            l = l[np.argsort(k)]
+            ## add matching data to self
+            for key in level:
+                self[f'{key}_l'] = level[key,l][j]
+                    
+    # def set_levels(self,match=None,**keys_vals):
+        # """Set level data from keys_vals into self."""
+        # for key,val in keys_vals.items():
+            # suffix = key[-2:]
+            # assert suffix in ('_u','_l')
+            # qn_keys = [t+suffix for t in self._level_class.defining_qn]
+            # ## find match if requested
+            # if match is not None:
+                # imatch = self.match(**match)
+            # ## loop through all sets of common levels setting key=val
+            # for d,i in self.unique_dicts_match(*qn_keys):
+                # ## limit to match is requested
+                # if match is not None:
+                    # i &= imatch
+                    # if not np.any(i):
+                        # continue
+                # ## make a copy of value -- and a Parameter if
+                # ## necessary. Substitute current value into if is NaN
+                # ## is given
+                # if np.isscalar(val):
+                    # vali = val
+                # else:
+                    # vali = Parameter(*val)
+                    # if np.isnan(vali.value):
+                        # vali.value = self[key][i][0]
+                # self.set_parameter(key,vali,match=d)
     
     def vary_upper_level_energy(self,match=None,vary=False,step=None):
         """Vary lines with common upper level energy with as common
@@ -1324,9 +1374,10 @@ class Linear(Generic):
         level_class=levels.Diatomic,
         base_class=Generic,
         new_keys=(
-        'fv', 'νv', 'μv',
-        'FCfactor','Aev',
-        'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
+            'fv', 'νv', 'μv',
+            'FCfactor','Aev',
+            'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
+            'electric_dipole_allowed',
         ))
     
     default_xkey = 'J_l'
@@ -1630,6 +1681,37 @@ class Diatomic(Linear):
                 data.pop(key)
         self.extend(**data)
 
+    def load_from_thesis_table(self,filename,**extra_data):
+        """Old filetype. Incomplete"""
+        ## load vector data
+        data = tools.file_to_dict(filename,labels_commented=True)
+        combined_data = {}
+        length = len(data[list(data.keys())[0]])
+        for (ΔJcode,ΔJ,efcode,ef) in (('P',-1,'e',+1),('R',+1,'e',+1),('Q',0,'f',-1)):
+            new_data = {
+                'J_u': data['Jp'],
+                'ΔJ': np.full(length,ΔJ),
+                'ef_u': np.full(length,ef),
+            }
+            i_not_nan = np.full(length,False)
+            for key0,key1 in (
+                    (f'{ΔJcode}branch','ν'),
+                    (f'{ΔJcode}linestr','f'),
+                    (f'{ΔJcode}bandstr','fv'),
+                    (f'{efcode}wid','Γ_u'),
+                    (f'{efcode}term','E_u'),
+            ):
+                if key0 in data:
+                    new_data[key1] = data[key0]
+                    i_not_nan |= ~np.isnan(new_data[key1])
+            if np.any(i_not_nan):
+                for key in new_data:
+                    if key not in combined_data:
+                        combined_data[key] = []
+                    combined_data[key].extend(new_data[key][i_not_nan])
+        self.load_from_dict(combined_data,flat=True)
+        self.join(extra_data)
+        self.limit_to_match(electric_dipole_allowed=True)
 
     def concatenate_with_combination_differences(self,line):
         """Concatenate lines in line and add more lines iwth allowed
@@ -1708,3 +1790,24 @@ class LinearTriatomic(Linear):
 
 
             
+def generate_from_levels(
+        upper_level,
+        lower_level,
+        *args_generate_from_levels,
+        **kwargs_generate_from_levels
+):
+    """Identify classname of upper and lower levels and make a similar
+    line object including all allowed transitions."""
+    if upper_level.classname != lower_level.classname:
+        raise Exception(f'classnames do not match: {upper_level.classname!r} and {lower_level.classname!r}')
+    from . import lines         # self reference to access classes
+    ## ensure line class type exists
+    if r:=re.match('levels\.(.*)',upper_level.classname):
+        classtype = r.group(1)
+        if not hasattr(lines,classtype):
+            raise Exception(f'Unknown lines class: {classtype!r}')
+    ## make obj
+    retval = getattr(lines,classtype)()
+    retval.generate_from_levels(upper_level,lower_level,*args_generate_from_levels,**kwargs_generate_from_levels)
+    retval.name = f'generated_from_{upper_level.name}_and_{lower_level.name}'
+    return retval
