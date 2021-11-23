@@ -12,6 +12,9 @@ class OpusData:
         self.data = brukeropusreader.read_file(expand_path(filename))
         ##pprint(self.data)       #  DEBUG
 
+    x = property(lambda self: self.get_spectrum()[0])
+    y = property(lambda self: self.get_spectrum()[1])
+
     def has_spectrum(self):
         return 'ScSm' in self.data
 
@@ -55,13 +58,22 @@ class OpusData:
         return float(self.data['Fourier Transformation']['ZFF'])
 
     def get_apodisation_function(self):
-        if self.data['Fourier Transformation']['APF'] == 'B3':
+        if ('Fourier Transformation' not in self.data
+            or 'APF' not in self.data['Fourier Transformation']):
+            raise Exception(f'Cannot find apodisation function parameter in opus data')
+        elif self.data['Fourier Transformation']['APF'] == 'B3':
             return 'Blackman-Harris 3-term'
+        elif self.data['Fourier Transformation']['APF'] == 'BX':
+            return 'boxcar'
         else:
-            raise Exception(f"Unknown opus apodisation function: {repr(d['Fourier Transformation']['APF'])}")
+            raise Exception(f"Unknown opus apodisation function: {repr(self.data['Fourier Transformation']['APF'])}")
 
     def get_resolution(self,kind='resolution'):
         """Return spectral resolution."""
+        if (f'ScSm Data Parameter' not in self.data
+              or 'FXV' not in self.data[f'ScSm Data Parameter']
+              or 'NPT' not in self.data[f'ScSm Data Parameter']):
+            raise Exception(f'Could not find resolution parameter in opus data')
         ## get spectrum grid step (cm-1)
         retval = ((self.data[f'ScSm Data Parameter']['LXV']
                -self.data[f'ScSm Data Parameter']['FXV'])
