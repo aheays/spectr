@@ -461,7 +461,7 @@ prototypes['SR'] = dict(description="Signed projection of spin angular momentum 
 
 ## derived from defining quantum numbers
 prototypes['qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[])
-prototypes['qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[])
+prototypes['encoded_qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[])
 
 ## Effective Hamiltonian parameters
 prototypes['Tv']  = dict(description='Term origin' ,units='cm-1',kind='f',fmt='0.6f',default=0,infer=[])
@@ -546,8 +546,8 @@ def _collect_prototypes(*keys,defining_qn=()):
     ## defining_qn
     if 'qnhash' in default_prototypes:
         default_prototypes['qnhash']['infer'].append((defining_qn,_qn_hash),)
-    if 'qn' in default_prototypes:
-        default_prototypes['qn']['infer'].append(
+    if 'encoded_qn' in default_prototypes:
+        default_prototypes['encoded_qn']['infer'].append(
             (defining_qn, lambda self,*qn:
                      [self.encode_qn({key:qni[j] for (key,qni) in zip(defining_qn,qn)}) for j in range(len(self))]))
     for key in defining_qn:
@@ -570,7 +570,7 @@ class Base(Dataset):
         ## decode encoded_qn
         if encoded_qn is not None:
             if isinstance(encoded_qn,str):
-                kwargs = self._decode_qn(encoded_qn) | kwargs
+                kwargs = self.decode_qn(encoded_qn) | kwargs
             else:
                 t = {}
                 for i,encoded_qni in enumerate(encoded_qn):
