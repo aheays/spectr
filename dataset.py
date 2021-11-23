@@ -80,6 +80,7 @@ class Dataset(optimise.Optimiser):
             limit_to_match=None,     # dict of things to match
             description='',          # description of this Dataset
             data=None,               # load keys_vals into self, or set with set_value if they are Parameters
+            global_attributes=None,  # keys and values of this dictionary are copied to global_attributes in self
             **data_kwargs,           # added to data
     ):
         ## init as optimiser, make a custom form_input_function, save
@@ -158,6 +159,10 @@ class Dataset(optimise.Optimiser):
         ## possible set non-permission for indexing after initial data
         ## added
         self.permit_indexing = permit_indexing
+        ## dictionary to store global attributes
+        self.global_attributes = {}
+        if global_attributes is not None:
+            self.global_attributes |= global_attributes
 
     ## name is adjusted to be proper python symbol when set
     def _set_name(self,name):
@@ -371,7 +376,7 @@ class Dataset(optimise.Optimiser):
                     data[tkey] = tval
             ## object kind not implemented
             if 'kind' in data and data['kind'] == 'O':
-                raise ImplementationError()
+                raise NotImplementedError()
             ## use data to infer kind if necessary
             if kind is not None:
                 data['kind'] = kind
@@ -604,6 +609,8 @@ class Dataset(optimise.Optimiser):
         ## set the data
         self.set(key,'value',value,index=combined_index,set_changed_only= True)
         if isinstance(value,Parameter):
+            # if value.vary == True: #  DEBUG
+                # print('DEBUG:', value)
             self.set(key,'unc' ,value.unc ,index=combined_index)
             if self._clean_construct:
                 self.set(key,'step',value.step,index=combined_index)
@@ -857,7 +864,7 @@ class Dataset(optimise.Optimiser):
                 '_data',
                 '_row_modify_time',
                 'prototypes',
-                'parameters',
+                'global_attributes',
                 '_construct_functions',
                 '_post_construct_functions',
                 '_plot_functions',
@@ -890,6 +897,7 @@ class Dataset(optimise.Optimiser):
             index=None,
             match=None,
             subkeys=None,
+            copy_global_attributes=True,
             copy_inferred_data=False,
             **match_kwargs
     ):
@@ -911,7 +919,6 @@ class Dataset(optimise.Optimiser):
         index = source._get_combined_index(index,match,match_kwargs)
         ## copy data and selected prototype data
         for key in keys:
-            # self.set(key,'value',source[key,'value',index])
             self.set(key,'value',source[key,'value',index])
             ## get a list of subkeys to copy for this key, ignore those beginning with '_'
             if subkeys is None:
@@ -926,6 +933,9 @@ class Dataset(optimise.Optimiser):
                     self.set(key,subkey,source[key,subkey,index])
                 else:
                     self.set(key,subkey,source[key,subkey])
+        ## copy global_attributes
+        if copy_global_attributes:
+            self.global_attributes = deepcopy(source.global_attributes)
 
     @optimise_method()
     def copy_from_and_optimise(
@@ -1213,6 +1223,8 @@ class Dataset(optimise.Optimiser):
         retval = {}
         retval['classname'] = self.classname
         retval['description'] = self.description
+        if len(self.global_attributes) > 0:
+            retval['global_attributes'] = self.global_attributes
         for key in keys:
             retval[key] = {}
             for subkey in subkeys:
@@ -1338,8 +1350,8 @@ class Dataset(optimise.Optimiser):
                             vals = [format(t,fmt) for t in self[key,subkey]]
                         width = str(max(len(formatted_key),np.max([len(t) for t in vals])))
                         columns.append([format(formatted_key,width)]+[format(t,width) for t in vals])
-        ## construct header before table
-        header = []
+        ## format key metadata
+        formatted_metadata = []
         if not simple:
             ## include description of keys
             for key in self:
@@ -1364,15 +1376,17 @@ class Dataset(optimise.Optimiser):
                     line += '}'
                 else:
                     line = f'{key:20} = {metadata!r}'
-                header.append(line)
+                formatted_metadata.append(line)
         ## make full formatted string
         retval = ''
         if not simple:
             retval += f'[classname]\n{self.classname}\n'
         if not simple and self.description is not None:
             retval += f'[description]\n{self.description}\n'
-        if header != []:
-            retval += '[metadata]\n'+'\n'.join(header)
+        if len(self.global_attributes) > 0:
+            retval += f'[global_attributes]\n'+'\n'.join([f'{repr(tkey):20} : {repr(tval)}' for tkey,tval in self.global_attributes.items()])+'\n'
+        if formatted_metadata != []:
+            retval += '[metadata]\n'+'\n'.join(formatted_metadata)
         if columns != []:
             if len(retval) > 0:
                 retval += '\n[data]\n'
@@ -1446,7 +1460,7 @@ class Dataset(optimise.Optimiser):
             np.savez(filename,self.as_dict(keys=keys,subkeys=subkeys))
         elif filetype == 'directory':
             ## directory of npy files
-            tools.dict_to_directory(filename,self.as_dict(keys=keys,subkeys=subkeys))
+            tools.dict_to_directory(filename,self.as_dict(keys=keys,subkeys=subkeys),repr_strings=True)
         elif filetype == 'text':
             ## space-separated text file
             format_kwargs.setdefault('delimiter',' ')
@@ -1537,12 +1551,21 @@ class Dataset(optimise.Optimiser):
                     key = re.sub(match_re,sub_re,key)
                 if key != original_key:
                     data[key] = data.pop(original_key)
-        ## test for a matching classname, return if requested or make
-        ## sure it matches self
+        ## hack -- sometimes classname is quoted, so remove them
+        if 'classname' in data:
+            data['classname'] = str(data['classname'])
+            if ((data['classname'][0] == "'" and data['classname'][-1] == "'")
+                or  (data['classname'][0] == '"' and data['classname'][-1] == '"')):
+                data['classname'] = data['classname'][1:-1]
+        ## if load_classname_only then return it do nothing else. None
+        ## if unknown. This is a hack, makes self pretty unusable
+        ## apart from the classname attribute
         if load_classname_only:
             if 'classname' in data:
-                self.classname = data['classname']
-            return
+                self.classname =  data['classname']
+            else:
+                self.classname =  None
+                ## test loaded classname matches self
         if 'classname' in data:
             if data['classname'] != self.classname:
                 warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
@@ -1580,6 +1603,13 @@ class Dataset(optimise.Optimiser):
         ## description is saved in data
         if 'description' in data:
             self.description = str(data.pop('description'))
+        ## global_attributes are saved in data, try to evalute as literal, or keep as string on fail
+        if 'global_attributes' in data:
+            for key,val in data.pop('global_attributes').items():
+                try:
+                    self.global_attributes[key] = ast.literal_eval(val)
+                except ValueError:
+                    self.global_attributes[key] = val
         ## HACK REMOVE ASSOC 2021-06-21 DELETE ONE DAY
         for key in data:
             if 'assoc' in list(data[key]):
@@ -1716,10 +1746,11 @@ class Dataset(optimise.Optimiser):
         key_line_without_value_re = re.compile(f'^ *{escaped_comment} *([^# ]+) *# *(.+) *') # no value in line
         key_line_with_value_re = re.compile(f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #])') # may also contain description
         current_section = 'data'
-        valid_sections = ('classname','description','keys','data','metadata')
+        valid_sections = ('classname','description','keys','data','metadata','global_attributes')
         section_iline = 0       # how many lines read in this section
         classname = None
         description = None
+        global_attributes = []
         with open(filename,'r') as fid:
             for iline,line in enumerate(fid):
                 ## remove newline
@@ -1762,6 +1793,9 @@ class Dataset(optimise.Optimiser):
                 elif current_section == 'description':
                     ## add to description
                     description += '\n'+line
+                elif current_section == 'global_attributes':
+                    ## add global attribute
+                    global_attributes.append(line)
                 elif current_section == 'keys':
                     ## decode key line getting key, value, and any metadata
                     r = re.match(
@@ -1832,6 +1866,9 @@ class Dataset(optimise.Optimiser):
             data['classname'] = classname
         if description is not None:
             data['description'] = description
+        if len(global_attributes) > 0:
+            tdict = '{'+','.join(global_attributes)+'}'
+            self.global_attributes |= ast.literal_eval(tdict)
         ## if there is no kind for this key then try and cast to numeric data
         for key in data:
             if key not in metadata or 'kind' not in metadata[key]:
@@ -2045,22 +2082,30 @@ class Dataset(optimise.Optimiser):
         for (key,subkey),val in subkeys_vals.items():
             self.set(key,subkey,val,index)
 
-    def join(self,new_dataset):
-        """Join keys form new data set onto this one.  No overlap allowed."""
-        ## error checks
-        if len(self) != len(new_dataset):
-            raise Exception(f'Length mismatch between self and new dataset: {len(self)} and {len(new_dataset)}')
-        i,j = tools.common(self.keys(),new_dataset.keys())
-        if len(i)>0:
-            raise Exception(f'Overlapping keys between self and new dataset: {repr(self.keys()[i])}')
-        ## add from new_dataset
-        for key in new_dataset:
-            if key in self.prototypes:
-                self[key] = new_dataset[key]
-            else:
-                if not self.permit_nonprototyped_data:
-                    raise Exception(f'Key from new dataset is not prototyped in self: {repr(key)}')
-                self._data[key] = deepcopy(new_dataset._data[key])
+    def join(self,data):
+        """Join keys from a new dataset set onto this one.  No key overlap allowed."""
+        ## add data if it is a Dataset
+        if isinstance(data,Dataset):
+            ## error checks
+            if len(self) != len(data):
+                raise Exception(f'Length mismatch between self and new dataset: {len(self)} and {len(data)}')
+            i,j = tools.common(self.keys(),data.keys())
+            if len(i) > 0:
+                raise Exception(f'Overlapping keys between self and new dataset: {repr(self.keys()[i])}')
+            ## add from data
+            for key in data:
+                if key in self.prototypes:
+                    self[key] = data[key]
+                else:
+                    if not self.permit_nonprototyped_data:
+                        raise Exception(f'Key from new dataset is not prototyped in self: {repr(key)}')
+                    self._data[key] = deepcopy(data._data[key])
+        ## add data if it is a dictionary
+        elif isinstance(data,dict):
+            for key in data:
+                if self.is_set(key):
+                    raise Exception(f'Key already present: {key!r}')
+                self[key] = data[key]
 
     def _reallocate(self,new_length):
         """Lengthen data arrays."""
