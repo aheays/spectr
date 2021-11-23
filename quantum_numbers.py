@@ -212,8 +212,8 @@ def decode_linear_level(encoded):
             qn['species'] = decode_species(r.group(1)[:-1])
         ## decode term.
         term = r.group(2)
-        ## e.g., Ap
-        if r2:=re.match(r'^([A-Za-z]+[′″]?)?$',term):
+        ## e.g., Ap, c3, c₃, c′₄
+        if r2:=re.match(r'^([A-Za-z]+[′″]?[0-9₀₁₂₃₄₅₆₇₈₉]*)?$',term):
             qn['label'] = r2.group(1)
         ## e.g., Ap.3Σ+g
         elif r2:=re.match(r'^([A-Za-z]+[′″]?)?\.([0-9])?(Σ\+|Σ-|Π|Δ|Γ)([gu])?$',term):
