@@ -1604,28 +1604,36 @@ def dict_to_directory(
         # remove_string_margin=True,
         trash_existing=True,
         override_trash_existing_safety_check=False,
-        error_on_unsupported_type=False,
+        repr_strings=False,
 ):
     """Create a directory and save contents of dictionary into it."""
     ## make directory if necessary, possibly deleting old contents
-    mkdir(directory, trash_existing=trash_existing,
-          override_trash_existing_safety_check=override_trash_existing_safety_check)
+    mkdir(
+        directory,
+        trash_existing=trash_existing,
+        override_trash_existing_safety_check=override_trash_existing_safety_check)
     ## loop through all data
     for key,val in dictionary.items():
         str_key = str(key)
         if '/' in str_key:
-            raise Exception(f'Invalid character for dict_to_directory [/] in key: {repr(key)}')
+            raise ImplementationError(f'Not implemented character for dict_to_directory [/] in key: {repr(key)}')
         if isinstance(val,dict):
             ## recursively save dictionaries as subdirectories
             dict_to_directory(f'{directory}/{str_key}',val,array_format,trash_existing=False)
         elif isinstance(val,str):
             ## save strings to text files
-            string_to_file(f'{directory}/{str_key}',val)
+            if repr_strings:
+                string_to_file(f'{directory}/{str_key}',repr(val))
+            else:
+                string_to_file(f'{directory}/{str_key}',val)
         elif isinstance(val,np.ndarray):
-            ## save as array, defer formatting to numpy
+            ## save ndarray, defer formatting to numpy
             extension = get_extension(array_format)
             filename = f'{directory}/{str_key}{extension}'
             array_to_file(filename,np.asarray(val))
+        else:
+            ## save as repr of whatever it is
+            string_to_file(f'{directory}/{str_key}',repr(val))
 
 def directory_to_dict(directory):
     """Load all contents of a directory into a dictionary, recursive."""
@@ -4249,6 +4257,8 @@ def infer_filetype(filename):
         return 'psv'
     elif re.match(r'.*\.[0-9]+$',basename(filename)):
         return 'opus'
+    elif extension in ('spectrum','model','experiment',):
+        return 'dataset'
     elif os.path.exists(filename) and os.path.isdir(filename):
         return 'directory'
     elif extension == 'dataset':
