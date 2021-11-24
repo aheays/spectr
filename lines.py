@@ -27,7 +27,7 @@ from .exceptions import InferException
 # from .lines import prototypes
 from . import dataset
 from .dataset import Dataset
-from .optimise import Parameter,P,optimise_method
+from .optimise import Parameter,P,optimise_method,format_input_method
 
 
 
@@ -194,25 +194,25 @@ prototypes['mJ_l'] = dict(description="Pressure broadening J-coordinate. m(P-bra
 prototypes['pair'] = dict(description="Pressure of air",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
 prototypes['γ0air'] = dict(description="Pressure broadening coefficient in air",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0air'] = dict(description="Pressure broadening temperature dependence in air",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['δ0air'] = dict(description="Pressure shift coefficient in air",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
-prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence in air",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['δ0air'] = dict(description="Pressure shift coefficient in air",units="cm-1.atm-1", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
+prototypes['nδ0air'] = dict(description="Pressure shift temperature dependence in air",units="cm-1.atm-1", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['Γair'] = dict(description="Pressure broadening due to air",units="cm-1.FWHM", kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array, infer=[(('γ0air','nγ0air','pair','Ttr'),lambda self,γ,n,P,T: (296/T)**n*2*γ*convert.units(P,'Pa','atm')),])
 prototypes['Δνair'] = dict(description="Pressure shift due to air",units="cm-1",kind='f', fmt='<10.5g',infer=[(('δ0air','nδ0air','pair','Ttr'),lambda self,δ,n,P,T: (296/T)**n*δ*convert.units(P,'Pa','atm')),])
-prototypes['νvc'] = dict(description="Frequency of velocity changing collsions (which profile?)",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
+prototypes['νvc'] = dict(description="Frequency of velocity changing collsions (which profile?)",units="", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['pspecies'] = dict(description="Partial pressure of this species",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
 prototypes['pself'] = dict(description="Partial pressure of this chemical species (synonym for pchemical_species)",units="Pa", kind='f', fmt='0.5f',infer=[('pchemical_species',lambda self,pchemical_species:pchemical_species)],cast=tools.cast_abs_float_array)
 prototypes['pchemical_species'] = dict(description="Partial pressure of this chemical species",units="Pa", kind='f', fmt='0.5f',infer=[('pself',lambda self,pself:pself)],cast=tools.cast_abs_float_array)
 prototypes['γ0self'] = dict(description="Pressure broadening coefficient in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0self'] = dict(description="Pressure broadening temperature dependence in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['δ0self'] = dict(description="Pressure shift coefficient in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
-prototypes['nδ0self'] = dict(description="Pressure shift temperature dependence in self",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['δ0self'] = dict(description="Pressure shift coefficient in self",units="cm-1.atm-1", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
+prototypes['nδ0self'] = dict(description="Pressure shift temperature dependence in self",units="cm-1.atm-1", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['Γself'] = dict(description="Pressure broadening due to self",units="cm-1.FWHM",kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0self','nγ0self','pself','Ttr'),lambda self,γ0,n,P,T: (296/T)**n*2*γ0*convert.units(P,'Pa','atm')),])
 prototypes['Δνself'] = dict(description="Pressure shift due to self",units="cm-1",kind='f', fmt='<10.5g',infer=[(('δ0self','nδ0self','pself','Ttr'),lambda self,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
 prototypes['pX'] = dict(description="Pressure of X",units="Pa", kind='f', fmt='0.5f',infer=[],cast=tools.cast_abs_float_array)
 prototypes['γ0X'] = dict(description="Pressure broadening coefficient in X",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],cast=tools.cast_abs_float_array,default_step=1e-3)
 prototypes['nγ0X'] = dict(description="Pressure broadening temperature dependence in X",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
-prototypes['δ0X'] = dict(description="Pressure shift coefficient in X",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
-prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in X",units="cm-1.atm-1.HWHM", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
+prototypes['δ0X'] = dict(description="Pressure shift coefficient in X",units="cm-1.atm-1", kind='f',  fmt='<10.5g', infer=[],default_step=1e-4)
+prototypes['nδ0X'] = dict(description="Pressure shift temperature dependence in X",units="cm-1.atm-1", kind='f',  fmt='<10.5g', infer=[((),lambda self: 0)],)
 prototypes['ΓX'] = dict(description="Pressure broadening due to X",units="cm-1.FWHM",kind='f', fmt='<10.5g',cast=tools.cast_abs_float_array,infer=[(('γ0X','nγ0X','pX','Ttr'),lambda self,γ0,n,P,T: 2*(296/T)**n*2*γ0*convert.units(P,'Pa','atm')),])
 prototypes['ΔνX'] = dict(description="Pressure shift due to species X",units="cm-1.HWHM",kind='f', fmt='<10.5g',infer=[(('δ0X','nδ0X','pX','Ttr'),lambda X,δ0,n,P,T: (296/T)**n*δ0*convert.units(P,'Pa','atm')),])
 ## HITRAN encoded pressure and temperature dependent Hartmann-Tran
@@ -1391,100 +1391,115 @@ class Linear(Generic):
         """Decode string into quantum numbers"""
         return quantum_numbers.decode_linear_line(encoded_qn)
 
-    @optimise_method()
-    def set_spline_fv_PQR(
-            self,
-            xkey='J_u',
-            key='fv',
-            Qknots=None,        # list of spline points, or single value
-            Δknots=None,        # list of spline points, or single value
-            order=3,
-            default=None,
-            match=None,
-            index=None,
-            _cache=None,
-            **match_kwargs):
-        """Set key to spline function of xkey defined by knots at
-        [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
-        given, then only set these.  If spline list is replaced with a
-        single value then use this as a constant."""
-        ## To do: cache values or match results so only update if
-        ## knots or match values have changed
-        if len(_cache) == 0:
-            ## save lists spline points (or single values
-            if tools.isiterable(Qknots):
-                xQspline,yQspline = zip(*Qknots)
-            else:
-                xQspline,yQspline = None,Qknots
-            if tools.isiterable(Δknots):
-                xΔspline,yΔspline = zip(*Δknots)
-            else:
-                xΔspline,yΔspline = None,Δknots
-            ## get index limit to defined xkey range
-            index = self._get_combined_index(index,match,return_bool=True,**match_kwargs)
-            irange = (self[xkey]>=max(
-                (0 if xQspline is None else np.min(xQspline)),
-                (0 if xΔspline is None else np.min(xΔspline))
-            )) & (self[xkey]<=min(
-                (inf if xQspline is None else np.max(xQspline)),
-                (inf if xΔspline is None else np.max(xΔspline))
-            ))
-            if index is None:
-                index = irange
-            else:
-                index &= irange
-            Qindex = index & self.match(ΔJ=0)
-            Pindex = index & self.match(ΔJ=-1)
-            Rindex = index & self.match(ΔJ=+1)
-            _cache['Qindex'] = Qindex
-            _cache['Pindex'] = Pindex
-            _cache['Rindex'] = Rindex
-            _cache['xQspline'],_cache['yQspline'] = xQspline,yQspline
-            _cache['xΔspline'],_cache['yΔspline'] = xΔspline,yΔspline
-        ## get cached data
-        Qindex = _cache['Qindex']
-        Pindex = _cache['Pindex']
-        Rindex = _cache['Rindex']
-        xQspline,yQspline = _cache['xQspline'],_cache['yQspline']
-        xΔspline,yΔspline = _cache['xΔspline'],_cache['yΔspline']
-        ## set data
-        if not self.is_known(key):
-            if default is None:
-                raise Exception(f'Setting {repr(key)} to spline but it is not known and no default value if provided')
-            else:
-                self[key] = default
-        ## compute splined values (or use single value)
-        if xQspline is None:
-            Qy = yQspline
-        else:
-            Qy = tools.spline(xQspline,yQspline,self[xkey,Qindex],order=order)
-        if xQspline is None:
-            Py = yQspline
-            Ry = yQspline
-        else:
-            Py = tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order)
-            Ry = tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order)
-        if xΔspline is None:
-            Py = Py + yΔspline
-            Ry = Ry - yΔspline
-        else:
-            Py = Py + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order)
-            Ry = Ry - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order)
-        ## set data
-        self.set(key,'value',value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
-        self.set(key,'value',value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
-        self.set(key,'value',value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
-        ## set uncertainties to NaN
-        if self.is_set(key,'unc'):
-            self.set(key,'unc',nan,index=Qindex)
-            self.set(key,'unc',nan,index=Pindex)
-            self.set(key,'unc',nan,index=Rindex)
-        ## set vary to False if set, but only on the first execution
-        if 'not_first_execution' not in _cache:
-            if self.is_set(key,'vary'):
-                self.set(key,'vary',False,index=index)
-            _cache['not_first_execution'] = True
+    # @optimise_method()
+    # def set_spline_fv_PQR(
+    #         self,
+    #         xkey='J_u',
+    #         key='fv',
+    #         Qknots=None,        # list of spline points, or single value
+    #         Δknots=None,        # list of spline points, or single value
+    #         order=3,
+    #         default=None,
+    #         match=None,
+    #         index=None,
+    #         _cache=None,
+    #         **match_kwargs):
+    #     """Set key to spline function of xkey defined by knots at
+    #     [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
+    #     given, then only set these.  If spline list is replaced with a
+    #     single value then use this as a constant."""
+    #     ## To do: cache values or match results so only update if
+    #     ## knots or match values have changed
+    #     if len(_cache) == 0:
+    #         ## save lists spline points (or single values
+    #         if tools.isiterable(Qknots):
+    #             xQspline,yQspline = zip(*Qknots)
+    #         else:
+    #             xQspline,yQspline = None,Qknots
+    #         if tools.isiterable(Δknots):
+    #             xΔspline,yΔspline = zip(*Δknots)
+    #         else:
+    #             xΔspline,yΔspline = None,Δknots
+    #         ## get index limit to defined xkey range
+    #         index = self._get_combined_index(index,match,return_bool=True,**match_kwargs)
+    #         irange = (self[xkey]>=max(
+    #             (0 if xQspline is None else np.min(xQspline)),
+    #             (0 if xΔspline is None else np.min(xΔspline))
+    #         )) & (self[xkey]<=min(
+    #             (inf if xQspline is None else np.max(xQspline)),
+    #             (inf if xΔspline is None else np.max(xΔspline))
+    #         ))
+    #         if index is None:
+    #             index = irange
+    #         else:
+    #             index &= irange
+    #         Qindex = index & self.match(ΔJ=0)
+    #         Pindex = index & self.match(ΔJ=-1)
+    #         Rindex = index & self.match(ΔJ=+1)
+    #         _cache['Qindex'] = Qindex
+    #         _cache['Pindex'] = Pindex
+    #         _cache['Rindex'] = Rindex
+    #         _cache['xQspline'],_cache['yQspline'] = xQspline,yQspline
+    #         _cache['xΔspline'],_cache['yΔspline'] = xΔspline,yΔspline
+    #     ## get cached data
+    #     Qindex = _cache['Qindex']
+    #     Pindex = _cache['Pindex']
+    #     Rindex = _cache['Rindex']
+    #     xQspline,yQspline = _cache['xQspline'],_cache['yQspline']
+    #     xΔspline,yΔspline = _cache['xΔspline'],_cache['yΔspline']
+    #     ## set data
+    #     if not self.is_known(key):
+    #         if default is None:
+    #             raise Exception(f'Setting {repr(key)} to spline but it is not known and no default value is provided')
+    #         else:
+    #             self[key] = default
+    #     ## compute splined values (or use single value)
+    #     if xQspline is None:
+    #         Qy = yQspline
+    #     else:
+    #         Qy = tools.spline(xQspline,yQspline,self[xkey,Qindex],order=order)
+    #     if xQspline is None:
+    #         Py = yQspline
+    #         Ry = yQspline
+    #     else:
+    #         Py = tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order)
+    #         Ry = tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order)
+    #     if xΔspline is None:
+    #         Py = Py + yΔspline
+    #         Ry = Ry - yΔspline
+    #     else:
+    #         Py = Py + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order)
+    #         Ry = Ry - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order)
+    #     ## set data
+    #     self.set(key,'value',value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
+    #     self.set(key,'value',value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
+    #     self.set(key,'value',value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
+    #     ## set uncertainties to NaN
+    #     if self.is_set(key,'unc'):
+    #         self.set(key,'unc',nan,index=Qindex)
+    #         self.set(key,'unc',nan,index=Pindex)
+    #         self.set(key,'unc',nan,index=Rindex)
+    #     ## set vary to False if set, but only on the first execution
+    #     if 'not_first_execution' not in _cache:
+    #         if self.is_set(key,'vary'):
+    #             self.set(key,'vary',False,index=index)
+    #         _cache['not_first_execution'] = True
 
+    @format_input_method()
+    def set_spline_PQR(self,xkey='J_u',ykey='fv',Qknots=None,ΔPknots=None,ΔRknots=None,**set_spline_kwargs):
+        """Set a strength related quantity for P, R, and possibly Q branches.
+        The splines defined by ΔPknots and ΔRknots are added to Qknots, if
+        there is a Q branch it is set to Qknots."""
+        if Qknots is None:
+            Qknots = [[0,0],[9999999,0]]
+        self.set_spline(xkey='J_u',ykey='fv',knots=Qknots,**set_spline_kwargs)
+        self.pop_format_input_function()
+        if ΔPknots is not None:
+            self.add_spline(xkey='J_u',ykey='fv',knots=ΔPknots,ΔJ=-1,**set_spline_kwargs)
+            self.pop_format_input_function()
+        if ΔRknots is not None:
+            self.add_spline(xkey='J_u',ykey='fv',knots=ΔRknots,ΔJ=+1,**set_spline_kwargs)
+            self.pop_format_input_function()
 
 
     # def set_effective_rotational_linestrengths(self,Ω_u,Ω_l):
