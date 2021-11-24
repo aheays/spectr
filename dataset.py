@@ -305,6 +305,51 @@ class Dataset(optimise.Optimiser):
                 self.set(ykey,'vary',False,index=index)
             _cache['not_first_execution'] = True
 
+    @optimise_method(format_multi_line=3)
+    def add_spline(
+            self,
+            xkey,
+            ykey,
+            knots,
+            order=3,
+            default=None,
+            match=None,
+            index=None,
+            _cache=None,
+            **match_kwargs
+    ):
+        """Compute a spline function of xkey defined by knots at
+        [(x0,y0),(x1,y1),(x2,y2),...] and add to current value of
+        ykey. If index or a match dictionary given, then only set
+        these."""
+        ## To do: cache values or match results so only update if
+        ## knots or match values have changed
+        if len(_cache) == 0: 
+            xspline,yspline = zip(*knots)
+            ## get index limit to defined xkey range
+            index = self._get_combined_index(index,match,match_kwargs,return_bool=True,)
+            if index is None:
+                index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
+            else:
+                index &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
+            _cache['index'] = index
+            _cache['xspline'],_cache['yspline'] = xspline,yspline
+        ## get cached data
+        index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
+        ## add to ykey
+        ynew = self.get(ykey,'value',index=index)
+        yspline = tools.spline(xspline,yspline,self.get(xkey,index=index),order=order)
+        self.set(ykey,'value',value=ynew+yspline,index=index)
+        ## set previously-set uncertainties to NaN
+        if self.is_set(ykey,'unc'):
+            self.set(ykey,'unc',nan,index=index)
+        ## set vary to False if set, but only on the first execution
+        ## (for some reason?!?) 
+        if 'not_first_execution' not in _cache:
+            if 'vary' in self._data[ykey]:
+                self.set(ykey,'vary',False,index=index)
+            _cache['not_first_execution'] = True
+
     def _increase_char_length_if_necessary(self,key,subkey,new_data):
         """reallocate with increased unicode dtype length if new
         strings are longer than the current array dtype"""
