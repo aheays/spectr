@@ -577,6 +577,9 @@ class Optimiser:
             dp = [np.nan for pi in p]
         else:
             dp = list(dp)
+        # print('DEBUG:', )
+        # print('DEBUG:', p)
+        # print('DEBUG:', dp)
         already_set = []
         for optimiser in self.get_all_suboptimisers():
             for parameter in optimiser.parameters:
@@ -793,14 +796,18 @@ class Optimiser:
                 plotting.plt.figure(previous_current_figure_number) # save and restore current figure
             else:
                 self._make_plot = None    
-            ## collect options for  least squares fit
+            ## collect options for least squares fit
             x0,diff_step = [],[]
             for pi,stepi in zip(parameters['value'],parameters['step']):
-                if pi==0:
-                    pi = stepi
                 x0.append(pi)
-                # diff_step.append(stepi/abs(pi))
-                diff_step.append(stepi)
+                ## logic necessary to get correct stepsize into least_squares
+                if pi == 0:
+                    diff_step.append(stepi)
+                else:
+                    diff_step.append(stepi/abs(pi))
+            # print('DEBUG:', 'a')
+            # print('DEBUG:', x0)
+            # print('DEBUG:', diff_step)
             least_squares_options |= {
                 'fun':self._optimisation_function,
                 'x0':x0,
