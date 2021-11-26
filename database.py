@@ -2,6 +2,7 @@ import functools
 from functools import lru_cache
 import warnings
 from pprint import pprint
+from copy import copy,deepcopy
 
 
 import numpy as np
@@ -91,16 +92,37 @@ def get_species_property(species,prop):
     return retval
 
 @tools.cache
-def get_level(species):
+def _get_level_internal(species):
+    """Cached load of level from data/levels"""
+    retval =  dataset.load(f'{data_directory}/levels/{species}.h5')
+    return retval
+
+def get_level(species,source='auto'):
     """Load a Level object containing data about a species (all
     isotopologues)."""
     species = normalise_species(species)
-    try:
-        retval =  dataset.load(f'{data_directory}/levels/{species}.h5')
-    except FileNotFoundError as err:
-        raise DatabaseException(str(err))
-    # if len(match) > 0:
-        # retval = retval.matches(match)
+    if source == 'auto':
+        ## try multiple sources
+        for source in ('levels','hitran'):
+            try:
+                retval = get_level(species,source)
+                break
+            except DatabaseException:
+                pass
+        else:
+            raise DatabaseException(f'Could not find a source for levels of {species!r}')
+    if source == 'levels':
+        ## my collected data
+        try:
+            retval =  deepcopy(_get_level_internal(species))
+        except FileNotFoundError as err:
+            raise DatabaseException(str(err))
+    elif source == 'hitran':
+        ## hitran
+        from . import hitran
+        retval =  hitran.get_level(species)
+    else:
+        raise Exception(f'Unknown source: {source!r}')
     return retval
 
 @tools.vectorise(cache=True,dtype=float)

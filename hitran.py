@@ -197,7 +197,7 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
             line.load_from_hitran(hitran_filename)
             line['species'] = species
         else:    
-            raise Exception(f'Species or chemical_species unknown to hitran.py: {species!r}')
+            raise DatabaseException(f'Species or chemical_species unknown to hitran.py: {species!r}')
         # ## quantum number hacks
         # for key_to_try in (chemical_species,species):
             # if key_to_try in _electronic_quantum_numbers_to_add_to_hitran:
@@ -231,16 +231,16 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
 def _get_level_internal(species):
     ## load HITRAN line data
     line = get_line(species)
-    ## combine upper and lower levels into a single Dataset and remove duplicates
+    ## combine upper and lower levels into a single Dataset
     required_keys=('E',)
     level = line.get_lower_level(reduce_to='first',required_keys=required_keys)
     level.concatenate(line.get_upper_level(reduce_to='first',required_keys=required_keys))
-    qnhash,i = np.unique(level['qnhash'],return_index=True)
+    ## remove duplicates
+    _qnhash,i = np.unique(level['_qnhash'],return_index=True)
     level.index(i)
     level.sort('E')
-    level.unset('qnhash')
+    level.unset('_qnhash')
     return level
-    
 
 def get_level(species,name=None,match=None):
     """Get upper level from HITRAN data."""
