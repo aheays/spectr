@@ -202,7 +202,7 @@ class Dataset(optimise.Optimiser):
             self._data[key][subkey] = value
         elif subkey in self.vector_subkinds:
             ## combine indices -- might need to sort value if an index array is given
-            combined_index = self._get_combined_index(index,match,match_kwargs)
+            combined_index = self.get_combined_index(index,match,**match_kwargs)
             ## reduce index and value to changed data only
             if set_changed_only and self.is_set(key,subkey):
                 index_changed = self[key,subkey,combined_index] != value
@@ -267,10 +267,8 @@ class Dataset(optimise.Optimiser):
             knots,
             order=3,
             default=None,
-            match=None,
-            index=None,
             _cache=None,
-            **match_kwargs
+            **get_combined_index_kwargs
     ):
         """Set ykey to spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
@@ -278,23 +276,19 @@ class Dataset(optimise.Optimiser):
         ## To do: cache values or match results so only update if
         ## knots or match values have changed
         if len(_cache) == 0: 
+            ## set data
+            if not self.is_known(ykey):
+                if default is None:
+                    raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
+                else:
+                    self[ykey] = default
             xspline,yspline = zip(*knots)
             ## get index limit to defined xkey range
-            index = self._get_combined_index(index,match,match_kwargs,return_bool=True,)
-            if index is None:
-                index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
-            else:
-                index &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
-            _cache['index'] = index
+            get_combined_index_kwargs |= {f'min_{xkey}':np.min(xspline),f'max_{xkey}':np.max(xspline)}
+            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
             _cache['xspline'],_cache['yspline'] = xspline,yspline
         ## get cached data
         index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
-        ## set data
-        if not self.is_known(ykey):
-            if default is None:
-                raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
-            else:
-                self[ykey] = default
         self.set(ykey,'value',value=tools.spline(xspline,yspline,self.get(xkey,index=index),order=order),index=index)
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
@@ -313,10 +307,8 @@ class Dataset(optimise.Optimiser):
             knots,
             order=3,
             default=None,
-            match=None,
-            index=None,
             _cache=None,
-            **match_kwargs
+            **get_combined_index_kwargs
     ):
         """Compute a spline function of xkey defined by knots at
         [(x0,y0),(x1,y1),(x2,y2),...] and add to current value of
@@ -324,15 +316,13 @@ class Dataset(optimise.Optimiser):
         these."""
         ## To do: cache values or match results so only update if
         ## knots or match values have changed
-        if len(_cache) == 0: 
+        if len(_cache) == 0:
+            self.assert_known(xkey)
+            self.assert_known(ykey)
             xspline,yspline = zip(*knots)
             ## get index limit to defined xkey range
-            index = self._get_combined_index(index,match,match_kwargs,return_bool=True,)
-            if index is None:
-                index = (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
-            else:
-                index &= (self[xkey]>=np.min(xspline)) & (self[xkey]<=np.max(xspline))
-            _cache['index'] = index
+            get_combined_index_kwargs |= {f'min_{xkey}':np.min(xspline),f'max_{xkey}':np.max(xspline)}
+            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
             _cache['xspline'],_cache['yspline'] = xspline,yspline
         ## get cached data
         index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
@@ -349,6 +339,23 @@ class Dataset(optimise.Optimiser):
             if 'vary' in self._data[ykey]:
                 self.set(ykey,'vary',False,index=index)
             _cache['not_first_execution'] = True
+
+    @optimise_method(format_multi_line=3)
+    def multiply(self,key,factor,_cache=None,**get_combined_index_kwargs):
+        """Scale key by optimisable factor."""
+        ## get index of values to adjsut
+        if self._clean_construct:
+            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
+            if _cache['index'] is None:
+                _cache['index'] = slice(0,len(self))
+        index = _cache['index']
+        ## multiply value
+        self.set(
+            key,'value',
+            value=self.get(key,'value',index=index)*factor,
+            index=index)
+        ## not sure how to handle uncertainty -- unset it 
+        self.unset(key,'unc')
 
     def _increase_char_length_if_necessary(self,key,subkey,new_data):
         """reallocate with increased unicode dtype length if new
@@ -520,7 +527,7 @@ class Dataset(optimise.Optimiser):
     def get(self,key,subkey='value',index=None,units=None,match=None,**match_kwargs):
         """Get value for key or (key,subkey). This is the data in place, not a
         copy."""
-        index = self._get_combined_index(index,match,match_kwargs)
+        index = self.get_combined_index(index,match,**match_kwargs)
         ## ensure data is known
         if key not in self._data:
             try:
@@ -590,7 +597,7 @@ class Dataset(optimise.Optimiser):
         else:
             return self.all_subkinds[subkey][attribute]
             
-    def _get_combined_index(self,index=None,match=None,match_kwargs=None,return_bool=False):
+    def get_combined_index(self,index=None,match=None,**match_kwargs):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
         ## combine match dictionaries
@@ -606,10 +613,8 @@ class Dataset(optimise.Optimiser):
             retval = index
             if len(match) > 0:
                 raise Exception("Single index cannot be addtionally matched.")
-            if return_bool:
-                raise Exception("Single index cannot be returned as a boolean array.")
         else:
-            ## get index into a bool or index array
+            ## get index array
             if index is None:
                retval = np.arange(len(self))
             elif isinstance(index,slice):
@@ -624,42 +629,48 @@ class Dataset(optimise.Optimiser):
             if len(match) > 0:
                 imatch = self.match(match)
                 retval = retval[tools.find(imatch[retval])]
-            if return_bool:
-                ## convert to boolean array
-                t = np.full(len(self),False)
-                t[retval] = True
-                retval = t
+        return retval
+            
+    def get_combined_index_bool(self,**get_combined_index_kwargs):
+        """Combined specified index with match arguments as integer array. If
+        no data given the return None"""
+        index = get_combined_index(**get_combined_index_kwargs)
+        if index is None:
+            raise Exception('Cannot return bool array combined index if None.')
+        if np.isscalar(index):
+            raise Exception("Cannot return bool array for Single index.")
+        ## convert to boolean array
+        retval = np.full(len(self),False)
+        retaval[match] = True
         return retval
 
     @optimise_method(format_multi_line=99)
     def set_value(
             self,
             key,
-            value,          # a scalar or Parameter
-            index=None,         # only apply to these indices
-            match=None,
+            value,
             default=None,
             _cache=None,
-            **match_kwargs
+            **get_combined_index_kwargs
     ):
         """Set a value and it will be updated every construction and may be a
         Parameter for optimisation."""
         ## cache matching indices
         if self._clean_construct:
-            _cache['combined_index'] = self._get_combined_index(index,match,match_kwargs)
+            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
             ## set a default value if key is not currently known
             if not self.is_known(key) and default is not None:
                 self[key] = default
-        combined_index = _cache['combined_index']
+        index = _cache['index']
         ## set the data
-        self.set(key,'value',value,index=combined_index,set_changed_only= True)
+        self.set(key,'value',value,index=index,set_changed_only= True)
         if isinstance(value,Parameter):
             # if value.vary == True: #  DEBUG
                 # print('DEBUG:', value)
-            self.set(key,'unc' ,value.unc ,index=combined_index)
+            self.set(key,'unc' ,value.unc ,index=index)
             if self._clean_construct:
-                self.set(key,'step',value.step,index=combined_index)
-                self.set(key,'vary',False     ,index=combined_index)
+                self.set(key,'step',value.step,index=index)
+                self.set(key,'vary',False     ,index=index)
         # ## set vary to False if set, but only on the first execution
         # if 'not_first_execution' not in _cache:
             # if 'vary' in self._data[key]:
@@ -896,7 +907,7 @@ class Dataset(optimise.Optimiser):
 
     def remove(self,index):
         """Remove indices."""
-        index = self._get_combined_index(index,return_bool=True)
+        index = self.get_combined_index_bool(index)
         self.index(~index)
 
     def __deepcopy__(self,memo):
@@ -939,12 +950,10 @@ class Dataset(optimise.Optimiser):
             source,
             keys=None,
             keys_re=None,
-            index=None,
-            match=None,
             subkeys=None,
             copy_global_attributes=True,
             copy_inferred_data=False,
-            **match_kwargs
+            **get_combined_index_kwargs
     ):
         """Copy all values and uncertainties from source Dataset."""
         self.clear()            # total data reset
@@ -961,7 +970,7 @@ class Dataset(optimise.Optimiser):
                 keys = source.explicitly_set_keys()
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         ## get matching indices
-        index = source._get_combined_index(index,match,match_kwargs)
+        index = source.get_combined_index(**get_combined_index_kwargs)
         ## copy data and selected prototype data
         for key in keys:
             self.set(key,'value',source[key,'value',index])
@@ -988,12 +997,10 @@ class Dataset(optimise.Optimiser):
             source,
             keys=None,
             skip_keys=(),
-            index=None,
-            match=None,
             subkeys=('value','unc','description','units','fmt'),
             copy_inferred_data=False,
             _cache=None,
-            **match_kwargs
+            **get_combined_index_kwargs
     ):
         """Copy all values and uncertainties from source Dataset and update if
         source changes during optimisation."""
@@ -1005,7 +1012,7 @@ class Dataset(optimise.Optimiser):
                 else:
                     keys = source.explicitly_set_keys()
             keys = [key for key in keys if key not in skip_keys]
-            index = source._get_combined_index(index,match,match_kwargs)
+            index = source.get_combined_index(**get_combined_index_kwargs)
             _cache['keys'],_cache['index'] = keys,index
         else:
             keys,index = _cache['keys'],_cache['index']
