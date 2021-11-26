@@ -801,13 +801,12 @@ class Optimiser:
             for pi,stepi in zip(parameters['value'],parameters['step']):
                 x0.append(pi)
                 ## logic necessary to get correct stepsize into least_squares
-                if pi == 0:
+                if pi < 1:
                     diff_step.append(stepi)
                 else:
                     diff_step.append(stepi/abs(pi))
             # print('DEBUG:', 'a')
-            # print('DEBUG:', x0)
-            # print('DEBUG:', diff_step)
+            # print('DEBUG:', pi,stepi,x0,diff_step)
             least_squares_options |= {
                 'fun':self._optimisation_function,
                 'x0':x0,
