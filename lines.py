@@ -44,7 +44,7 @@ for key,val in levels.prototypes.items():
                      for dependencies,function in val['infer']]
     prototypes[key+'_l'] = copy(tval)
 
-## copy some prototypes directly from levels, 
+## copy some prototypes directly from levels without adding suffices
 for key in (
         'species', 'chemical_species','isotopologue_ratio',
         'point_group',
@@ -53,7 +53,7 @@ for key in (
         'Teq','Tex','Tvib','Trot',
         'Zsource', 'Eref',
         'reference',
-        'qnhash', 'encoded_qn', '_species_hash',
+        '_qnhash', 'encoded_qn', '_species_hash',
 ):
     prototypes[key] = copy(levels.prototypes[key])
 
@@ -77,8 +77,6 @@ for key in (
         prototypes[key]['infer'].append((f'{key}_{suffix}',_f))
         ## set upper or lower level from the common value
         prototypes[f'{key}_{suffix}']['infer'].append((key,lambda self,x: x))
-
-
 
 ## get branch label, and decode it to quantum numbers
 _ΔJ_translate = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
@@ -288,11 +286,12 @@ prototypes['ν'] = dict(description="Transition wavenumber",units="cm-1", kind='
 ])
 
 ## further infer fucntion connecting energy and frequency
-prototypes['ν0']['infer'].extend([(('E_u','E_l'),lambda self,Eu,El: Eu-El),(('Ee_u','Ee_l'),lambda self,Eu,El: Eu-El)])
-prototypes['E_l']['infer'].append((('E_u','ν0'),lambda self,Eu,ν0: Eu-ν0))
-prototypes['E_u']['infer'].append((('E_l','ν0'),lambda self,El,ν0: El+ν0))
-prototypes['Ee_l']['infer'].append((('Ee_u','ν0'),lambda self,Eu,ν0: Eu-ν0))
-prototypes['Ee_u']['infer'].append((('Ee_l','ν0'),lambda self,El,ν0: El+ν0))
+prototypes['ν0']['infer'].insert(0,(('E_u','E_l'),lambda self,Eu,El: Eu-El))
+prototypes['ν0']['infer'].insert(0,(('Ee_u','Ee_l'),lambda self,Eu,El: Eu-El))
+prototypes['E_l']['infer'].insert(0,(('E_u','ν0'),lambda self,Eu,ν0: Eu-ν0))
+prototypes['E_u']['infer'].insert(0,(('E_l','ν0'),lambda self,El,ν0: El+ν0))
+prototypes['Ee_l']['infer'].insert(0,(('Ee_u','ν0'),lambda self,Eu,ν0: Eu-ν0))
+prototypes['Ee_u']['infer'].insert(0,(('Ee_l','ν0'),lambda self,El,ν0: El+ν0))
 
 ## vibrational transition frequencies
 prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
@@ -413,7 +412,6 @@ def _parity_selection_rule_upper_or_lower(self,ΔJ,ef):
 prototypes['ef_u']['infer'].append((('ΔJ','ef_l'),_parity_selection_rule_upper_or_lower))
 prototypes['ef_l']['infer'].append((('ΔJ','ef_u'),_parity_selection_rule_upper_or_lower))
 
-
 def _collect_prototypes(level_class,base_class,new_keys):
     ## collect all prototypes
     default_prototypes = {}
@@ -428,15 +426,15 @@ def _collect_prototypes(level_class,base_class,new_keys):
     ## get defining qn from levels
     defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
                         +[key+'_l' for key in level_class.defining_qn])
-    ## add infer functions for 'qnhash' and 'qn' to and from
+    ## add infer functions for '_qnhash' and 'qn' to and from
     ## defining_qn
-    if 'qnhash' in default_prototypes:
-        default_prototypes['qnhash']['infer'].append((defining_qn,levels._qn_hash))
-    if 'qnhash_u' in default_prototypes:
-        default_prototypes['qnhash_u']['infer'].append(
+    if '_qnhash' in default_prototypes:
+        default_prototypes['_qnhash']['infer'].append((defining_qn,levels._qn_hash))
+    if '_qnhash_u' in default_prototypes:
+        default_prototypes['_qnhash_u']['infer'].append(
             ([f'{key}_u' for key in level_class.defining_qn], levels._qn_hash))
-    if 'qnhash_l' in default_prototypes:
-        default_prototypes['qnhash_l']['infer'].append(
+    if '_qnhash_l' in default_prototypes:
+        default_prototypes['_qnhash_l']['infer'].append(
             ([f'{key}_l' for key in level_class.defining_qn], levels._qn_hash))
     if 'encoded_qn' in default_prototypes:
         default_prototypes['encoded_qn']['infer'].append(
@@ -447,6 +445,19 @@ def _collect_prototypes(level_class,base_class,new_keys):
     # for key in defining_qn:
         # default_prototypes[key]['infer'].append(
             # ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
+    ## add Ereduced
+    if 'Ereduced_JJ_u' in default_prototypes:
+        z = [f'{key}_u' for key in level_class.defining_qn if key!='J']
+        default_prototypes['Ereduced_JJ_u']['infer'].append((('JJ_u','E_u',*z),(levels._calc_reduced,levels._calc_reduced_uncertainty)))
+    if 'Ereduced_JJ_l' in default_prototypes:
+        z = [f'{key}_l' for key in level_class.defining_qn if key!='J']
+        default_prototypes['Ereduced_JJ_l']['infer'].append((('JJ_l','E_l',*z),(levels._calc_reduced,levels._calc_reduced_uncertainty)))
+    if 'Ereduced_vv_u' in default_prototypes:
+        z = [f'{key}_u' for key in level_class.defining_qn if key!='J']
+        default_prototypes['Ereduced_vv_u']['infer'].append((('vv_u','E_u',*z),(levels._calc_reduced,levels._calc_reduced_uncertainty)))
+    if 'Ereduced_vv_l' in default_prototypes:
+        z = [f'{key}_l' for key in level_class.defining_qn if key!='J']
+        default_prototypes['Ereduced_vv_l']['infer'].append((('vv_l','E_l',*z),(levels._calc_reduced,levels._calc_reduced_uncertainty)))
     return level_class,defining_qn,default_prototypes
 
 class Generic(levels.Base):
@@ -455,7 +466,7 @@ class Generic(levels.Base):
         level_class=levels.Generic,
         base_class=levels.Base,
         new_keys=(
-            'reference','qnhash','encoded_qn',
+            'reference','_qnhash','encoded_qn',
             'species', 'chemical_species','isotopologue_ratio',
             'point_group','mass','Zsource','_species_hash',
             'Eref',
@@ -768,7 +779,14 @@ class Generic(levels.Base):
     def get_lower_level(self,*_get_level_args,**_get_level_kwargs):
         return self._get_level('l',*_get_level_args,**_get_level_kwargs)
 
-    def _get_level(self,u_or_l,reduce_to=None,required_keys=()):
+    def _get_level(
+            self,
+            u_or_l,
+            subkeys=('value','unc'),
+            reduce_to=None,
+            required_keys=(),
+            optimise=False,
+    ):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
         ## try get all defining qn
@@ -781,22 +799,44 @@ class Generic(levels.Base):
         ## ensure all required keys available
         for key in required_keys:
             self.assert_known(key+suffix)
-        levels = self._level_class()
+        level = self._level_class()
         for key in self.keys():
             if len(key)>len(suffix) and key[-len(suffix):] == suffix:
-                levels[key[:-2]] = self[key]
+                for subkey in subkeys:
+                    if self.is_set(key,subkey):
+                        level[key[:-2],subkey] = self[key,subkey]
         if reduce_to == None:
             pass
         else:
-            keys = [key for key in levels.defining_qn if levels.is_known(key)]
+            keys = [key for key in level.defining_qn if level.is_known(key)]
             if reduce_to == 'first':
                 ## find first indices of unique key combinations and reduce
                 ## to those
-                t,i = tools.unique_combinations_first_index(*[levels[key] for key in keys])
-                levels.index(i)
+                t,i = tools.unique_combinations_first_index(*[level[key] for key in keys])
+                level.index(i)
             else:
                 raise ImplementationError()
-        return levels
+        if optimise:
+            ## Add a construct function to level
+            _cache = {'level':deepcopy(level)} # last level calculated
+            _cache |= {(key,'_modify_time'):level[key,'_modify_time'] for key in level} # update times of initial level
+            def f(line=self,level=level):
+                if line._global_modify_time > level._last_construct_time:
+                    ## if line has changed then recompute levels 
+                    _cache['level'] = line._get_level(u_or_l,reduce_to=reduce_to,required_keys=required_keys,optimise=False)
+                for key in _cache['level']:
+                    if (line._global_modify_time > level._last_construct_time
+                        or level[key,'_modify_time'] > _cache[key,'_modify_time']):
+                        ## if line has changed, or this key has
+                        ## subsequently changed in level then updated
+                        ## changd values
+                        for subkey in subkeys:
+                            if _cache['level'].is_set(key,subkey):
+                                level.set(key,subkey,_cache['level'][key,subkey],set_changed_only=True)
+                        _cache[key,'_modify_time'] = level[key,'_modify_time']
+            level.add_suboptimiser(self)
+            level.add_construct_function(f)
+        return level
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -1140,6 +1180,7 @@ class Generic(levels.Base):
             add_duplicate=False, # whether to add a duplicate if line is already present
             optimise=False,
             concatenate=False,
+            subkeys=('value','unc'),
             **defaults
     ):
         """Combine upper and lower levels into a line list, only including
@@ -1180,12 +1221,16 @@ class Generic(levels.Base):
         ## collect allowed data
         data = dataset.make(self.classname)
         for key in levelu:
-            data[key+'_u'] = levelu[key][ku]
+            for subkey in subkeys:
+                if levelu.is_set(key,subkey):
+                    data[key+'_u',subkey] = levelu.get(key,subkey,ku)
         for key in levell:
-            data[key+'_l'] = levell[key][kl]
+            for subkey in subkeys:
+                if levell.is_set(key,subkey):
+                    data[key+'_l',subkey] = levell.get(key,subkey,kl)
         ## remove duplicates
         if not add_duplicate and len(self) > 0:
-            i = tools.isin(data['qnhash'],self['qnhash'])
+            i = tools.isin(data['_qnhash'],self['_qnhash'])
             data = data[~i]
         ## remove unwanted lines
         if match is not None:
@@ -1211,6 +1256,7 @@ class Generic(levels.Base):
             check_for_unused_levels=False,
             check_for_unconstrained_lines=False,
             verbose=False,
+            subkeys=('value','unc'),
             _cache=(),
     ):
         """Copy all non-inferred keys in level into upper or lower levels in
@@ -1286,7 +1332,9 @@ class Generic(levels.Base):
                 keys_to_copy = _cache[suffix]['keys_to_copy']
                 ## copy all data only if it has changed
                 for key_self,key_level in keys_to_copy:
-                    self.set(key_self,'value',level[key_level,ilevel],index=iline,set_changed_only= True)
+                    for subkey in subkeys:
+                        if level.is_set(key_level,subkey):
+                            self.set(key_self,subkey,level[key_level,subkey,ilevel],index=iline,set_changed_only= True)
 
     def set_upper_level_data(self,level):
         """Copy all data in level into self for upper quantum numbers
@@ -1304,9 +1352,9 @@ class Generic(levels.Base):
         ## both upper and lower levels
         for suffix in _suffices:
             ## get unique quantum numbers in self
-            t,i,j = np.unique(self[f'qnhash_{suffix}'],return_index=True,return_inverse=True)
+            t,i,j = np.unique(self[f'_qnhash_{suffix}'],return_index=True,return_inverse=True)
             ## match those to level quantum numbers
-            k,l = tools.common(self[f'qnhash_{suffix}'][i],level['qnhash'])
+            k,l = tools.common(self[f'_qnhash_{suffix}'][i],level['_qnhash'])
             if len(k) < len(i):
                 raise Exception(f'Some of the {suffix!r} quantum numbers in self are not specified in the input level.')
             l = l[np.argsort(k)]
@@ -1363,15 +1411,17 @@ class Generic(levels.Base):
 class Atomic(Generic):
 
     _level_class,defining_qn,default_prototypes = _collect_prototypes(
-        levels.Atomic,
-        Generic,())
+        level_class=levels.Atomic,
+        base_class=Generic,
+        new_keys=(),
+    )
     default_xkey = 'J_l'
     default_zkeys = ['species_u','conf_u','species_l','conf_l','S_l','S_u','J_l','J_u',]
 
 class Linear(Generic):
 
     _level_class,defining_qn,default_prototypes = _collect_prototypes(
-        level_class=levels.Diatomic,
+        level_class=levels.Linear,
         base_class=Generic,
         new_keys=(
             'fv', 'νv', 'μv',
@@ -1802,8 +1852,6 @@ class LinearTriatomic(Linear):
         ## add all this data to self
         for key,val in quantum_numbers.items():
             self[key] = val
-
-
             
 def generate_from_levels(
         upper_level,
@@ -1813,8 +1861,8 @@ def generate_from_levels(
 ):
     """Identify classname of upper and lower levels and make a similar
     line object including all allowed transitions."""
-    if upper_level.classname != lower_level.classname:
-        raise Exception(f'classnames do not match: {upper_level.classname!r} and {lower_level.classname!r}')
+    # if upper_level.classname != lower_level.classname:
+        # raise Exception(f'classnames do not match: {upper_level.classname!r} and {lower_level.classname!r}')
     from . import lines         # self reference to access classes
     ## ensure line class type exists
     if r:=re.match('levels\.(.*)',upper_level.classname):
@@ -1824,5 +1872,19 @@ def generate_from_levels(
     ## make obj
     retval = getattr(lines,classtype)()
     retval.generate_from_levels(upper_level,lower_level,*args_generate_from_levels,**kwargs_generate_from_levels)
-    retval.name = f'generated_from_{upper_level.name}_and_{lower_level.name}'
+    # retval.name = f'generated_from_{upper_level.name}_and_{lower_level.name}'
+    retval.name = f'generated_from_level'
     return retval
+            
+def extend_assigned_line_to_all_branches(
+        assigned_line,          # lines.class object
+        lower_sublevel_qn,      # dictionary of quantum numbers (not J) or an encoded string, e.g., "³²S¹²C³⁴S_X(ν1=0,ν2=0,ν3=0)"
+        optimise=False,         # changes in assigned line will be reflected in extended line on optimisation
+):
+    """Take a list of assigned lines and extend that to a list including
+    all lines in other branches with common upper levels."""
+    upper_level = assigned_line.get_upper_level(required_keys=('E',),optimise=optimise)
+    if isinstance(lower_sublevel_qn,dict):
+        lower_sublevel_qn = upper_level.encode_qn(None,lower_sublevel_qn)
+    extended_line = generate_from_levels(upper_level,lower_sublevel_qn,optimise=optimise)
+    return extended_line

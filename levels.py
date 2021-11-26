@@ -68,7 +68,7 @@ prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f',
 prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
 
 ## level energies
-prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','qnhash','Eref'),lambda self,species,qnhash,Eref: database.get_level_energy(species,Eref,qnhash=qnhash)),]) 
+prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','_qnhash','Eref'),lambda self,species,_qnhash,Eref: database.get_level_energy(species,Eref,_qnhash=_qnhash)),]) 
 prototypes['Ee'] = dict(description="Level energy relative to equilibrium geometry at J=0 and neglecting spin" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','E0'),lambda self,E,E0: E+E0),],default_step=1e-3)
 prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f',default=0,infer=[])
 prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eres'),lambda self,E,Eres: E+Eres)])
@@ -110,8 +110,6 @@ prototypes['Ereduced'] = dict(description="Reduced level energy" ,units='cm-1',k
 def _f0(self,J,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
-    # p = np.polyfit(J*(J+1),E,min(3,len(np.unique(J))-1))
-    # p[-1] = 0
     Ereduced_common = E - np.polyval(self.Ereduced_common_polynomial,J*(J+1))
     return Ereduced_common
 def _df0(self,Ereduced_common,J,dJ,E,dE):
@@ -121,6 +119,13 @@ def _df0(self,Ereduced_common,J,dJ,E,dE):
     dEreduced_common = dE
     return dEreduced_common
 prototypes['Ereduced_common'] = dict(description="Reduced level energy common to all bands." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('J','E'),(_f0,_df0)),],)
+
+
+## infer function for Ereduced_by_JJ etc is set at import time by
+## _collect_prototypes
+prototypes['Ereduced_JJ'] = dict(description="Level energy reduced by a best-fit polynomial in terms of J(J+1)." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],)
+prototypes['Ereduced_vv'] = dict(description="Level energy reduced by a best-fit polynomial in terms of (v+1/2)." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],)
+
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,point_group):
@@ -171,6 +176,7 @@ prototypes['ηd'] = dict(description="Fractional probability dissociative decay"
 prototypes['ηe'] = dict(description="Fractional probability emissive decay",units=None, kind='f',  fmt='<10.5g', infer=[(('At','Ae'),lambda self,At,Ae:Ae/At,)])
 
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',fmt='g',infer=[])
+prototypes['JJ'] = dict(description="J(J+1)" , kind='f',fmt='g',infer=[('J',lambda self,J:J*(J+1))])
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind='f', infer=[(('J','SR'),lambda self,J,SR: J-SR,)])
 prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',fmt='g',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'S'),)])
 # prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum.",units='cm-1', kind='f',infer=[((),lambda self,: 0.,)])
@@ -209,7 +215,7 @@ def _f4(self,species,Tex,Eref,Zsource):
         raise InferException(f'Zsource not all "database"')
     Z = database.get_partition_function(species,Tex,Eref)
     return Z
-def _f3(self,species,Tex,E,Eref,g,qnhash,Zsource):
+def _f3(self,species,Tex,E,Eref,g,_qnhash,Zsource):
     """Compute partition function from data in self. For unique
     combinations of T/species sum over unique level energies. Always
     referenced to E0."""
@@ -220,15 +226,15 @@ def _f3(self,species,Tex,E,Eref,g,qnhash,Zsource):
     retval = np.full(species.shape,nan)
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     for speciesi,i in tools.unique_combinations_masks(species):
-        t,j = np.unique(qnhash[i],return_index=True)
+        t,j = np.unique(_qnhash[i],return_index=True)
         retval[i] = np.sum(g[i][j]*np.exp(-(E[i][j]-Eref[i][j])/(kB*Tex[0])))
     return retval
 prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tex','E','Eref','g','qnhash','Zsource'),_f3),
+    (('species','Tex','E','Eref','g','_qnhash','Zsource'),_f3),
     (('species','Tex','Eref','Zsource'),_f5),
     (('species','Tex','Eref','Zsource'),_f4),
 ])
-def _f6(self,species,Tvib,Eref,Tv,v,qnhash,Zsource):
+def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
     """Compute partition function from data in self with separate
      vibrational temperature. Compute separately for
     different species and sum over unique levels only."""
@@ -239,14 +245,14 @@ def _f6(self,species,Tvib,Eref,Tv,v,qnhash,Zsource):
         raise InferException("Non-unique Tvib")
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     for speciesi,i in tools.unique_combinations_masks(species):
-        t,j = np.unique(qnhash[i],return_index=True)
+        t,j = np.unique(_qnhash[i],return_index=True)
         t,k = np.unique(v[i][j],return_index=True)
         Zvib[i] = np.sum(np.exp(-(Tv[i][j][k]-Eref[i][j][k])/(kB*Tvib[0])))
     return Zvib
 prototypes['Zvib'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Tvib','Eref','Tv','v','qnhash','Zsource'),_f6),
+    (('species','Tvib','Eref','Tv','v','_qnhash','Zsource'),_f6),
 ])
-def _f6(self,species,Trot,E,Tv,g,v,qnhash,Zsource):
+def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
     """Compute partition function from data in self with separate
      vibrational temperature. Compute separately for
     different species and sum over unique levels only."""
@@ -257,11 +263,11 @@ def _f6(self,species,Trot,E,Tv,g,v,qnhash,Zsource):
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     Zrot = np.full(species.shape,nan)
     for (speciesi,vi),i in tools.unique_combinations_masks(species,v):
-        t,j = np.unique(qnhash[i],return_index=True)
+        t,j = np.unique(_qnhash[i],return_index=True)
         Zrot[i] = np.sum(np.exp(-(E[i][j]-Tv[i][j])/(kB*Trot[0])))
     return Zrot
 prototypes['Zrot'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
-    (('species','Trot','E','Tv','g','v','qnhash','Zsource'),_f6),
+    (('species','Trot','E','Tv','g','v','_qnhash','Zsource'),_f6),
 ])
 
 ## level populations
@@ -309,6 +315,7 @@ prototypes['isotopologue_ratio'] = dict(description="Ratio of this isotopologue 
 ])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
+prototypes['vv'] = dict(description="(v+1/2)", kind='i',infer=[('v',lambda self,v:v+1/2)])
 prototypes['ν1'] = dict(description="Vibrational quantum number for mode 1", kind='i',infer=[])
 prototypes['ν2'] = dict(description="Vibrational quantum number for mode 2", kind='i',infer=[])
 prototypes['ν3'] = dict(description="Vibrational quantum number for mode 3", kind='i',infer=[])
@@ -460,7 +467,7 @@ prototypes['SR'] = dict(description="Signed projection of spin angular momentum 
 ])
 
 ## derived from defining quantum numbers
-prototypes['qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[])
+prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[])
 prototypes['encoded_qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[])
 
 ## Effective Hamiltonian parameters
@@ -536,16 +543,43 @@ def _get_key_from_qn(self,qn,key):
 
 def _qn_hash(self,*qn):
     """Compute qn hash."""
-    qnhash = [hash(qni) for qni in zip(*qn)]
-    return qnhash
+    _qnhash = [hash(qni) for qni in zip(*qn)]
+    return _qnhash
+
+def _calc_reduced(self,x,y,*z):
+    """Compute reduced y in terms of y. Separate reductions for unique
+    combinations of z arrays.  Note that if multiple (x,y,z) points
+    exist only the first is used to compute a polynomial fit.."""
+    self.global_attributes.setdefault('reduced_order',3)
+    order = self.global_attributes['reduced_order']
+    yreduced = np.full(y.shape,0.0)
+    ## loop through unique z combinations, fitting (x,y) polynomial to
+    ## each subset
+    for zi,i in tools.unique_combinations_masks(*z):
+        ## find unique x and corresponding y (takes the first if
+        ## multiple similar x)
+        xi,yi = [],[]
+        for xj,j in zip(*np.unique(x[i],return_index=True)):
+            xi.append(xj)
+            yi.append(y[i][j])
+        pi = np.polyfit(xi,yi,min(order,len(yi)-1))
+        yreduced[i] = y[i] - np.polyval(pi,x[i])
+    return yreduced
+
+def _calc_reduced_uncertainty(self,yreduced,x,dx,y,dy,*z_dz):
+    """Uncertainty of reduced y is still dy."""
+    if dy is None:
+        raise InferException()
+    dyreduced = dy
+    return dyreduced
 
 def _collect_prototypes(*keys,defining_qn=()):
     ## collect from module prototypes list
     default_prototypes = {key:deepcopy(prototypes[key]) for key in keys}
-    ## add infer functions for 'qnhash' and 'qn' to and from
+    ## add infer functions for between '_qnhash', 'encoded_qn', and
     ## defining_qn
-    if 'qnhash' in default_prototypes:
-        default_prototypes['qnhash']['infer'].append((defining_qn,_qn_hash),)
+    if '_qnhash' in default_prototypes:
+        default_prototypes['_qnhash']['infer'].append((defining_qn,_qn_hash),)
     if 'encoded_qn' in default_prototypes:
         default_prototypes['encoded_qn']['infer'].append(
             (defining_qn, lambda self,*qn:
@@ -553,9 +587,16 @@ def _collect_prototypes(*keys,defining_qn=()):
     for key in defining_qn:
         default_prototypes[key]['infer'].append(
             ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
-    ## and a separate species has
+    ## species hash, can't remember what problem this solves!
     if 'species' in default_prototypes and '_species_hash' not in default_prototypes:
         default_prototypes['_species_hash'] = deepcopy(prototypes['_species_hash'])
+    ## add Ereduced
+    if 'Ereduced_JJ' in keys:
+        z = [key for key in defining_qn if key!='J']
+        default_prototypes['Ereduced_JJ']['infer'].append((('JJ','E',*z),(_calc_reduced,_calc_reduced_uncertainty)))
+    if 'Ereduced_vv' in keys:
+        z = [key for key in defining_qn if key!='v']
+        default_prototypes['Ereduced_vv']['infer'].append((('vv','E',*z),(_calc_reduced,_calc_reduced_uncertainty)))
     return default_prototypes
 
 class Base(Dataset):
@@ -598,7 +639,7 @@ class Base(Dataset):
 
     def assert_unique_qn(self,verbose=False):
         """Assert no two levels/lines are the same"""
-        t,i,c = np.unique(self['qnhash'],return_index=True,return_counts=True)
+        t,i,c = np.unique(self['_qnhash'],return_index=True,return_counts=True)
         if len(i) < len(self):
             j = array([ti for ti,tc in zip(i,c) if tc > 1])
             if verbose or self.verbose:
@@ -670,9 +711,10 @@ class Generic(Base):
     default_zkeys = ('species','label','ef')
     default_prototypes = _collect_prototypes(
         'species','label','ef','J',
+        'JJ','Ereduced_JJ',
         '_species_hash',
         'chemical_species','isotopologue_ratio',
-        'reference','qnhash',
+        'reference','_qnhash',
         'point_group',
         'mass','reduced_mass',
         'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres','Eexp',
@@ -869,7 +911,7 @@ class Diatomic(Linear):
     default_zkeys = ('species','label','v','Σ','ef')
     default_prototypes = _collect_prototypes(
         *Linear.default_prototypes,
-        'v',
+        'v','vv','Ereduced_vv',
         'Γv','τv','Atv','Adv','Aev',
         'ηdv','ηev',
         'Tvib','Trot','αvib','αrot','Zvib','Zrot',
