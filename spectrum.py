@@ -680,6 +680,8 @@ class Model(Optimiser):
             _cache=None,
             **set_keys_vals
     ):
+        if verbose:
+            timer_start = timestamp()
         if len(self.x) == 0 or len(line) == 0:
             ## nothing to be done
             return
@@ -696,7 +698,7 @@ class Model(Optimiser):
             if verbose is not None:
                 line_copy.verbose = verbose
             if verbose:
-                print('add_line: clean construct')
+                print(f'add_line: {line.name}: clean construct')
             ## set parameter/constant data. If a vector of data is
             ## given then its length matches the input dataset
             for key,val in set_keys_vals.items():
@@ -785,7 +787,7 @@ class Model(Optimiser):
                     if ymin is not None and ymin != 0:
                         warnings.warn(f'Scaling spectrum uniformly but ymin is set to a nonzero value, {repr(ymin)}.  This could lead to lines appearing in subsequent model constructions.')
                     if verbose:
-                        print('add_line: constant factor scaling all lines')
+                        print(f'add_line: {line.name}: constant factor scaling all lines')
                     ## ignore zero values
                     i = (line_copy[ykey]!=0)&(data[ykey]!=0)
                     scale = np.mean(line_copy[ykey,i]/data[ykey][i])
@@ -797,12 +799,12 @@ class Model(Optimiser):
                     ## more than half lines have changed -- full
                     ## recalculation
                     if verbose:
-                        print(f'add_line: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
+                        print(f'add_line: {line.name}: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
                 elif nchanged > 0:
                     ## a few lines have changed, update these only
                     if verbose:
-                        print(f'add_line: {nchanged} lines have changed, recalculate these')
+                        print(f'add_line: {line.name}: {nchanged} lines have changed, recalculate these')
                     ## temporary object to calculate old spectrum
                     line_old = dataset.make(
                         classname=line_copy.classname,
@@ -831,7 +833,8 @@ class Model(Optimiser):
         _cache['y'] = y
         _cache['data'] = {key:line_copy[key] for key in data}
         _cache['set_keys_vals'] = {key:(val.value if isinstance(val,Parameter) else val) for key,val in set_keys_vals.items()}
-
+        if verbose:
+            print(f'add_line: {line.name}: time = {timestamp()-timer_start:0.3e}')
 
     @optimise_method()
     def add_absorption_cross_section(self,x,y,N=1,_cache=None):
