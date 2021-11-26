@@ -1352,18 +1352,21 @@ class Dataset(optimise.Optimiser):
             keys_re=None,
             delimiter=' | ',
             line_ending='\n',
-            simple=False,       # ifFalse then just print data in a table, no metadata
-            unique_values_in_header=False,
-            subkeys=('value','unc','vary','step','ref','description','units','fmt','kind'),
-            include_keys_with_leading_underscore=False,
+            simple=False,       # print data in a table
+            unique_values_as_default=False,
+            subkeys=('value','unc','vary','step','ref','default','units','fmt','kind','description',),
+            exclude_keys_with_leading_underscore=True, # if no keys specified, do not include those with leading underscores
+            exclude_inferred_keys=False, # if no keys specified, do not include those which are not explicitly set
             quote=False,
     ):
         """Format data into a string representation."""
         if keys is None:
             if keys_re is None:
                 keys = self.keys()
-                if not include_keys_with_leading_underscore:
+                if exclude_keys_with_leading_underscore:
                     keys = [key for key in keys if key[0]!='_']
+                if exclude_inferred_keys:
+                    keys = [key for key in keys if not self.is_inferred(key)]
             else:
                 keys = []
         if keys_re is not None:
@@ -1380,12 +1383,12 @@ class Dataset(optimise.Optimiser):
                 break
             formatted_key = ( f'"{key}"' if quote else key )
             if (
-                    not simple and unique_values_in_header # input parameter switch
+                    not simple and unique_values_as_default # input parameter switch
                     and not np.any([self.is_set(key,subkey) for subkey in subkeys if subkey in self.vector_subkinds and subkey != 'value']) # no other vector subdata 
                     and len((tval:=self.unique(key))) == 1 # q unique value
-            ): # value is unique
-                ## format value for header
-                header_values[key] = tval[0]
+            ): 
+                ## value is unique, format value for header
+                header_values[key] = tval[0] 
             else:
                 ## format columns
                 for subkey in subkeys:
@@ -1406,10 +1409,10 @@ class Dataset(optimise.Optimiser):
         formatted_metadata = []
         if not simple:
             ## include description of keys
-            for key in self:
+            for key in keys:
                 metadata = {}
                 if key in header_values:
-                    metadata['value'] = header_values[key]
+                    metadata['default'] = header_values[key]
                 ## include much metadata in description. If it is
                 ## dictionary try to semi-align the keys
                 for subkey in subkeys:
@@ -1417,13 +1420,18 @@ class Dataset(optimise.Optimiser):
                         metadata[subkey] = self[key,subkey]
                 if isinstance(metadata,dict):
                     line = f'{key:20} = {{ '
-                    for tkey,tval in metadata.items():
+                    for tkey in subkeys:
+                        if tkey not in self.scalar_subkinds:
+                            continue
+                        if tkey not in metadata:
+                            continue
+                        tval = metadata[tkey]
                         ## description length for alignment is in
                         ## 40-char quanta, else 15 char
                         if tkey == 'description':
                             tfmt = str(40*((len(tval)-1)//40+1))
                         else:
-                            tfmt= '20'
+                            tfmt= '25'
                         line += format(f'{tkey!r}: {tval!r}, ',tfmt)
                     line += '}'
                 else:
@@ -1433,7 +1441,7 @@ class Dataset(optimise.Optimiser):
         retval = ''
         if not simple:
             retval += f'[classname]\n{self.classname}\n'
-        if not simple and self.description is not None:
+        if not simple and self.description not in (None,''):
             retval += f'[description]\n{self.description}\n'
         if len(self.global_attributes) > 0:
             retval += f'[global_attributes]\n'+'\n'.join([f'{repr(tkey):20} : {repr(tval)}' for tkey,tval in self.global_attributes.items()])+'\n'
@@ -1459,19 +1467,6 @@ class Dataset(optimise.Optimiser):
             retval += '    [ '+line+' ],\n'
         retval += ']'
         return retval
-
-    # def format_flat(self,delimiter=' | '):
-        # """Print flat data"""
-        # return self.format(
-            # delimiter=delimiter,
-            # unique_values_in_header=False,
-            # include_description=False,
-            # include_keys_with_leading_underscore=False,
-            # include_key_description=False,
-            # include_classname=False,
-            # quote_strings=False,
-            # quote_keys=False,
-        # )
 
     def __str__(self):
         return self.format(simple=True)
@@ -1775,7 +1770,7 @@ class Dataset(optimise.Optimiser):
     def _load_from_text(
             self,
             filename,
-            comment='',
+            comment='#',
             labels_commented=False,
             delimiter=' ',
             txt_to_dict_kwargs=None,
@@ -1793,10 +1788,10 @@ class Dataset(optimise.Optimiser):
         ## load header
         escaped_comment = re.escape(comment)
         blank_line_re = re.compile(r'^ *$')
-        commented_line_re = re.compile(f'^ *{escaped_comment} */(.*)$')
-        beginning_of_section_re = re.compile(f'^ *{escaped_comment} *\\[([^]]+)\\] *$') 
-        key_line_without_value_re = re.compile(f'^ *{escaped_comment} *([^# ]+) *# *(.+) *') # no value in line
-        key_line_with_value_re = re.compile(f'^ *{escaped_comment} *([^= ]+) *= *([^#]*[^ #])') # may also contain description
+        commented_line_re = re.compile(f'^ *{escaped_comment} *(.*)$')
+        beginning_of_section_re = re.compile(f'^ *\\[([^]]+)\\] *$') 
+        key_line_without_value_re = re.compile(f'^ *([^# ]+) *# *(.+) *') # no value in line
+        key_line_with_value_re = re.compile(f'^ *([^= ]+) *= *([^#]*[^ #])') # may also contain description
         current_section = 'data'
         valid_sections = ('classname','description','keys','data','metadata','global_attributes')
         section_iline = 0       # how many lines read in this section
@@ -1812,14 +1807,9 @@ class Dataset(optimise.Optimiser):
                     raise Exception(f'Invalid data section: {repr(current_section)}. Valid sections: {repr(valid_sections)}')
                 ## remove comment character unless in data section —
                 ## then skip the line, or description then keep it in
-                ## plac
+                ## place
                 if r:=re.match(commented_line_re,line):
-                    if current_section == 'data':
                         continue
-                    elif current_section == 'description':
-                        pass
-                    else:
-                        line = r.match(1)
                 ## skip blank lines unless in the description
                 elif re.match(blank_line_re,line) and current_section != 'description':
                     continue
@@ -1893,8 +1883,10 @@ class Dataset(optimise.Optimiser):
                                 key_metadata = {'description':key_metadata}
                             else:
                                 raise Exception(f'Could not decode key metadata for {key}: {repr(key_metadata)}')
-                            if 'value' in key_metadata:
-                                data[key] = key_metadata.pop('value')
+                            # if 'value' in key_metadata:
+                            #     data[key] = key_metadata.pop('value')
+                            if 'default' in key_metadata:
+                                data[key] = key_metadata['default']
                             metadata[key] = key_metadata
                 elif current_section == 'data':
                     ## remainder of data is data, no more header to
@@ -1983,7 +1975,7 @@ class Dataset(optimise.Optimiser):
             ## make sure necessary keys are known
             for key in keys:
                 self.assert_known(key)
-            self.unlink_inferences(keys)
+                self.unlink_inferences(keys)
             for key in list(self):
                 if key not in keys:
                     self.unset(key)
@@ -1993,17 +1985,36 @@ class Dataset(optimise.Optimiser):
             total_length = len(self) + len(new_dataset)
             self._reallocate(total_length)
             ## set extending data 
+            # for key,data in self._data.items():
+            #     for subkey in data:
+            #         if subkey in self.vector_subkinds:
+            #             if new_dataset.is_known(key,subkey):
+            #                 new_val = new_dataset[key,subkey]
+            #             elif self._has_attribute(key,subkey,'default'):
+            #                 new_val = self._get_attribute(key,subkey,'default')
+            #             elif (key,subkey) in defaults:
+            #                 new_val = defaults[key,subkey]
+            #             else:
+            #                 raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
+            #             ## increase char-length of string arrays if needed and insert new data
+            #             self._increase_char_length_if_necessary(key,subkey,new_val)
+            #             data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
             for key,data in self._data.items():
-                for subkey in data:
-                    if subkey in self.vector_subkinds:
-                        if new_dataset.is_known(key,subkey):
+                for subkey in self.vector_subkinds:
+                    if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
+
+                        self.assert_known(key,subkey)
+                        new_dataset.assert_known(key,subkey)
+
+                        if self.is_known(key,subkey) and new_dataset.is_known(key,subkey):
                             new_val = new_dataset[key,subkey]
-                        elif self._has_attribute(key,subkey,'default'):
-                            new_val = self._get_attribute(key,subkey,'default')
+                        # elif self._has_attribute(key,subkey,'default'):
+                            # new_val = self._get_attribute(key,subkey,'default')
                         elif (key,subkey) in defaults:
                             new_val = defaults[key,subkey]
                         else:
                             raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
+
                         ## increase char-length of string arrays if needed and insert new data
                         self._increase_char_length_if_necessary(key,subkey,new_val)
                         data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
@@ -2012,34 +2023,7 @@ class Dataset(optimise.Optimiser):
     def concatenate_and_optimise(self,new_dataset,keys=None,_cache=None):
         """Extend self by new_dataset using keys existing in self. New data updated
         on optimisaion if new_dataset changes."""
-        # if self._clean_construct and 'total_length' not in _cache:
-        #     if keys is None:
-        #         keys = list({*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()})
-        #     # ## concatenate data if it hasn't been done before
-        #     # ## limit to keys
-        #     # if keys == 'old':
-        #         # keys = list(self.explicitly_set_keys())
-        #     # elif keys == 'new':
-        #         # keys = list(new_dataset.explicitly_set_keys())
-        #     # elif keys == 'all':
-        #         # keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
-        #     old_length = len(self)
-        #     new_length = len(new_dataset)
-        #     total_length = len(self) + len(new_dataset)
-        #     self.concatenate(new_dataset,keys)
-        #     _cache['keys'],_cache['old_length'],_cache['new_length'],_cache['total_length'] = keys,old_length,new_length,total_length
-        #     self.permit_indexing = False
         if self._clean_construct and 'new_length' not in _cache:
-            # if keys is None:
-                # keys = list({*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()})
-            # ## concatenate data if it hasn't been done before
-            # ## limit to keys
-            # if keys == 'old':
-                # keys = list(self.explicitly_set_keys())
-            # elif keys == 'new':
-                # keys = list(new_dataset.explicitly_set_keys())
-            # elif keys == 'all':
-                # keys = {*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()}
             _cache['old_length'] = len(self)
             _cache['new_length'] = len(self) + len(new_dataset)
             self.concatenate(new_dataset,keys)
@@ -2050,12 +2034,9 @@ class Dataset(optimise.Optimiser):
             ## update data in place
             index = slice(_cache['old_length'],_cache['new_length'])
             for key in _cache['keys']:
-                self.set(key,'value',new_dataset[key],index,set_changed_only=True)
-                if self.is_set(key,'unc'):
-                    if self.is_set(key,'unc'):
-                        self.set(key,'unc',new_dataset[key,'unc'],index)
-                    else:
-                        self.set(key,'unc',self.vector_subkinds['unc']['default'],index)
+                for subkey in ('value','unc'):
+                    if self.is_set(key,subkey):
+                        self.set(key,subkey,new_dataset[key,subkey],index,set_changed_only=True)
                 if self.is_set(key,'vary'):
                     self.set(key,'vary',False,index)
 
