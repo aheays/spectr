@@ -290,29 +290,6 @@ def format_dict(
     retval = '\n'.join(lines)
     return retval
 
-# dict_expanded_repr = format_dict
-
-# def load_data_dict(filename,*keys):
-    # """Import filename namespace as a dictionary and return.  Progressively
-    # index this dictionary by each given key."""
-    # import runpy
-    # data = runpy.run_path(expand_path(filename))
-    # for key in keys:
-        # data = data[key]
-    # return data
-
-# def save_data_dict(filename,header=r'from spectr import *',**keys_dicts):
-    # """Save dictionaires in keys_dicts to file.  With optional filename."""
-    # mkdir(os.path.split(filename)[0])
-    # with open(filename,'w') as fid:
-        # fid.write(header)
-        # fid.write('\n')
-        # for key,val in keys_dicts.items():
-            # fid.write(
-                # f'{key} = ' + dict_expanded_repr(
-                    # val,maxdepth=3,separate_with_blanks_depth=-1))
-            # fid.write('\n')
-
 def load_dict(filename,name_or_names):
     """Import filename and return a dictionary of its named attributes. If
     name is a string, return the value of that attribute.  If it is a
@@ -333,7 +310,8 @@ def load_dict(filename,name_or_names):
 
 def save_dict(
         filename,
-        header='from numpy import nan,inf\nfrom spectr.optimise import P\n',
+        header='from numpy import nan,inf\nfrom spectr.optimise import P,Fixed\n',
+        format_dict_kwargs={},
         **names_dicts,):
     """Write names_dicts as into filename preceeded by header.  Designed
     to be imported as valid python."""
@@ -345,7 +323,7 @@ def save_dict(
             fid.write('\n')
         ## add data as dict_expanded_repr
         for name,val in names_dicts.items():
-            fid.write(f'{name} = {format_dict(val)}\n')
+            fid.write(f'{name} = {format_dict(val,**format_dict_kwargs)}\n')
 
 
 ############################

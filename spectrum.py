@@ -680,8 +680,8 @@ class Model(Optimiser):
             _cache=None,
             **set_keys_vals
     ):
-        ## nothing to be done
         if len(self.x) == 0 or len(line) == 0:
+            ## nothing to be done
             return
         if self._clean_construct:
             ## first run — initalise local copy of lines data, do not
