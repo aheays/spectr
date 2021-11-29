@@ -341,20 +341,32 @@ class Dataset(optimise.Optimiser):
             _cache['not_first_execution'] = True
 
     @optimise_method(format_multi_line=3)
-    def multiply(self,key,factor,_cache=None,**get_combined_index_kwargs):
+    def multiply(
+            self,
+            key,                # key to multiply
+            factor,             # factor to multiply by (optimisable)
+            from_original_value=False,        # if true then multiply original value on method call during optimisation, else multiply whatever is currenlty there
+            _cache=None,
+            **get_combined_index_kwargs
+    ):
         """Scale key by optimisable factor."""
         ## get index of values to adjsut
         if self._clean_construct:
-            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
-            if _cache['index'] is None:
-                _cache['index'] = slice(0,len(self))
-        index = _cache['index']
+            index = self.get_combined_index(**get_combined_index_kwargs)
+            if index is None:
+                index = slice(0,len(self))
+            _cache['index'] = index
+            if from_original_value:
+                original_value = self[key,index]
+                _cache['original_value'] = original_value
         ## multiply value
-        self.set(
-            key,'value',
-            value=self.get(key,'value',index=index)*factor,
-            index=index)
-        ## not sure how to handle uncertainty -- unset it 
+        index = _cache['index']
+        if from_original_value:
+            value = _cache['original_value']*factor
+        else:
+            value = self.get(key,'value',index=index)*factor
+        self.set(key,'value',value=value,index=index)
+        ## not sure how to handle uncertainty -- unset it for now
         self.unset(key,'unc')
 
     def _increase_char_length_if_necessary(self,key,subkey,new_data):
@@ -1131,13 +1143,16 @@ class Dataset(optimise.Optimiser):
         retval = sorted(retval, key=lambda t: [t[key] for key in keys])
         return retval 
 
-    def unique_dicts_match(self,*keys):
+    def unique_dicts_match(self,*keys,return_bool=True):
         """Return pairs where the first element is a dictionary of unique
         combinations of keys and the second is a boolean array matching this
-        combination."""
+        combination. If return_bool=False then returns an array of matching indices instead."""
         retval = []
         for d in self.unique_dicts(*keys):
-            retval.append((d,self.match(**d)))
+            if return_bool:
+                retval.append((d,self.match(**d)))
+            else:
+                retval.append((d,self.find(**d)))
         return retval
 
     def unique_dicts_matches(self,*keys):
