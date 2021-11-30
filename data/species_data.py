@@ -1,4 +1,18 @@
-species_data = {
+metadata = {
+    'chemical_species'              :  { 'description' : 'common to all isotopologues'                                               ,         }        , 
+    'characteristic_infrared_bands' :  { 'description' : 'Wavenumber bands of the main infrared bands of this species'               , 'units' : 'cm-1' ,  }  , 
+    'characteristic_infrared_lines'  :  { 'description' : 'Wavenumber bands of a few of the strongest infrared lines of this species' , 'units' : 'cm-1' ,  }  , 
+    'E0'                            :  { 'description' : ''                                                                          ,         }        , 
+    'Eref'                          :  { 'description' : ''                                                                          ,         }        , 
+    'Inuclear'                      :  { 'description' : 'Nuclear spin angulat momentum for homonuclear diatomic species'            ,         }        , 
+    'isotopologue_ratio'            :  { 'description' : 'Natural abundance of this isotopologue'                                    ,         }        , 
+    'mass'                          :  { 'description' : 'Total mass'                                                                , 'units' : 'amu'  ,  }  , 
+    'point_group'                   :  { 'description' : ''                                                                          ,         }        , 
+    'reduced_mass'                  :  { 'description' : 'Reduced mass'                                                              , 'units' : 'amu'  ,  }  , 
+}
+
+
+data = {
 
     '¹²C³²S₂' :     {
         'chemical_species'  : 'CS₂',
@@ -130,6 +144,12 @@ species_data = {
         'chemical_species'  : 'Ar',
         'mass'              : 39.948,
         'point_group'       : 'K',
+    },
+
+    'CO'  :     {
+        'chemical_species'  : 'CO',
+        'characteristic_infrared_bands': [[1980,2280], [4150,4350],],
+        'characteristic_infrared_lines': [[2160,2180],],
     },
 
     '¹²C¹⁶O'  :     {
@@ -327,6 +347,19 @@ species_data = {
         'mass'              : 44.0767,
         'reduced_mass'      : 8.73784,
         'point_group'       : 'C∞v',
+        'characteristic_infrared_bands': [[1200,1350],],
+    },
+
+    'NO'  :     {
+        'chemical_species'  : 'NO',
+        'characteristic_infrared_bands': [[1750,2000],],
+        'characteristic_infrared_lines': [[1830,1850],],
+    },
+
+    'H₂S'  :     {
+        'chemical_species'  : 'H₂S',
+        'characteristic_infrared_bands': [[1000,1600],[3500,4100]],
+        'characteristic_infrared_lines': [[1275,1300],],
     },
 
     '¹⁴N¹⁶O'  :     {
@@ -501,11 +534,15 @@ species_data = {
     'NO₂'     :     {
         'chemical_species'  : 'NO₂',
         'mass'              : 46.0,
+        'characteristic_infrared_bands': [[1540,1660],],
+        'characteristic_infrared_lines': [[1590,1610],],
     },
 
     'CO₂'     :     {
         'chemical_species'  : 'CO₂',
         'mass'              : 44.0,
+        'characteristic_infrared_bands': [[2200,2400], [3550,3750], [4800,5150],] ,
+        'characteristic_infrared_lines': [[2315,2320],],
     },
 
     '¹²C¹⁶O₂' :     {
@@ -524,13 +561,17 @@ species_data = {
     },
 
     '¹H₂¹⁶O'  :     {
-        'chemical_species'  : 'H2O',
+        'chemical_species'  : 'H₂O',
         'mass'              : 18.0,
+        'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
+        'characteristic_infrared_lines': [[1552,1580],],
     },
 
     'CH₄'     :     {
         'chemical_species'  : 'CH₄',
         'mass'              : 16.0,
+        'characteristic_infrared_bands': [[1200,1400],[2800,3200],],
+        'characteristic_infrared_lines': [[3010,3020],],
     },
 
     '¹²CH₄'   :     {
@@ -551,6 +592,8 @@ species_data = {
     'SO₂'     :     {
         'chemical_species'  : 'SO₂',
         'mass'              : 63.9619,
+        'characteristic_infrared_bands': [[1050,1400], [2450,2550],],
+        'characteristic_infrared_lines': [[1350,1370],],
     },
 
     'S¹⁷O₂'   :     {
@@ -641,6 +684,8 @@ species_data = {
     'N₂O'     :     {
         'chemical_species'  : 'N₂O',
         'mass'              : 48.0323,
+        'characteristic_infrared_bands': [[2175,2270],],
+        'characteristic_infrared_lines': [[2199,2210],],
     },
 
     'CH₃Cl'   :     {
@@ -658,6 +703,12 @@ species_data = {
         'mass'              : 52,
     },
 
+    'C₂H₂'    :     {
+        'chemical_species'  : 'C₂H₂',
+        'characteristic_infrared_bands': [[600,850], [3200,3400],],
+        'characteristic_infrared_lines': [[3255,3260],],
+    },
+
     'C₂H₄'    :     {
         'chemical_species'  : 'C₂H₄',
         'mass'              : 28.0313,
@@ -666,22 +717,41 @@ species_data = {
     'C₂H₆'    :     {
         'chemical_species'  : 'C₂H₆',
         'mass'              : 30,
+        'characteristic_infrared_bands': [[2850,3100]],
+        'characteristic_infrared_lines': [[2975,2995]],
+    },
+
+    'HCOOH'    :     {
+        'chemical_species'  : 'HCOOH',
+        'characteristic_infrared_bands': [[1000,1200],[1690,1850]],
+        'characteristic_infrared_lines': [[1770,1780]],
     },
 
     'HCN'     :     {
         'chemical_species'  : 'HCN',
         'mass'              : 27.010899,
-        'point_group'       : 'nan',
+        'characteristic_infrared_bands': [[3200,3400],],
+        'characteristic_infrared_lines': [[3325,3350],],
+    },
+
+    'NH₃'     :     {
+        'chemical_species'  : 'NH₃',
+        'characteristic_infrared_bands': [[800,1200],],
+        'characteristic_infrared_lines': [[950,970],],
     },
 
     'CS₂'     :     {
         'chemical_species'  : 'CS₂',
         'mass'              : 76,
+        'characteristic_infrared_bands': [[1500,1560],],
+        'characteristic_infrared_lines': [[1530,1550],],
     },
 
     'OCS'     :     {
         'chemical_species'  : 'OCS',
         'mass'              : 60,
+        'characteristic_infrared_bands': [[2000,2100],],
+        'characteristic_infrared_lines': [[2070,2080],],
     },
 
     '¹⁶O¹²C³²S':     {
