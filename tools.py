@@ -247,6 +247,7 @@ def format_dict(
         indent='',
         newline_depth=inf,
         blank_depth=-1,
+        max_line_length=inf,
         _depth=0,
         keys=None,
 ):
@@ -269,7 +270,10 @@ def format_dict(
                 or (len(val) == 1 and not any([isinstance(t,dict) for t in val.values()])) # dict contains no other dicts
             ):
             ## put on one line
-            lines.append(f'{prefix}{repr(key):20}: {repr(val)},')
+            formatted_value = repr(val)
+            if len(formatted_value) > max_line_length:
+                formatted_value = '...'
+            lines.append(f'{prefix}{repr(key):20}: {formatted_value},')
         else:
             ## expand as subdict
             subdict = format_dict(
@@ -278,6 +282,7 @@ def format_dict(
                 _depth=_depth+1,
                 newline_depth=newline_depth,
                 blank_depth=blank_depth,
+                max_line_length=max_line_length,
             )
             lines.append(f'{prefix}{repr(key):10}: {subdict},')
     ## close dictionary with blank line first if needed
