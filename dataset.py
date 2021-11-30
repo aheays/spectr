@@ -582,16 +582,53 @@ class Dataset(optimise.Optimiser):
         else:
             raise Exception(f'Invalid subkey: {repr(subkey)}')
             
+
     def get_kind(self,key):
         return self._data[key]['kind']
 
-    def change_units(self,key,new_units):
-        """Change units of key to new_units."""
-        old_units = self[key,'units']
-        for subkey in ('value','unc','step'):
-            if self.is_set(key,subkey):
-                self[key,subkey] = convert.units(self[key,subkey],old_units,new_units)
-        self[key,'units'] = new_units
+    def modify(self,key,rename=None,**new_metadata):
+        """Modify metadata of a key, change its units, or rename it."""
+        self.assert_known(key)
+        ## rename key by adding a new one and unsetting the original --
+        ## breaking inferences
+        if rename is not None:
+            for subkey in self.all_subkinds:
+                if self.is_set(key,subkey):
+                    self[rename,subkey] = self[key,subkey]
+            self.unset(key)
+            key = rename
+        for subkey,val in new_metadata.items():
+            if subkey == 'description':
+                self[key,subkey] = val
+            elif subkey == 'kind':
+                if self[key,subkey] != val:
+                    new_data = {subkey:self[key,subkey] for subkey in all_subkinds if self.is_set(key,subkey)}
+                    new_data['kind'] = val
+                    self.unset(key)
+                    self.set_new(key,**new_data)
+            elif subkey == 'units':
+                if self.is_set(key,'units'):
+                    ## convert units of selected subkeys, convert all
+                    ## first before setting
+                    new_data = {}
+                    for tsubkey in ('value','unc','step',):
+                        if self.is_set(key,tsubkey):
+                            new_data[tsubkey] = convert.units(self[key,tsubkey],self[key,'units'],val)
+                    for tsubkey,tval in new_data.items():
+                            self[key,tsubkey] = tval
+                self[key,'units'] = val
+            elif subkey == 'fmt':
+                self[key,'fmt'] = val
+            else:
+                raise NotImplementedError(f'Modify {subkey}')
+        
+    # def change_units(self,key,new_units):
+        # """Change units of key to new_units."""
+        # old_units = self[key,'units']
+        # for subkey in ('value','unc','step'):
+            # if self.is_set(key,subkey):
+                # self[key,subkey] = convert.units(self[key,subkey],old_units,new_units)
+        # self[key,'units'] = new_units
 
     def _has_attribute(self,key,subkey,attribute):
         """Test if key,subkey has a certain attribute."""
@@ -1467,6 +1504,46 @@ class Dataset(optimise.Optimiser):
                 retval += '\n[data]\n'
             retval += line_ending.join([delimiter.join(t) for t in zip(*columns)])+line_ending
         return retval
+
+    def format_metadata(
+            self,
+            keys=None,
+            keys_re=None,
+            subkeys=('default','description','units','fmt','kind',),
+            exclude_keys_with_leading_underscore=True, # if no keys specified, do not include those with leading underscores
+            exclude_inferred_keys=False, # if no keys specified, do not include those which are not explicitly set
+    ):
+        """Format metadata into a string representation."""
+        ## determine keys to include
+        if keys is None:
+            if keys_re is None:
+                keys = self.keys()
+                if exclude_keys_with_leading_underscore:
+                    keys = [key for key in keys if key[0]!='_']
+                if exclude_inferred_keys:
+                    keys = [key for key in keys if not self.is_inferred(key)]
+            else:
+                keys = []
+        if keys_re is not None:
+            keys = {*keys,*self.match_keys(regexp=keys_re)}
+        for key in keys:
+            self.assert_known(key)
+        ## format key metadata
+        metadata = {}
+        for key in keys:
+            ## include much metadata in description. If it is
+            ## dictionary try to semi-align the keys
+            metadata[key] = {}
+            for subkey in subkeys:
+                if subkey in self.scalar_subkinds and self.is_set(key,subkey):
+                    metadata[key][subkey] = self[key,subkey]
+        retval = tools.format_dict(metadata,newline_depth=0,enclose_in_braces=False)
+        return retval
+
+    def print_metadata(self,*args_format_metadata,**kwargs_format_metadata):
+        """Print a string representation of metadata"""
+        string = self.format_metadata(*args_format_metadata,**kwargs_format_metadata)
+        print( string)
 
     def format_as_list(self):
         """Form as a valid python list of lists."""
