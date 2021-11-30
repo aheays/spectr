@@ -2174,10 +2174,10 @@ class FitAbsorption():
 
     def __init__(
             self,
-            name='fit_reference_absorption',
+            name='fit_absorption',
             parameters=None,    # pass in values to parameters
-            verbose=False,      # print more information for debugging
-            make_plot=True,     # plot results of every fit
+            verbose= True,      # print more information for debugging
+            make_plot=False,     # plot results of every fit
             max_nfev=20,         # iterate optimiser up to this many times
             ncpus=1,            # compute Voigt spectrum with 1 or more cpus
             **more_parameters   # some other values in parameters as kwargs
@@ -2271,10 +2271,16 @@ class FitAbsorption():
     }
 
     def __getitem__(self,key):
+        """Access parameters directly."""
         return self.parameters[key]
 
     def __setitem__(self,key,value):
+        """Access parameters directly."""
         self.parameters[key] = value
+
+    def keys(self):
+        """Parameters keys as list."""
+        return list(self.parameters.keys())
 
     def pop(self,key):
         """Remove key from parameters if it is set."""
@@ -2282,9 +2288,11 @@ class FitAbsorption():
             self.parameters.pop(key)
 
     def __str__(self):
+        """Summarise parameters."""
         retval = tools.format_dict(
             self.parameters,
             newline_depth=3,
+            max_line_length=1000,
             # blank_depth=-1,
             # _depth=0,
             # keys=None,
@@ -2295,38 +2303,9 @@ class FitAbsorption():
         if self.verbose:
             print(*args,**kwargs)
 
-    # def auto_sinusoid(self,xi=10):
-        # """Automatic background. Not optimised."""
-        # print('auto_sinusoid')
-        # ## refit intensity_sinusoid
-        # if 'intensity_sinusoid' in self.parameters:
-            # self.parameters.pop('intensity_sinusoid')
-        # model = self.make_model(xbeg=self.parameters['xbeg'],xend=self.parameters['xend'])
-        # model.construct()
-        # self.parameters['intensity_sinusoid'] = model.auto_add_piecewise_sinusoid(xi=xi,make_plot=False,vary=False)
-
-    # def full_model(
-            # self,
-            # species_to_fit=None,
-            # xbeg=None,xend=None,
-            # max_nfev=20,
-            # **make_model_kwargs
-    # ):
-        # """Full model."""
-        # print('full_model')
-        # if xbeg is None:
-            # xbeg = self.parameters['xbeg']
-        # if xend is None:
-            # xend = self.parameters['xend']
-        # model = self.make_model(species_to_fit=species_to_fit,xbeg=xbeg,xend=xend,**make_model_kwargs)
-        # model.optimise(make_plot=self.make_plot,monitor_frequency='rms decrease',verbose=self.verbose,max_nfev=max_nfev)
-        # model_no_absorption = self.make_model(xbeg,xend,list(self.parameters['N']),neglect_species_to_fit=True)
-        # self.plot(model,model_no_absorption)
-        # self.model = model
-
     def fit(self,**make_model_kwargs):
         """Fit a model.  Defaults are the same as in make_model."""
-        print(f'fit {make_model_kwargs=}')
+        print(f'{self.name}: fit with {make_model_kwargs=}')
         model = self.make_model(**make_model_kwargs)
         model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=self.max_nfev)
         if self.make_plot:
@@ -2334,7 +2313,7 @@ class FitAbsorption():
 
     def fit_regions(self,xbeg=-inf,xend=inf,width=1000,overlap_factor=0.1,**make_model_kwargs):
         """Full model."""
-        print(f'fit_regions {xbeg=} {xend=} {width=} {overlap_factor=} {make_model_kwargs=}')
+        print(f'{self.name}: fit_regions with {xbeg=} {xend=} {width=} {overlap_factor=} {make_model_kwargs=}')
         p = self.parameters
         ## determine overlapping region intervals between xbeg and
         ## xend
@@ -2361,7 +2340,7 @@ class FitAbsorption():
     ):
         """Fit list of species individually from one another using their
         preset 'lines' or 'bands' regions, or the full region."""
-        print(f'fit_species {species_to_fit=} {regions=} {make_model_kwargs=}')
+        print(f'{self.name}:fit_species with {species_to_fit=} {regions=} {make_model_kwargs=}')
         p = self.parameters
         ## get default species list
         if species_to_fit is None:
@@ -2389,7 +2368,7 @@ class FitAbsorption():
             else:
                 species_regions = regions
             ## make and optimise models for this species
-            main = Optimiser(name=f'fit_species_{species}')
+            main = Optimiser(name=f'{self.name}_fit_species_{species}')
             models = []
             for region in species_regions:
                 model = self.make_model(region,[species],**make_model_kwargs)
@@ -2431,6 +2410,8 @@ class FitAbsorption():
         p = self.parameters
         if model is None:
             model = self.model
+        if model is None:
+            raise Exception('No model to plot.')
         model.plot(ax=ax,**plot_kwargs)
         ## plot fitted background upper and lower limits
         x = model.x
@@ -2514,7 +2495,7 @@ class FitAbsorption():
         p['scalex'].vary = fit_scalex
         ## start model
         model = Model(
-            name='_'.join(['model',str(int(xbeg)),str(int(xend)),*species_to_fit]),
+            name='_'.join([self.name,'model',str(int(xbeg)),str(int(xend)),*species_to_fit]),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
         if not neglect_species_to_fit:
@@ -2538,7 +2519,7 @@ class FitAbsorption():
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
             p['N'].setdefault(species,P(1e16, False,1e13 ,nan,(0,np.inf)))
-            p['pair'].setdefault(species,P(500, False,1e0,nan,(1e-3,2e4),))
+            p['pair'].setdefault(species,P(500, False,1e0,nan,(1e-3,1e5),))
             if species in species_to_fit:
                 p['N'][species].vary = fit_N
                 p['pair'][species].vary = fit_pair
