@@ -62,33 +62,21 @@ def get_electronic_state_property(species,label,prop):
         raise DatabaseException(f"Cannot find property {prop=} for electronic state with {species=} {label=}")
     return data[prop]
 
-_species_data_cache = None
 @functools.lru_cache(maxsize=1024)
 def get_species_data(species):
-    """Get a dictionary of data for this species."""
-    ## load data
-    global _species_data_cache
-    if _species_data_cache is None:
-        _species_data_cache = dataset.load(data_directory+'/species.psv')
-    data = _species_data_cache
-    try:
-        retval = data.unique_row(species=normalise_species(species))
-    except NonUniqueValueException as err:
-        raise DatabaseException(err)
+    """Get a dictionary of data for this species. Data stored in data/species_data.py."""
+    from .data.species_data import species_data
+    retval = species_data[species]
     return retval
 
 @tools.vectorise()
 def get_species_property(species,prop):
-    """Get a property fo this species using get_species_data. If an
-    array of species then return an array of properties. Scalar output, cached."""
-    data = get_species_data(species)
-    if prop not in data:
-        raise Exception(f'Property {repr(prop)} of species {repr(species)} not known to database.')
-    retval = data[prop]
-    ## test for missing data -- real value that is nan, or string that is 'nan'. Not very elegant.
-    if ((np.isreal(retval) and np.isnan(retval))
-        or retval=='nan'): 
-        raise DatabaseException(f"Property is unknown: {repr(species)}, {repr(prop)}")
+    """Get a database property of this species. Data stored in data/species_data.py."""
+    from .data.species_data import species_data
+    species = normalise_species(species)
+    if species not in species_data or prop not in species_data[species]:
+        raise DatabaseException(f"Species property is unknown: {species=}, {prop=}")
+    retval = species_data[species][prop]
     return retval
 
 @tools.cache
