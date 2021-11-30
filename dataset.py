@@ -1513,7 +1513,7 @@ class Dataset(optimise.Optimiser):
             ## with "_" and some specific keys
             # subkeys = [subkey for subkey in self.vector_subkinds if subkey[0] != '_']
             subkeys = [subkey for subkey in self.all_subkinds if
-                       (subkey[0] != '_') and subkey not in ('infer',)]
+                       (subkey[0] != '_') and subkey not in ('infer','cast')]
         if filetype == 'hdf5':
             ## hdf5 file
             tools.dict_to_hdf5(filename,self.as_dict(keys=keys,subkeys=subkeys),verbose=False)
