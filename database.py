@@ -65,14 +65,14 @@ def get_electronic_state_property(species,label,prop):
 @functools.lru_cache(maxsize=1024)
 def get_species_data(species):
     """Get a dictionary of data for this species. Data stored in data/species_data.py."""
-    from .data.species_data import species_data
+    from .data.species_data import data as species_data
     retval = species_data[species]
     return retval
 
 @tools.vectorise()
 def get_species_property(species,prop):
     """Get a database property of this species. Data stored in data/species_data.py."""
-    from .data.species_data import species_data
+    from .data.species_data import data as species_data
     species = normalise_species(species)
     if species not in species_data or prop not in species_data[species]:
         raise DatabaseException(f"Species property is unknown: {species=}, {prop=}")
