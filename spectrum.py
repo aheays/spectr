@@ -2180,6 +2180,7 @@ class FitAbsorption():
             make_plot=False,     # plot results of every fit
             max_nfev=20,         # iterate optimiser up to this many times
             ncpus=1,            # compute Voigt spectrum with 1 or more cpus
+            default_species=None,
             **more_parameters   # some other values in parameters as kwargs
     ):
         self.name = name
@@ -2196,79 +2197,14 @@ class FitAbsorption():
         self.ncpus = ncpus
         self.experiment = None
         self.model = None
-
-    default_species = [
-        'H2O',
-        'CO2',
-        'CO',
-        'NO2',
-        'NO',
-        'N2O',
-        'NH3',
-        'HCN',
-        'CH4',
-        'C2H2',
-        ## 'C2H6',
-        ## 'HCOOH',
-        'SO2',
-        'H2S',
-        'CS2',
-        'OCS',
-    ]
-
-    characteristic_bands = {
-        'H2O':[[1400,1750],[3800,4000],],
-        'CO2':[[2200,2400], [3550,3750], [4800,5150],] ,
-        'CO':[[1980,2280], [4150,4350],],
-        'C2H2':[[600,850], [3200,3400],],
-        'HCN':[[3200,3400],],
-        'NH3':[[800,1200],],
-        'SO2':[[1050,1400], [2450,2550],],
-        'NO2':[[1540,1660],],
-        'NO':[[1750,2000],],
-        'N2O':[[2175,2270],],
-        'CH4':[[1200,1400],[2800,3200],],
-        'CS2':[[1500,1560],],
-        'OCS':[[2000,2100],],
-        'CH3Cl':[[2750,3500],],
-        'CS':[[1200,1350],],
-        'H2S':[[1000,1600],[3500,4100]],
-        'C2H6':[[2850,3100]],
-        'HCOOH':[[1000,1200],[1690,1850]],
-    }
-
-    characteristic_lines = {
-        'H2O':[
-            [1552,1580],
-            ## [1700,1750],
-            ## [3880,3882]
-        ],
-        'CO2':[
-            [2315,2320],],
-        'CO':[
-            [2160,2180],
-            ## [4285,4292],
-        ],
-        'NH3':[[950,970],],
-        'HCN':[[3325,3350],],
-        'SO2':[
-            ## [1100,1150],
-            [1350,1370],
-        ],
-        'NO2':[[1590,1610],],
-        'NO':[[1830,1850],],
-        'N2O':[[2199,2210],],
-        'CH4':[[3010,3020],],
-        'H2S':[
-            [1275,1300],
-            ## [3700,3750],
-        ],
-        'CS2':[[1530,1550],],
-        'C2H2':[[3255,3260],],
-        'OCS':[[2070,2080],],
-        'C2H6':[[2975,2995]],
-        'HCOOH':[[1770,1780]],
-    }
+        ## if no species_to_fit species in fit_species then fit all
+        ## these
+        self.default_species = default_species
+        if self.default_species is None:
+            self.default_species = [
+                'H2O', 'CO2', 'CO', 'NO2', 'NO', 'N2O', 'NH3', 'HCN',
+                'CH4', 'C2H2', 'SO2', 'H2S', 'CS2', 'OCS',
+            ]
 
     def __getitem__(self,key):
         """Access parameters directly."""
@@ -2358,9 +2294,9 @@ class FitAbsorption():
             print(species,end=" ",flush=True)
             ## get region list
             if regions == 'lines':
-                species_regions = self.characteristic_lines[species]
+                species_regions = database.get_species_property(species,'characteristic_infrared_lines')
             elif regions == 'bands':
-                species_regions = self.characteristic_bands[species]
+                species_regions = database.get_species_property(species,'characteristic_infrared_bands')
             elif regions == 'full':
                 species_regions = 'full'
             elif len(regions) == 2 and np.isscalar(regions[0]):
@@ -2482,13 +2418,13 @@ class FitAbsorption():
             region = (self.parameters['xbeg'],self.parameters['xend'])
         xbeg,xend = region
         ## get species_to_fit list
-        p.setdefault('N',{})
+        p.setdefault('species',{})
         if species_to_fit is None:
             species_to_fit = []
         elif species_to_fit == 'default':
             species_to_fit = self.default_species
         elif species_to_fit == 'existing':
-            species_to_fit = list(p['N'])
+            species_to_fit = list(p['species'])
         elif isinstance(species_to_fit,str):
             species_to_fit = [species_to_fit]
         ## whether to adjust experiment frequency scale
@@ -2509,23 +2445,24 @@ class FitAbsorption():
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(20,1000)))
         p['Teq'].vary = fit_temperature
-        p.setdefault('pair',{})
+        # p.setdefault('pair',{})
         if species_to_model == 'existing':
-            species_to_model = set(p['N'])
+            species_to_model = set(p['species'])
         species_to_model = set(species_to_model) | set(species_to_fit)
         for species in species_to_model:
             if neglect_species_to_fit and species in species_to_fit:
                 continue
+            p['species'].setdefault(species,{})
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
-            p['N'].setdefault(species,P(1e16, False,1e13 ,nan,(0,np.inf)))
-            p['pair'].setdefault(species,P(500, False,1e0,nan,(1e-3,1e5),))
+            p['species'][species].setdefault('N',P(1e16, False,1e13 ,nan,(0,np.inf)))
+            p['species'][species].setdefault('pair',P(500, False,1e0,nan,(1e-3,1e5),))
             if species in species_to_fit:
-                p['N'][species].vary = fit_N
-                p['pair'][species].vary = fit_pair
+                p['species'][species]['N'].vary = fit_N
+                p['species'][species]['pair'].vary = fit_pair
             else:
-                p['N'][species].vary =False
-                p['pair'][species].vary =False
+                p['species'][species]['N'].vary =False
+                p['species'][species]['pair'].vary =False
             ## load data from HITRAN linelists
             # tline = hitran.get_line(species)
             # ## Trim lines that are too weak to matter
@@ -2533,14 +2470,14 @@ class FitAbsorption():
                 min_S296K=1e-25
             else:
                 τpeak_min = 1e-3    # approx minimum peak τ to include a line
-                min_S296K = τpeak_min*1e-3/p['N'][species]    # resulting approx min S296K
+                min_S296K = τpeak_min*1e-3/p['species'][species]['N']    # resulting approx min S296K
             # tline.limit_to_match(min_S296K=min_S296K)
             ## add lines
             model.add_hitran_line(
                 species,
                 Teq=p['Teq'],
-                Nchemical_species=p['N'][species],
-                pair=p['pair'][species],
+                Nchemical_species=p['species'][species]['N'],
+                pair=p['species'][species]['pair'],
                 match={'min_S296K':min_S296K,},
                 ncpus=self.ncpus,
                 nfwhmL=3000,
@@ -2621,6 +2558,40 @@ class FitAbsorption():
             ).save(f'{directory}/spectrum',filetype='directory')
         
 
+def collect_fit_absorption_results(parameters):
+    """Turn a dictionary of FitAbsorption parameters into a Dataset."""
+    ## load parameteres into a dataset
+    data = Dataset()
+    data.set_prototype('filename',description='Data filename',kind='U')
+    data.set_prototype('xbeg',description='Lowest frequency in fitted region',kind='f',units='cm-1',fmt='0.0f')
+    data.set_prototype('xend',description='Highest frequency in fitted region',kind='f',units='cm-1',fmt='0.0f')
+    data.set_prototype('scalex',description='Rescale all frequencies',kind='f',fmt='0.10f')
+    data.set_prototype('noise_xbeg',description='Beginning of frequency range for assessing noise level',kind='f',units='cm-1',fmt='0.0f')
+    data.set_prototype('noise_xend',description='End of frequency range for assessing noise level',kind='f',units='cm-1',fmt='0.0f')
+    data.set_prototype('noise_rms',description='Estimated root-mean-square noise level',kind='f',fmt='0.3e')
+    data.set_prototype('interpolate_model',description='Approximate model grid spacing',kind='f',fmt='0.2e')
+    data.set_prototype('Teq',description='Equilbrium temperature',kind='f',units='K',fmt='0.2f')
+    data.load_from_parameters_dict(parameters)
+    ## change keys and set metadata
+    for key in list(data):
+        ## species column densities and broadening pressures
+        if r:=re.match(r'^species_([^_]+)_N',key):
+            data.modify(key, rename=f'N_{r.group(1)}',
+                        description=f'Column density of {r.group(1)}',
+                        units='cm-2', kind='f')
+        if r:=re.match(r'^species_([^_]+)_pair',key):
+            data.modify(key, rename=f'pair_{r.group(1)}',
+                        description=f'Effective pressure for air broadening of {r.group(1)}',
+                        units='Pa', kind='f')
+        if key == 'instrument_function_sinc_fwhm':
+            data.modify(key, rename=f'sinc_fwhm',
+                        description=f'Instrument function sinc',
+                        units='cm-1.FWHM', kind='f',fmt='0.6f')
+    ## remove some unimportant parameters
+    for key in ('interpolate_model', 'intensity_spline_step', 'intensity_spline_order',):
+        if data.is_set(key):
+            data.unset(key)
+    return data    
 
 def _similar_within_fraction(x,y,maxfrac=1e14):
     """Test if nonzero values of x and y are similar within a maximum fraction abs(x/y)."""
