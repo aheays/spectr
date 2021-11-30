@@ -250,10 +250,13 @@ def format_dict(
         max_line_length=inf,
         _depth=0,
         keys=None,
+        enclose_in_braces=True,
 ):
     """pprint dict recursively but repr non-dict elements."""
-    indent = '    '
-    lines = ['{']
+    lines = []
+    if enclose_in_braces:
+        lines.append('{')
+        indent = '    '
     ## add all values, either on new line, or as subdict
     if keys is None:
         keys = list(input_dict.keys())
@@ -288,7 +291,8 @@ def format_dict(
     ## close dictionary with blank line first if needed
     if blank_depth >= _depth:
         lines.append('')
-    lines.append('}')
+    if enclose_in_braces:
+        lines.append('}')
     ## add indents to non blank lines
     lines = [(indent*_depth+t if len(t)>0 else t) for t in lines]
     ## combine into one
