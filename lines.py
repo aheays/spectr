@@ -1441,100 +1441,6 @@ class Linear(Generic):
         """Decode string into quantum numbers"""
         return quantum_numbers.decode_linear_line(encoded_qn)
 
-    # @optimise_method()
-    # def set_spline_fv_PQR(
-    #         self,
-    #         xkey='J_u',
-    #         key='fv',
-    #         Qknots=None,        # list of spline points, or single value
-    #         Δknots=None,        # list of spline points, or single value
-    #         order=3,
-    #         default=None,
-    #         match=None,
-    #         index=None,
-    #         _cache=None,
-    #         **match_kwargs):
-    #     """Set key to spline function of xkey defined by knots at
-    #     [(x0,y0),(x1,y1),(x2,y2),...]. If index or a match dictionary
-    #     given, then only set these.  If spline list is replaced with a
-    #     single value then use this as a constant."""
-    #     ## To do: cache values or match results so only update if
-    #     ## knots or match values have changed
-    #     if len(_cache) == 0:
-    #         ## save lists spline points (or single values
-    #         if tools.isiterable(Qknots):
-    #             xQspline,yQspline = zip(*Qknots)
-    #         else:
-    #             xQspline,yQspline = None,Qknots
-    #         if tools.isiterable(Δknots):
-    #             xΔspline,yΔspline = zip(*Δknots)
-    #         else:
-    #             xΔspline,yΔspline = None,Δknots
-    #         ## get index limit to defined xkey range
-    #         index = self._get_combined_index(index,match,return_bool=True,**match_kwargs)
-    #         irange = (self[xkey]>=max(
-    #             (0 if xQspline is None else np.min(xQspline)),
-    #             (0 if xΔspline is None else np.min(xΔspline))
-    #         )) & (self[xkey]<=min(
-    #             (inf if xQspline is None else np.max(xQspline)),
-    #             (inf if xΔspline is None else np.max(xΔspline))
-    #         ))
-    #         if index is None:
-    #             index = irange
-    #         else:
-    #             index &= irange
-    #         Qindex = index & self.match(ΔJ=0)
-    #         Pindex = index & self.match(ΔJ=-1)
-    #         Rindex = index & self.match(ΔJ=+1)
-    #         _cache['Qindex'] = Qindex
-    #         _cache['Pindex'] = Pindex
-    #         _cache['Rindex'] = Rindex
-    #         _cache['xQspline'],_cache['yQspline'] = xQspline,yQspline
-    #         _cache['xΔspline'],_cache['yΔspline'] = xΔspline,yΔspline
-    #     ## get cached data
-    #     Qindex = _cache['Qindex']
-    #     Pindex = _cache['Pindex']
-    #     Rindex = _cache['Rindex']
-    #     xQspline,yQspline = _cache['xQspline'],_cache['yQspline']
-    #     xΔspline,yΔspline = _cache['xΔspline'],_cache['yΔspline']
-    #     ## set data
-    #     if not self.is_known(key):
-    #         if default is None:
-    #             raise Exception(f'Setting {repr(key)} to spline but it is not known and no default value is provided')
-    #         else:
-    #             self[key] = default
-    #     ## compute splined values (or use single value)
-    #     if xQspline is None:
-    #         Qy = yQspline
-    #     else:
-    #         Qy = tools.spline(xQspline,yQspline,self[xkey,Qindex],order=order)
-    #     if xQspline is None:
-    #         Py = yQspline
-    #         Ry = yQspline
-    #     else:
-    #         Py = tools.spline(xQspline,yQspline,self[xkey,Pindex],order=order)
-    #         Ry = tools.spline(xQspline,yQspline,self[xkey,Rindex],order=order)
-    #     if xΔspline is None:
-    #         Py = Py + yΔspline
-    #         Ry = Ry - yΔspline
-    #     else:
-    #         Py = Py + tools.spline(xΔspline,yΔspline,self[xkey,Pindex],order=order)
-    #         Ry = Ry - tools.spline(xΔspline,yΔspline,self[xkey,Rindex],order=order)
-    #     ## set data
-    #     self.set(key,'value',value=Qy,index=Qindex,ΔJ=0 ,set_changed_only=True)
-    #     self.set(key,'value',value=Py,index=Pindex,ΔJ=-1,set_changed_only=True)
-    #     self.set(key,'value',value=Ry,index=Rindex,ΔJ=+1,set_changed_only=True)
-    #     ## set uncertainties to NaN
-    #     if self.is_set(key,'unc'):
-    #         self.set(key,'unc',nan,index=Qindex)
-    #         self.set(key,'unc',nan,index=Pindex)
-    #         self.set(key,'unc',nan,index=Rindex)
-    #     ## set vary to False if set, but only on the first execution
-    #     if 'not_first_execution' not in _cache:
-    #         if self.is_set(key,'vary'):
-    #             self.set(key,'vary',False,index=index)
-    #         _cache['not_first_execution'] = True
-
     @format_input_method()
     def set_spline_PQR(self,xkey='J_u',ykey='fv',Qknots=None,ΔPknots=None,ΔRknots=None,**set_spline_kwargs):
         """Set a strength related quantity for P, R, and possibly Q branches.
@@ -1550,13 +1456,6 @@ class Linear(Generic):
         if ΔRknots is not None:
             self.add_spline(xkey='J_u',ykey='fv',knots=ΔRknots,ΔJ=+1,**set_spline_kwargs)
             self.pop_format_input_function()
-
-
-    # def set_effective_rotational_linestrengths(self,Ω_u,Ω_l):
-        # """Set SJ to Honl-London factors appropriate for Ω_u and Ω_l,
-        # regardless of the actual Ω/Λ/Σ quantum numbers. Useful if a
-        # multiplet transition is borrowing intensity."""
-        # self['SJ'] = quantum_numbers.honl_london(Ω_u,Ω_l,self[J_u],self[J_l])
 
 
 class Diatomic(Linear):
@@ -1813,7 +1712,7 @@ class LinearTriatomic(Linear):
         'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
         ))
     default_xkey = 'J_l'
-    default_zkeys = ['species_u', 'ν1_u', 'ν2_u', 'ν3_u', 'l2_u', 'species_l', 'ν1_l', 'ν2_l', 'ν3_l', 'l2_l', 'ΔJ']
+    default_zkeys = ['species_u', 'ν1_u', 'ν2_u', 'ν3_u', 'species_l', 'ν1_l', 'ν2_l', 'ν3_l', 'ΔJ']
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
