@@ -228,8 +228,8 @@ class Dataset(optimise.Optimiser):
         return kind
 
     def set_new(self,key,value,kind=None,**other_metadata):
-        """Set key to value with other kinds of subkey metadata also set. Will
-        create a prototype first."""
+        """Set key to value along with other kinds of
+        metadata. Creates a prototype first."""
         if key in self:
             raise Exception(f"set_new but key already exists: {repr(key)}")
         if key in self.prototypes:
@@ -260,6 +260,73 @@ class Dataset(optimise.Optimiser):
             self.prototypes[key].setdefault(tkey,tval)
 
     @optimise_method(format_multi_line=3)
+
+    @optimise_method(format_multi_line=99)
+    def set_value(
+            self,
+            key,
+            value,
+            default=None,
+            _cache=None,
+            **get_combined_index_kwargs
+    ):
+        """Set a value and it will be updated every construction and may be a
+        Parameter for optimisation."""
+        ## cache matching indices
+        if self._clean_construct:
+            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
+            ## set a default value if key is not currently known
+            if not self.is_known(key) and default is not None:
+                self[key] = default
+        index = _cache['index']
+        ## set the data
+        self.set(key,'value',value,index=index,set_changed_only= True)
+        if isinstance(value,Parameter):
+            # if value.vary == True: #  DEBUG
+                # print('DEBUG:', value)
+            self.set(key,'unc' ,value.unc ,index=index)
+            if self._clean_construct:
+                self.set(key,'step',value.step,index=index)
+                self.set(key,'vary',False     ,index=index)
+        # ## set vary to False if set, but only on the first execution
+        # if 'not_first_execution' not in _cache:
+            # if 'vary' in self._data[key]:
+                # self.set(key,'vary',False,index=combined_index)
+            # _cache['not_first_execution'] = True
+
+    @optimise_method(format_multi_line=99)
+    def set_values(
+            self,
+            key,
+            value,
+            default=None,
+            _cache=None,
+            **get_combined_index_kwargs
+    ):
+        """Set a value and it will be updated every construction and may be a
+        Parameter for optimisation."""
+        ## cache matching indices
+        if self._clean_construct:
+            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
+            ## set a default value if key is not currently known
+            if not self.is_known(key) and default is not None:
+                self[key] = default
+        index = _cache['index']
+        ## set the data
+        self.set(key,'value',value,index=index,set_changed_only= True)
+        if isinstance(value,Parameter):
+            # if value.vary == True: #  DEBUG
+                # print('DEBUG:', value)
+            self.set(key,'unc' ,value.unc ,index=index)
+            if self._clean_construct:
+                self.set(key,'step',value.step,index=index)
+                self.set(key,'vary',False     ,index=index)
+        # ## set vary to False if set, but only on the first execution
+        # if 'not_first_execution' not in _cache:
+            # if 'vary' in self._data[key]:
+                # self.set(key,'vary',False,index=combined_index)
+            # _cache['not_first_execution'] = True
+
     def set_spline(
             self,
             xkey,
@@ -268,6 +335,7 @@ class Dataset(optimise.Optimiser):
             order=3,
             default=None,
             _cache=None,
+            optimise=True,
             **get_combined_index_kwargs
     ):
         """Set ykey to spline function of xkey defined by knots at
@@ -279,7 +347,7 @@ class Dataset(optimise.Optimiser):
             ## set data
             if not self.is_known(ykey):
                 if default is None:
-                    raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value if provided')
+                    raise Exception(f'Setting {repr(ykey)} to spline but it is not known and no default value is provided')
                 else:
                     self[ykey] = default
             xspline,yspline = zip(*knots)
@@ -293,11 +361,6 @@ class Dataset(optimise.Optimiser):
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
             self.set(ykey,'unc',nan,index=index)
-        ## set vary to False if set, but only on the first execution
-        if 'not_first_execution' not in _cache:
-            if 'vary' in self._data[ykey]:
-                self.set(ykey,'vary',False,index=index)
-            _cache['not_first_execution'] = True
 
     @optimise_method(format_multi_line=3)
     def add_spline(
@@ -693,39 +756,6 @@ class Dataset(optimise.Optimiser):
         retaval[match] = True
         return retval
 
-    @optimise_method(format_multi_line=99)
-    def set_value(
-            self,
-            key,
-            value,
-            default=None,
-            _cache=None,
-            **get_combined_index_kwargs
-    ):
-        """Set a value and it will be updated every construction and may be a
-        Parameter for optimisation."""
-        ## cache matching indices
-        if self._clean_construct:
-            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
-            ## set a default value if key is not currently known
-            if not self.is_known(key) and default is not None:
-                self[key] = default
-        index = _cache['index']
-        ## set the data
-        self.set(key,'value',value,index=index,set_changed_only= True)
-        if isinstance(value,Parameter):
-            # if value.vary == True: #  DEBUG
-                # print('DEBUG:', value)
-            self.set(key,'unc' ,value.unc ,index=index)
-            if self._clean_construct:
-                self.set(key,'step',value.step,index=index)
-                self.set(key,'vary',False     ,index=index)
-        # ## set vary to False if set, but only on the first execution
-        # if 'not_first_execution' not in _cache:
-            # if 'vary' in self._data[key]:
-                # self.set(key,'vary',False,index=combined_index)
-            # _cache['not_first_execution'] = True
-
     def keys(self):
         return list(self._data.keys())
 
@@ -740,13 +770,17 @@ class Dataset(optimise.Optimiser):
                 self.unset(key)
 
     def optimised_keys(self):
+        """Return a list of keys that will be considered for
+        optimisation."""
         return [key for key in self.keys() if self.is_set(key,'vary')]
 
     def explicitly_set_keys(self):
+        """Return a list of keys that were not inferred."""
         return [key for key in self if not self.is_inferred(key)]
 
     def match_keys(self,regexp=None,beg=None,end=None,):
-        """Return a list of keys matching any of regex or beginning/ending string beg/end."""
+        """Return a list of keys matching any of regex or
+        beginning/ending string beg/end."""
         keys = []
         if regexp is not None:
             keys += [key for key in self if re.match(regexp,key)]
@@ -757,7 +791,8 @@ class Dataset(optimise.Optimiser):
         return keys
             
     def match_keys_matches(self,regexp):
-        """Return a list of keys matching any of regexp or beginning/ending string beg/end."""
+        """Return a list of keys matching a regexp along with any
+        matched groups. NEED THIS?"""
         retval = []
         for key in self:
             if r:=re.match(regexp,key):
@@ -765,33 +800,31 @@ class Dataset(optimise.Optimiser):
         return retval 
 
     def __iter__(self):
+        """Iterate through keys."""
         for key in self._data:
             yield key
 
     def items(self):
-        """Iterate over set keys and their values."""
+        """Iterate over keys and their values."""
         for key in self:
             yield key,self[key]
 
-    def pop(self,key):
-        """Pop data in key."""
-        value = self[key]
-        self.unset(key)
-        return value
-
 
     def is_set(self,key,subkey='value'):
+        """Test if (key,subkey) is currently defined."""
         if key in self._data and subkey in self._data[key]:
             return True
         else:
             return False
 
     def assert_known(self,key,subkey='value'):
-        """Check is known by trying to get item."""
+        """Raise error if (key,subkey) is not set and cannot be
+        inferred."""
         self[key,subkey]
 
     def is_known(self,key,subkey='value'):
-        """Test if key is known."""
+        """Test if (key,subkey) is currently defined, try and infer it
+        if necessary."""
         try:
             self.assert_known(key,subkey)
             return True 
@@ -799,9 +832,16 @@ class Dataset(optimise.Optimiser):
             return False
             
     def __getitem__(self,arg):
-        """If string 'x' return value of 'x'. If "ux" return uncertainty
-        of x. If list of strings return a copy of self restricted to
-        that data. If an arg, return an arged copy of self."""
+        """Possible forms for arg:
+            key                -- return value of this key
+            integer            -- return this row of data as a dict
+            slice              -- return copy of self indexed by this
+            int/bool array     -- return copy of self indexed by this
+            [key0,key1...]     -- return copy of self restricted to these keys
+            (key,subkey)       -- return subkey of this key
+            (key,index)        -- return value of this key for this index
+            (key,subkey,index) -- return subkey of this key for this index
+        """
         if isinstance(arg,str):
             ## a non indexed key
             return self.get(key=arg)
@@ -855,7 +895,7 @@ class Dataset(optimise.Optimiser):
 
     def __setitem__(self,key,value):
         """Set key, (key,subkey), (key,index), (key,subkey,index) to
-        value. If key='key:subkey' then decode this."""
+        value."""
         if isinstance(key,str):
             tkey,tsubkey,tindex = key,'value',None
         elif len(key) == 1:
@@ -867,9 +907,6 @@ class Dataset(optimise.Optimiser):
                 tkey,tsubkey,tindex = key[0],'value',key[1]
         elif len(key) == 3:
                 tkey,tsubkey,tindex = key[0],key[1],key[2]
-        # ## maybe a key:subkey encoded key
-        # if tsubkey == 'value' and ':' in tkey:
-            # tkey,tsubkey = tkey.split(':')
         self.set(tkey,tsubkey,value,tindex)
        
     def clear(self):
@@ -881,7 +918,7 @@ class Dataset(optimise.Optimiser):
         self._data.clear()
 
     def unset(self,key,subkey='value'):
-        """Delete data.  Also clean up inferences."""
+        """Delete (key,subkey) data.  Also clean up inferences."""
         if key in self:
             if subkey == 'value':
                 self.unlink_inferences(key)
@@ -891,29 +928,29 @@ class Dataset(optimise.Optimiser):
                 if subkey in data:
                     data.pop(subkey)
 
-    def pop(self,key):
-        """Return data and unset key."""
-        retval = self[key]
-        self.unset(key)
+    def pop(self,key,subkey='value'):
+        """Return (key,subkey) and unset it."""
+        retval = self[key,subkey]
+        self.unset(key,subkey)
         return retval
 
     def is_inferred(self,key):
-        """Test whether this key is inferred (or explicitly set)."""
+        """Test whether this key is inferred."""
         if '_inferred_from' in self._data[key]:
             return True
         else:
             return False
    
     def unset_inferred(self):
-        """Delete all inferred data."""
+        """Delete all inferred data everywhere."""
         for key in list(self):
             if key in self and self.is_inferred(key):
                 self.unlink_inferences(key)
                 self.unset(key)
    
     def unlink_inferences(self,keys):
-        """Delete any record these keys begin inferred. Also recursively unset
-        any key inferred from these that is not among keys itself."""
+        """Delete any record of keys begin inferred. Also recursively unset
+        any key inferred from these and not among keys itself."""
         keys = tools.ensure_iterable(keys)
         for key in keys:
             self.assert_known(key)
@@ -937,7 +974,8 @@ class Dataset(optimise.Optimiser):
         self.unlink_inferences(self.keys())
 
     def add_infer_function(self,key,dependencies,function):
-        """Add a new method of data inference."""
+        """Add a new method of data inference. DOES NOT SUPPORT
+        EXPLICIT UNCERTAINTY FUNCTION."""
         self.prototypes[key]['infer'].append((dependencies,function))
 
     def index(self,index):
@@ -1051,8 +1089,9 @@ class Dataset(optimise.Optimiser):
             _cache=None,
             **get_combined_index_kwargs
     ):
-        """Copy all values and uncertainties from source Dataset and update if
-        source changes during optimisation."""
+        """Copy all values and uncertainties from source Dataset and
+        update if source changes during optimisation. MERGE WITH
+        COPY_FROM WITH OPTIMISE=TRUE ARGUMENT."""
         ## get keys and indices to copy
         if self._clean_construct:
             if keys is None:
@@ -1079,7 +1118,7 @@ class Dataset(optimise.Optimiser):
                         self.set(key,subkey,source[key,subkey])
 
     def match_re(self,keys_vals=None,**kwarg_keys_vals):
-        """Match string keys to regular expressions."""
+        """Match kind='U' data to regular expressions."""
         if keys_vals is None:
             keys_vals = {}
         keys_vals = keys_vals | kwarg_keys_vals
@@ -1089,11 +1128,17 @@ class Dataset(optimise.Optimiser):
         return retval
 
     def match(self,keys_vals=None,**kwarg_keys_vals):
-        """Return boolean array of data matching all key==val.\n\nIf key has
-        suffix 'min_' or 'max_' then match anything greater/lesser or
-        equal to this value.  If key has suffix _not then match not
-        equal."""
-        ## combine all match keys/vals
+        """Return boolean array of the intersection of matching
+        key=val pairs in the dictionary keys_vals and in the form:
+            key=value              -- matching values
+            key=(value0,value1...) -- matches something in the list
+            not_key=...            -- not a match (also e.g., not_range_key is possible)
+            min_key=value          -- at least this value
+            max_key=value          -- at most this value
+            range_key=(min,max)    -- not in this range
+            re_key=string          -- match to this regular expression
+        """
+        ## joint kwargs to keys_vals dict
         if keys_vals is None:
             keys_vals = {}
         keys_vals = keys_vals | kwarg_keys_vals
@@ -1137,22 +1182,24 @@ class Dataset(optimise.Optimiser):
         return i
 
     def find(self,*match_args,**match_kwargs):
-        """Return as a array of matching indices."""
+        """Like match but returns an array of integer indices."""
         i = tools.find(self.match(*match_args,**match_kwargs))
         return i
 
     def matches(self,*args,**kwargs):
-        """Returns a copy reduced to matching values."""
+        """Returns a copy of self reduced to matching values."""
         return self.copy(index=self.match(*args,**kwargs),copy_inferred_data=False)
 
     def limit_to_match(self,*match_args,**match_kwargs):
+        """Reduces self to matching values."""
         self.index(self.match(*match_args,**match_kwargs))
 
     def remove_match(self,*match_args,**match_keys_vals):
+        """Removes all matching values for self."""
         self.index(~self.match(*match_args,**match_keys_vals))
 
     def unique(self,key,subkey='value'):
-        """Return unique values of one key."""
+        """Return unique values of one (key,subkey)."""
         self.assert_known(key,subkey)
         if self.get_kind(key) == 'O':
             raise ImplementationError()
@@ -1161,19 +1208,19 @@ class Dataset(optimise.Optimiser):
             return np.unique(self[key,subkey])
 
     def unique_combinations(self,*keys):
-        """Return a list of all unique combination of keys."""
+        """Return a list of all unique combination of key values."""
         return tools.unique_combinations(*[self[key] for key in keys])
 
     def unique_dataset(self,*keys):
-        """Return a dataset summarising unique combination of keys."""
+        """Return a dataset summarising the unique combination of keys."""
         retval = self.__class__()
         for data in self.unique_dicts(*keys):
             retval.append(**data)
         return retval
 
     def unique_dicts(self,*keys):
-        """Return an iterator where each element is a unique set of keys as a
-        dictionary."""
+        """Return an iterator where each element is a dictionary
+        containing a unique combination of keys."""
         if len(keys)==0:
             return ({},)
         retval = [{key:val for key,val in zip(keys,vals)} for vals in self.unique_combinations(*keys)]
@@ -1181,9 +1228,9 @@ class Dataset(optimise.Optimiser):
         return retval 
 
     def unique_dicts_match(self,*keys,return_bool=True):
-        """Return pairs where the first element is a dictionary of unique
-        combinations of keys and the second is a boolean array matching this
-        combination. If return_bool=False then returns an array of matching indices instead."""
+        """Finds unique combinations of keys and returns pairs
+        consisting of a dictionary containing this combination and an
+        array indexing its matches."""
         retval = []
         for d in self.unique_dicts(*keys):
             if return_bool:
@@ -1193,16 +1240,17 @@ class Dataset(optimise.Optimiser):
         return retval
 
     def unique_dicts_matches(self,*keys):
-        """Return pairs where the first element is a dictionary of unique
-        combinations of keys and the second is a copy of self reduced
-        to matching values."""
+        """Finds unique combinations of keys and returns pairs consisting of a
+        dictionary containing this combination and copy of limited to
+        its matches."""
         retval = []
         for d in self.unique_dicts(*keys):
             retval.append((d,self.matches(**d)))
         return retval
                           
     def _infer(self,key,already_attempted=None,depth=0):
-        """Get data, or try and compute it."""
+        """Return value of key or attempt to recursively attempting to
+        calculate it from existing data.."""
         if key in self:
             return
         ## avoid getting stuck in a cycle
@@ -1301,28 +1349,27 @@ class Dataset(optimise.Optimiser):
                 raise InferException(f"Could not infer key: {repr(key)}")
 
     def as_flat_dict(self,keys=None,index=None):
-        """Return as a dict of arrays, including uncertainties."""
+        """Return as a dict of arrays, including uncertainties encoded as
+        'key:unc'."""
         if keys is None:
             keys = self.keys()
         retval = {}
         for key in keys:
             retval[key] = self.get(key,index=index)
             if self.is_set(key,'unc'):
-                retval[f'{key}_unc'] = self.get(key,'unc',index=index)
+                retval[f'{key}:unc'] = self.get(key,'unc',index=index)
         return retval
 
     def as_dict(
             self,
             keys=None,
             index=None,
-            subkeys=None,
+            subkeys=('value','unc','description','units'),
     ):
-        """Return as a structured dict."""
+        """Return as a structured dict including subkeys."""
         ## default to all data
         if keys is None: 
             keys = list(self.keys())
-        if subkeys is None:
-            subkeys = ('value','unc','description','units')
         ## add data
         retval = {}
         retval['classname'] = self.classname
@@ -1337,8 +1384,8 @@ class Dataset(optimise.Optimiser):
         return retval
      
     def row(self,index,keys=None):
-        """Iterate value data row by row, returns as a dictionary of
-        scalar values."""
+        """Return dictionary of data corresopnding to one row with
+        integer index."""
         if keys is None:
             keys = self.keys()
         return {key:self.get(key,'value',int(index)) for key in keys}
@@ -1354,7 +1401,8 @@ class Dataset(optimise.Optimiser):
             yield {key:self.get(key,'value',i) for key in keys}
 
     def row_data(self,keys=None,index=None):
-        """Iterate rows, returning data in a tuple."""
+        """Iterate rows, returning data in a tuple (faster than
+        rows)."""
         if keys is None:
             keys = self.keys()
         if index is None:
@@ -1546,7 +1594,7 @@ class Dataset(optimise.Optimiser):
         print( string)
 
     def format_as_list(self):
-        """Form as a valid python list of lists."""
+        """Form as a valid python list of lists. OBSOLETE?"""
         retval = f'[ \n'
         data = self.format(
             delimiter=' , ',
@@ -1564,9 +1612,7 @@ class Dataset(optimise.Optimiser):
         return self.format(simple=True)
 
     def __repr__(self):
-        # if len(self)>50:
         return self.name
-        # return f"{self.classname}(load_from_string='''\n{self.format_flat()}''')"
             
     def save(
             self,
@@ -1576,7 +1622,9 @@ class Dataset(optimise.Optimiser):
             filetype=None,           # 'text' (default), 'hdf5', 'directory'
             **format_kwargs,
     ):
-        """Save some or all data to a file."""
+        """Save some or all data to a file.  Valid filetypes are: [
+        'text' (default), 'hdf5', 'directory', 'npz', 'rs', 'psv',
+        'csv']"""
         if filetype is None:
             ## if not provided as an input argument then get save
             ## format form filename, or default to text
@@ -1620,7 +1668,8 @@ class Dataset(optimise.Optimiser):
             raise Exception(f'Do not know how save to {filetype=}')
             
     def load(self,filename,filetype=None,**load_method_kwargs):
-        '''Load data from a file.'''
+        '''Load data from a file. Valid filetypes are ["hdf5",
+        "directory", "npz", "org", "text", "rs", "psv", "csv"['''
         if filetype is None:
             ## if not provided as an input argument then get save
             ## format form filename, or default to text
@@ -1787,9 +1836,11 @@ class Dataset(optimise.Optimiser):
                 self[key,subkey] = scalar_data[key][subkey]
 
     def load_from_parameters_dict(self,parameters):
-        """Load a dict recursively into a flat scalar list. Only scalars,
-            Parameters, and dictionaries with string keys are
-            added. Everything else is ignored."""
+        """Load a dictionary of dictionaries
+        recursively. Subdictionary keys are joined to their parent key
+        with '_'.  Only scalar data, Parameters, and dictionaries with
+        string keys are added. Everything else is ignored completely
+        and silently."""
         def recursively_flatten_scalar_dict(data,prefix=''):
             from .optimise import Parameter
             retval = {}
@@ -2043,8 +2094,9 @@ class Dataset(optimise.Optimiser):
         self.add_format_input_function(format_input_function)
 
     def concatenate(self,new_dataset,keys=None,defaults=None):
-        """Extend self by new_dataset using keys existing in self. New data updated
-        on optimisaion if new_dataset changes."""
+        """Extend self by new_dataset. If keys=None then existing and
+        new_dataset must have a complete of explicity set keys, or a
+        default value set in the input dictionary 'defaults' """
         ## process defaults, keys that are missing a subkey are
         ## converted to (key,'value').
         if defaults is None:
@@ -2077,51 +2129,32 @@ class Dataset(optimise.Optimiser):
             total_length = len(self) + len(new_dataset)
             self._reallocate(total_length)
             ## set extending data 
-            # for key,data in self._data.items():
-            #     for subkey in data:
-            #         if subkey in self.vector_subkinds:
-            #             if new_dataset.is_known(key,subkey):
-            #                 new_val = new_dataset[key,subkey]
-            #             elif self._has_attribute(key,subkey,'default'):
-            #                 new_val = self._get_attribute(key,subkey,'default')
-            #             elif (key,subkey) in defaults:
-            #                 new_val = defaults[key,subkey]
-            #             else:
-            #                 raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
-            #             ## increase char-length of string arrays if needed and insert new data
-            #             self._increase_char_length_if_necessary(key,subkey,new_val)
-            #             data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
             for key,data in self._data.items():
                 for subkey in self.vector_subkinds:
                     if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
-
                         self.assert_known(key,subkey)
                         new_dataset.assert_known(key,subkey)
-
                         if self.is_known(key,subkey) and new_dataset.is_known(key,subkey):
                             new_val = new_dataset[key,subkey]
-                        # elif self._has_attribute(key,subkey,'default'):
-                            # new_val = self._get_attribute(key,subkey,'default')
                         elif (key,subkey) in defaults:
                             new_val = defaults[key,subkey]
                         else:
                             raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
-
                         ## increase char-length of string arrays if needed and insert new data
                         self._increase_char_length_if_necessary(key,subkey,new_val)
                         data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
 
     @optimise_method()
     def concatenate_and_optimise(self,new_dataset,keys=None,_cache=None):
-        """Extend self by new_dataset using keys existing in self. New data updated
-        on optimisaion if new_dataset changes."""
+        """Like concatenate but update data from new_dataset on
+        optimise. REPLACE WITH AN OPTIMISE=TRUE FLAG IN CONCATENATE
+        METHOD?"""
         if self._clean_construct and 'new_length' not in _cache:
             _cache['old_length'] = len(self)
             _cache['new_length'] = len(self) + len(new_dataset)
             self.concatenate(new_dataset,keys)
             self.permit_indexing = False
             _cache['keys'] = [*self.keys()]
-            
         else:
             ## update data in place
             index = slice(_cache['old_length'],_cache['new_length'])
@@ -2252,18 +2285,6 @@ class Dataset(optimise.Optimiser):
                 np.full(new_length*self._over_allocate_factor
                         -len(self._row_modify_time),timestamp())))
 
-    def __add__(self,other):
-        """Adding dataset concatenates data in all keys."""
-        retval = self.copy()
-        retval.extend(other)
-        return retval
-
-    def __radd__(self,other):
-        """Adding dataset concatenates data in all keys."""
-        retval = self.copy()
-        retval.extend(other)
-        return retval
-
     def plot(
             self,
             xkeys=None,         # key to use for x-axis data
@@ -2285,14 +2306,14 @@ class Dataset(optimise.Optimiser):
             ylog=False,
             ncolumns=None,       # number of columsn of subplot -- None to automatically select
             show=False,          # show figure after issuing plot commands
-            xlim=None,
-            ylim=None,
+            xlim=None,           # set a (xbeg,xend) pair
+            ylim=None,           # set a (
             title=None,
             xsort=True,         # True sort by xkey, False, do not sort, or else a key or list of keys to sort by
             annotate_points_keys=None,
             **plot_kwargs,      # e.g. color, linestyle, label etc
     ):
-        """Plot data."""
+        """Plot data. Good luck."""
         from matplotlib import pyplot as plt
         from spectr import plotting
         if len(self)==0:
@@ -2529,15 +2550,27 @@ class Dataset(optimise.Optimiser):
         # for t in ax.xaxis.get_ticklabels():
             # t.set_size('small')
             # t.set_rotation(-45)
-        
 
     def polyfit(self,xkey,ykey,index=None,**polyfit_kwargs):
+        """Compute least-squares fit polynomial coefficients."""
         return tools.polyfit(
             self.get(xkey,index=index),
             self.get(ykey,index=index),
             self.get(ykey,'unc',index=index),
             **polyfit_kwargs)
 
+
+    def __add__(self,other):
+        """Adding dataset concatenates data in all keys."""
+        retval = self.copy()
+        retval.extend(other)
+        return retval
+
+    def __radd__(self,other):
+        """Adding dataset concatenates data in all keys."""
+        retval = self.copy()
+        retval.extend(other)
+        return retval
 
     def __ior__(self,other_dict_like):
         """In place addition of key or substitution like a dictionary using |=."""
@@ -2614,8 +2647,8 @@ def find_common(x,y,keys=None,verbose=False):
     return ix,iy
 
 def get_common(x,y,keys=None,**limit_to_matches):
-    """A short cut to find the common levels of a Dynamic_Recarrays object
-    and return subset copies that are sorted to match each other."""
+    """Return copies of dataset x and y indexed to have aligned common
+    keys."""
     if limit_to_matches is not None:
         x = x.matches(**limit_to_matches)
         y = y.matches(**limit_to_matches)
