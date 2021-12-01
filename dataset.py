@@ -22,7 +22,8 @@ class Dataset(optimise.Optimiser):
 
     """A set of data vectors of common length."""
 
-    ## The kind of data that 'value' associated with a key contains.  Influences which subkinds are relevant.
+    ## The kind of data that 'value' associated with a key contains.
+    ## Influences which subkinds are relevant.
     data_kinds = {
         'f' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'float' },
         'a' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'positive float' },
@@ -33,16 +34,20 @@ class Dataset(optimise.Optimiser):
         'h' : {'cast' : lambda x                                        : np.asarray(x,dtype='S20') ,'fmt' : ''      ,'description' : 'SHA1 hash'},
     }
 
-    ##  Kinds of subdata associatd with a key that are vectors of the same length as 'value'
+    ##  Kinds of subdata associatd with a key that are vectors of the
+    ##  same length as 'value'. All subkinds other than value must
+    ##  have a default, or there will be trouble in the logic below.
     vector_subkinds = {
-        'value'        : {'description' : 'Value of this data'},
-        'unc'          : {'description' : 'Uncertainty'                         , 'kind'         : 'f' , 'valid_kinds'                : ('f','a'), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 0.0   ,},
-        'step'         : {'description' : 'Default numerical differentiation step size' , 'kind' : 'f' , 'valid_kinds'                : ('f','a'), 'cast' : lambda x                                  : np.abs(x,dtype=float)     ,'fmt' : '8.2e'  ,'default' : 1e-8  ,},
-        'vary'         : {'description' : 'Whether to vary during optimisation' , 'kind'         : 'b' , 'valid_kinds'                : ('f','a'), 'cast' : tools.convert_to_bool_vector_array       ,'fmt' : ''      ,'default'               : False ,},
-        'ref'          : {'description' : 'Source reference'                    , 'kind'         : 'U' ,                       'cast' : lambda x       : np.asarray(x,dtype='U20') ,'fmt'          : 's'     ,'default'               : nan   ,},
+        'value' :  { 'description' : 'Value of this data'                          }           , 
+        'unc'   :  { 'description' : 'Uncertainty'                                 , 'default' : 0.0   , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '8.2e' ,  }  , 
+        'step'  :  { 'description' : 'Default numerical differentiation step size' , 'default' : 1e-8  , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '8.2e' ,  }  , 
+        'vary'  :  { 'description' : 'Whether to vary during optimisation'         , 'default' : False , 'kind' : 'b' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : tools.convert_to_bool_vector_array , 'fmt'    : ''           ,       }        , 
+        'ref'   :  { 'description' : 'Source reference'                            , 'default' : nan   , 'kind' : 'U' , 'cast'        : lambda x : np.asarray(x , dtype='U20') , 'fmt'                              : 's'      ,              }       , 
     }
+    assert np.all(['default' in val or key == 'value' for key,val in vector_subkinds.items()])
 
-    ##  Kinds of subdata associatd with a key that are single valued but (potentially complex) objects
+    ##  Kinds of subdata associatd with a key that are single valued
+    ##  but (potentially complex) objects
     scalar_subkinds = {
         'infer'          : {'description':'List of infer functions',},
         'kind'           : {'description':'Kind of data in value corresponding to a key in data_kinds',},
@@ -72,7 +77,8 @@ class Dataset(optimise.Optimiser):
             self,
             name=None,          # name of this Dataset
             permit_nonprototyped_data = True, # allow addition of data that is not prototyped -- kind will be guessed
-            permit_indexing = True, # allow the dataset to shrink or grow -- after any init data added
+            permit_indexing = True, # allow the dataset to unset explicitly set keys, or reindex. If false then can still be extended and add new keys, in this way 
+            permit_dereferencing = True, # allow the dataset unset a key or replace internal arrays with new ones
             prototypes = None,      # a dictionary of prototypes
             load_from_file = None,  # load from a file -- guess type
             load_from_string = None, # load from formatted string
@@ -99,8 +105,14 @@ class Dataset(optimise.Optimiser):
             self.permit_nonprototyped_data = self.default_permit_nonprototyped_data
         else:
             self.permit_nonprototyped_data = permit_nonprototyped_data
-        self.permit_indexing = True # Data can be added to the end of arrays, but not removal or rearranging of data
-        self.verbose = False                             # print extra information at various places
+        ## if False then data can be added to the end of arrays but
+        ## keys can not be removed or their data rearranged
+        self.permit_indexing = permit_indexing 
+        ## if False then then it is not allowed to unset a key or
+        ## replace internal arrays with new ones
+        self.permit_dereferencing = permit_dereferencing
+        ## print extra information at various places
+        self.verbose = False 
         ## get prototypes from defaults and then input argument
         self.prototypes = copy(self.default_prototypes)
         if prototypes is not None:
@@ -156,9 +168,6 @@ class Dataset(optimise.Optimiser):
         ## limit to matching data somehow loaded above
         if limit_to_match is not None:
             self.limit_to_match(**limit_to_match)
-        ## possible set non-permission for indexing after initial data
-        ## added
-        self.permit_indexing = permit_indexing
         ## dictionary to store global attributes
         self.global_attributes = {}
         if global_attributes is not None:
@@ -259,8 +268,6 @@ class Dataset(optimise.Optimiser):
         for tkey,tval in self.data_kinds[kind].items():
             self.prototypes[key].setdefault(tkey,tval)
 
-    @optimise_method(format_multi_line=3)
-
     @optimise_method(format_multi_line=99)
     def set_value(
             self,
@@ -274,59 +281,21 @@ class Dataset(optimise.Optimiser):
         Parameter for optimisation."""
         ## cache matching indices
         if self._clean_construct:
-            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
             ## set a default value if key is not currently known
             if not self.is_known(key) and default is not None:
                 self[key] = default
+            self.permit_indexing = False
+            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
         index = _cache['index']
         ## set the data
         self.set(key,'value',value,index=index,set_changed_only= True)
         if isinstance(value,Parameter):
-            # if value.vary == True: #  DEBUG
-                # print('DEBUG:', value)
             self.set(key,'unc' ,value.unc ,index=index)
             if self._clean_construct:
                 self.set(key,'step',value.step,index=index)
                 self.set(key,'vary',False     ,index=index)
-        # ## set vary to False if set, but only on the first execution
-        # if 'not_first_execution' not in _cache:
-            # if 'vary' in self._data[key]:
-                # self.set(key,'vary',False,index=combined_index)
-            # _cache['not_first_execution'] = True
 
-    @optimise_method(format_multi_line=99)
-    def set_values(
-            self,
-            key,
-            value,
-            default=None,
-            _cache=None,
-            **get_combined_index_kwargs
-    ):
-        """Set a value and it will be updated every construction and may be a
-        Parameter for optimisation."""
-        ## cache matching indices
-        if self._clean_construct:
-            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
-            ## set a default value if key is not currently known
-            if not self.is_known(key) and default is not None:
-                self[key] = default
-        index = _cache['index']
-        ## set the data
-        self.set(key,'value',value,index=index,set_changed_only= True)
-        if isinstance(value,Parameter):
-            # if value.vary == True: #  DEBUG
-                # print('DEBUG:', value)
-            self.set(key,'unc' ,value.unc ,index=index)
-            if self._clean_construct:
-                self.set(key,'step',value.step,index=index)
-                self.set(key,'vary',False     ,index=index)
-        # ## set vary to False if set, but only on the first execution
-        # if 'not_first_execution' not in _cache:
-            # if 'vary' in self._data[key]:
-                # self.set(key,'vary',False,index=combined_index)
-            # _cache['not_first_execution'] = True
-
+    @optimise_method(format_multi_line=3)
     def set_spline(
             self,
             xkey,
@@ -353,11 +322,12 @@ class Dataset(optimise.Optimiser):
             xspline,yspline = zip(*knots)
             ## get index limit to defined xkey range
             get_combined_index_kwargs |= {f'min_{xkey}':np.min(xspline),f'max_{xkey}':np.max(xspline)}
+            self.permit_indexing = False
             _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
             _cache['xspline'],_cache['yspline'] = xspline,yspline
         ## get cached data
         index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
-        self.set(ykey,'value',value=tools.spline(xspline,yspline,self.get(xkey,index=index),order=order),index=index)
+        self.set(ykey,'value',value=tools.spline(xspline,yspline,self[xkey,index],order=order),index=index)
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
             self.set(ykey,'unc',nan,index=index)
@@ -387,6 +357,7 @@ class Dataset(optimise.Optimiser):
             get_combined_index_kwargs |= {f'min_{xkey}':np.min(xspline),f'max_{xkey}':np.max(xspline)}
             _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
             _cache['xspline'],_cache['yspline'] = xspline,yspline
+            self.permit_indexing = False
         ## get cached data
         index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
         ## add to ykey
@@ -422,6 +393,7 @@ class Dataset(optimise.Optimiser):
             if from_original_value:
                 original_value = self[key,index]
                 _cache['original_value'] = original_value
+            self.permit_indexing = False
         ## multiply value
         index = _cache['index']
         if from_original_value:
@@ -445,6 +417,8 @@ class Dataset(optimise.Optimiser):
             new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(new_data).dtype)))
             ## reallocate array with new dtype with overallocation if necessary
             if new_str_len > old_str_len:
+                if not self.permit_dereferencing:
+                    raise Exception(f'Cannot increase U-array string length: {self.permit_dereferencing=}')
                 t = np.empty(len(self)*self._over_allocate_factor,
                              dtype=f'<U{new_str_len*self._over_allocate_factor}')
                 t[:len(self)] = old_data
@@ -472,25 +446,17 @@ class Dataset(optimise.Optimiser):
                 raise Exception(f'Cannot set data by index for unset key: {key}')
             ## reallocate string arrays if needed
             self._increase_char_length_if_necessary(key,'value',value)
-            # if self[key,'kind'] == 'U':
-                # ## this is a really hacky way to get the length of string in a numpy array!!!
-                # old_str_len = int(re.sub(r'[<>]?U([0-9]+)',r'\1', str(self.get(key).dtype)))
-                # new_str_len =  int(re.sub(r'^[^0-9]*([0-9]+)$',r'\1',str(np.asarray(value).dtype)))
-                # if new_str_len > old_str_len:
-                    # ## reallocate array with new dtype with overallocation
-                    # t = np.empty(
-                        # len(self)*self._over_allocate_factor,
-                        # dtype=f'<U{new_str_len*self._over_allocate_factor}')
-                    # t[:len(self)] = self.get(key)
-                    # data['value'] = t
             ## cast scalar data correctly
             if np.isscalar(value):
                 value = self[key,'cast'](array([value]))
             ## set indexed data
             data['value'][:self._length][index] = data['cast'](value)
         else:
-            ## set full array -- does not hvae to exist in in advance
-            ##
+            ## set full array. It does not have to exist in in advance
+            ## but if it does then prevent reinitialisation if
+            ## permit_dereferencing=False
+            if not self.permit_dereferencing and self.is_set(key):
+                raise Exception(f'Cannot re-initialise array: {self.permit_dereferencing=}')
             ## create entire data dict
             ## decide whether to permit if non-prototyped
             if not self.permit_nonprototyped_data and key not in self.prototypes:
@@ -510,7 +476,6 @@ class Dataset(optimise.Optimiser):
             if 'kind' not in data:
                 value = np.asarray(value)
                 data['kind'] = self._guess_kind_from_value(value)
-                # data['kind'] = value.dtype.kind
             ## convert bytes string to unicode
             if data['kind'] == 'S':
                 data['kind'] = 'U'
@@ -573,10 +538,10 @@ class Dataset(optimise.Optimiser):
             raise Exception(f"The value kind of {repr(key)} is {repr(data['kind'])} and is invalid for setting {repr(subkey)}")
         if subkind['kind'] == 'O':
             raise ImplementationError()
-        # if self.verbose:
-            # print(f'{self.name}: setting ({key}:{subkey})')
         ## set data
         if index is None:
+            if not self.permit_dereferencing and self.is_set(key,subkey):
+                raise Exception(f'Cannot re-initialise {(key,subkey)!r}: {self.permit_dereferencing=}')
             ## set entire array
             if not tools.isiterable(value):
                 ## expand scalar input
@@ -651,6 +616,8 @@ class Dataset(optimise.Optimiser):
 
     def modify(self,key,rename=None,**new_metadata):
         """Modify metadata of a key, change its units, or rename it."""
+        if not self.permit_dereferencing:
+            raise Exception(f'Cannot modify {key!r}: {self.permit_dereferencing=} (cold loosen this)')
         self.assert_known(key)
         ## rename key by adding a new one and unsetting the original --
         ## breaking inferences
@@ -685,14 +652,6 @@ class Dataset(optimise.Optimiser):
             else:
                 raise NotImplementedError(f'Modify {subkey}')
         
-    # def change_units(self,key,new_units):
-        # """Change units of key to new_units."""
-        # old_units = self[key,'units']
-        # for subkey in ('value','unc','step'):
-            # if self.is_set(key,subkey):
-                # self[key,subkey] = convert.units(self[key,subkey],old_units,new_units)
-        # self[key,'units'] = new_units
-
     def _has_attribute(self,key,subkey,attribute):
         """Test if key,subkey has a certain attribute."""
         self.assert_known(key,subkey)
@@ -912,13 +871,19 @@ class Dataset(optimise.Optimiser):
     def clear(self):
         """Clear all data"""
         if not self.permit_indexing:
-            raise Exception('Cannot clear dataset with not permit_indexing.')
+            raise Exception(f'Cannot clear: {self.permit_indexing=}')
+        elif not self.permit_dereferencing:
+            raise Exception(f'Cannot clear: {self.permit_dereferencing=}')
         self._last_modify_value_time = timestamp()
         self._length = 0
         self._data.clear()
 
     def unset(self,key,subkey='value'):
         """Delete (key,subkey) data.  Also clean up inferences."""
+        if not self.permit_indexing and (subkey == 'value' and not self.is_inferred(key)):
+            raise Exception(f'Cannot unset explicit {(key,subkey)!r}: {self.permit_indexing=}')
+        elif not self.permit_dereferencing:
+            raise Exception(f'Cannot unset {(key,subkey)!r}: {self.permit_dereferencing=}')
         if key in self:
             if subkey == 'value':
                 self.unlink_inferences(key)
@@ -930,6 +895,10 @@ class Dataset(optimise.Optimiser):
 
     def pop(self,key,subkey='value'):
         """Return (key,subkey) and unset it."""
+        if not self.permit_indexing:
+            raise Exception(f'Cannot pop {(key,subkey)!r}: {self.permit_indexing=}')
+        elif not self.permit_dereferencing:
+            raise Exception(f'Cannot pop {(key,subkey)!r}: {self.permit_dereferencing=}')
         retval = self[key,subkey]
         self.unset(key,subkey)
         return retval
@@ -981,7 +950,9 @@ class Dataset(optimise.Optimiser):
     def index(self,index):
         """Index all array data in place."""
         if not self.permit_indexing:
-            raise Exception('Indexing not permitted')
+            raise Exception(f'Cannot index: {self.permit_indexing=}')
+        elif not self.permit_dereferencing:
+            raise Exception(f'Cannot index: {self.permit_dereferencing=}')
         if isinstance(index,(int,np.int64)):
             ## allow single integer indexing
             index = [index]
@@ -1037,13 +1008,18 @@ class Dataset(optimise.Optimiser):
             source,
             keys=None,
             keys_re=None,
-            subkeys=None,
+            skip_keys=None,
+            subkeys=('value','unc','description','units','fmt'),
             copy_global_attributes=True,
             copy_inferred_data=False,
+            optimise=False,
             **get_combined_index_kwargs
     ):
-        """Copy all values and uncertainties from source Dataset."""
-        self.clear()            # total data reset
+        """Copy all values and uncertainties from source
+        Dataset. Clear all existing data."""
+        ## total data reset
+        self.clear()
+        ## collect keys to copy
         if keys_re is not None:
             if keys is None:
                 keys = []
@@ -1055,67 +1031,54 @@ class Dataset(optimise.Optimiser):
                 keys = source.keys()
             else:
                 keys = source.explicitly_set_keys()
+        if skip_keys is not None:
+            keys = [key for key in keys if key not in tools.ensure_iterable(skip_keys)]
+        if 'value' not in subkeys:
+            raise Exception(f"{subkeys=} must contain 'value'")
+        ## copy other things
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
-        ## get matching indices
-        index = source.get_combined_index(**get_combined_index_kwargs)
-        ## copy data and selected prototype data
-        for key in keys:
-            self.set(key,'value',source[key,'value',index])
-            ## get a list of subkeys to copy for this key, ignore those beginning with '_'
-            if subkeys is None:
-                tsubkeys = [subkey for subkey in source.all_subkinds if source.is_set(key,subkey) and subkey[0]!='_']
-            else:
-                tsubkeys  = subkeys
-            ## copy subdata, 'value' already copied
-            for subkey in tsubkeys:
-                if subkey == 'value':
-                    continue
-                if subkey in self.vector_subkinds:
-                    self.set(key,subkey,source[key,subkey,index])
-                else:
-                    self.set(key,subkey,source[key,subkey])
-        ## copy global_attributes
         if copy_global_attributes:
             self.global_attributes = deepcopy(source.global_attributes)
-
-    @optimise_method()
-    def copy_from_and_optimise(
-            self,
-            source,
-            keys=None,
-            skip_keys=(),
-            subkeys=('value','unc','description','units','fmt'),
-            copy_inferred_data=False,
-            _cache=None,
-            **get_combined_index_kwargs
-    ):
-        """Copy all values and uncertainties from source Dataset and
-        update if source changes during optimisation. MERGE WITH
-        COPY_FROM WITH OPTIMISE=TRUE ARGUMENT."""
-        ## get keys and indices to copy
-        if self._clean_construct:
-            if keys is None:
-                if copy_inferred_data:
-                    keys = source.keys()
-                else:
-                    keys = source.explicitly_set_keys()
-            keys = [key for key in keys if key not in skip_keys]
-            index = source.get_combined_index(**get_combined_index_kwargs)
-            _cache['keys'],_cache['index'] = keys,index
+        ## get matching indices
+        source_index = source.get_combined_index(**get_combined_index_kwargs)
+        if source_index is None:
+            index = slice(0,len(source))
         else:
-            keys,index = _cache['keys'],_cache['index']
+            index = slice(0,len(source_index))
         ## copy data
-        self.permit_nonprototyped_data = source.permit_nonprototyped_data
-        ## copy data and selected prototype data
+        set_keys = []           # used in optimisation
         for key in keys:
+            ## value first
+            self.set(key,'value',source[key,'value',source_index])
             for subkey in subkeys:
-                if (source.is_set(key,subkey)
-                    and (not self.is_set(key,subkey)
-                         or source[key,'_modify_time'] > self[key,'_modify_time'])):
+                if subkey == 'value':
+                    ## already done
+                    continue
+                if source.is_set(key,subkey):
+                    set_keys.append((key,subkey))
                     if subkey in self.vector_subkinds:
-                        self.set(key,subkey,source[key,subkey,index],set_changed_only= True)
+                        self.set(key,subkey,source[key,subkey,source_index])
                     else:
                         self.set(key,subkey,source[key,subkey])
+        ## set up recopy on optimisation
+        if optimise:
+            def construct_function():
+                if (source._global_modify_time > self._global_modify_time
+                    or self._global_modify_time > self._last_construct_time):
+                    ## need to update copied data in self
+                    for key,subkey in set_keys:
+                        if (source[key,'_modify_time'] > self[key,'_modify_time']
+                            or self[key,'_modify_time'] > self._last_construct_time):
+                            ## this key needs updating
+                            if subkey in self.vector_subkinds:
+                                self.set(key, subkey, source[key,subkey,source_index],index,set_changed_only=True)
+                            else:
+                                self.set(key,subkey,source[key,subkey])
+            self.add_construct_function(construct_function,construct_on_add=False)
+            self.add_suboptimiser(source)
+            ## prevent optimisation-breaking changes
+            source.permit_indexing = False
+            self.permit_indexing = False
 
     def match_re(self,keys_vals=None,**kwarg_keys_vals):
         """Match kind='U' data to regular expressions."""
@@ -1636,7 +1599,6 @@ class Dataset(optimise.Optimiser):
         if subkeys is None:
             ## get a list of default subkeys, ignore those beginning
             ## with "_" and some specific keys
-            # subkeys = [subkey for subkey in self.vector_subkinds if subkey[0] != '_']
             subkeys = [subkey for subkey in self.all_subkinds if
                        (subkey[0] != '_') and subkey not in ('infer','cast')]
         if filetype == 'hdf5':
@@ -1766,7 +1728,6 @@ class Dataset(optimise.Optimiser):
                 if key == 'classname':
                     ## classname attribute
                     data['classname'] = val
-                    # self.classname = val
                 elif key == 'description':
                     ## description attribute
                     self.description = val
@@ -2026,8 +1987,6 @@ class Dataset(optimise.Optimiser):
                                 key_metadata = {'description':key_metadata}
                             else:
                                 raise Exception(f'Could not decode key metadata for {key}: {repr(key_metadata)}')
-                            # if 'value' in key_metadata:
-                            #     data[key] = key_metadata.pop('value')
                             if 'default' in key_metadata:
                                 data[key] = key_metadata['default']
                             metadata[key] = key_metadata
@@ -2042,9 +2001,6 @@ class Dataset(optimise.Optimiser):
                 skiprows=iline,
                 try_cast_numeric=False,
                 **txt_to_dict_kwargs))
-        # ## a blank key with all nan data indicates a leading or trailing delimiter -- delete it
-        # if '' in data and np.all(np.isnan(data[''])):
-        #     data.pop('')
         ## a blank key indicates a leading or trailing delimiter -- delete it
         if '' in data:
             data.pop('')
@@ -2093,7 +2049,7 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
 
-    def concatenate(self,new_dataset,keys=None,defaults=None):
+    def concatenate(self,new_dataset,keys=None,defaults=None,optimise=False):
         """Extend self by new_dataset. If keys=None then existing and
         new_dataset must have a complete of explicity set keys, or a
         default value set in the input dictionary 'defaults' """
@@ -2127,13 +2083,17 @@ class Dataset(optimise.Optimiser):
             old_length = len(self)
             new_length = len(new_dataset)
             total_length = len(self) + len(new_dataset)
+            index = slice(old_length,total_length)
+            new_index = slice(0,len(new_dataset))
             self._reallocate(total_length)
             ## set extending data 
+            set_keys = []       # save for optimisation
             for key,data in self._data.items():
                 for subkey in self.vector_subkinds:
                     if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
                         self.assert_known(key,subkey)
                         new_dataset.assert_known(key,subkey)
+                        set_keys.append((key,subkey))
                         if self.is_known(key,subkey) and new_dataset.is_known(key,subkey):
                             new_val = new_dataset[key,subkey]
                         elif (key,subkey) in defaults:
@@ -2142,28 +2102,27 @@ class Dataset(optimise.Optimiser):
                             raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
                         ## increase char-length of string arrays if needed and insert new data
                         self._increase_char_length_if_necessary(key,subkey,new_val)
-                        data[subkey][old_length:total_length] = self._get_attribute(key,subkey,'cast')(new_val)
-
-    @optimise_method()
-    def concatenate_and_optimise(self,new_dataset,keys=None,_cache=None):
-        """Like concatenate but update data from new_dataset on
-        optimise. REPLACE WITH AN OPTIMISE=TRUE FLAG IN CONCATENATE
-        METHOD?"""
-        if self._clean_construct and 'new_length' not in _cache:
-            _cache['old_length'] = len(self)
-            _cache['new_length'] = len(self) + len(new_dataset)
-            self.concatenate(new_dataset,keys)
-            self.permit_indexing = False
-            _cache['keys'] = [*self.keys()]
-        else:
-            ## update data in place
-            index = slice(_cache['old_length'],_cache['new_length'])
-            for key in _cache['keys']:
-                for subkey in ('value','unc'):
-                    if self.is_set(key,subkey):
-                        self.set(key,subkey,new_dataset[key,subkey],index,set_changed_only=True)
-                if self.is_set(key,'vary'):
-                    self.set(key,'vary',False,index)
+                        data[subkey][index] = self._get_attribute(key,subkey,'cast')(new_val)
+            ## if optimised then add construct function
+            if optimise:
+                def construct_function():
+                    if (new_dataset._global_modify_time > self._global_modify_time
+                        or self._global_modify_time > self._last_construct_time):
+                        ## something has changed
+                        for key,subkey in set_keys:
+                            if new_dataset.is_known(key,subkey):
+                                if (new_dataset[key,'_modify_time'] > self[key,'_modify_time']
+                                    or self[key,'_modify_time'] > self._last_construct_time):
+                                    ## update from new_dataset
+                                    self.set(key,subkey,new_dataset[key,subkey,new_index],index,set_changed_only=True)
+                            else:
+                                if self[key,'_modify_time'] > self._last_construct_time:
+                                    ## update from defaults
+                                    self.set(key,subkey,default[key,subkey],index,set_changed_only=True)
+                self.add_construct_function(construct_function,construct_on_add=False)
+                self.add_suboptimiser(new_dataset)
+                new_dataset.permit_indexing = False
+                self.permit_indexing = False
 
     def append(self,keys_vals=None,**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
@@ -2267,6 +2226,9 @@ class Dataset(optimise.Optimiser):
 
     def _reallocate(self,new_length):
         """Lengthen data arrays."""
+        if not self.permit_dereferencing and new_length > len(self):
+            raise Exception(f'Cannot reallocate: {self.permit_dereferencing=}')
+        ## copy individual arrays, increasing length if necessary
         for key in self:
             for subkey in self._data[key]:
                 if subkey in self.vector_subkinds:

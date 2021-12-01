@@ -800,42 +800,45 @@ class Generic(levels.Base):
         for key in required_keys:
             self.assert_known(key+suffix)
         level = self._level_class()
+        set_keys = []     # list of (level_key,line_key,subkey) that are level
         for key in self.keys():
             if len(key)>len(suffix) and key[-len(suffix):] == suffix:
                 for subkey in subkeys:
                     if self.is_set(key,subkey):
+                        set_keys.append((key[:-2],key,subkey))
                         level[key[:-2],subkey] = self[key,subkey]
         if reduce_to == None:
-            pass
+            index = slice(0,len(level))
         else:
             keys = [key for key in level.defining_qn if level.is_known(key)]
             if reduce_to == 'first':
                 ## find first indices of unique key combinations and reduce
                 ## to those
-                t,i = tools.unique_combinations_first_index(*[level[key] for key in keys])
-                level.index(i)
+                t,index = tools.unique_combinations_first_index(*[level[key] for key in keys])
+                level.index(index)
             else:
-                raise ImplementationError()
+                raise NotImplementedError()
         if optimise:
-            ## Add a construct function to level
-            _cache = {'level':deepcopy(level)} # last level calculated
-            _cache |= {(key,'_modify_time'):level[key,'_modify_time'] for key in level} # update times of initial level
-            def f(line=self,level=level):
-                if line._global_modify_time > level._last_construct_time:
-                    ## if line has changed then recompute levels 
-                    _cache['level'] = line._get_level(u_or_l,reduce_to=reduce_to,required_keys=required_keys,optimise=False)
-                for key in _cache['level']:
-                    if (line._global_modify_time > level._last_construct_time
-                        or level[key,'_modify_time'] > _cache[key,'_modify_time']):
-                        ## if line has changed, or this key has
-                        ## subsequently changed in level then updated
-                        ## changd values
-                        for subkey in subkeys:
-                            if _cache['level'].is_set(key,subkey):
-                                level.set(key,subkey,_cache['level'][key,subkey],set_changed_only=True)
-                        _cache[key,'_modify_time'] = level[key,'_modify_time']
+            ## Set up level to be optimised if self changes
+            def construct_function():
+                if self._global_modify_time > level._global_modify_time:
+                    ## if line data has changed then update level data
+                    for level_key,line_key,subkey in set_keys:
+                        if self[line_key,'_modify_time'] > level[level_key,'_modify_time']:
+                            level.set(level_key,subkey,self[line_key,subkey,index],index,set_changed_only=True)
+                elif level._global_modify_time > level._last_construct_time:
+                    ## if level data has changed since last construct
+                    ## then update from line data (even if line data
+                    ## has not changed)
+                    for level_key,line_key,subkey in set_keys:
+                        if level[level_key,'_modify_time'] > level._last_construct_time:
+                            level.set(level_key,subkey,self[line_key,subkey,index],index,set_changed_only=True)
             level.add_suboptimiser(self)
-            level.add_construct_function(f)
+            level.add_construct_function(construct_function,construct_on_add=False)
+            ## make sure no optimised data is deleted from arrays or
+            ## moved
+            self.permit_indexing = False
+            level.permit_indexing = False
         return level
 
     def load_from_hitran(self,filename):
@@ -1323,6 +1326,9 @@ class Generic(levels.Base):
                         print(level[[j for j in range(len(level)) if j not in i]])
                         print()
                     raise Exception(f"Some levels ({len(level)-len(i)}) in {repr(level.name)} have no corresponding lines in {repr(self.name)} (set verbose=True to print).")
+            ## prevent changes breaking optimisation
+            self.permit_indexing = False
+            level.permit_indexing = False
         ## quantum numbers to match in self
         ## copy data
         for suffix in ('_u','_l'):
@@ -1334,7 +1340,12 @@ class Generic(levels.Base):
                 for key_self,key_level in keys_to_copy:
                     for subkey in subkeys:
                         if level.is_set(key_level,subkey):
-                            self.set(key_self,subkey,level[key_level,subkey,ilevel],index=iline,set_changed_only= True)
+                            self.set(
+                                key_self,
+                                subkey,
+                                level[key_level,subkey,ilevel],
+                                index=iline,
+                                set_changed_only= True)
 
     def set_upper_level_data(self,level):
         """Copy all data in level into self for upper quantum numbers
