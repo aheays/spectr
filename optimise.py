@@ -111,20 +111,31 @@ def _collect_parameters_and_optimisers(x):
     return parameters,optimisers
 
 def optimise_method(
-        add_format_input_function=True, # automatically create an input function for this method
-        construct_on_add= True,         # run the method now, or defer until next construct
+        add_format_input_function=True, # whether to create an input function for this method
+        construct_on_add= True,         # run the method now
         format_multi_line=2,            # if the method has more arguments than this then format on separate lines
 ):
-    """A decorator factory for automatically adding parameters,
-    construct_function, and input_format_function to a method in an
-    Optimiser subclass.  The undecorated method must return any
-    resiudal that you want added to the Optimsier. Parameters and
-    suboptimisers are picked out of the input kwargs.\n\n Input
-    arguments format_single_line and format_multi_line override
-    default format_input_function properties. The only reason to write
-    a factory is to accomodate these arguments, and maybe future ones.
-    Not that new_function does not actually run function!  Instead it
-    is run by add_construct_function and construct."""
+    """A decorator factory for automatically adding parameters, suboptimisers,
+    a construct_function, and input_format_function to a method in an
+    Optimiser or one of its subclasses.
+
+    The undecorated method may return a residual to minimise or None.
+
+    If kwarg "_default" is present then this is set to dictionary that
+    persists between optimiser iterations as a cache.
+
+    If kwarg "_parameters" exists then it is set to a list containing
+    all Parameter objects collected from the undecorated input
+    arguments.
+
+    If kwarg "_suboptimisers" exists then it is set to a list
+    containing all Optimiser objects collected from the undecorated
+    input arguments.
+
+    If argument optimise=False is set no parameters, suboptimisers, or
+    construct_function is added to.  The format_input_function is
+    still added.
+    """
     def actual_decorator(function):
         @functools.wraps(function)
         def new_function(self,*args,**kwargs):
@@ -136,13 +147,19 @@ def optimise_method(
                 if signature_key in kwargs:
                     raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function.__name__)}.')
                 kwargs[signature_key] = arg
-            ## add parameters suboptimisers in args to self
+            ## detect if optimise=False argument is set
+            if 'optimise' in kwargs and not kwargs['optimise']:
+                optimise = False
+            else:
+                optimise = True
+            ## add parameters suboptimisers in args to self unless optimise=False
             parameters,suboptimisers =  _collect_parameters_and_optimisers(kwargs)
-            for t in parameters:
-                self.add_parameter(t)
-            for t in suboptimisers:
-                self.add_suboptimiser(t)
-                self.pop_format_input_function()
+            if optimise:
+                for t in parameters:
+                    self.add_parameter(t)
+                for t in suboptimisers:
+                    self.add_suboptimiser(t)
+                    self.pop_format_input_function()
             ## if '_cache' is a kwarg of the function then initialise
             ## as an empty dictionary
             if '_cache' in signature_keys:
@@ -155,10 +172,17 @@ def optimise_method(
                 kwargs['_suboptimisers'] = suboptimisers
             ## Make a construct function which returns the output of
             ## the original method. If construct_on_add=True then run
-            ## it now regarldess of whether it gets added or not
+            ## it now regarldess of whether it gets added or not. If
+            ## optimise=False then do not add the function, but
+            ## perhaps still run it now, depending on
+            ## construct_on_add.
             construct_function = lambda kwargs=kwargs: function(self,**kwargs)
             construct_function.__name__ = function.__name__+'_optimise_method'
-            self.add_construct_function(construct_function,construct_on_add=construct_on_add)
+            if optimise:
+                self.add_construct_function(construct_function,construct_on_add=construct_on_add)
+            else:
+                if construct_on_add:
+                    construct_function()
             ## make a format_input_function
             if add_format_input_function:
                 def f():
@@ -577,16 +601,16 @@ class Optimiser:
             dp = [np.nan for pi in p]
         else:
             dp = list(dp)
-        # print('DEBUG:', )
-        # print('DEBUG:', p)
-        # print('DEBUG:', dp)
+        ## set parameters in self and all suboptimisers
         already_set = []
         for optimiser in self.get_all_suboptimisers():
+            ## suboptimiser.parameters
             for parameter in optimiser.parameters:
                 if id(parameter) not in already_set and parameter.vary:
                     parameter.value = p.pop(0)
                     parameter.unc = dp.pop(0)
                     already_set.append(id(parameter))
+            ## if suboptimiser is a Dataset set varied data
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get(key,'vary')
