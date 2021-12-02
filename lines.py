@@ -785,6 +785,7 @@ class Generic(levels.Base):
             subkeys=('value','unc'),
             reduce_to=None,
             required_keys=(),
+            match=None,
             optimise=False,
     ):
         """Get all data corresponding to 'upper' or 'lower' level in
@@ -799,6 +800,9 @@ class Generic(levels.Base):
         ## ensure all required keys available
         for key in required_keys:
             self.assert_known(key+suffix)
+        ## get matching index
+        index = self.match(match)
+        ## copy dat to level
         level = self._level_class()
         set_keys = []     # list of (level_key,line_key,subkey) that are level
         for key in self.keys():
@@ -806,16 +810,20 @@ class Generic(levels.Base):
                 for subkey in subkeys:
                     if self.is_set(key,subkey):
                         set_keys.append((key[:-2],key,subkey))
-                        level[key[:-2],subkey] = self[key,subkey]
+                        level[key[:-2],subkey] = self[key,subkey,index]
+        ## reduce if requested
         if reduce_to == None:
-            index = slice(0,len(level))
+            pass
         else:
             keys = [key for key in level.defining_qn if level.is_known(key)]
             if reduce_to == 'first':
                 ## find first indices of unique key combinations and reduce
                 ## to those
-                t,index = tools.unique_combinations_first_index(*[level[key] for key in keys])
-                level.index(index)
+                t,i = tools.unique_combinations_first_index(*[level[key] for key in keys])
+                j = np.full(len(level),False)
+                j[i] = True
+                level.index(j)    # reduce level
+                index[index] &= j # reduce indices of self matching level
             else:
                 raise NotImplementedError()
         if optimise:
@@ -825,14 +833,14 @@ class Generic(levels.Base):
                     ## if line data has changed then update level data
                     for level_key,line_key,subkey in set_keys:
                         if self[line_key,'_modify_time'] > level[level_key,'_modify_time']:
-                            level.set(level_key,subkey,self[line_key,subkey,index],index,set_changed_only=True)
+                            level.set(level_key,subkey,self[line_key,subkey,index],set_changed_only=True)
                 elif level._global_modify_time > level._last_construct_time:
                     ## if level data has changed since last construct
                     ## then update from line data (even if line data
                     ## has not changed)
                     for level_key,line_key,subkey in set_keys:
                         if level[level_key,'_modify_time'] > level._last_construct_time:
-                            level.set(level_key,subkey,self[line_key,subkey,index],index,set_changed_only=True)
+                            level.set(level_key,subkey,self[line_key,subkey,index],set_changed_only=True)
             level.add_suboptimiser(self)
             level.add_construct_function(construct_function,construct_on_add=False)
             ## make sure no optimised data is deleted from arrays or
@@ -1176,10 +1184,11 @@ class Generic(levels.Base):
 
     def generate_from_levels(
             self,
-            levelu,levell,      # upper and lower level objects
-            match=None,      # only keep these matching liens
-            matchu=None,     # only use matching upper levels
-            matchl=None,     # only use matching lower levels
+            levelu,         # upper level object
+            levell,         # lower level object of encoded_qn string, or dictionary of quantum numbers
+            match=None,     # only keep these matching lines
+            matchu=None,    # only use matching upper levels
+            matchl=None,    # only use matching lower levels
             add_duplicate=False, # whether to add a duplicate if line is already present
             optimise=False,
             concatenate=False,
@@ -1189,9 +1198,12 @@ class Generic(levels.Base):
         """Combine upper and lower levels into a line list, only including
         dipole-allowed transitions. SLOW IMPLEMENTATION"""
         ## lower level can be a string-encoded level, e.g.,
-        ## "¹⁴N¹⁵N_X(v=0,J=3)"
-        if isinstance(levell,str):
-            qn = quantum_numbers.decode_linear_level(levell)
+        ## "¹⁴N¹⁵N_X(v=0,J=3)", or a dictionary of quantum numbers
+        if not isinstance(levell,Dataset):
+            if isinstance(levell,str):
+                qn = quantum_numbers.decode_linear_level(levell)
+            else:
+                qn = levell
             levell = database.get_level(qn['species'])
             levell.limit_to_match(qn)
         ## get matching upper and lower level indices
@@ -1214,11 +1226,18 @@ class Generic(levels.Base):
             ## indices of common species
             tiu = iu[levelu['species'][iu]==species]
             til = il[levell['species'][il]==species]
-            for Δefabs,ΔJ in ((0,+1),(0,-1),(2,0)):
-                ## look for allowed Δef/ΔJ transitions
+            for Δefabs,ΔJ in (
+                    (0,+1),
+                    (0,-1),
+                    (2,0),
+            ):
+                ## look for electrid-dipole allowed Δef/ΔJ transitions
                 for ju in tiu:
-                    for jl in til[(np.abs(levell['ef',til]-levelu['ef',ju]) == Δefabs)
-                                  & ((levelu['J',ju]-levell['J',til]) == ΔJ)]:
+                    for jl in til[
+                            (np.abs(levell['ef',til]-levelu['ef',ju]) == Δefabs)
+                            &
+                            ((levelu['J',ju]-levell['J',til]) == ΔJ)
+                    ]:
                         ku.append(ju)
                         kl.append(jl)
         ## collect allowed data
