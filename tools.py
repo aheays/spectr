@@ -555,7 +555,7 @@ def convert_to_bool_vector_array(x):
         try:
             return np.asarray(x,dtype=bool,ndmin=1)
         except:
-            return array([bool(t) for t in tools.ensure_iterable(x)],dtype=bool)
+            return array([bool(t) for t in ensure_iterable(x)],dtype=bool)
 
     
 ###########################

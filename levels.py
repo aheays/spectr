@@ -353,7 +353,6 @@ def _f0(self,ef,J):
     return σv
 prototypes['i'] = dict(description="Total parity.", kind='i',infer=[])
 prototypes['σv'] = dict(description="Symmetry with respect to σv reflection.", kind='i',infer=[(('ef','J'),_f0,)])
-
 prototypes['gu'] = dict(description="Symmetry with respect to reflection through a plane perpendicular to the internuclear axis.", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'gu'))])
 prototypes['sa'] = dict(description="Symmetry with respect to nuclear exchange, s=symmetric, a=antisymmetric.", kind='i',infer=[(('σv','gu'),lambda self,σv,gu: σv*gu,)])
 
