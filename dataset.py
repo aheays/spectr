@@ -2458,7 +2458,7 @@ class Dataset(optimise.Optimiser):
                         tax.set_xlabel(xlabel)
                     if 'label' in kwargs:
                         if legend:
-                            plotting.legend(fontsize='small',loc=legend_loc,show_style=True,ax=tax)
+                            plotting.legend(fontsize='medium',loc=legend_loc,show_style=True,ax=tax)
                         if annotate_lines:
                             plotting.annotate_line(line=line)
                     if xlim is not None:
