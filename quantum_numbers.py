@@ -53,8 +53,8 @@ def separate_upper_lower(qn):
                 qnl[tkey] = qnu[tkey] - qn.pop(key)
             elif tkey not in qnu and tkey in qnl:
                 qnu[tkey] = qnl[tkey] + qn.pop(key)
-    if len(qn) > 0:
-        raise Exception(f'Did not use qn: {qn}')
+    # if len(qn) > 0:
+        # raise Exception(f'Did not use qn: {qn}')
     return qnu,qnl
 
 def join_upper_lower(qn_u,qn_l):
@@ -302,10 +302,8 @@ def decode_linear_line(encoded):
     """Name must be in the form
     species_levelp-levelpp_rotationaltransition. Matched from beginning,
     and returns when matching runs out."""
-    if '–' not in encoded:
-        raise Exception(f'Encoded linear line does not contain "–": {repr(encoded)}')
-    ## e.g., species_upper–lower_rot
-    if r:=re.match(r'([^_]+_)?([^–_]+)–([^–_]+)(_.+)?$',encoded):
+    ## e.g., species_upper–lower_rot, or u←l or u→l
+    if r:=re.match(r'([^_]+_)?([^–_]+)[–←→]([^–_]+)(_.+)?$',encoded):
         qn = {}
         if r.group(1) is not None:
             qn |= {'species':decode_species(r.group(1)[:-1])}
@@ -314,7 +312,10 @@ def decode_linear_line(encoded):
         if r.group(4) is not None:
             qn |= decode_rotational_transition(r.group(4)[1:])
     else:
-        raise InvalidEncodingException(f"Could not decode linear line: {repr(encoded)}")
+        if re.match(r'[–←→]',encoded):
+            raise InvalidEncodingException(f'Encoded linear line does not contain "–": {repr(encoded)}')
+        else:
+            raise InvalidEncodingException(f"Could not decode linear line: {repr(encoded)}")
     return qn
 
 def encode_linear_line(qn=None,qnl=None,qnu=None,mathtext=False):
