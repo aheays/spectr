@@ -1719,11 +1719,11 @@ class LinearTriatomic(Linear):
         level_class=levels.LinearTriatomic,
         base_class=Linear,
         new_keys=(
-        'fv', 'νv', 'μv',
-        'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
+            'fv', 'νv', 'μv',
+            'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
         ))
     default_xkey = 'J_l'
-    default_zkeys = ['species_u', 'ν1_u', 'ν2_u', 'ν3_u', 'species_l', 'ν1_l', 'ν2_l', 'ν3_l', 'ΔJ']
+    default_zkeys = ['species_u','ν1_u','ν2_u','ν3_u','l2_u','species_l','ν1_l','ν2_l','ν3_l','l2_l','ΔJ']
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
