@@ -14,12 +14,16 @@ from . import quantum_numbers
 from .dataset import Dataset
 from. exceptions import DatabaseException
 
+def _import_hapi(silence=True):
+    """Import without accrediation message -- bad idea?"""
+    from hapi import hapi
+    return hapi
 
 @tools.vectorise(cache=True,dtype=float)
 def get_partition_function(species,temperature):
     """Use hapi to get a partition function.  Uses main isotopologue if
     not given."""
-    from hapi import hapi
+    hapi = _import_hapi()
     Mol,Iso = translate_species_to_codes(species)
     return hapi.partitionSum(Mol,Iso,temperature)
 
@@ -73,7 +77,7 @@ def download_linelist(
         data_directory='td',
         table_name=None,        # defaults to species
 ):
-    from hapi import hapi
+    hapi = _import_hapi()
     if table_name is None:
         table_name = species
     MOL,ISO = translate_species_to_codes(species)
@@ -90,7 +94,7 @@ def calc_spectrum(
         make_plot= True,
 ):
     """Plot data. Must be already downloaded with download_linelist."""
-    from hapi import hapi
+    hapi = _import_hapi()
     if table_name is None:
         table_name = species
     MOL,ISO = translate_species_to_codes(species)
