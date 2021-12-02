@@ -22,21 +22,21 @@ class Dataset(optimise.Optimiser):
 
     """A set of data vectors of common length."""
 
-    ## The kind of data that 'value' associated with a key contains.
-    ## Influences which subkinds are relevant.
+    ## The kinds of data that may be stored as a 'value' and their
+    ## default prototype data
     data_kinds = {
-        'f' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'float' },
-        'a' : {'cast' : lambda x                                        : np.asarray(x,dtype=float) ,'fmt' : '+12.8e','description' : 'positive float' },
-        'i' : {'cast' : lambda x                                        : np.asarray(x,dtype=int)   ,'fmt' : 'd'     ,'description' : 'int'   },
-        'b' : {'cast' : tools.convert_to_bool_vector_array       ,'fmt' : ''      ,'description'           : 'bool'  },
-        'U' : {'cast' : lambda x                                        : np.asarray(x,dtype=str)   ,'fmt' : 's'     ,'description' : 'str'   },
-        'O' : {'cast' : lambda x                                        : np.asarray(x,dtype=object),'fmt' : ''      ,'description' : 'object'},
-        'h' : {'cast' : lambda x                                        : np.asarray(x,dtype='S20') ,'fmt' : ''      ,'description' : 'SHA1 hash'},
+        'f': {'description': 'float'         , 'cast': lambda x: np.asarray(x,dtype=float) , 'fmt': '+12.8e', },
+        'a': {'description': 'positive float', 'cast': lambda x: np.asarray(x,dtype=float) , 'fmt': '+12.8e', },
+        'i': {'description': 'int'           , 'cast': lambda x: np.asarray(x,dtype=int)   , 'fmt': 'd'     , },
+        'b': {'description': 'bool'          , 'cast': tools.convert_to_bool_vector_array  , 'fmt': ''      , },
+        'U': {'description': 'str'           , 'cast': lambda x: np.asarray(x,dtype=str)   , 'fmt': 's'     , },
+        'O': {'description': 'object'        , 'cast': lambda x: np.asarray(x,dtype=object), 'fmt': ''      , },
+        'h': {'description': 'SHA1 hash'     , 'cast': lambda x: np.asarray(x,dtype='S20') , 'fmt': ''      , },
     }
 
-    ##  Kinds of subdata associatd with a key that are vectors of the
-    ##  same length as 'value'. All subkinds other than value must
-    ##  have a default, or there will be trouble in the logic below.
+    ## Kinds of subdata associatd with a key that are vectors of the
+    ## same length as 'value'. All subkinds other than value must have
+    ## a default.
     vector_subkinds = {
         'value' :  { 'description' : 'Value of this data'                          }           , 
         'unc'   :  { 'description' : 'Uncertainty'                                 , 'default' : 0.0   , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '8.2e' ,  }  , 
@@ -46,8 +46,8 @@ class Dataset(optimise.Optimiser):
     }
     assert np.all(['default' in val or key == 'value' for key,val in vector_subkinds.items()])
 
-    ##  Kinds of subdata associatd with a key that are single valued
-    ##  but (potentially complex) objects
+    ## Kinds of subdata associatd with a key that are single valued
+    ## but objects.
     scalar_subkinds = {
         'infer'          : {'description':'List of infer functions',},
         'kind'           : {'description':'Kind of data in value corresponding to a key in data_kinds',},
@@ -65,7 +65,7 @@ class Dataset(optimise.Optimiser):
     ## all subdata kinds in one convenient dictionary
     all_subkinds = vector_subkinds | scalar_subkinds
 
-    ## prototypes automatically set on instantiation
+    ## prototypes that will automatically set on instantiation
     default_prototypes = {}
     default_permit_nonprototyped_data = False
 
@@ -83,11 +83,11 @@ class Dataset(optimise.Optimiser):
             load_from_file = None,  # load from a file -- guess type
             load_from_string = None, # load from formatted string
             copy_from = None,        # copy form another dataset
-            limit_to_match=None,     # dict of things to match
+            limit_to_match=None,     # reduce by this match dictionary after any data is loaded
             description='',          # description of this Dataset
             data=None,               # load keys_vals into self, or set with set_value if they are Parameters
-            global_attributes=None,  # keys and values of this dictionary are copied to global_attributes in self
-            **data_kwargs,           # added to data
+            global_attributes=None,  # keys and values of this dictionary are stored as global_attributes
+            **data_kwargs,           # data to add from keyword arguments
     ):
         ## init as optimiser, make a custom form_input_function, save
         ## some extra stuff if output to directory
@@ -100,7 +100,8 @@ class Dataset(optimise.Optimiser):
         self.description = description
         self._row_modify_time = np.array([],dtype=float,ndmin=1) # record modification time of each explicitly set row
         self._global_modify_time = timestamp() # record modification time of any explicit change
-        ## whether to allow the addition of data not in self.prototypes
+        ## whether to allow the addition of keys not found in
+        ## prototypes
         if permit_nonprototyped_data is None:
             self.permit_nonprototyped_data = self.default_permit_nonprototyped_data
         else:
@@ -118,17 +119,12 @@ class Dataset(optimise.Optimiser):
         if prototypes is not None:
             self.prototypes |= prototypes
         ## classname to identify type of Dataset
-        self.classname = re.sub(
-            r"<class 'spectr.(.+)'>",
-            r'\1',
-            str(self.__class__))
-        ## default name is a valid symbol
+        self.classname = re.sub(r"<class 'spectr.(.+)'>", r'\1', str(self.__class__))
+        ## name, will be converted to a valid symbol
         if name is None:
-            name = tools.make_valid_python_symbol_name(
-                self.classname.lower())
+            name = self.classname.lower()
         self.name = name
-        name = self.name
-        ## new format input function
+        ## new format input function -- INCOMPLETE
         def format_input_function():
             retval = f'{self.name} = {self.classname}({repr(self.name)},'
             if load_from_file is not None:
@@ -145,14 +141,13 @@ class Dataset(optimise.Optimiser):
         ## copy data from another dataset provided as argument
         if copy_from is not None:
             self.copy_from(copy_from)
-        ## load data from a file path provide as an argument
+        ## load data from a filename provide as an argument
         if load_from_file is not None:
             self.load(load_from_file)
-        ## load data from an encode tabular string provided as an
-        ## argument
+        ## load data from an encoded string provided as an argument
         if load_from_string is not None:
             self.load_from_string(load_from_string)
-        ## load input data
+        ## load input data from data dictionary or keyword arguments
         if data is None:
             data = {}
         data |= data_kwargs
@@ -173,8 +168,8 @@ class Dataset(optimise.Optimiser):
         if global_attributes is not None:
             self.global_attributes |= global_attributes
 
-    ## name is adjusted to be proper python symbol when set
     def _set_name(self,name):
+        """Name is adjusted to be proper python symbol when set"""
         self._name = tools.make_valid_python_symbol_name(name)
     name = property(lambda self:self._name,_set_name)
 
@@ -275,6 +270,7 @@ class Dataset(optimise.Optimiser):
             value,
             default=None,
             _cache=None,
+            optimise=True,
             **get_combined_index_kwargs
     ):
         """Set a value and it will be updated every construction and may be a
@@ -287,13 +283,25 @@ class Dataset(optimise.Optimiser):
             self.permit_indexing = False
             _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
         index = _cache['index']
-        ## set the data
-        self.set(key,'value',value,index=index,set_changed_only= True)
+        ## set the data if it has changed
         if isinstance(value,Parameter):
-            self.set(key,'unc' ,value.unc ,index=index)
-            if self._clean_construct:
-                self.set(key,'step',value.step,index=index)
-                self.set(key,'vary',False     ,index=index)
+            ## set from a Parameter, update if Parameter or self has changed
+            if (
+                    self._clean_construct
+                    or value._last_modify_value_time > self[key,'_modify_time']
+                    or self[key,'_modify_time'] > self._last_construct_time
+            ):
+                self.set(key,'value',value,index=index,set_changed_only=True)
+                self.set(key,'unc' ,value.unc ,index=index,set_changed_only=True)
+        else:
+            ## constant valuem, set if self has changed
+            if (
+                    self._clean_construct
+                    or self[key,'_modify_time'] > self._last_construct_time
+                ): 
+                self.set(key,'value',value,index=index,set_changed_only=True)
+                if self.is_set(key,'unc'):
+                    self.set(key,'unc',nan,index=index,set_changed_only=True)
 
     @optimise_method(format_multi_line=3)
     def set_spline(
@@ -1354,13 +1362,17 @@ class Dataset(optimise.Optimiser):
         return {key:self.get(key,'value',int(index)) for key in keys}
         
         
-    def rows(self,keys=None):
+    def rows(self,keys=None,*match_args,**match_kwargs):
         """Iterate value data row by row, returns as a dictionary of
         scalar values."""
         keys = tools.ensure_iterable(keys)
         if keys is None:
             keys = self.keys()
-        for i in range(len(self)):
+        if len(match_args) + len(match_kwargs) == 0:
+            index = range(len(self))
+        else:
+            index = self.match(*match_args,**match_kwargs)
+        for i in index:
             yield {key:self.get(key,'value',i) for key in keys}
 
     def row_data(self,keys=None,index=None):
@@ -1373,13 +1385,13 @@ class Dataset(optimise.Optimiser):
         for t in zip(*[self[key][index] for key in keys]):
             yield t
 
-    def find_unique(self,**matching_keys_vals):
+    def find_unique(self,*match_args,**match_kwargs):
         """Return index of a uniquely matching row."""
-        i = self.find(**matching_keys_vals)
+        i = self.find(*match_args,**match_kwargs)
         if len(i) == 0:
-            raise NonUniqueValueException(f'No matching row found: {matching_keys_vals=}')
+            raise NonUniqueValueException(f'No matching row found: {match_args=} {match_kwargs=}')
         if len(i) > 1:
-            raise NonUniqueValueException(f'Multiple matching rows found: {matching_keys_vals=}')
+            raise NonUniqueValueException(f'Multiple matching rows found: {match_args=} {match_kwargs=}')
         return i[0]
 
     def unique_row(self,return_index=False,**matching_keys_vals):
@@ -1391,10 +1403,10 @@ class Dataset(optimise.Optimiser):
         else:
             return d
 
-    def unique_value(self,key,**matching_keys_vals):
+    def unique_value(self,key,*match_args,**match_kwargs):
         """Return value of key from a row that uniquely matches
         keys_vals."""
-        i = self.find_unique(**matching_keys_vals)
+        i = self.find_unique(*match_args,**match_kwargs)
         value = self.get(key,index=i)
         return value
 
