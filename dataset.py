@@ -249,7 +249,7 @@ class Dataset(optimise.Optimiser):
             self.set_new(key,val,kind)
         self[key,'default'] = val
 
-    def set_prototype(self,key,kind,infer=None,**kwargs):
+    def set_prototype(self,key,kind,**kwargs):
         """Set a prototype."""
         if kind is str:
             kind = 'U'
@@ -617,7 +617,6 @@ class Dataset(optimise.Optimiser):
             return retval
         else:
             raise Exception(f'Invalid subkey: {repr(subkey)}')
-            
 
     def get_kind(self,key):
         return self._data[key]['kind']
@@ -1019,6 +1018,7 @@ class Dataset(optimise.Optimiser):
             skip_keys=None,
             subkeys=('value','unc','description','units','fmt'),
             copy_global_attributes=True,
+            copy_prototypes=True,
             copy_inferred_data=False,
             optimise=False,
             **get_combined_index_kwargs
@@ -1047,6 +1047,8 @@ class Dataset(optimise.Optimiser):
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
         if copy_global_attributes:
             self.global_attributes = deepcopy(source.global_attributes)
+        if copy_prototypes:
+            self.prototypes = deepcopy(source.prototypes)
         ## get matching indices
         source_index = source.get_combined_index(**get_combined_index_kwargs)
         if source_index is None:
@@ -1108,7 +1110,9 @@ class Dataset(optimise.Optimiser):
             max_key=value          -- at most this value
             range_key=(min,max)    -- not in this range
             re_key=string          -- match to this regular expression
+        If key is a (key,vector_subkey) pair then match these.
         """
+        
         ## joint kwargs to keys_vals dict
         if keys_vals is None:
             keys_vals = {}
@@ -1116,37 +1120,42 @@ class Dataset(optimise.Optimiser):
         ## update match by key/val
         i = np.full(len(self),True,dtype=bool)
         for key,val in keys_vals.items():
-            if len(key) > 4 and key[:4] == 'not_' and not self.is_known(key):
+            ## key is either a string or a (key,subkey) pair
+            if isinstance(key,str):
+                subkey = 'value'
+            else:
+                key,subkey = key
+            if len(key) > 4 and key[:4] == 'not_' and not self.is_known(key,subkey):
                 ## negate match
-                i &= ~self.match({key[4:]:val})
+                i &= ~self.match({(key[4:],subkey):val})
             elif not np.isscalar(val):
-                if len(key) > 6 and key[:6] == 'range_' and not self.is_known(key):
+                if len(key) > 6 and key[:6] == 'range_' and not self.is_known(key,subkey):
                     ## find all values in a the range of a pair
                     if len(val) != 2:
                         raise Exception(r'Invalid range: {val!r}')
-                    i &= (self[key[6:]] >= val[0]) & (self[key[6:]] <= val[1])
+                    i &= (self[key[6:],subkey] >= val[0]) & (self[key[6:],subkey] <= val[1])
                 else:
                     ## multiple possibilities to match against
-                    i &= np.any([self.match({key:vali}) for vali in val],0)
+                    i &= np.any([self.match({(key,subkey):vali}) for vali in val],0)
             else:
                 ## a single value to match against
-                if self.is_known(key):
+                if self.is_known(key,subkey):
                     ## a simple equality
                     if val is np.nan:
                         ## special case for equality with nan
-                        i &= np.isnan(self[key])
+                        i &= np.isnan(self[key,subkey])
                     else:
                         ## simple equality
-                        i &= self[key]==val
+                        i &= self[key,subkey]==val
                 elif len(key) > 4 and key[:4] == 'min_':
                     ## find all larger values
-                    i &= (self[key[4:]] >= val)
+                    i &= (self[key[4:],subkey] >= val)
                 elif len(key) > 4 and key[:4] == 'max_':
                     ## find all smaller values
-                    i &= (self[key[4:]] <= val)
+                    i &= (self[key[4:],subkey] <= val)
                 elif len(key) > 3 and key[:3] == 're_':
                     ## recursively get reverse match for this key
-                    i &= self.match_re({key[3:]:val})
+                    i &= self.match_re({(key[3:],subkey):val})
                 else:
                     ## total failure
                     raise InferException(f'Could not match key: {repr(key)}')
@@ -1679,6 +1688,7 @@ class Dataset(optimise.Optimiser):
             translate_keys_regexp=None, # a list of (regexp,subs) pairs to translate keys -- operate successively on each key
             translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
             load_classname_only=False,
+            match=None,         # limit what is loaded
     ):
         """Load from a structured dictionary as produced by as_dict."""
         ## translate key with direct substitutions
@@ -1727,7 +1737,8 @@ class Dataset(optimise.Optimiser):
                 self.classname =  data['classname']
             else:
                 self.classname =  None
-                ## test loaded classname matches self
+            return
+        ## test loaded classname matches self
         if 'classname' in data:
             if data['classname'] != self.classname:
                 warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
@@ -1807,6 +1818,9 @@ class Dataset(optimise.Optimiser):
             self[key,'value'] = scalar_data[key].pop('value')
             for subkey in scalar_data[key]:
                 self[key,subkey] = scalar_data[key][subkey]
+        ## limit to match if requested
+        if match is not None:
+            self.limit_to_match(match)
 
     def load_from_parameters_dict(self,parameters):
         """Load a dictionary of dictionaries
@@ -1878,7 +1892,7 @@ class Dataset(optimise.Optimiser):
             data[key] = val
         self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
 
-    def _load_from_org(self,filename,**load_from_dict_kwargs):
+    def _load_from_org(self,filename,table_name=None,**load_from_dict_kwargs):
         """Load form org table"""
         data = tools.org_table_to_dict(filename,table_name)
         self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
@@ -2631,6 +2645,8 @@ def get_common(x,y,keys=None,**limit_to_matches):
 
 def _get_class(classname):
     """Find a class matching class name."""
+    if classname is None:
+        classname = 'dataset.Dataset'
     ## hack -- old classnames
     if classname == 'levels.LinearDiatomic':
         classname = 'levels.Diatomic'
