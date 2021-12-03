@@ -1761,6 +1761,7 @@ class Model(Optimiser):
             xticks=None,
             yticks=None,
             plot_text=True,
+            xlim=None, ylim=None,
     ):
         """Plot experimental and model spectra."""
         if not plot_text:
@@ -1900,8 +1901,12 @@ class Model(Optimiser):
             t.set_in_layout(False)
         if plot_legend:
             plotting.legend_colored_text(loc='upper left')
-        ax.set_xlim(xmin,xmax)
-        ax.set_ylim(ymin,ymax)
+        if xlim is None:
+            xlim = (xmin,xmax)
+        if ylim is None:
+            ylim = (ymin,ymax)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
         ax.grid(True,color='gray')
         plotting.simple_tick_labels(ax=ax)
         if xlabel is not None:
