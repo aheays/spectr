@@ -2310,9 +2310,11 @@ class Dataset(optimise.Optimiser):
         if ax is not None:
             xnewaxes = ynewaxes = znewaxes = False
             fig = ax.figure
-        if fig is None:
+        elif fig is None:
             fig = plt.gcf()
             fig.clf()
+        elif isinstance(fig,int):
+            fig = plotting.qfig()
         ## xkey, ykeys, zkeys
         xkeys = list(tools.ensure_iterable(xkeys))
         if ykeys is None:

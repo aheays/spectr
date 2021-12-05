@@ -1224,7 +1224,7 @@ def subplot(
         ncolumns=None,          # how many colums (otherwise adaptive)
         nrows=None,          # how many colums (otherwise adaptive)
         ntotal=None,         # how many to draw in total (at least)
-        fig=None,               
+        fig=None,            # Figure object or number identifier
         **add_subplot_kwargs
 ):
     """Return axes n from figure fig containing subplots.\n If subplot
@@ -1234,7 +1234,9 @@ def subplot(
     otherwise use internal heuristics.  n IS ZERO INDEXED"""
     if fig is None:
         ## default to current fkgure
-        fig = plt.gcf() 
+        fig = plt.gcf()
+    elif isinstance(fig,int):
+        fig = plt.figure(fig)
     old_axes = fig.axes           # list of axes originally in figure
     old_nsubplots = len(fig.axes) # number of subplots originally in figure
     if n is None:
@@ -2283,37 +2285,6 @@ def show(show_in_ipython=False,block=True):
     except NameError:
         qupdate()
         plt.show(block=block)
-
-
-# def show(fmt='x',fig=None):
-    # """ Show current plot in some customised way. Also adds a red line as
-    # border.
-    # Inputs:
-    # fmt - How to show, png: save as /tmp/tmp.png
-                       # eps: save as /tmp/tmp.eps
-                       # x:   run plt.show()
-    # fig - figure object, default to to gcf().
-    # """
-    # if fig == None:
-        # fig = plt.gcf()
-    # # fig.patches.append(plt.Rectangle((0.,0.),1.,1.,edgecolor='red',
-                                     # # facecolor='none',linewidth=0.5,
-                                     # # transform=fig.transFigure, figure=fig))
-    # if fmt=='eps':
-        # fig.savefig('/tmp/tmp.eps')
-    # elif fmt=='png':
-        # fig.savefig('/tmp/tmp.png')
-    # elif fmt=='x':
-        # try:
-            # __IPYTHON__
-        # except NameError:
-            # for figure_number in plt.get_fignums():
-                # extra_interaction(fig=plt.figure(figure_number))    
-            # plt.show()
-    # else:
-        # raise Exception('fmt ``'+str(fmt)+"'' unknown.")
-
-# show_if_noninteractive = show
 
 def qplot(figure_number,*plot_args,show=False,**plot_kwargs):
     """Issue a plot command and then output to file."""

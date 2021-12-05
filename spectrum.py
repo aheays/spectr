@@ -39,12 +39,13 @@ class Experiment(Optimiser):
             xbeg=None,
             xend=None,
             noise_rms=None,
-            store=None,
+            # store=None,
     ):
         ## initalise optimiser variables
-        optimise.Optimiser.__init__(self,name,store=store)
+        # optimise.Optimiser.__init__(self,name,store=store)
+        optimise.Optimiser.__init__(self,name)
         self.pop_format_input_function() 
-        store = self.store
+        # store = self.store
         self.automatic_format_input_function()
         ## initialise data arrays
         self.x = None
@@ -350,12 +351,20 @@ class Experiment(Optimiser):
             self,
             ax=None,
             plot_background= True,
-    ):
+            fig=None,          # figure object or number
+    ):                          
         """Plot spectrum."""
         self.construct()
+        ## use current figure or start a new one wit number fig.
+        if fig is None:
+            fig = plotting.gcf()
+        elif isinstance(fig,int):
+            fig = plotting.qfig(n=fig)
+        else:
+            fig = plotting.gcf()
         ## reuse current axes if not specified
         if ax is None:
-            ax = plotting.gca()
+            ax = fig.gca()
             ax.cla()
             def format_coord(x,y):
                 if x<1e-5 or x>=1e10:
@@ -660,6 +669,7 @@ class Model(Optimiser):
         """Automatically load a HITRAN linelist for a species
         (isotopologue or natural abundance) and then call add_line."""
         line = hitran.get_line(species,match=match)
+        line.include_in_save_to_directory = False
         line.clear_format_input_functions()
         self.add_line(line,*args,**kwargs)
         self.pop_format_input_function()
@@ -1734,8 +1744,8 @@ class Model(Optimiser):
         
     def plot(
             self,
-            ax=None,
-            fig=None,
+            ax=None,            # axes object to use
+            fig=None,           # figure object to use
             plot_model= True,
             plot_experiment= True,
             plot_residual= True,
@@ -1782,7 +1792,9 @@ class Model(Optimiser):
             if fig is None:
                 fig = plt.gcf()
             elif isinstance(fig,int):
-                fig = plt.figure(fig)
+                fig = plotting.qfig(n=fig)
+            else:
+                fig = plotting.gcf()
             fig.clf()
             ax = fig.gca()
             def format_coord(x,y):
@@ -2336,7 +2348,7 @@ class FitAbsorption():
                     isubplot += 1
         print()
 
-    def plot(self,model=None,ref_model=None,ax=None,**plot_kwargs):
+    def plot(self,model=None,ref_model=None,fig=None,ax=None,**plot_kwargs):
         """Plot the results of some models on individual subplots. Residuals
         from models_no_absorption will be underplotted."""
         ## plot model / experimental / residual spectrum
@@ -2346,8 +2358,12 @@ class FitAbsorption():
             'plot_text': True,
             'plot_kwargs':{'linewidth': 1},
         } | plot_kwargs
+        if fig is None:
+            fig = plotting.gcf()
+        elif isinstance(fig,int):
+            fig = plotting.qfig(fig)
         if ax is None:
-            ax = plotting.gca()
+            ax = fig.gca()
         p = self.parameters
         if model is None:
             model = self.model

@@ -15,33 +15,37 @@ from .tools import timestamp
 class _Store(dict):
     """An object very similar to a dictionary, except that it knows the
     Optimiser parent that it is an attribute and its repr function
-    produces an index reference to that Optimiser."""
+    generates an index reference to that Optimiser. Possibly this is
+    implemenation is suspect, and the whole thing is a bad idea."""
     
     def __init__(self,parent):
         dict.__init__(self)
         self._parent = parent
 
     def __setitem__(self,key,val):
-        """Add key=val to self, but first reinitialise the val with modified repr function."""
+        """Add key=val to self, but first reinitialise the val with
+        modified repr function."""
         ## adding a store something already in a store will presumably
         ## cause problems
         if hasattr(val,'_in_store'):
             raise Exception(f'Cannot add already stored object {repr(val)} to store.')
-        ## str method
+        ## new __str__ method
         if type(val) in (int,float,tuple,str):
             new_str = lambda obj: str(val)
         elif type(val) in (dict,list,Parameter):
             new_str = lambda obj: type(val).__str__(obj)
         else:
             raise Exception(f'Unsupported store type: {repr(type(val))}')
-        ## repr method referencing self
+        ## new __repr__ method referencing self
         new_repr = lambda obj: f'{self._parent.name}[{repr(key)}]'
-        ## proper repr method
+        ## original __repr__ method
         old_repr = lambda obj: type(val).__repr__(obj)
-        ## wrap val in a class that has the right str and repr methods
+        ## wrap val in a custom class that has the right str and repr
+        ## methods, could cache these StoredObjects if the cost of
+        ## generating them is too high
         class StoredObject(type(val)):
             """Same object but with modified str/repr functions"""
-            _in_store = self
+            _in_store = self    # reference to parent Optimiser
             __str__ = new_str
             __repr__ = new_repr
             __old_repr__ = old_repr
@@ -55,6 +59,7 @@ class _Store(dict):
         dict.__setitem__(self,key,stored_val)
 
     def __repr__(self):
+        """List all stored elements in a dict form."""
         retval = ['{']
         for key,val in self.items():
             retval.append(f'    {repr(key):20} : {val.__old_repr__()},')
@@ -63,15 +68,14 @@ class _Store(dict):
         return retval
         
     def load(self,filename):
-        data = deepcopy(tools.import_dict(filename,'store'))
+        """Load data from a dict-encoded file."""
+        data = deepcopy(tools.load_dict(filename,'store'))
         for tkey,tval in data['store'].items():
             self[tkey] = tval
             
     def save(self,filename):
-        tools.string_to_file(
-            filename,
-            # f'from spectr import *\nstore = {self._parent.name}.add_store_dict({repr(self)})',)
-            f'from spectr import *\nstore = {repr(self)}')
+        """Save to file containing represenatino of self"""
+        tools.string_to_file(filename,f'from spectr.env import *\nstore = {repr(self)}')
 
 
 class CustomBool():
@@ -261,6 +265,7 @@ class Optimiser:
         self._monitor_frequency_significant_rms_decrease_fraction = 1e-2
         self._monitor_parameters = False            # print out each on monitor
         self._save_to_directory_functions = [] # call these functions when calling save_to_directory (input argument is the directory)
+        self.include_in_save_to_directory = True # if False then to do not save to directory if a suboptimiser of something else
         self._format_input_functions = {}        # call these functions (return strings) to build a script recreating an optimisation
         self._suboptimisers = list(suboptimisers) # Optimiser objects optimised with this one, their construct functions are called first
         self.verbose = verbose                     # True to activate various informative outputs
@@ -488,8 +493,9 @@ class Optimiser:
         tools.mkdir(directory,trash_existing=True)
         ## output self and all suboptimisers into a flat subdirectory
         ## structure
+        optimisers = [t for t in self.get_all_suboptimisers() if t.include_in_save_to_directory]
         names = []              # all names thus far
-        for optimiser in self.get_all_suboptimisers():
+        for optimiser in optimisers:
             ## uniquify name -- COLLISION STILL POSSIBLE if name for
             ## three optimisers is xxx, xxx, and xxx_2. There will end
             ## up being two xxx_2 subdirectories.
@@ -517,13 +523,14 @@ class Optimiser:
             for f in optimiser._save_to_directory_functions:
                 f(subdirectory)
         ## symlink suboptimsers into subdirectories
-        for optimiser in self.get_all_suboptimisers():
+        for optimiser in optimisers:
             for suboptimiser in optimiser._suboptimisers:
-                tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/')
-                os.symlink(
-                    f'../../{suboptimiser._unique_name}',
-                    f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
-                    target_is_directory=True)
+                if suboptimiser.include_in_save_to_directory:
+                    tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/')
+                    os.symlink(
+                        f'../../{suboptimiser._unique_name}',
+                        f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
+                        target_is_directory=True)
 
     def plot_residual(self,ax=None,**plot_kwargs):
         """Plot residual error."""
