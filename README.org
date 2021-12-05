@@ -1,4 +1,5 @@
 spectr — a hodge-podge library used in the scientific work of Alan Heays
+
 * Install
 ** Python dependencies
  - python 3 (probably >3.9) required
@@ -14,57 +15,54 @@ working namespace:
 
 Some example code is included in ~./examples~.
 * Submodules
+** env.py
+Conveniently import all submodules.
+** dataset.py
+Storage, manipulation, and plotting of tabular data. Allows for the
+recursive calculation of derived quantities
+** tools.py
+Functions for performing common mathematical and scripting tasks.
+** plotting.py
+Functions for plotting built on matplotlib.
+** convert.py
+Unit conversion and various conversion formulae.
+** optimise.py
+General class for conveniently and hierarchically building numerical
+models with optimisable parameters.
 ** atmosphere.py
+** lines.py
+Dataset subclasses for storing atomic and molecular quantum-mechanical
+stationary-state line data.
+** levels.py
+Dataset subclasses for storing atomic and molecular quantum-mechanical
+stationary-stat level data.
 ** bruker.py
 Interact with output files of Bruker OPUS spectroscopic acquisition
 and analysis software. 
-** convert.py
-Unit conversion and various conversion formulae.
 ** cross_section.py
 CrossSection object — stub. Probably overshadowed by spectrum.Spectrum.  
 ** database.py
 Interface to internal spectroscopic and chemistry database.  
-** dataset.py
-Storage, manipulation, and plotting of tabular data. Allows for the
-recursive calculation of derived quantities
 ** electronic_states.py
 Calculation of diatomic level energies from potential-energy curves.
-** env.py
-Conveniently import all submodules.
 ** exceptions.py
 Exception used to internally communicate failure conditions.
 ** hitran.py
 Access HITRAN spectroscopic data with hapy.
-** levels.py
-Dataset subclasses for storing atomic and molecular quantum-mechanical
-stationary-stat level data.
 ** lineshapes.py
 Simulate individual and groups of spectra lines of various shapes.
-** lines.py
-Dataset subclasses for storing atomic and molecular quantum-mechanical
-stationary-state line data.
-** optimise.py
-General class for conveniently and hierarchically building numerical
-models with optimisable parameters.
-** plotting.py
-Functions for plotting built on matplotlib.
 ** quantum_numbers.py
 Functions for manipulating atomic and molecular quantum numbers.
 ** spectrum.py
 Classes for manipulating and modelling of experimental spectroscopic datea.
 ** thermochemistry.py
 Functions for computing thermochemical equilibrium with ggchem.
-** tools.py
-Functions for performing common mathematical and scripting tasks.
 ** viblevel.py
 Classes for simulating diatomic levels and lines defined by effective Hamiltonians.
 
+** fortran_tools.f90
+Various fortran functions and subroutines.
 * Bugs / improvements
-** Dataset
-*** Also store scalar (or nd?) data in Dataset.data
-*** Add classname and description to this scalar data
-*** Add min/max to prototypes for optimisation
-*** Add 'af' kind absolute 'f', with automatic cast and min values
 ** viblevel.py
 *** Implement general Λ-doubling formula of brown1979
 Currently the o/p/q Λ-doubling is handled with effective
