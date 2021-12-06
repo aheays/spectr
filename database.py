@@ -16,11 +16,8 @@ from .exceptions import DatabaseException,NonUniqueValueException
 ## module data and caches
 from . import kinetics
 
-
-
-
-
-data_directory = tools.expand_path('~/src/python/spectr/data/')
+import spectr
+data_directory = spectr.__path__[0]+'/data'
 
 @tools.vectorise(cache=True,dtype='U30')
 def normalise_species(species):
