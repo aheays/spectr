@@ -14,6 +14,7 @@ from .optimise import Parameter,P
 try:
     from .fortran_tools import fortran_tools
 except ModuleNotFoundError:
+    import warnings
     fortran_tools = None
     warnings.warn("Could not import fortran_tools.  Is it compiled?")
 
