@@ -9,7 +9,14 @@ from . import tools
 from . import convert
 from . import optimise
 from .optimise import Parameter,P
-from . import fortran_tools
+# from . import fortran_tools
+
+try:
+    from .fortran_tools import fortran_tools
+except ModuleNotFoundError:
+    fortran_tools = None
+    warnings.warn("Could not import fortran_tools.  Is it compiled?")
+
 
 def calculate_spectrum(
         x,
