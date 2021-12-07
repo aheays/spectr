@@ -1,21 +1,23 @@
+## standard library
 import functools
 from functools import lru_cache
 import warnings
 from pprint import pprint
 from copy import copy,deepcopy
 
-
+## non-standard library
 import numpy as np
 
+## submodules of this module
 from . import tools
 from . import dataset
 from . import kinetics
 from . import convert
 from .exceptions import DatabaseException,NonUniqueValueException
-
-## module data and caches
 from . import kinetics
 
+## get a dynamic absolute path to the data directory.  Requires import
+## of parent module, which is a bit ugly.
 import spectr
 data_directory = spectr.__path__[0]+'/data'
 
@@ -184,6 +186,3 @@ def get_hitran_lines(species,**match):
     """Load spectral lines from reference data."""
     from . import hitran
     return hitran.get_lines(species,**match)
-
-
-
