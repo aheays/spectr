@@ -115,20 +115,20 @@ def get_level(species,source='auto'):
 @tools.vectorise(cache=True,dtype=float)
 def get_level_energy(species,Eref=0,**match_qn):
     """Get uniquely matching level energies."""
+    ## get level
     species = normalise_species(species)
     level = get_level(species)
-    i = tools.find(level.match(match_qn,species=species))
-    if len(i) == 0:
-        raise DatabaseException(f'No match found: species={repr(species)}, match_qn={repr(match_qn)}')
-    if len(i) > 1:
-        raise DatabaseException(f'Multiple matches found: species={repr(species)}, match_qn={repr(match_qn)}')
+    try:
+        i = level.find_unique(match_qn,species=species)
+    except NonUniqueValueException as err:
+        i = level.find(match_qn,species=species)
+        raise DatabaseException(f'Non-unique level energy, found {len(i)}')
+    ## get energy with correct reference
     if Eref == 'E0':
-        E = level['E'][i][0] + level['Eref'][i][0] + level['E0'][i][0]
+        E = level['E'][i] + level['Eref'][i] + level['E0'][i]
     else:
-        E = level['E'][i][0] + level['Eref'][i][0] - Eref
+        E = level['E'][i] + level['Eref'][i] - Eref
     return E
-
-    
 
 @tools.vectorise(cache=True,dtype=float)
 def get_partition_function(
