@@ -14,7 +14,7 @@ from .tools import timestamp
 from .exceptions import InferException,NonUniqueValueException
 from . import convert
 from . import optimise
-from .optimise import optimise_method,Parameter,Fixed
+from .optimise import optimise_method,Parameter,Fixed,format_input_method
 
 
 
@@ -659,7 +659,7 @@ class Dataset(optimise.Optimiser):
             else:
                 raise NotImplementedError(f'Modify {subkey}')
         
-    def _has_attribute(self,key,subkey,attribute):
+    def _has_subkey_attribute_property(self,key,subkey,attribute):
         """Test if key,subkey has a certain attribute."""
         self.assert_known(key,subkey)
         if subkey == 'value':
@@ -667,7 +667,7 @@ class Dataset(optimise.Optimiser):
         else:
             return (attribute in self.all_subkinds[subkey])
 
-    def _get_attribute(self,key,subkey,attribute):
+    def _get_subkey_attribute_property(self,key,subkey,attribute):
         """Get data from data_kinds or all_subkinds"""
         self.assert_known(key,subkey)
         if subkey == 'value':
@@ -1156,6 +1156,13 @@ class Dataset(optimise.Optimiser):
                 elif len(key) > 3 and key[:3] == 're_':
                     ## recursively get reverse match for this key
                     i &= self.match_re({(key[3:],subkey):val})
+                elif len(key) > 5 and key[:5] == 'even_':
+                    ## even integer val = True or False
+                    assert val in (True,False)
+                    if val:
+                        i &= self[key[5:]]%2==0
+                    else:
+                        i &= self[key[5:]]%2==1
                 else:
                     ## total failure
                     raise InferException(f'Could not match key: {repr(key)}')
@@ -1481,8 +1488,8 @@ class Dataset(optimise.Optimiser):
                             formatted_key = (f'"{key}"' if quote else f'{key}')
                         else:
                             formatted_key = (f'"{key}:{subkey}"' if quote else f'{key}:{subkey}')
-                        fmt = self._get_attribute(key,subkey,'fmt')
-                        kind = self._get_attribute(key,subkey,'kind')
+                        fmt = self._get_subkey_attribute_property(key,subkey,'fmt')
+                        kind = self._get_subkey_attribute_property(key,subkey,'kind')
                         if quote and kind == 'U':
                             vals = ['"'+format(t,fmt)+'"' for t in self[key,subkey]]
                         else:
@@ -2075,81 +2082,157 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
 
-    def concatenate(self,new_dataset,keys=None,defaults=None,optimise=False):
+    @format_input_method()
+    def concatenate(self,new_dataset,keys=None,defaults=None,optimise=False,match=None):
         """Extend self by new_dataset. If keys=None then existing and
         new_dataset must have a complete of explicity set keys, or a
         default value set in the input dictionary 'defaults' """
+        ## determine index of new_data to concatenate
+        if match is None:
+            ## all of it
+            new_data_index = slice(0,len(new_dataset))
+            new_data_length = len(new_dataset)
+        else:
+            new_data_index = new_data.match(match)
+            new_data_length = np.sum(new_data_index)
         ## process defaults, keys that are missing a subkey are
-        ## converted to (key,'value').
+        ## converted to (key,'value'). Add defaults in self to list of
+        ## defaults.  Set defaults in self now so they are available when concatenating.
         if defaults is None:
             defaults = {}
         for key in list(defaults):
             if isinstance(key,str):
                 defaults[key,'value'] = defaults.pop(key)
-        ## test if there is currently any data
-        if len(self.keys()) == 0:
-            ## if currently no data at all then copy from new_dataset and return
-            if keys is None:
-                keys = new_dataset.keys()
-            self.copy_from(new_dataset,keys)
-            return
-        else:
-            ## else concatenate to existing data
-            if keys is None:
-                ## get combined key list if not given
-                keys = list({*self.explicitly_set_keys(),*new_dataset.explicitly_set_keys()})
-            ## make sure necessary keys are known
-            for key in keys:
-                self.assert_known(key)
-                self.unlink_inferences(keys)
-            for key in list(self):
+        for key in self:
+            if self.is_set(key,'default'):
+                defaults[key,'value'] = self[key,'default']
+        for key,subkey in defaults:
+            if not self.is_set(key,subkey):
+                self[key,subkey] = defaults[key,subkey]
+        ## if keys to concatenating not specified as an input argument
+        ## then use all explicitly set keys in self or new_data
+        if keys is None:
+            keys = copy(self.explicitly_set_keys())
+            for key in new_dataset.explicitly_set_keys():
                 if key not in keys:
-                    self.unset(key)
-            ## set new data
-            old_length = len(self)
-            new_length = len(new_dataset)
-            total_length = len(self) + len(new_dataset)
-            index = slice(old_length,total_length)
-            new_index = slice(0,len(new_dataset))
-            self._reallocate(total_length)
-            ## set extending data 
-            set_keys = []       # save for optimisation
-            for key,data in self._data.items():
-                for subkey in self.vector_subkinds:
-                    if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
-                        self.assert_known(key,subkey)
-                        new_dataset.assert_known(key,subkey)
-                        set_keys.append((key,subkey))
-                        if self.is_known(key,subkey) and new_dataset.is_known(key,subkey):
-                            new_val = new_dataset[key,subkey]
-                        elif (key,subkey) in defaults:
-                            new_val = defaults[key,subkey]
-                        else:
-                            raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
-                        ## increase char-length of string arrays if needed and insert new data
-                        self._increase_char_length_if_necessary(key,subkey,new_val)
-                        data[subkey][index] = self._get_attribute(key,subkey,'cast')(new_val)
-            ## if optimised then add construct function
-            if optimise:
-                def construct_function():
-                    if (new_dataset._global_modify_time > self._global_modify_time
-                        or self._global_modify_time > self._last_construct_time):
-                        ## something has changed
-                        for key,subkey in set_keys:
-                            if new_dataset.is_known(key,subkey):
-                                if (new_dataset[key,'_modify_time'] > self[key,'_modify_time']
-                                    or self[key,'_modify_time'] > self._last_construct_time):
-                                    ## update from new_dataset
-                                    self.set(key,subkey,new_dataset[key,subkey,new_index],index,set_changed_only=True)
-                            else:
-                                if self[key,'_modify_time'] > self._last_construct_time:
-                                    ## update from defaults
-                                    self.set(key,subkey,default[key,subkey],index,set_changed_only=True)
-                self.add_construct_function(construct_function,construct_on_add=False)
-                self.add_suboptimiser(new_dataset)
-                new_dataset.permit_indexing = False
-                self.permit_indexing = False
+                    keys.append(key)
+        ## determine which subkeys are set in either self or new_dataset,
+        ## these will be concatenated
+        keys_subkeys = []
+        for key in keys:
+            for subkey in self.vector_subkinds:
+                if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
+                    keys_subkeys.append((key,subkey))
+        ## test if self is totally empty or has zero length and all
+        ## keys have defaults set. If so then permit concatenated of
+        ## unset keys by initialising them here to empty arrays
+        if ( len(self.keys()) == 0
+            or ( len(self) == 0
+                 and np.all([self.is_set(key,'default') for key in self]) )):
+            ## currently no data at all then, initialise keys as empty
+            ## arrays to be concatenated, comlex indexing preserves
+            ## default if it exists
+            for key in keys:
+                if key in self:
+                    self[key][:] = []
+                else:
+                    self[key] = []
+        ## make sure concatenated keys are known to self
+        for key,subkey in keys_subkeys:
+            if not self.is_known(key,subkey):
+                raise Exception('Concatenated (key,subkey) not known to self: {(key,subkey)!r}')
+        ## delete any inferences to concatenated keys in self
+        for key in keys:
+            self.unlink_inferences(keys)
+        ## remove unwanted keys from self
+        for key in list(self):
+            if key not in keys:
+                self.unset(key)
+        ## extend self to fit new data
+        old_length = len(self)
+        total_length = len(self) + new_data_length
+        index = slice(old_length,total_length)
+        self._reallocate(total_length)
+        ## function to get new data for this (key,subkey) pair from
+        ## somewhere
+        def _get_new_data(key,subkey):
+            if new_dataset.is_known(key,subkey):
+                ## from new_data
+                new_val = new_dataset[key,subkey,new_data_index]
+            elif (key,subkey) in defaults:
+                ## from input defaults
+                new_val = defaults[key,subkey]
+            elif self._has_subkey_attribute_property(key,subkey,'default'):
+                ## from vector_subkind defaults
+                new_val = self._get_subkey_attribute_property(key,subkey,'default')
+            elif self.is_set(key,'default'):
+                ## from default value in self
+                new_val = self[key,'default']
+            else:
+                raise Exception(f'Concatenated (key,subkey) not known to new data or defaults: {(key,subkey)!r}')
+            return new_val
+        if optimise:
+            ## if optimised then add as a construct function
+            def construct_function():
+                ## test if anything has changed and needs updating,
+                ## either new_dataset has changed or self has change
+                ## and needs to be reverted
+                if (new_dataset._global_modify_time > self._global_modify_time
+                    or self._global_modify_time > self._last_construct_time):
+                    ## only modify (key,subkey) pairs that have
+                    ## changed
+                    for key,subkey in keys_subkeys:
+                        if (( new_dataset.is_known(key,subkey) and (new_dataset[key,'_modify_time'] > self[key,'_modify_time']))
+                            or (self[key,'_modify_time'] > self._last_construct_time)):
+                            self.set(key,subkey,_get_new_data(key,subkey),index,set_changed_only=True)
+            self.add_construct_function(construct_function)
+            self.add_suboptimiser(new_dataset)
+            new_dataset.permit_indexing = False
+            self.permit_indexing = False
+        else:
+            ## if not optimised then insert data once now
+            for key,subkey in keys_subkeys:
+                self.set(key,subkey,_get_new_data(key,subkey),index)
 
+
+        # ## set extending data 
+        # set_keys = []       # save for optimisation
+        # for key,data in self._data.items():
+            # for subkey in self.vector_subkinds:
+                # if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
+                    # self.assert_known(key,subkey)
+                    # new_dataset.assert_known(key,subkey)
+                    # set_keys.append((key,subkey))
+                    # if self.is_known(key,subkey) and new_dataset.is_known(key,subkey):
+                        # new_val = new_dataset[key,subkey]
+                    # elif (key,subkey) in defaults:
+                        # new_val = defaults[key,subkey]
+                    # else:
+                        # raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
+                    # ## increase char-length of string arrays if needed and insert new data
+                    # self._increase_char_length_if_necessary(key,subkey,new_val)
+                    # data[subkey][index] = self._get_subkey_attribute_property(key,subkey,'cast')(new_val)
+        # ## if optimised then add construct function
+        # if optimise:
+            # def construct_function():
+                # if (new_dataset._global_modify_time > self._global_modify_time
+                    # or self._global_modify_time > self._last_construct_time):
+                    # ## something has changed
+                    # for key,subkey in set_keys:
+                        # if new_dataset.is_known(key,subkey):
+                            # if (new_dataset[key,'_modify_time'] > self[key,'_modify_time']
+                                # or self[key,'_modify_time'] > self._last_construct_time):
+                                # ## update from new_dataset
+                                # self.set(key,subkey,new_dataset[key,subkey,new_index],index,set_changed_only=True)
+                        # else:
+                            # if self[key,'_modify_time'] > self._last_construct_time:
+                                # ## update from defaults
+                                # self.set(key,subkey,default[key,subkey],index,set_changed_only=True)
+            # self.add_construct_function(construct_function,construct_on_add=False)
+            # self.add_suboptimiser(new_dataset)
+            # new_dataset.permit_indexing = False
+            # self.permit_indexing = False
+            
     def append(self,keys_vals=None,**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
         if keys_vals is None:
