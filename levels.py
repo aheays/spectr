@@ -916,6 +916,11 @@ class LinearTriatomic(Linear):
         *Linear.default_prototypes,
         'ν1','ν2','ν3','l2',
         defining_qn=defining_qn)
+    ## correctly label vibrationnal modes
+    default_prototypes['ν1']['description'] = "Vibrational quantum number for symmetric stretching"
+    default_prototypes['ν2']['description'] = "Vibrational quantum number for bending"
+    default_prototypes['l2']['description'] = "Vibrational angular momentum of the bending mode"
+    default_prototypes['ν2']['description'] = "Vibrational quantum number for asymmetric stretching"
 
 class Diatomic(Linear):
     defining_qn = ('species','label','v','Σ','ef','J')
