@@ -783,20 +783,23 @@ class Generic(levels.Base):
             self,
             u_or_l,
             subkeys=('value','unc'),
-            reduce_to=None,
             required_keys=(),
+            reduce_to=None,
+            reduce_qn=None,   # to get unique levels, defaults to all self.defining_qn that are known
             match=None,
             optimise=False,
     ):
         """Get all data corresponding to 'upper' or 'lower' level in
         self."""
-        ## try get all defining qn
-        for key in self.defining_qn:
-            if not self.is_known(key):
-                warnings.warn(f'cannot determine defining level key: {key}')
+        ## distinguish between upper and lower levels
         if u_or_l not in ('u','l'):
             raise Exception("u_or_l must be 'u' or 'l'")
         suffix = '_'+u_or_l
+        ## try and compute some upper/lower level dependent things,
+        ## otherwise knowing J_l and ΔJ wont lead to a J_u being
+        ## included in get_upper_level
+        for key in ('species','label','v','J','E','Ω','Λ'):
+            self.is_known(key+suffix)
         ## ensure all required keys available
         for key in required_keys:
             self.assert_known(key+suffix)
@@ -815,11 +818,14 @@ class Generic(levels.Base):
         if reduce_to == None:
             pass
         else:
+
             keys = [key for key in level.defining_qn if level.is_known(key)]
             if reduce_to == 'first':
                 ## find first indices of unique key combinations and reduce
                 ## to those
-                t,i = tools.unique_combinations_first_index(*[level[key] for key in keys])
+                if reduce_qn is None:
+                    reduce_qn = [key for key in level.defining_qn if level.is_known(key)]
+                t,i = tools.unique_combinations_first_index(*[level[key] for key in reduce_qn])
                 j = np.full(len(level),False)
                 j[i] = True
                 level.index(j)    # reduce level
@@ -851,30 +857,13 @@ class Generic(levels.Base):
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
-        data = hitran.load(filename)
-        ## interpret into transition quantities common to all transitions
-        new = Dataset(
-            ν0=data['ν'],
-            ## Ae=data['A'],  # Ae data is incomplete but S296K will be complete
-            S296K=data['S'],
-            E_l=data['E_l'],
-            g_u=data['g_u'],
-            g_l=data['g_l'],
-            γ0air=data['γair'], 
-            nγ0air=data['nair'],
-            δ0air=data['δair'],
-            γ0self=data['γself'],
-        )
-        ## get species and remove natural abundance scaling of S296K
-        new['species'] = np.full(len(data),'')
-        for d,i in data.unique_dicts_match('Mol','Iso'):
-            di = hitran.get_molparam(species_ID=d['Mol'],local_isotopologue_ID=d['Iso'])
-            assert len(di) == 1,f'Should be unique mol/iso combination {d["Mol"]},{d["Iso"]}'
-            new['species',i] =  di['species',0]
-            new['S296K',i] =  new['S296K',i]/di['natural_abundance',0]
-        ## remove natural abundance weighting
-        self.extend(**new)
-        return data             # return raw HITRAN data
+        data = hitran.lsoad(filename)
+        ## not used
+        data.unset('V_u')
+        data.unset('V_l')
+        data.unset('Q_u')
+        data.unset('Q_l')
+        self.concatenate(data)
         
     def load_from_nist(self,filename):
         """Load NIST tab-separated atomic transition data file."""
@@ -1240,6 +1229,8 @@ class Generic(levels.Base):
                     ]:
                         ku.append(ju)
                         kl.append(jl)
+        ##
+        warnings.warn('generate_from_levels found no allowed transitions') 
         ## collect allowed data
         data = dataset.make(self.classname)
         for key in levelu:
@@ -1490,7 +1481,7 @@ class Linear(Generic):
 
 class Diatomic(Linear):
 
-    level_class,defining_qn,default_prototypes = _collect_prototypes(
+    _level_class,defining_qn,default_prototypes = _collect_prototypes(
         level_class=levels.Diatomic,
         base_class=Linear,
         new_keys=(
@@ -1507,98 +1498,72 @@ class Diatomic(Linear):
         """Load HITRAN .data."""
         from . import hitran
         data = hitran.load(filename)
-        ## interpret into transition quantities common to all transitions
-        new = Dataset(
-            ν0=data['ν'],
-            ## Ae=data['A'],  # Ae data is incomplete but S296K will be complete
-            S296K=data['S'],
-            E_l=data['E_l'],
-            g_u=data['g_u'],
-            g_l=data['g_l'],
-            γ0air=data['γair'], 
-            nγ0air=data['nair'],
-            δ0air=data['δair'],
-            γ0self=data['γself'],
-        )
-        ## get species and chemical_species
-        new['species'] = np.full(len(data),'')
-        new['chemical_species'] = np.full(len(data),'')
-        for d,i in data.unique_dicts_match('Mol','Iso'):
-            t = hitran.get_molparam().unique_row(species_ID=d['Mol'],local_isotopologue_ID=d['Iso'])
-            dataset_classname = t['dataset_classname']
-            new['species',i] =  t['species']
-            new['chemical_species',i] =  t['chemical_species']
-            new['S296K',i] =  new['S296K',i]/t['natural_abundance']
-        chemical_species = np.unique(new['chemical_species'])
-        if len(chemical_species) != 1:
-            raise Exception(f'Non-unique chemical species: {chemical_species!r}')
-        chemical_species = chemical_species[0]
-        ## interpret quantum numbers
-        if dataset_classname == 'lines.Diatomic':
-            ## V_u
-            qn = {'label_u':[],'v_u':[],'Ω_u':[]}
-            for V_u in data['V_u']:
-                if r:=re.match(r'^.*([a-zA-Z]+)([0-9./]+) *([0-9]+) *$',V_u):
-                    qn['label_u'].append(r.group(1))
-                    if '/' in r.group(2):
-                        import fractions
-                        qn['Ω_u'].append(float(fractions.Fraction(r.group(2))))
-                    else:
-                        qn['Ω_u'].append(float(r.group(2)))
-                    qn['v_u'].append(int(r.group(3)))
-                elif r:=re.match(r'^ *([0-9]+) *$',V_u):
-                    qn['label_u'].append('X')
-                    qn['Ω_u'].append(0)
-                    qn['v_u'].append(int(r.group(1)))
+        ## V_u
+        qn = {'label_u':[],'v_u':[],'Ω_u':[]}
+        for V_u in data.pop('V_u'):
+            if r:=re.match(r'^.*([a-zA-Z]+)([0-9./]+) *([0-9]+) *$',V_u):
+                qn['label_u'].append(r.group(1))
+                if '/' in r.group(2):
+                    import fractions
+                    qn['Ω_u'].append(float(fractions.Fraction(r.group(2))))
                 else:
-                    raise Exception(f'Cannot interpret quantum number: {V_u=}')
-            for key in qn:
-                new[key] = qn[key]
-            ## V_l
-            qn = {'label_l':[],'v_l':[],'Ω_l':[]}
-            for V_l in data['V_l']:
-                if r:=re.match(r'^.*([a-zA-Z]+)([0-9./]+) *([0-9]+) *$',V_l):
-                    qn['label_l'].append(r.group(1))
-                    if '/' in r.group(2):
-                        import fractions
-                        qn['Ω_l'] = float(fractions.Fraction(r.group(2)))
-                    else:
-                        qn['Ω_l'] = float(r.group(2))
-                    qn['v_l'].append(r.group(3))
-                elif r:=re.match(r'^ *([0-9]+) *$',V_l):
-                    qn['label_l'].append('X')
-                    qn['Ω_l'].append(0)
-                    qn['v_l'].append(int(r.group(1)))
+                    qn['Ω_u'].append(float(r.group(2)))
+                qn['v_u'].append(int(r.group(3)))
+            elif r:=re.match(r'^ *([0-9]+) *$',V_u):
+                qn['label_u'].append('X')
+                qn['Ω_u'].append(0)
+                qn['v_u'].append(int(r.group(1)))
+            else:
+                raise Exception(f'Cannot interpret quantum number: {V_u=}')
+        for key in qn:
+            data[key] = qn[key]
+        ## V_l
+        qn = {'label_l':[],'v_l':[],'Ω_l':[]}
+        for V_l in data.pop('V_l'):
+            if r:=re.match(r'^.*([a-zA-Z]+)([0-9./]+) *([0-9]+) *$',V_l):
+                qn['label_l'].append(r.group(1))
+                if '/' in r.group(2):
+                    import fractions
+                    qn['Ω_l'] = float(fractions.Fraction(r.group(2)))
                 else:
-                    raise Exception(f'Cannot interpret quantum number: {V_l=}')
-            for key in qn:
-                new[key] = qn[key]
-            ## Q_l
-            qn = {'ΔJ':[],'ΔN':[],'ef_l':[],'J_l':[]}
-            for Q_l in data['Q_l']:
-                if r:=re.match(r'^ *([OPQRS])?([OPQRS]) *([0-9.]+)([ef])? *([0-9.]+)?$',Q_l):
-                    qn['ΔJ'].append(quantum_numbers.decode_ΔJ(r.group(2)))
-                    if r.group(1) is None:
-                        qn['ΔN'].append(qn['ΔJ'][-1])
-                    else:
-                        qn['ΔN'].append(quantum_numbers.decode_ΔJ(r.group(1)))
-                    qn['J_l'].append(float(r.group(3)))
-                    if r.group(4) is None:
-                        qn['ef_l'].append(1)
-                    else:
-                        qn['ef_l'].append(quantum_numbers.decode_ef(r.group(4)))
-                elif r:=re.match(r'^ *([OPQRS]) *([0-9.]+)q *$',Q_l):
-                    ## N2 quadrupole -- q means quadrupole?
-                    qn['ΔJ'].append(quantum_numbers.decode_ΔJ(r.group(1))) 
-                    qn['ΔN'].append(0) 
-                    qn['ef_l'].append(1) 
-                    qn['J_l'].append(float(r.group(2))) 
+                    qn['Ω_l'] = float(r.group(2))
+                qn['v_l'].append(r.group(3))
+            elif r:=re.match(r'^ *([0-9]+) *$',V_l):
+                qn['label_l'].append('X')
+                qn['Ω_l'].append(0)
+                qn['v_l'].append(int(r.group(1)))
+            else:
+                raise Exception(f'Cannot interpret quantum number: {V_l=}')
+        for key in qn:
+            data[key] = qn[key]
+        ## Q_l
+        qn = {'ΔJ':[],'ΔN':[],'ef_l':[],'J_l':[]}
+        for Q_l in data.pop('Q_l'):
+            if r:=re.match(r'^ *([OPQRS])?([OPQRS]) *([0-9.]+)([ef])? *([0-9.]+)?$',Q_l):
+                qn['ΔJ'].append(quantum_numbers.decode_ΔJ(r.group(2)))
+                if r.group(1) is None:
+                    qn['ΔN'].append(qn['ΔJ'][-1])
                 else:
-                    raise Exception(f'Cannot interpret quantum number: {Q_l=}')
-            for key in qn:
-                new[key] = qn[key]
+                    qn['ΔN'].append(quantum_numbers.decode_ΔJ(r.group(1)))
+                qn['J_l'].append(float(r.group(3)))
+                if r.group(4) is None:
+                    qn['ef_l'].append(1)
+                else:
+                    qn['ef_l'].append(quantum_numbers.decode_ef(r.group(4)))
+            elif r:=re.match(r'^ *([OPQRS]) *([0-9.]+)q *$',Q_l):
+                ## N2 quadrupole -- q means quadrupole?
+                qn['ΔJ'].append(quantum_numbers.decode_ΔJ(r.group(1))) 
+                qn['ΔN'].append(0) 
+                qn['ef_l'].append(1) 
+                qn['J_l'].append(float(r.group(2))) 
+            else:
+                raise Exception(f'Cannot interpret quantum number: {Q_l=}')
+        for key in qn:
+            data[key] = qn[key]
+        ## not used
+        data.unset('Q_u')
         ## add to self
-        self.extend(**new)
+        self.concatenate(data)
 
     def load_from_duo(self,filename,intensity_type):
         """Load an output line list computed by DUO (yurchenko2016)."""
@@ -1746,41 +1711,42 @@ class LinearTriatomic(Linear):
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
-        ## load generic things using the method in Generic
-        data = Generic.load_from_hitran(self,filename)
+        data = hitran.load(filename)
+        n = len(data)
         ## interpret specific quantum numbers
-        quantum_numbers = dict(
-            ΔJ=np.empty(len(self),dtype=int),
-            J_l=np.empty(len(self),dtype=float),
-            ν1_u=np.empty(len(self),dtype=int),
-            ν2_u=np.empty(len(self),dtype=int),
-            l2_u=np.empty(len(self),dtype=int),
-            ν3_u=np.empty(len(self),dtype=int),
-            ν1_l=np.empty(len(self),dtype=int),
-            ν2_l=np.empty(len(self),dtype=int),
-            l2_l=np.empty(len(self),dtype=int),
-            ν3_l=np.empty(len(self),dtype=int),
-        )
+        data['ΔJ'] = np.empty(n,dtype=int)
+        data['J_l'] = np.empty(n,dtype=float)
+        data['ν1_u'] = np.empty(n,dtype=int)
+        data['ν2_u'] = np.empty(n,dtype=int)
+        data['l2_u'] = np.empty(n,dtype=int)
+        data['ν3_u'] = np.empty(n,dtype=int)
+        data['ν1_l'] = np.empty(n,dtype=int)
+        data['ν2_l'] = np.empty(n,dtype=int)
+        data['l2_l'] = np.empty(n,dtype=int)
+        data['ν3_l'] = np.empty(n,dtype=int)
         ## loop over upper quantum setting in arrays
-        for i,V in enumerate(data['V_u']):
-            quantum_numbers['ν1_u'][i] = int(V[7:9])
-            quantum_numbers['ν2_u'][i] = int(V[9:11])
-            quantum_numbers['l2_u'][i] = int(V[11:13])
-            quantum_numbers['ν3_u'][i] = int(V[13:15])
+        for i,V in enumerate(data.pop('V_u')):
+            data['ν1_u'][i] = int(V[7:9])
+            data['ν2_u'][i] = int(V[9:11])
+            data['l2_u'][i] = int(V[11:13])
+            data['ν3_u'][i] = int(V[13:15])
         ## loop over lower quantum setting in arrays
-        for i,V in enumerate(data['V_l']):
-            quantum_numbers['ν1_l'][i] = int(V[7:9])
-            quantum_numbers['ν2_l'][i] = int(V[9:11])
-            quantum_numbers['l2_l'][i] = int(V[11:13])
-            quantum_numbers['ν3_l'][i] = int(V[13:15])
+        for i,V in enumerate(data.pop('V_l')):
+            data['ν1_l'][i] = int(V[7:9])
+            data['ν2_l'][i] = int(V[9:11])
+            data['l2_l'][i] = int(V[11:13])
+            data['ν3_l'][i] = int(V[13:15])
         ## Q_u is blank, Q_l is  [PQR][J_l]
         translatePQR = {'P':-1,'Q':0,'R':+1}
-        for i,Q in enumerate(data['Q_l']):
-            quantum_numbers['ΔJ'][i] = translatePQR[Q[5]]
-            quantum_numbers['J_l'][i] = float(Q[6:])
-        ## add all this data to self
-        for key,val in quantum_numbers.items():
-            self[key] = val
+        for i,Q in enumerate(data.pop('Q_l')):
+            data['ΔJ'][i] = translatePQR[Q[5]]
+            data['J_l'][i] = float(Q[6:])
+        # ## add all this data to self
+        # for key,val in quantum_numbers.items():
+            # self[key] = val
+        ## not used
+        data.unset('Q_u')
+        self.concatenate(data)
             
 def generate_from_levels(
         upper_level,

@@ -14,6 +14,13 @@ metadata = {
 
 data = {
 
+    'CS₂'     :     {
+        'chemical_species'  : 'CS₂',
+        'mass'              : 76,
+        'characteristic_infrared_bands': [[1500,1560],],
+        'characteristic_infrared_lines': [[1530,1550],],
+    },
+
     '¹²C³²S₂' :     {
         'chemical_species'  : 'CS₂',
         'point_group'       : 'D∞h',
@@ -560,7 +567,7 @@ data = {
         'mass'              : 48.0,
     },
 
-    '¹H₂¹⁶O'  :     {
+    'H₂O'  :     {
         'chemical_species'  : 'H₂O',
         'mass'              : 18.0,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
@@ -738,13 +745,6 @@ data = {
         'chemical_species'  : 'NH₃',
         'characteristic_infrared_bands': [[800,1200],],
         'characteristic_infrared_lines': [[950,970],],
-    },
-
-    'CS₂'     :     {
-        'chemical_species'  : 'CS₂',
-        'mass'              : 76,
-        'characteristic_infrared_bands': [[1500,1560],],
-        'characteristic_infrared_lines': [[1530,1550],],
     },
 
     'OCS'     :     {

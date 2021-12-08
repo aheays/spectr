@@ -525,7 +525,8 @@ class Model(Optimiser):
         ## no residual requested
         if not self._compute_residual:
             return None
-        ## possible subsample to match experiment
+        ## possible subsample removing _interpolate_factor so grid
+        ## matches experiment
         if self._interpolate_factor is None:
             residual = self.yexp - self.y
         else:
@@ -537,16 +538,18 @@ class Model(Optimiser):
 
     @optimise_method()
     def interpolate(self,dx,_cache=None):
-        """When calculating model set to dx grid (or less to achieve
-        overlap with experimental points. Always an odd number of
-        intervals / even number of interstitial points. DELETES
-        CURRENT Y!"""
+        """When calculating model set to dx grid (or less to achieve overlap
+        with experimental points. Always an odd number of intervals /
+        even number of interstitial points. Call before anything else,
+        self.y is deleted and replaced with zeros on the new grid."""
         if self._clean_construct:
             xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
             interpolate_factor = int(np.ceil(xstep/dx))
             if interpolate_factor%2 == 0:
                 interpolate_factor += 1
             _cache['x'] = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*interpolate_factor)
+            if not np.all(self.y==0):
+                raise Exception('interpolate will erase nonzero, y, it is intended to be the first Model method called')
             _cache['y'] = np.zeros(_cache['x'].shape,dtype=float)
             _cache['interpolate_factor'] = interpolate_factor
         self._interpolate_factor = _cache['interpolate_factor']
@@ -1094,7 +1097,13 @@ class Model(Optimiser):
         return knots
     
     @optimise_method()
-    def multiply_spline(self,knots=None,order=3,_cache=None,autovary_in_range=False):
+    def multiply_spline(
+            self,
+            knots=None,
+            order=3,
+            _cache=None,
+            autovary_in_range= True,
+    ):
         """Multiple y by a spline function."""
         if self._clean_construct:
             spline = Spline(knots=knots,order=order)
@@ -1109,10 +1118,13 @@ class Model(Optimiser):
             i = np.full(len(self.x),True)
             _cache['i'] = i
             _cache['spline'] = spline
+            ## vary only those knots in model domain
+            _cache.setdefault('first_invocation',True)
+            if autovary_in_range and _cache['first_invocation']:
+                self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
+                _cache['first_invocation'] = False
         i = _cache['i']
         spline = _cache['spline']
-        if autovary_in_range:
-            self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
         if spline.last_change_time > self.last_construct_time:
             _cache['yspline'] = spline(self.x[i])
         ## add to y
@@ -1132,10 +1144,13 @@ class Model(Optimiser):
                 i[-1] = True
             _cache['i'] = i
             _cache['spline'] = spline
+            ## vary only those knots in model domain
+            _cache.setdefault('first_invocation',True)
+            if autovary_in_range and _cache['first_invocation']:
+                self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
+                _cache['first_invocation'] = False
         i = _cache['i']
         spline = _cache['spline']
-        if autovary_in_range:
-            self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
         if spline.last_change_time > self.last_construct_time:
             _cache['yspline'] = spline(self.x[i])
         ## add to y
@@ -1147,7 +1162,7 @@ class Model(Optimiser):
             xbeg=None,xend=None, # range to set to vary, defaults to current range of Model
             vary=True,           # set to this vary if in range
             vary_outside_range=False, # set to this vary if outside range, None to do nothing to these Parameters
-            include_neighbouring=True, # include points immediately outside range
+            include_neighbours=True, # include points immediately outside range
     ):
         """Set Parameters in list of lists to vary if in defined x range."""
         ## default to entire model
@@ -1159,8 +1174,8 @@ class Model(Optimiser):
         for i,(x,*rest) in enumerate(parameters):
             in_range = (
                 ( (x >= xbeg) and (x <= xend) ) # in fit range
-                or ( include_neighbouring and i < (len(parameters)-1) and x < xbeg and parameters[i+1][0] > xbeg ) # right before fit range
-                or ( include_neighbouring and i > 0                   and x > xend and parameters[i-1][0] < xend ) # right after fit range
+                or ( include_neighbours and i < (len(parameters)-1) and x < xbeg and parameters[i+1][0] > xbeg ) # right before fit range
+                or ( include_neighbours and i > 0                   and x > xend and parameters[i-1][0] < xend ) # right after fit range
                 )
             for p in parameters[i]:
                 if isinstance(p,Parameter):
@@ -1196,10 +1211,14 @@ class Model(Optimiser):
                 i[-1] = True
             ## if autovary then set spline parameters to be varied if
             ## in the range of i or the immediate points outside range
-            if autovary_in_range:
+
+            ## vary only those knots in model domain
+            _cache.setdefault('first_invocation',True)
+            if autovary_in_range and _cache['first_invocation']:
                 txbeg,txend = self.x[i][0],self.x[i][-1]
                 self.autovary_in_range(total_knots,txbeg,txend)
                 self.autovary_in_range(shift_knots,txbeg,txend)
+                _cache['first_invocation'] = False
             _cache['i'] = i
             _cache['total_spline'] = total_spline
             _cache['shift_spline'] = shift_spline
@@ -1320,8 +1339,12 @@ class Model(Optimiser):
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
         warnings.warn('Deprecated function in favour of convolve_spline_signum')
-        if self._clean_construct and autovary:
-            self.autovary_in_range(regions)
+        if self._clean_construct:
+            ## vary only those knots in model domain
+            _cache.setdefault('first_invocation',True)
+            if autovary_in_range and _cache['first_invocation']:
+                _cache['first_invocation'] = False
+                self.autovary_in_range(regions)
         if (self._clean_construct
                 or np.any([t._last_modify_value_time > self._last_construct_time
                            for t in _parameters])):
@@ -1353,7 +1376,11 @@ class Model(Optimiser):
     @optimise_method()
     def convolve_spline_signum(self,amplitude_spline,order=3,xmax=10,autovary=False,_cache=None):
         """Convolve with a signum function with spline-varying amplitude."""
-        if autovary:
+
+        ## vary only those knots in model domain
+        _cache.setdefault('first_invocation',True)
+        if autovary_in_range and _cache['first_invocation']:
+            _cache['first_invocation'] = False
             self.autovary_in_range(amplitude_spline)
         x,y = self.x,self.y
         dx = (x[-1]-x[0])/(len(x)-1) # grid step -- x must be regular
@@ -1811,6 +1838,9 @@ class Model(Optimiser):
         self.add_format_input_function(lambda: f'{self.name}.plot_spectrum(fig={repr(fig.number)},label_key={repr(label_key)},plot_labels={repr(plot_labels)},plot_experiment={repr(plot_experiment)},plot_model={repr(plot_model)},plot_residual={repr(plot_residual)})')
         ymin,ymax = np.inf,-np.inf
         xmin,xmax = np.inf,-np.inf
+        ## if model has no data return immediately
+        if len(self) == 0:
+            return fig
         ## plot intensity and residual
         if plot_experiment and self.experiment is not None and self.yexp is not None:
             # ymin,ymax = min(ymin,self.yexp.min()),max(ymax,self.yexp.max())
@@ -2194,7 +2224,7 @@ class FitAbsorption():
             name='fit_absorption',
             parameters=None,    # pass in values to parameters
             verbose= True,      # print more information for debugging
-            make_plot=False,     # plot results of every fit
+            # make_plot=False,     # plot results of every fit
             max_nfev=20,         # iterate optimiser up to this many times
             ncpus=1,            # compute Voigt spectrum with 1 or more cpus
             default_species=None,
@@ -2209,11 +2239,15 @@ class FitAbsorption():
         self.parameters |= more_parameters
         ## initialise control variables
         self.verbose = verbose
-        self.make_plot =  make_plot
+        # self.make_plot =  make_plot
         self.max_nfev = max_nfev
         self.ncpus = ncpus
+        ## the Experimebnt object
         self.experiment = None
-        self.model = None
+        ## fit_* methods save Model objects and their reference
+        ## versions (without fit_species absorption)
+        self.models = []
+        self.reference_models = []
         ## if no species_to_fit species in fit_species then fit all
         ## these
         self.default_species = default_species
@@ -2230,6 +2264,17 @@ class FitAbsorption():
     def __setitem__(self,key,value):
         """Access parameters directly."""
         self.parameters[key] = value
+
+    # def set_all_parameters_vary(self,vary):
+        # """Set all parameteres to vary."""
+        # def _set_parameters_vary_recursive(obj,vary):
+            # if np.isscalar(obj):
+                # if isinstance(obj,Parameter):
+                    # obj.vary = vary
+            # else:
+                # for tobj in obj:
+                    # _set_parameters_vary_recursive(tobj,vary)
+        # _set_parameters_vary_recursive(self.parameters,vary)
 
     def keys(self):
         """Parameters keys as list."""
@@ -2259,14 +2304,16 @@ class FitAbsorption():
     def fit(self,**make_model_kwargs):
         """Fit a model.  Defaults are the same as in make_model."""
         print(f'{self.name}: fit with {make_model_kwargs=}')
+        self.models,self.reference_models = [],[]
         model = self.make_model(**make_model_kwargs)
-        model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=self.max_nfev)
-        if self.make_plot:
-            self.plot(model)
+        model.optimise(make_plot=False,verbose=self.verbose,max_nfev=self.max_nfev)
+        # if self.make_plot:
+            # self.plot(model)
 
     def fit_regions(self,xbeg=-inf,xend=inf,width=1000,overlap_factor=0.1,**make_model_kwargs):
         """Full model."""
         print(f'{self.name}: fit_regions with {xbeg=} {xend=} {width=} {overlap_factor=} {make_model_kwargs=}')
+        self.models,self.reference_models = [],[]
         p = self.parameters
         ## determine overlapping region intervals between xbeg and
         ## xend
@@ -2281,9 +2328,9 @@ class FitAbsorption():
         for iregion,region in enumerate(regions):
             print(f'region {iregion:3d} of {len(regions)} {region!r}')
             model = self.make_model(region,**make_model_kwargs)
-            model.optimise(make_plot=self.make_plot,verbose=self.verbose,max_nfev=self.max_nfev)
-            if self.make_plot:
-                self.plot(ax=plotting.subplot(iregion))
+            model.optimise(make_plot=False,verbose=self.verbose,max_nfev=self.max_nfev)
+            # if self.make_plot:
+                # self.plot(ax=plotting.subplot(iregion))
 
     def fit_species(
             self,
@@ -2295,6 +2342,7 @@ class FitAbsorption():
         preset 'lines' or 'bands' regions, or the full region."""
         print(f'{self.name}:fit_species with {species_to_fit=} {regions=} {make_model_kwargs=}')
         p = self.parameters
+        self.models,self.reference_models = [],[]
         ## get default species list
         if species_to_fit is None:
             species_to_fit = []
@@ -2303,9 +2351,6 @@ class FitAbsorption():
         if species_to_fit == 'existing':
             species_to_fit = list(p['N'])
         species_to_fit = tools.ensure_iterable(species_to_fit)
-        if self.make_plot:
-            plotting.plt.clf()
-            isubplot = 0
         ## fit species one by one
         for species in species_to_fit:
             print(species,end=" ",flush=True)
@@ -2322,69 +2367,87 @@ class FitAbsorption():
                 species_regions = regions
             ## make and optimise models for this species
             main = Optimiser(name=f'{self.name}_fit_species_{species}')
-            models = []
             for region in species_regions:
+                print(region,end=" ",flush=True)
                 model = self.make_model(region,[species],**make_model_kwargs)
+                if model is None:
+                    print('no data',end=" ",flush=True)
+                    continue
                 main.add_suboptimiser(model)
-                models.append(model)
+            ## make sure all instensity regions are optimised if requested
+            if 'fit_intensity' in make_model_kwargs and make_model_kwargs['fit_intensity']:
+                for i,(x,p) in enumerate(self.parameters['intensity']['spline']):
+                    p.vary = False
+                for xbeg,xend in species_regions:
+                    ## decide if in or out of range and parameter varies
+                    for i,(x,p) in enumerate(self.parameters['intensity']['spline']):
+                        if x>=xbeg and x<=xend:
+                            p.vary = True
+            ## optimise
             residual = main.optimise(
-                make_plot=self.make_plot,
+                make_plot=False,
                 max_nfev=self.max_nfev,
                 verbose=self.verbose)
             ## make reference models neglecting the fitted species
-            ref_models = []
             for region in species_regions:
-                ref_models.append(
-                    self.make_model(
-                        region,[species],
-                        neglect_species_to_fit=True,
-                        **make_model_kwargs))
-            ## plot 
-            if self.make_plot:
-                for imodel,(model,ref_model) in enumerate(zip(models,ref_models)):
-                    self.plot(model=model,
-                              ref_model=ref_model,
-                              ax=plotting.subplot(isubplot))
-                    isubplot += 1
-        print()
+                reference_model = self.make_model(
+                    region,[species],
+                    neglect_species_to_fit=True,
+                    **make_model_kwargs)
 
-    def plot(self,model=None,ref_model=None,fig=None,ax=None,**plot_kwargs):
+    def plot(self,fig=None,**plot_kwargs):
         """Plot the results of some models on individual subplots. Residuals
         from models_no_absorption will be underplotted."""
-        ## plot model / experimental / residual spectrum
+        ## default plot style
         plot_kwargs = {
             'plot_legend':False,
             'plot_title': True,
             'plot_text': True,
             'plot_kwargs':{'linewidth': 1},
         } | plot_kwargs
+        ## get figure
         if fig is None:
+            ## current figure
             fig = plotting.gcf()
         elif isinstance(fig,int):
+            ## integer -- make a new figure with this number
             fig = plotting.qfig(fig)
-        if ax is None:
-            ax = fig.gca()
-        p = self.parameters
-        if model is None:
-            model = self.model
-        if model is None:
-            raise Exception('No model to plot.')
-        model.plot(ax=ax,**plot_kwargs)
-        ## plot fitted background upper and lower limits
-        x = model.x
-        background_intensity = tools.spline([t[0] for t in p['intensity']['spline']], [t[1] for t in p['intensity']['spline']],x,order=p['intensity']['spline_order'])
-        if 'shift' in p:
-            background_shift = tools.spline([t[0] for t in p['shift']['spline']], [t[1] for t in p['shift']['spline']], x, order=p['shift']['spline_order'])
-            background_intensity += background_shift
         else:
-            background_shift = np.full(len(x),0.0)
-        ax.plot(x,background_intensity,color='black',zorder=-5)
-        ax.plot(x,background_shift,color='black',zorder=-5)
-        if ref_model is not None:
-            ax.plot(ref_model.x,
-                    ref_model.get_residual(),
-                    color='orange', zorder=-2)
-        plotting.qupdate(ax.figure)
+            ## a figure object already
+            pass
+        fig.clf()
+        p = self.parameters
+        ## plot each model in self.models
+        for imodel,model in enumerate(self.models):
+            ## new subplot
+            ax = plotting.subplot(imodel,fig=fig)
+            model.plot(ax=ax,**plot_kwargs)
+            ## show the fitted intensity and shift 
+            x = model.x
+            background_intensity = tools.spline(
+                [t[0] for t in p['intensity']['spline']],
+                [t[1] for t in p['intensity']['spline']],
+                x,
+                order=p['intensity']['spline_order'])
+            if 'shift' in p:
+                background_shift = tools.spline(
+                    [t[0] for t in p['shift']['spline']],
+                    [t[1] for t in p['shift']['spline']],
+                    x,
+                    order=p['shift']['spline_order'])
+            else:
+                background_shift = np.full(len(x),0.0)
+            ax.plot(x,background_intensity+background_shift,color='black',zorder=-5)
+            ax.plot(x,background_shift,color='black',zorder=-5)
+            ## plot reference line without fit_species absorption
+            if len(self.reference_models) > imodel:
+                reference_model = self.reference_models[imodel]
+                ax.plot(
+                    reference_model.x,
+                    reference_model.get_residual(),
+                    color='orange',
+                    zorder=-2)
+            # plotting.qupdate(ax.figure)
 
     def make_model(
             self,
@@ -2399,6 +2462,10 @@ class FitAbsorption():
             fit_sinusoid=False,          # fit sinusoidally varying intensity
             fit_instrument=False,        # fit instrumental broadening
             fit_temperature=False,       # fit excitation/Doppler temperature
+            nfwhmL=100,                  # compute this many Lorentizan full-width half-maximums
+            min_S296K=1e-25,             # include lines from fitted species with this linestrength or more
+            τpeak_min=1e-3,              # include lines from non-fitted species with this integrated optical depth or more
+            intensity_spline_order=3,    # 
             neglect_species_to_fit=False, # special cse: do not even include species in species_to_fit
             verbose=False,                # print more info for debugging
     ):
@@ -2455,8 +2522,14 @@ class FitAbsorption():
             name='_'.join([self.name,'model',str(int(xbeg)),str(int(xend)),*species_to_fit]),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
-        if not neglect_species_to_fit:
-            self.model = model
+        ## if no experimental data for this region then immediately
+        if len(model.x) == 0:
+            return None
+        ## add to internal store of models
+        if neglect_species_to_fit:
+            self.reference_models.append(model)
+        else:
+            self.models.append(model)
         ## set interpolated model grid
         self.parameters.setdefault('interpolate_model',0.001)
         if p['interpolate_model'] is not None:
@@ -2466,7 +2539,6 @@ class FitAbsorption():
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(20,1000)))
         p['Teq'].vary = fit_temperature
-        # p.setdefault('pair',{})
         if species_to_model == 'existing':
             species_to_model = set(p['species'])
         species_to_model = set(species_to_model) | set(species_to_fit)
@@ -2477,7 +2549,7 @@ class FitAbsorption():
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
             p['species'][species].setdefault('N',P(1e16, False,1e13 ,nan,(0,np.inf)))
-            p['species'][species].setdefault('pair',P(500, False,1e0,nan,(1e-3,1e5),))
+            p['species'][species].setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1e6),))
             if species in species_to_fit:
                 p['species'][species]['N'].vary = fit_N
                 p['species'][species]['pair'].vary = fit_pair
@@ -2485,23 +2557,21 @@ class FitAbsorption():
                 p['species'][species]['N'].vary =False
                 p['species'][species]['pair'].vary =False
             ## load data from HITRAN linelists
-            # tline = hitran.get_line(species)
-            # ## Trim lines that are too weak to matter
+            ## Trim lines that are too weak to matter
             if species in species_to_fit:
-                min_S296K=1e-25
+                t_min_S296K=min_S296K
             else:
-                τpeak_min = 1e-3    # approx minimum peak τ to include a line
-                min_S296K = τpeak_min*1e-3/p['species'][species]['N']    # resulting approx min S296K
-            # tline.limit_to_match(min_S296K=min_S296K)
+                τpeak_min = τpeak_min    # approx minimum peak τ to include a line
+                t_min_S296K = τpeak_min*1e-3/p['species'][species]['N']    # resulting approx min S296K
             ## add lines
             model.add_hitran_line(
                 species,
                 Teq=p['Teq'],
                 Nchemical_species=p['species'][species]['N'],
                 pair=p['species'][species]['pair'],
-                match={'min_S296K':min_S296K,},
+                match={'min_S296K':t_min_S296K,},
                 ncpus=self.ncpus,
-                nfwhmL=3000,
+                nfwhmL=nfwhmL,
                 lineshape='voigt',)
         ## uninterpolate model grid
         if p['interpolate_model'] is not None:
@@ -2509,14 +2579,15 @@ class FitAbsorption():
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
         if 'intensity' not in p:
-            p['intensity'] = {'spline_step':10, 'spline_order':3,}
+            p['intensity'] = {'spline_step':10, 'spline_order':intensity_spline_order,}
             xspline,yspline,t = tools.fit_spline_to_extrema_or_median(
                 self.experiment.x,
                 self.experiment.y,
                 xi=p['intensity']['spline_step'])
             p['intensity']['spline'] = [[tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
-        model.autovary_in_range(p['intensity']['spline'],vary=fit_intensity)
-        model.multiply_spline(knots=p['intensity']['spline'],order=p['intensity']['spline_order'])
+        for x,parameter in p['intensity']['spline']:
+            parameter.vary = False
+        model.multiply_spline(knots=p['intensity']['spline'],order=p['intensity']['spline_order'],autovary_in_range=fit_intensity)
         ## shift entires spectrum -- light leakage or inteferometry
         ## problem that adds signal and shifts zero baseline
         if fit_shift or 'shift' in p:
@@ -2526,7 +2597,6 @@ class FitAbsorption():
                 p['shift']['spline'] = [[tx,P(0,False,1e-7)] for tx in xspline]
             model.autovary_in_range(p['shift']['spline'],vary=fit_shift)
             model.add_spline(knots=p['shift']['spline'],order=p['shift']['spline_order'])
-
         ## scale by sinusoidal background, vary points completely within range
         if fit_sinusoid and 'sinusoid' not in p:
                 ## add new sinusoid spline
@@ -2553,8 +2623,8 @@ class FitAbsorption():
                     val.vary = fit_instrument
                     val.bounds = (1e-4,1)  
             model.convolve_with_instrument_function(**p['instrument_function'])
-        ## build it now
-        model.construct()
+        # ## build it now
+        # model.construct()
         return model
         
     def load_parameters(self,filename):
@@ -2570,13 +2640,16 @@ class FitAbsorption():
         directory."""
         tools.mkdir(directory,trash_existing=True)
         self.save_parameters(f'{directory}/parameters.py')
-        if self.model is not None:
+        ## get uniquified model names
+        model_names = tools.uniquify_strings(
+            [model.name for model in self.models])
+        for model,name in zip(self.models,model_names):
             Dataset(
-                x=self.model.x,
-                ymod=self.model.y,
-                yexp=self.model.yexp,
-                yres=self.model.get_residual(),
-            ).save(f'{directory}/spectrum',filetype='directory')
+                x=model.x,
+                ymod=model.y,
+                yexp=model.yexp,
+                yres=model.get_residual(),
+            ).save(f'{directory}/model/{name}',filetype='directory')
         
 
 def collect_fit_absorption_results(parameters):

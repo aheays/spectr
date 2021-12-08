@@ -73,7 +73,6 @@ def calculate_spectrum(
     ## multiprocessing version  -- divide x-range between processes
     elif multiprocess_divide == 'x':
         ## get indices to divide lines
-        # print('Timing initiated x') ; import time ; timer = time.time() # DEBUG
         with multiprocessing.Pool(ncpus) as p:
             y = []
             n = len(x)
@@ -97,13 +96,9 @@ def calculate_spectrum(
                 p.join()
                 raise err
             y = np.concatenate([t.get() for t in y])
-        # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-        # print('DEBUG:', y.min(),y.max())
         return y
-
     elif multiprocess_divide == 'xshared':
         ## get indices to divide lines
-        # print('Timing initiated xshared') ; import time ; timer = time.time() # DEBUG
         n = len(x)
         jstep = int(n/ncpus) + 1
         jbeg = 0
@@ -129,14 +124,10 @@ def calculate_spectrum(
                 p.terminate()
                 p.join()
                 raise err
-        # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-        # print('DEBUG:', y.min(),y.max())
         return y
 
     elif multiprocess_divide == 'lines_shared':
         ## get indices to divide lines
-        # import time ; timer = time.time() # DEBUG
-        # print('Timing initiated xshared') ; import time ; timer = time.time() # DEBUG
         n = len(line_args[0])
         jstep = int(n/ncpus) + 1
         jbeg = 0
@@ -162,9 +153,6 @@ def calculate_spectrum(
                 p.terminate()
                 p.join()
                 raise err
-        # print('Time elapsed ddd:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-        # print('DEBUG:', y.min(),y.max())
-        # print('sub:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
         return y
 
     else:
@@ -276,19 +264,26 @@ def voigt(x,
           ΓL=1,ΓG=1,            # fwhm
           nfwhmL=None,          # maximum Lorentzian widths to include
           nfwhmG=None,          # maximum Gaussian widths to include -- pure Lorentzian outside this
-          yin = None            # set to add this line in place to an existing specturm of size matching x
+          yin = None,            # set to add this line in place to an existing specturm of size matching x
+          verbose=False,
 ):
     "Voigt profile -- x must be sorted for correct and efficient noninfinity nfwhmG and nfwhmL."
     b = 0.8325546111576 # np.sqrt(np.log(2))
     norm = 1.0644670194312262*ΓG # sqrt(2*pi/8/log(2))
     if ΓG == 0:
         ## pure Lorentzian
+        if verbose:
+            print('pure Lorentzian')
         return lorentzian(x,x0,S,ΓL,nfwhm=nfwhmL,yin=yin)
     elif ΓL == 0:
         ## pure Gaussian
+        if verbose:
+            print('pure Gaussian')
         return gaussian(x,x0,S,ΓG,yin=yin)
     elif nfwhmG is None:
         ## full calculation
+        if verbose:
+            print('full Voigt')
         if yin is None:
             return S*special.wofz((2.*(x-x0)+1.j*ΓL)*b/ΓG).real/norm
         else:
@@ -296,11 +291,15 @@ def voigt(x,
             return yin
     elif nfwhmL is None and nfwhmG is not None:
         ## Lorentzian wings
+        if verbose:
+            print('Voigt with Lorentzian wings')
         y = lorentzian(x,x0,S,ΓL,yin=yin)
         i0,i1 = np.searchsorted(x,[x0-nfwhmG*ΓG,x0+nfwhmG*ΓG])
         y[i0:i1] = voigt(x[i0:i1],x0,S,ΓL,ΓG)
     elif nfwhmL is not None and nfwhmG is not None:
         ## Lorentzian wings and cutoff
+        if verbose:
+            print('Voigt with Lorentzian wings and cutoff')
         if yin is None:
             y = np.zeros(x.shape,dtype=float)
         else:

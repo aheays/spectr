@@ -107,18 +107,18 @@ def _df0(self,Ereduced,species,dspecies,label,dlabel,v,dv,Σ,dΣ,ef,ddef,J,dJ,E,
     return dEreduced
 prototypes['Ereduced'] = dict(description="Reduced level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('species','label','v','Σ','ef','J','E'),(_f0,_df0)),],)
 
-def _f0(self,J,E):
+def _f0(self,JJ,E):
     """Compute separate best-fit reduced energy levels for each
     sublevel rotational series."""
-    Ereduced_common = E - np.polyval(self.Ereduced_common_polynomial,J*(J+1))
+    Ereduced_common = E - np.polyval(np.polyfit(JJ,E,1), JJ)
     return Ereduced_common
-def _df0(self,Ereduced_common,J,dJ,E,dE):
+def _df0(self,Ereduced_common,JJ,dJJ,E,dE):
     """Uncertainty calculation to go with _f0."""
     if dE is None:
         raise InferException()
     dEreduced_common = dE
     return dEreduced_common
-prototypes['Ereduced_common'] = dict(description="Reduced level energy common to all bands." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('J','E'),(_f0,_df0)),],)
+prototypes['Ereduced_common'] = dict(description="Reduced level energy common to all bands." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('JJ','E'),(_f0,_df0)),],)
 
 
 ## infer function for Ereduced_by_JJ etc is set at import time by
@@ -543,6 +543,10 @@ def _get_key_from_qn(self,qn,key):
 def _qn_hash(self,*qn):
     """Compute qn hash."""
     _qnhash = [hash(qni) for qni in zip(*qn)]
+    # _qnhash = np.empty(len(qn[0]),dtype=int)
+    # for i,qni in enumerate(zip(*qn)):
+        # qni = tuple([t.strip() if isinstance(t,str) else t for t in qni])
+        # _qnhash[i] = hash(qni)
     return _qnhash
 
 def _calc_reduced(self,x,y,*z):
@@ -605,7 +609,13 @@ class Base(Dataset):
     default_zkeys = ()
     default_prototypes = {}
 
-    def __init__(self,*args,encoded_qn=None,**kwargs):
+    def __init__(
+            self,
+            *args,
+            encoded_qn=None,
+            defining_qn=None,   # overwrite built in defining_qn
+            **kwargs,
+    ):
         kwargs.setdefault('permit_nonprototyped_data',False)
         ## decode encoded_qn
         if encoded_qn is not None:
@@ -623,6 +633,8 @@ class Base(Dataset):
                             raise Exception
                         for key in qni:
                             t[key].append(qni[key])
+        if defining_qn is not None:
+            self.defining_qn = defining_qn
         Dataset.__init__(self,*args,**kwargs)
 
     def decode_qn(self,encoded_qn):
