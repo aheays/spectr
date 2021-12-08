@@ -17,9 +17,6 @@ from . import quantum_numbers
 from .dataset import Dataset
 from. exceptions import DatabaseException
 
-## load species data stored in a python dict
-from .data.hitran.species_data import species_data
-
 def _import_hapi(silence=True):
     """Import without accrediation message -- bad idea?"""
     from hapi import hapi
@@ -66,6 +63,7 @@ def get_isotopologues(chemical_species):
 
 _molparam = None
 def get_molparam(**match_keys_vals):
+    """Get molparam Dataset."""
     global _molparam
     ## load data if needed
     if _molparam is None:
@@ -75,6 +73,7 @@ def get_molparam(**match_keys_vals):
     return retval
 
 def get_molparam_row(species_ID,local_isotopologue_ID):
+    """Get Molparam data for one species/isotopologue"""
     retval = get_molparam().unique_row(
         species_ID=species_ID,
         local_isotopologue_ID=local_isotopologue_ID)
@@ -120,6 +119,7 @@ def download_linelist(
         data_directory='td',
         table_name=None,        # defaults to species
 ):
+    """Doiwnload linelist for a species"""
     hapi = _import_hapi()
     if table_name is None:
         table_name = species
@@ -158,8 +158,8 @@ def calc_spectrum(
 
 def load(filename,modify=True):
     """Load HITRAN .data file into a dictionary. If modify=True then
-    return as a Dataset with various changes in line the subclasses in
-    lines.py."""
+    return as a Dataset with various changes in line with the
+    subclasses in lines.py."""
     data = np.genfromtxt(
         expand_path(filename),
         dtype=[
@@ -250,14 +250,17 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
             ## make line object
             print(f'Making linelist for {species!r}')
             line = dataset.make(
-                classname=species_data[species]['classname'],
+                # classname=species_data[species]['classname'],
+                classname=database.get_species_property(
+                    database.get_species_property(species,'chemical_species'),
+                    'classname'),
                 description=f'HITRAN linelist for {species}, downloaded {date_string()}',
                 Zsource='HITRAN',)
             line.load_from_hitran(hitran_filename)
             line['mass']                # compute now for speed later
-            ## add extra quantum number myself in line in-place
-            if 'load_tweak' in species_data[species]:
-                species_data[species]['load_tweak'](line)
+            # ## add extra quantum number myself in line in-place
+            # if 'load_tweak' in species_data[species]:
+                # species_data[species]['load_tweak'](line)
         else:    
             raise DatabaseException(f'Species or chemical_species unknown to hitran.py: {species!r}')
         ## save data
@@ -312,6 +315,7 @@ def get_level(species,name=None,match=None,force_download=False,**match_kwargs):
         level.name = name
     level.limit_to_match(match,**match_kwargs)
     return level
+
 
 
 

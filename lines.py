@@ -1741,11 +1741,9 @@ class LinearTriatomic(Linear):
         for i,Q in enumerate(data.pop('Q_l')):
             data['ΔJ'][i] = translatePQR[Q[5]]
             data['J_l'][i] = float(Q[6:])
-        # ## add all this data to self
-        # for key,val in quantum_numbers.items():
-            # self[key] = val
         ## not used
         data.unset('Q_u')
+        ## add to self
         self.concatenate(data)
             
 def generate_from_levels(
