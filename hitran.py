@@ -211,7 +211,7 @@ def load(filename,modify=True):
         retval.unset('asterisk')
     return retval
 
-@functools.lru_cache
+@tools.cache
 def _load_and_cache(filename):
     line = dataset.load(filename)
     return line
@@ -249,11 +249,14 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
                 download_linelist(species,νbeg=0,νend=999999,data_directory=directory,table_name='hitran_linelist')
             ## make line object
             print(f'Making linelist for {species!r}')
-            line = dataset.make(
-                # classname=species_data[species]['classname'],
-                classname=database.get_species_property(
+            try:
+                classname = database.get_species_property(
                     database.get_species_property(species,'chemical_species'),
-                    'classname'),
+                    'classname')
+            except DatabaseException:
+                classname = 'Generic'
+            line = dataset.make(
+                classname=f'lines.{classname}',
                 description=f'HITRAN linelist for {species}, downloaded {date_string()}',
                 Zsource='HITRAN',)
             line.load_from_hitran(hitran_filename)
@@ -297,15 +300,7 @@ def get_level(species,name=None,match=None,force_download=False,**match_kwargs):
     else:
         ## compute from line
         line = get_line(species,force_download=force_download)
-        level = line.get_lower_level(reduce_to='first')
-        level.concatenate(line.get_upper_level(reduce_to='first'))
-        ## remove duplicates
-        qnhash = [
-            hash(qni) for qni in zip(*[
-                level[qn] for qn in level.defining_qn
-                    if level.is_known(qn)])]
-        t,i = np.unique(qnhash,return_index=True)
-        level.index(i)
+        level = line.get_level(reduce_to='first')
         level.sort('E')
         level.name =f'hitran_level_{species}'
         ## save to disk cache
