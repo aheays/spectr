@@ -1000,7 +1000,13 @@ class Dataset(optimise.Optimiser):
             setattr(retval,attr_to_deepcopy, deepcopy(getattr(self,attr_to_deepcopy), memo))
         return retval
 
-    def copy(self,*args_copy_from,name=None,**kwargs_copy_from):
+    def copy(
+            self,
+            name=None,
+            *args_copy_from,
+            # set_values=None,
+            **kwargs_copy_from,
+    ):
         """Get a copy of self with possible restriction to indices and
         keys."""
         if name is None:
@@ -1008,6 +1014,9 @@ class Dataset(optimise.Optimiser):
         retval = self.__class__(name=name) # new version of self
         retval.copy_from(self,*args_copy_from,**kwargs_copy_from)
         retval.pop_format_input_function()
+        # if set_values is not None:
+            # for key,val in set_values.items():
+                # retval[key] = val
         return retval
 
     def copy_from(
@@ -1410,9 +1419,9 @@ class Dataset(optimise.Optimiser):
             raise NonUniqueValueException(f'Multiple matching rows found: {match_args=} {match_kwargs=}')
         return i[0]
 
-    def unique_row(self,return_index=False,**matching_keys_vals):
+    def unique_row(self,*match_args,return_index=False,**matching_keys_vals):
         """Return uniquely-matching row as a dictionary."""
-        i = self.find_unique(**matching_keys_vals)
+        i = self.find_unique(*match_args,**matching_keys_vals)
         d = self.as_flat_dict(index=i)
         if return_index:
             return d,i
@@ -2140,7 +2149,7 @@ class Dataset(optimise.Optimiser):
         ## make sure concatenated keys are known to self
         for key,subkey in keys_subkeys:
             if not self.is_known(key,subkey):
-                raise Exception('Concatenated (key,subkey) not known to self: {(key,subkey)!r}')
+                raise Exception(f'Concatenated (key,subkey) not known to self: {(key,subkey)!r}')
         ## delete any inferences to concatenated keys in self
         for key in keys:
             self.unlink_inferences(keys)
@@ -2194,45 +2203,6 @@ class Dataset(optimise.Optimiser):
             for key,subkey in keys_subkeys:
                 self.set(key,subkey,_get_new_data(key,subkey),index)
 
-
-        # ## set extending data 
-        # set_keys = []       # save for optimisation
-        # for key,data in self._data.items():
-            # for subkey in self.vector_subkinds:
-                # if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
-                    # self.assert_known(key,subkey)
-                    # new_dataset.assert_known(key,subkey)
-                    # set_keys.append((key,subkey))
-                    # if self.is_known(key,subkey) and new_dataset.is_known(key,subkey):
-                        # new_val = new_dataset[key,subkey]
-                    # elif (key,subkey) in defaults:
-                        # new_val = defaults[key,subkey]
-                    # else:
-                        # raise Exception(f'Unknown to concatenated data: ({repr(key)},{repr(subkey)})')
-                    # ## increase char-length of string arrays if needed and insert new data
-                    # self._increase_char_length_if_necessary(key,subkey,new_val)
-                    # data[subkey][index] = self._get_subkey_attribute_property(key,subkey,'cast')(new_val)
-        # ## if optimised then add construct function
-        # if optimise:
-            # def construct_function():
-                # if (new_dataset._global_modify_time > self._global_modify_time
-                    # or self._global_modify_time > self._last_construct_time):
-                    # ## something has changed
-                    # for key,subkey in set_keys:
-                        # if new_dataset.is_known(key,subkey):
-                            # if (new_dataset[key,'_modify_time'] > self[key,'_modify_time']
-                                # or self[key,'_modify_time'] > self._last_construct_time):
-                                # ## update from new_dataset
-                                # self.set(key,subkey,new_dataset[key,subkey,new_index],index,set_changed_only=True)
-                        # else:
-                            # if self[key,'_modify_time'] > self._last_construct_time:
-                                # ## update from defaults
-                                # self.set(key,subkey,default[key,subkey],index,set_changed_only=True)
-            # self.add_construct_function(construct_function,construct_on_add=False)
-            # self.add_suboptimiser(new_dataset)
-            # new_dataset.permit_indexing = False
-            # self.permit_indexing = False
-            
     def append(self,keys_vals=None,**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""
         if keys_vals is None:
