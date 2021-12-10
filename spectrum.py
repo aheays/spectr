@@ -197,8 +197,8 @@ class Experiment(Optimiser):
         if 'Acquisition' in d:
             ## opus resolution is zero-to-zero of central sinc function peak
             ##self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
-            self.experimental_parameters['resolution'] = opusdata.get_resolution(kind='resolution')
-            self.experimental_parameters['sinc_fwhm'] = opusdata.get_resolution(kind='fwhm')
+            self.experimental_parameters['resolution'] = opusdata.get_resolution(kind='resolution',return_none_on_error=True)
+            self.experimental_parameters['sinc_fwhm'] = opusdata.get_resolution(kind='fwhm',return_none_on_error=True)
         ## if necessary load further filenames and average
         if len(other_filenames) > 0:
             for filename in other_filenames: 
@@ -355,6 +355,9 @@ class Experiment(Optimiser):
     ):                          
         """Plot spectrum."""
         self.construct()
+        ##
+        if self.x is None:
+            raise Exception('No data. File loaded?')
         ## use current figure or start a new one wit number fig.
         if fig is None:
             fig = plotting.gcf()
@@ -395,7 +398,6 @@ class Experiment(Optimiser):
     @optimise_method()
     def normalise_background(self):
         """Use fit_spline_to_extrema_or_median to fit the background in the presence of lines."""
-        # if self._clean_construct:
         if self.background is None:
             raise Exception(r'Background must be defined before calling normalise_background.')
         self.y /= self.background 
@@ -588,85 +590,6 @@ class Model(Optimiser):
                 self.y = self.y[::self._interpolate_factor]
             self._interpolate_factor = None
 
-    def add_absorption_cross_section_from_file(
-            self,
-            name,               # for new input line
-            filename,           # the data filename, loaded with file_to_dict if xkey/ykey given else file_to_array
-            column_density=1e16,              # to compute optical depth
-            xshift=None, yshift=None,             # shiftt the data
-            xscale=None, yscale=None, # scale the data
-            xbeg=None, xend=None, # limits to add
-            xkey=None, ykey=None, # in case file is indexable by keys
-            xtransform=None,      # modify x data with this function
-            resample_interval=None, # resample for some reason
-            **file_to_dict_or_array_kwargs,
-    ):
-        """Load a cross section from a file. Interpolate this to experimental
-        grid. Add absorption according to given column density, which
-        can be optimised."""
-        ## add adjustable parameters for optimisation
-        p = self.add_parameter_set(
-            note=f'add_absorption_cross_section_from_file name={name} file={filename}',
-            column_density=column_density, xshift=xshift,
-            yshift=yshift, xscale=xscale, yscale=yscale,
-            step_scale_default={'column_density':0.01, 'xshift':1e-3, 'yshift':1e-3,
-                                'xscale':1e-8, 'yscale':1e-3,})
-        ## new input line
-        def f(xbeg=xbeg,xend=xend):
-            retval = f'{self.name}.add_absorption_cross_section_from_file({repr(name)},{repr(filename)}'
-            if xbeg is not None:
-                retval += f',xbeg={repr(xbeg)}'
-            if xend is not None:
-                retval += f',xend={repr(xend)}'
-            if xkey is not None:
-                retval += f',xkey={repr(xkey)}'
-            if ykey is not None:
-                retval += f',ykey={repr(ykey)}'
-            if xtransform is not None:
-                retval += f',xtransform={repr(xtransform)}'
-            if len(p)>0:
-                retval += f',{p.format_input()}'
-            retval += ')'
-            return(retval)
-        self.add_format_input_function(f)
-        if xkey is None and ykey is None:
-            xin,σin = tools.file_to_array_unpack(filename,**file_to_dict_or_array_kwargs)
-        elif xkey is not None and ykey is not None:
-            t = tools.file_to_dict(filename,**file_to_dict_or_array_kwargs)
-            xin,σin = t[xkey],t[ykey]
-        else:
-            raise Exception('Forbidden case.')
-        if xtransform is not None:
-            xin = getattr(my,xtransform)(xin)
-        ## resample if requested to remove noise
-        if resample_interval is not None:
-            xt = np.arange(xin[0],xin[-1],resample_interval)
-            xin,σin = xt,lib_molecules.resample_data(xin,σin,xt)
-        ## set range if specified
-        if xbeg is not None:
-            i = xin>=xbeg
-            xin,σin = xin[i],σin[i]
-        if xend is not None:
-            i = xin<=xend
-            xin,σin = xin[i],σin[i]
-        ## add to model
-        cache = {}
-        def f():
-            if len(xin)==0:
-                return # nothing to add
-            ## compute transmission if necessary
-            if 'transmission' not in cache or p.timestamp>self.timestamp:
-                cache['transmission'] = np.exp(
-                    -p['column_density']
-                    *tools.spline(
-                        xin*(p['xscale'] if xscale is not None else 1) - (p['xshift'] if xshift is not None else 0),
-                        σin*(p['yscale'] if yscale is not None else 1) + (p['yshift'] if yshift is not None else 0),
-                        self.x))
-                for key in p.keys():
-                    cache[key]  = p[key]
-            self.y *= cache['transmission'] # add to model
-        self.add_construct_function(f)
-
     @format_input_method()
     def add_hitran_line(self,species,match=None,*args,**kwargs):
         """Automatically load a HITRAN linelist for a species
@@ -851,10 +774,90 @@ class Model(Optimiser):
 
     @optimise_method()
     def add_absorption_cross_section(self,x,y,N=1,_cache=None):
+        """Add absorption cross section in arrays x and y."""
         if self._clean_construct:
-            _cache['ys'] = tools.spline(x,y,self.x)
+            _cache['ys'] = tools.spline(x,y,self.x,out_of_bounds='zero')
         ys = _cache['ys']
         self.y *= np.exp(-N*ys)
+
+    def add_absorption_cross_section_from_file(
+            self,
+            name,               # for new input line
+            filename,           # the data filename, loaded with file_to_dict if xkey/ykey given else file_to_array
+            column_density=1e16,              # to compute optical depth
+            xshift=None, yshift=None,             # shiftt the data
+            xscale=None, yscale=None, # scale the data
+            xbeg=None, xend=None, # limits to add
+            xkey=None, ykey=None, # in case file is indexable by keys
+            xtransform=None,      # modify x data with this function
+            resample_interval=None, # resample for some reason
+            **file_to_dict_or_array_kwargs,
+    ):
+        """Load a cross section from a file. Interpolate this to experimental
+        grid. Add absorption according to given column density, which
+        can be optimised."""
+        ## add adjustable parameters for optimisation
+        p = self.add_parameter_set(
+            note=f'add_absorption_cross_section_from_file name={name} file={filename}',
+            column_density=column_density, xshift=xshift,
+            yshift=yshift, xscale=xscale, yscale=yscale,
+            step_scale_default={'column_density':0.01, 'xshift':1e-3, 'yshift':1e-3,
+                                'xscale':1e-8, 'yscale':1e-3,})
+        ## new input line
+        def f(xbeg=xbeg,xend=xend):
+            retval = f'{self.name}.add_absorption_cross_section_from_file({repr(name)},{repr(filename)}'
+            if xbeg is not None:
+                retval += f',xbeg={repr(xbeg)}'
+            if xend is not None:
+                retval += f',xend={repr(xend)}'
+            if xkey is not None:
+                retval += f',xkey={repr(xkey)}'
+            if ykey is not None:
+                retval += f',ykey={repr(ykey)}'
+            if xtransform is not None:
+                retval += f',xtransform={repr(xtransform)}'
+            if len(p)>0:
+                retval += f',{p.format_input()}'
+            retval += ')'
+            return(retval)
+        self.add_format_input_function(f)
+        if xkey is None and ykey is None:
+            xin,σin = tools.file_to_array_unpack(filename,**file_to_dict_or_array_kwargs)
+        elif xkey is not None and ykey is not None:
+            t = tools.file_to_dict(filename,**file_to_dict_or_array_kwargs)
+            xin,σin = t[xkey],t[ykey]
+        else:
+            raise Exception('Forbidden case.')
+        if xtransform is not None:
+            xin = getattr(my,xtransform)(xin)
+        ## resample if requested to remove noise
+        if resample_interval is not None:
+            xt = np.arange(xin[0],xin[-1],resample_interval)
+            xin,σin = xt,lib_molecules.resample_data(xin,σin,xt)
+        ## set range if specified
+        if xbeg is not None:
+            i = xin>=xbeg
+            xin,σin = xin[i],σin[i]
+        if xend is not None:
+            i = xin<=xend
+            xin,σin = xin[i],σin[i]
+        ## add to model
+        cache = {}
+        def f():
+            if len(xin)==0:
+                return # nothing to add
+            ## compute transmission if necessary
+            if 'transmission' not in cache or p.timestamp>self.timestamp:
+                cache['transmission'] = np.exp(
+                    -p['column_density']
+                    *tools.spline(
+                        xin*(p['xscale'] if xscale is not None else 1) - (p['xshift'] if xshift is not None else 0),
+                        σin*(p['yscale'] if yscale is not None else 1) + (p['yshift'] if yshift is not None else 0),
+                        self.x))
+                for key in p.keys():
+                    cache[key]  = p[key]
+            self.y *= cache['transmission'] # add to model
+        self.add_construct_function(f)
 
     def add_rautian_absorption_lines(self,lines,τmin=None,_cache=None,):
         ## x not set yet
@@ -1041,6 +1044,15 @@ class Model(Optimiser):
                 x,y = tools.file_to_array_unpack(filename)
                 _cache['x'],_cache['y'] = x,y
             x,y = _cache['x'],_cache['y']
+            ys = tools.spline(x,y,self.x)
+            _cache['ys'] = ys
+        ys = _cache['ys']
+        self.y += ys * float(scale)
+
+    @optimise_method()
+    def add_arrays(self,x,y,scale=1,_cache=None):
+        """Add x and y arrays to model, splining to model grid."""
+        if self._clean_construct:
             ys = tools.spline(x,y,self.x)
             _cache['ys'] = ys
         ys = _cache['ys']
@@ -2164,7 +2176,8 @@ def load_spectrum(filename,**kwargs):
 
 class Spectrum(Dataset):
 
-    default_xkey = 'x'
+    default_xkeys = 'x'
+    default_ykeys = 'y'
     default_zkeys = ()
     default_prototypes = {
         'x':{'description':'x-scale'          , 'kind':'f' , 'fmt':'0.8f' , 'infer':[]} , 

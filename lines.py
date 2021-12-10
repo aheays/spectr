@@ -883,7 +883,7 @@ class Generic(levels.Base):
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
-        data = hitran.load(filename)
+        data = hitran.load_linelist(filename)
         ## not used
         data.unset('V_u')
         data.unset('V_l')
@@ -1533,7 +1533,7 @@ class Diatomic(Linear):
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
         from . import hitran
-        data = hitran.load(filename)
+        data = hitran.load_linelist(filename)
         ## V_u
         qn = {'label_u':[],'v_u':[],'Ω_u':[]}
         for V_u in data.pop('V_u'):
@@ -1747,7 +1747,7 @@ class LinearTriatomic(Linear):
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
-        data = hitran.load(filename)
+        data = hitran.load_linelist(filename)
         n = len(data)
         ## interpret specific quantum numbers
         data['ΔJ'] = np.empty(n,dtype=int)

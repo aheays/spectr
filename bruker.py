@@ -68,12 +68,15 @@ class OpusData:
         else:
             raise Exception(f"Unknown opus apodisation function: {repr(self.data['Fourier Transformation']['APF'])}")
 
-    def get_resolution(self,kind='resolution'):
+    def get_resolution(self,kind='resolution',return_none_on_error=False):
         """Return spectral resolution."""
         if (f'ScSm Data Parameter' not in self.data
               or 'FXV' not in self.data[f'ScSm Data Parameter']
               or 'NPT' not in self.data[f'ScSm Data Parameter']):
-            raise Exception(f'Could not find resolution parameter in opus data')
+            if return_none_on_error:
+                return None
+            else:
+                raise Exception(f'Could not find resolution parameter in opus data')
         ## get spectrum grid step (cm-1)
         retval = ((self.data[f'ScSm Data Parameter']['LXV']
                -self.data[f'ScSm Data Parameter']['FXV'])

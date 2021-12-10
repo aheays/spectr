@@ -2369,9 +2369,15 @@ class Dataset(optimise.Optimiser):
         elif isinstance(fig,int):
             fig = plotting.qfig()
         ## xkey, ykeys, zkeys
+        if xkeys is None:
+            if self.default_xkeys is not None:
+                xkeys = copy(self.default_xkeys)
         xkeys = list(tools.ensure_iterable(xkeys))
         if ykeys is None:
-            ykeys = []
+            if self.default_ykeys is not None:
+                ykeys = copy(self.default_ykeys)
+            else:
+                ykeys = []
         ykeys = list(tools.ensure_iterable(ykeys))
         if ykeys_re is not None:
             ykeys += [key for key in self if re.match(ykeys_re,key)]

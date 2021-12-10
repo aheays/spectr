@@ -156,7 +156,7 @@ def calc_spectrum(
         ax.set_ylabel('Absorption coefficient')
     return ν,coef
 
-def load(filename,modify=True):
+def load_linelist(filename,modify=True):
     """Load HITRAN .data file into a dictionary. If modify=True then
     return as a Dataset with various changes in line with the
     subclasses in lines.py."""
@@ -210,6 +210,47 @@ def load(filename,modify=True):
         retval.unset('Iref')
         retval.unset('asterisk')
     return retval
+
+def load_spectrum(filename):
+    from .spectrum import Spectrum
+    retval = Spectrum('hitran_spectrum')
+    retval.global_attributes['filename'] = filename
+    with open(tools.expand_path(filename),'r') as fid:
+        ## read header
+        line = fid.readline()
+        strip = lambda x: x.strip()
+        def broadener(x):
+            x = x.strip()
+            if len(x) == 0:
+                x = 'self'
+            return x
+        for key,length,cast in (
+                ('species',20,strip),
+                ('xbeg',10,float),
+                ('xend',10,float),
+                ('npoints',7,int),
+                ('temperature',7,float),
+                ('pressure',6,float),
+                ('ymax',10,float),
+                ('resolution',5,float),
+                ('name',15,strip),
+                ('unused',4,strip),
+                ('broadener',3,broadener),
+                ('reference',3,int),
+        ):
+            retval.global_attributes[key],line = cast(line[:length]),line[length:]
+        ## read spectrum
+        data = fid.readlines()
+        retval['y'] = np.concatenate([np.array(t.split(),dtype=float) for t in data])[:retval.global_attributes['npoints']]
+        retval['x'] = np.linspace(
+            retval.global_attributes['xbeg'],
+            retval.global_attributes['xend'],
+            retval.global_attributes['npoints'],
+        )
+    return retval
+        
+        
+
 
 @tools.cache
 def _load_and_cache(filename):
