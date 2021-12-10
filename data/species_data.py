@@ -693,12 +693,6 @@ data = {
         'mass'              : 71.9654,
     },
 
-    'N₂O'     :     {
-        'chemical_species'  : 'N₂O',
-        'mass'              : 48.0323,
-        'characteristic_infrared_bands': [[2175,2270],],
-        'characteristic_infrared_lines': [[2199,2210],],
-    },
 
     'CH₃Cl'   :     {
         'chemical_species'  : 'CH₃Cl',
@@ -768,6 +762,24 @@ data = {
         'chemical_species'  : 'OCS',
         'mass'              : 62,
     },
+
+    'N₂O'     :     {
+        'point_group': 'C∞v',
+        'classname': 'Linear',
+        'chemical_species'  : 'N₂O',
+        'mass'              : 48.0323,
+        'characteristic_infrared_bands': [[2175,2270],],
+        'characteristic_infrared_lines': [[2199,2210],],
+    },
+
+    '¹⁴N₂¹⁶O'     :     {
+        'chemical_species'  : 'N₂O',
+    },
+
+    '¹⁵N₂¹⁶O'     :     {
+        'chemical_species'  : 'N₂O',
+    },
+
 
 }
 
