@@ -53,7 +53,7 @@ def _f0(self,species):
     species_object = kinetics.get_species(species)
     return species_object['chemical_name']
 prototypes['chemical_species'] = dict(description="Chemical species without isotope specification" ,kind='U' ,infer=[('species',_f0)])
-prototypes['point_group']  = dict(description="Symmetry point group of species.", kind='U',fmt='s', infer=[(('species',),lambda self,species:database.get_species_property(species,'point_group'))])
+prototypes['point_group']  = dict(description="Symmetry point group of species", kind='U',fmt='s', infer=[(('species',),lambda self,species:database.get_species_property(species,'point_group'))])
 
 @vectorise(vargs=(1,),dtype=float)
 def _f0(self,species):
@@ -118,25 +118,25 @@ def _df0(self,Ereduced_common,JJ,dJJ,E,dE):
         raise InferException()
     dEreduced_common = dE
     return dEreduced_common
-prototypes['Ereduced_common'] = dict(description="Reduced level energy common to all bands." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('JJ','E'),(_f0,_df0)),],)
+prototypes['Ereduced_common'] = dict(description="Reduced level energy common to all bands" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('JJ','E'),(_f0,_df0)),],)
 
 
 ## infer function for Ereduced_by_JJ etc is set at import time by
 ## _collect_prototypes
-prototypes['Ereduced_JJ'] = dict(description="Level energy reduced by a best-fit polynomial in terms of J(J+1)." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],)
-prototypes['Ereduced_vv'] = dict(description="Level energy reduced by a best-fit polynomial in terms of (v+1/2)." ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],)
+prototypes['Ereduced_JJ'] = dict(description="Level energy reduced by a best-fit polynomial in terms of J(J+1)" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],)
+prototypes['Ereduced_vv'] = dict(description="Level energy reduced by a best-fit polynomial in terms of (v+1/2)" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[],)
 
 
 @vectorise(cache=True,vargs=(1,))
 def _f0(self,point_group):
-    """Calculate heteronuclear diatomic molecule level degeneracy."""
+    """Calculate heteronuclear diatomic molecule level degeneracy"""
     if point_group in ('K','C∞v'):
         return 1.
     else:
         raise InferException(f'Trivial gnuclear only possible from point_group in (K,C∞v)')
 @vectorise(cache=True,vargs=(1,2,3))
 def _f1(self,point_group,Inuclear,sa):
-    """Calculate homonuclear diatomic molecule level degeneracy."""
+    """Calculate homonuclear diatomic molecule level degeneracy"""
     if point_group in ('D∞h'):
         ## get total number of even or odd exchange combinations
         ntotal = (2*Inuclear+1)**2
@@ -157,14 +157,14 @@ def _f1(self,point_group,Inuclear,sa):
     else:
         raise InferException()
 prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)" , kind='i' , infer=[(('point_group',),_f0),( ('point_group','Inuclear','sa'),_f1),])
-prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei.", kind='f',infer=[(('species',), lambda self,species: database.get_species_property(species,'Inuclear'))])
+prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei", kind='f',infer=[(('species',), lambda self,species: database.get_species_property(species,'Inuclear'))])
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[('At',lambda self,At: 5.309e-12*At,)])
 prototypes['Γexp'] = dict(description="Reference level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[])
 prototypes['Γres'] = dict(description="Residual error of level natural linewidth" ,units='cm-1.FWHM',kind='f' ,fmt='<14.7f' ,infer=[(('Γ','Γexp'),lambda self,Γ,Γexp: Γ-Γexp)])
-prototypes['Γd'] = dict(description="Dissociation width of level." ,units="cm-1 FWHM",kind='f',default=0.0,cast=cast_abs_float_array,fmt='<10.5g', infer=[('Ad',lambda self,Ad: 5.309e-12*Ad)])
-prototypes['Γe'] = dict(description="Emission width of level." ,units="cm-1 FWHM",kind='f',default=0.0,cast=cast_abs_float_array,fmt='<10.5g', infer=[('Ae',lambda self,Ae: 5.309e-12*Ae)])
+prototypes['Γd'] = dict(description="Dissociation width of level" ,units="cm-1 FWHM",kind='f',default=0.0,cast=cast_abs_float_array,fmt='<10.5g', infer=[('Ad',lambda self,Ad: 5.309e-12*Ad)])
+prototypes['Γe'] = dict(description="Emission width of level" ,units="cm-1 FWHM",kind='f',default=0.0,cast=cast_abs_float_array,fmt='<10.5g', infer=[('Ae',lambda self,Ae: 5.309e-12*Ae)])
 prototypes['τ'] = dict(description="Total decay lifetime",units="s", kind='f', cast=cast_abs_float_array,infer=[(('A',), lambda self,A: 1/A,)])       
 prototypes['At'] = dict(description="Total decay rate",units="s-1", kind='f', fmt='0.5e',cast=cast_abs_float_array,infer=[
     (('Γ',),lambda self,Γ: Γ/5.309e-12), 
@@ -179,7 +179,7 @@ prototypes['J'] = dict(description="Total angular momentum quantum number exclud
 prototypes['JJ'] = dict(description="J(J+1)" , kind='f',fmt='g',infer=[('J',lambda self,J:J*(J+1))])
 prototypes['N'] = dict(description="Angular momentum excluding nuclear and electronic spin", kind='f', infer=[(('J','SR'),lambda self,J,SR: J-SR,)])
 prototypes['S'] = dict(description="Total electronic spin quantum number", kind='f',fmt='g',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'S'),)])
-# prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum.",units='cm-1', kind='f',infer=[((),lambda self,: 0.,)])
+# prototypes['Eref'] = dict(description="Reference point of energy scale relative to potential-energy minimum",units='cm-1', kind='f',infer=[((),lambda self,: 0.,)])
 prototypes['Teq'] = dict(description="Equilibriated temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array,default_step=0.1)
 prototypes['Tex'] = dict(description="Excitation temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq)],cast=cast_abs_float_array,default_step=0.1)
 prototypes['Tvib'] = dict(description="Vibrational excitation temperature",units="K", kind='f', fmt='0.2f', infer=[],cast=cast_abs_float_array,default_step=0.1)
@@ -229,7 +229,7 @@ def _f3(self,species,Tex,E,Eref,g,_qnhash,Zsource):
         t,j = np.unique(_qnhash[i],return_index=True)
         retval[i] = np.sum(g[i][j]*np.exp(-(E[i][j]-Eref[i][j])/(kB*Tex[0])))
     return retval
-prototypes['Z'] = dict(description="Partition function.", kind='f', fmt='<11.3e', infer=[
+prototypes['Z'] = dict(description="Partition function", kind='f', fmt='<11.3e', infer=[
     (('species','Tex','E','Eref','g','_qnhash','Zsource'),_f3),
     (('species','Tex','Eref','Zsource'),_f5),
     (('species','Tex','Eref','Zsource'),_f4),
@@ -249,7 +249,7 @@ def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
         t,k = np.unique(v[i][j],return_index=True)
         Zvib[i] = np.sum(np.exp(-(Tv[i][j][k]-Eref[i][j][k])/(kB*Tvib[0])))
     return Zvib
-prototypes['Zvib'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
+prototypes['Zvib'] = dict(description="Vibrational partition function", kind='f', fmt='<11.3e', infer=[
     (('species','Tvib','Eref','Tv','v','_qnhash','Zsource'),_f6),
 ])
 def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
@@ -266,7 +266,7 @@ def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
         t,j = np.unique(_qnhash[i],return_index=True)
         Zrot[i] = np.sum(np.exp(-(E[i][j]-Tv[i][j])/(kB*Trot[0])))
     return Zrot
-prototypes['Zrot'] = dict(description="Vibrational partition function.", kind='f', fmt='<11.3e', infer=[
+prototypes['Zrot'] = dict(description="Vibrational partition function", kind='f', fmt='<11.3e', infer=[
     (('species','Trot','E','Tv','g','v','_qnhash','Zsource'),_f6),
 ])
 
@@ -304,7 +304,7 @@ def _f0(self,species,E,Eref,g,Zsource):
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     α = g*np.exp(-(E-Eref)/(kB*Tex))/Z
     return α
-prototypes['α296K'] = dict(description="Equilibrium level population at 296K.",units="dimensionless", kind='f', fmt='<10.5e',cast=tools.cast_abs_float_array,infer=[(('species','E','Eref','g','Zsource'),_f0),])
+prototypes['α296K'] = dict(description="Equilibrium level population at 296K",units="dimensionless", kind='f', fmt='<10.5e',cast=tools.cast_abs_float_array,infer=[(('species','E','Eref','g','Zsource'),_f0),])
 
 ## should these columns even be in levels?
 prototypes['Nchemical_species'] = dict(description="Combined column density of all isotopolouges of this chemical species",units="cm-2",kind='a',fmt='<11.3e', infer=[])
@@ -336,34 +336,37 @@ def _f1(self,λv,Bv):
         raise InferException("Cannot determine LSsign from NaN or zero λv.")
     LSsign = np.sign(λv-Bv)
     return LSsign
-prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy.", kind='i',
+prototypes['LSsign'] = dict(description="For Λ>0 states this is the sign of the spin-orbit interacting energy. For Λ=0 states this is the sign of λ-B. In either case it controls whether the lowest Σ level is at the highest or lower energy", kind='i',
                             infer=[(('species','label'),lambda self,species,label: database.get_electronic_state_property(species,label,'LSsign')),
                                    ('Av',_f0),
                                    (('λv','Bv',),_f1),])
 
 prototypes['s'] = dict(description="s=1 for Σ- states and 0 for all other states", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'s'))])
-@vectorise(cache=True,vargs=(1,2))
-def _f0(self,ef,J):
-    """Calculate σv symmetry"""
-    exponent = np.zeros(ef.shape,dtype=int)
-    exponent[ef==-1] += 1
-    exponent[J%2==1] += 1
-    σv = np.full(ef.shape,+1,dtype=int)
-    σv[exponent%2==1] = -1
-    return σv
-prototypes['i'] = dict(description="Total parity.", kind='i',infer=[])
-prototypes['σv'] = dict(description="Symmetry with respect to σv reflection.", kind='i',infer=[(('ef','J'),_f0,)])
-prototypes['gu'] = dict(description="Symmetry with respect to reflection through a plane perpendicular to the internuclear axis.", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'gu'))])
-prototypes['sa'] = dict(description="Symmetry with respect to nuclear exchange, s=symmetric, a=antisymmetric.", kind='i',infer=[(('σv','gu'),lambda self,σv,gu: σv*gu,)])
 
+## inversion symmetry
+# @vectorise(cache=True,vargs=(1,2))
+def _f0(self,ef,J):
+    i = np.full(ef.shape,+1,dtype=int)
+    i[ef==-1] *= -1
+    i[J%2==1] *= -1
+    return σi
+prototypes['i'] = dict(description="Sign change on inversion, total parity", kind='i',infer=[(('ef','J'),_f0,)])
+prototypes['σv'] = dict(description="Linear molecule sign change on σv reflection", kind='i',infer=[('i',lambda self,i:i,)])
+prototypes['gu'] = dict(description="Sign change on inversion through the centre of symmetry", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'gu'))])
+prototypes['sa'] = dict(description="Linear molecule sign change on nuclear exchange)", kind='i',infer=[(('i','gu'),lambda self,i,gu: i*gu)])
 def _f0(self,S,Λ,s):
-    """Calculate gu symmetry for 1Σ- and 1Σ+ states only."""
+    """Calculate ef symmetry for non-degenerate 1Σ- and 1Σ+ states."""
     if np.any(S!=0) or np.any(Λ!=0):
         raise InferException('ef for Sp!=0 and Λ!=0 not implemented')
-    ef = np.full(len(S),+1)
+    ef = np.full(S.shape,+1,dtype=int)
     ef[s==1] = -1
     return ef
-prototypes['ef'] = dict(description="e/f symmetry", kind='i',infer=[(('S','Λ','s'),_f0,)],fmt='+1d')
+def _f1(self,i,J):
+    ef = np.full(i.shape,+1,dtype=int)
+    ef[i==-1] *= -1
+    ef[J%2==1] *= -1
+    return ef
+prototypes['ef'] = dict(description="Sign change on inversion without rotational factor (-1)**J ", kind='i',infer=[(('i','J'),_f1),(('S','Λ','s'),_f0,)],fmt='+1d')
 
 # def _f0(self,S,SR,Λ,s,ef):
     # Fi = np.full(S.shape,np.nan)
