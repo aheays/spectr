@@ -1904,7 +1904,7 @@ class Model(Optimiser):
                     length=-0.02, # fraction of axes coords
                     # color_by=('branch' if 'branch' in zkeys else zkeys),
                     # labelsize='xx-small',namesize='x-small', namepos='float',    
-                    labelsize='small',namesize='small', namepos='float',    
+                    labelsize='small',namesize='medium', namepos='float',    
                     label_key=(label_key if label_key is not None else line.default_xkey),
                 )
                 ymax += ystep*(len(branch_annotations)+1)
