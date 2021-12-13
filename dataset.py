@@ -975,30 +975,31 @@ class Dataset(optimise.Optimiser):
         index = self.get_combined_index_bool(index)
         self.index(~index)
 
-    def __deepcopy__(self,memo):
-        """Manually controlled deepcopy which does seem to be faster than the
-        default for some reason. Relies on all mutable attributes
-        being included in attr_to_deepcopy."""
-        retval = copy(self)
-        memo[id(self)] = retval # add this in case of circular references to it below
-        for attr_to_deepcopy in (
-                '_data',
-                '_row_modify_time',
-                'prototypes',
-                'global_attributes',
-                '_construct_functions',
-                '_post_construct_functions',
-                '_plot_functions',
-                '_monitor_functions',
-                '_save_to_directory_functions',
-                '_format_input_functions',
-                '_suboptimisers',
-                'residual',
-                'combined_residual',
-                'store',
-        ):
-            setattr(retval,attr_to_deepcopy, deepcopy(getattr(self,attr_to_deepcopy), memo))
-        return retval
+    ## caused a memory leak somehow. Is it really faster?
+    ## def __deepcopy__(self,memo):
+    ##     """Manually controlled deepcopy which does seem to be faster than the
+    ##     default for some reason. Relies on all mutable attributes
+    ##     being included in attr_to_deepcopy."""
+    ##     retval = copy(self)
+    ##     memo[id(self)] = retval # add this in case of circular references to it below
+    ##     for attr_to_deepcopy in (
+    ##             '_data',
+    ##             '_row_modify_time',
+    ##             'prototypes',
+    ##             'global_attributes',
+    ##             '_construct_functions',
+    ##             '_post_construct_functions',
+    ##             '_plot_functions',
+    ##             '_monitor_functions',
+    ##             '_save_to_directory_functions',
+    ##             '_format_input_functions',
+    ##             '_suboptimisers',
+    ##             'residual',
+    ##             'combined_residual',
+    ##             'store',
+    ##     ):
+    ##         setattr(retval,attr_to_deepcopy, deepcopy(getattr(self,attr_to_deepcopy), memo))
+    ##     return retval
 
     def copy(
             self,
