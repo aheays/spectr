@@ -19,7 +19,7 @@ data = {
         'mass'              : 76,
         'characteristic_infrared_bands': [[1500,1560],],
         'characteristic_infrared_lines': [[1530,1550],],
-        'classname': 'lines.LinearTriatomic',
+        'classname': 'LinearTriatom',
     },
 
     '¹²C³²S₂' :     {
@@ -92,7 +92,7 @@ data = {
         'chemical_species'  : 'O',
         'mass'              : 15.994915,
         'point_group'       : 'K',
-        'classname': 'lines.Diatomic',
+        'classname': 'Atom',
     },
 
     '¹⁷O'     :     {
@@ -159,7 +159,7 @@ data = {
         'chemical_species'  : 'CO',
         'characteristic_infrared_bands': [[1980,2280], [4150,4350],],
         'characteristic_infrared_lines': [[2160,2180],],
-        'classname': 'lines.Diatomic',
+        'classname': 'Diatom',
     },
 
     '¹²C¹⁶O'  :     {
@@ -336,7 +336,7 @@ data = {
         'mass'              : 17.0073,
         'reduced_mass'      : 0.948169,
         'point_group'       : 'C∞v',
-        'classname': 'lines.Diatomic',
+        'classname': 'Diatom',
     },
 
     'OD'      :     {
@@ -365,7 +365,7 @@ data = {
         'chemical_species'  : 'NO',
         'characteristic_infrared_bands': [[1750,2000],],
         'characteristic_infrared_lines': [[1830,1850],],
-        'classname': 'lines.Diatomic',
+        'classname': 'Diatom',
     },
 
     'H₂S'  :     {

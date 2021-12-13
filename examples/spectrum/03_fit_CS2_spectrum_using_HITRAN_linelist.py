@@ -6,7 +6,7 @@ from spectr import *
 
 ## HITRAN linelist spectrum
 S296K_frac_max = 2e-4
-linelist = lines.LinearTriatomic(
+linelist = lines.LinearTriatom(
     name='linelist',
     load_from_file='data/CS2_HITRAN_2021.h5',
     Zsource='HITRAN',

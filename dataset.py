@@ -709,17 +709,17 @@ class Dataset(optimise.Optimiser):
                 retval = retval[tools.find(imatch[retval])]
         return retval
             
-    def get_combined_index_bool(self,**get_combined_index_kwargs):
+    def get_combined_index_bool(self,*get_combined_index_args,**get_combined_index_kwargs):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
-        index = get_combined_index(**get_combined_index_kwargs)
+        index = self.get_combined_index(*get_combined_index_args,**get_combined_index_kwargs)
         if index is None:
             raise Exception('Cannot return bool array combined index if None.')
         if np.isscalar(index):
             raise Exception("Cannot return bool array for Single index.")
         ## convert to boolean array
         retval = np.full(len(self),False)
-        retaval[match] = True
+        retval[index] = True
         return retval
 
     def keys(self):
@@ -1745,8 +1745,25 @@ class Dataset(optimise.Optimiser):
             if ((data['classname'][0] == "'" and data['classname'][-1] == "'")
                 or  (data['classname'][0] == '"' and data['classname'][-1] == '"')):
                 data['classname'] = data['classname'][1:-1]
+            ## hacks for changed classnames
+            hack_changed_classnames = {
+                'levels.Atomic':'levels.Atom',
+                    'levels.Diatomic':'levels.Diatom',
+                    'levels.LinearDiatomic':'levels.Diatom',
+                    'levels.Triatomic':'levels.Triatom',
+                    'levels.LinearTriatomic':'levels.LinearTriatom',
+                    'lines.Atomic':'lines.Atom',
+                    'lines.Diatomic':'lines.Diatom',
+                    'lines.LinearDiatomic':'lines.Diatom',
+                    'lines.Triatomic':'lines.Triatom',
+                    'lines.LinearTriatomic':'lines.LinearTriatom',
+            }
+            if data['classname'] in hack_changed_classnames:
+                warnings.warn(f'Changing old classname {data["classname"]!r} into new {hack_changed_classnames[data["classname"]]!r}')
+                data['classname'] = hack_changed_classnames[data["classname"]]
         ## if load_classname_only then return it do nothing else. None
         ## if unknown. This is a hack, makes self pretty unusable
+        ##
         ## apart from the classname attribute
         if load_classname_only:
             if 'classname' in data:
@@ -1946,6 +1963,8 @@ class Dataset(optimise.Optimiser):
         global_attributes = []
         with open(filename,'r') as fid:
             for iline,line in enumerate(fid):
+                # print('DEBUG:', line)
+                # import pdb; pdb.set_trace(); # DEBUG
                 ## remove newline
                 line = line[:-1]
                 ## check for bad section title
@@ -2037,6 +2056,9 @@ class Dataset(optimise.Optimiser):
                     ## process
                     break
         ## load array data
+        if txt_to_dict_kwargs['labels_commented']:
+            ## iline will have skipped over labels otherwise
+            iline -= 1
         data.update(
             tools.txt_to_dict(
                 filename,

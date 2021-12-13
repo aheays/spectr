@@ -44,11 +44,11 @@ class Level(Optimiser):
         self.Eref = Eref
         self._manifolds = {}
         self._shifts = []       # used to shift individual levels after diagonalisation
-        self.level = levels.Diatomic(name=f'{self.name}.level')
+        self.level = levels.Diatom(name=f'{self.name}.level')
         self.level.pop_format_input_function()
         self.level.add_suboptimiser(self)
         self.level.pop_format_input_function()
-        self.vibrational_spin_level = levels.Diatomic()
+        self.vibrational_spin_level = levels.Diatom()
         self.interactions = {}
         self.verbose = False
         ##  try to reorder eigenvalues/eigenvectors after
@@ -80,7 +80,7 @@ class Level(Optimiser):
         self.add_post_construct_function(self._finalise_construct)
 
     def get_electronic_vibrational_level(self):
-        retval = levels.Diatomic()
+        retval = levels.Diatom()
         for i,m in enumerate(self._manifolds.values()):
             retval.append(
                 {key:m[key] for key in m.keys()
@@ -89,7 +89,7 @@ class Level(Optimiser):
 
     def get_electronic_vibrational_interactions(self):
         print( self.interactions)
-        retval = lines.Diatomic()
+        retval = lines.Diatom()
         for (name1,name2),d in self.interactions.items():
             retval.append(
                 encoded_qn=f'{name1}–{name2}',
@@ -470,9 +470,9 @@ class Level(Optimiser):
             **load_pgopher_constants_kwargs
     ):
         ## load molecular constants and perturbations
-        level = levels.Diatomic()
+        level = levels.Diatom()
         level.load_pgopher_constants(filename,**load_pgopher_constants_kwargs)
-        line = lines.Diatomic()
+        line = lines.Diatom()
         line.load_pgopher_constants(filename,**load_pgopher_constants_kwargs)
         ## limit to matches
         level.limit_to_match(match)
@@ -632,7 +632,7 @@ class Line(Optimiser):
         self.species = self.level_l.species
         self.Zsource = Zsource
         self.level_u.Eref = self.level_l.Eref = self.Eref = Eref
-        self.line = lines.Diatomic(name=f'{self.name}.line')
+        self.line = lines.Diatom(name=f'{self.name}.line')
         self.line.pop_format_input_function()
         self.line.add_suboptimiser(self)
         self.line.pop_format_input_function()

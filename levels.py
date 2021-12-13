@@ -6,6 +6,7 @@ import re
 from pprint import pprint
 import hashlib
 import pickle
+import warnings
 
 ## nonstandard libraries
 from scipy import constants
@@ -751,7 +752,7 @@ class Generic(Base):
         """Decode string into quantum numbers"""
         return quantum_numbers.decode_linear_level(encoded_qn)
     
-class Atomic(Generic):
+class Atom(Generic):
     defining_qn = ('species','conf','J','S',)
     default_zkeys = ('species',)
     default_prototypes = _collect_prototypes(
@@ -780,11 +781,10 @@ class Atomic(Generic):
         for regexp in (
                 r'^nan$',
                 r'^\*$',
-                # r'^(.*)*?$',
                 ):
             i = data.match_re(Term=regexp)
             if np.any(i):
-                print(f'Removing {sum(i)} terms I do not understand matching regexp {repr(regexp)}')
+                warnings.warn(f'Removing {sum(i)} terms I do not understand matching regexp {repr(regexp)}')
                 data.index(~i)
         ## add to self
         for key0,key1 in (
@@ -801,13 +801,23 @@ class Atomic(Generic):
         self['reference'] = 'NIST'
         ## decode NIST terms -- incomplete
         S = []
+        warnings_issued = []
         for i,t in enumerate(data['Term']):
             if r:=re.match(r'^([0-9]+)([SPDFGH])(\*?)$',t): 
-                ## e.e., 1S
+                ## e.g., 1S
                 S.append((float(r.group(1))-1)/2)
             elif r:=re.match(r'^([0-9]+)\[([0-9/]+)\](\*?)$',t): 
-                ## e.e., 2[3/2]*
+                ## e.g., 2[3/2]*
                 S.append((float(r.group(1))-1)/2)
+            elif r:=re.match(r'^\(([0-9]+/[0-9]+),([0-9]+/[0-9]+)\)([*]?)$',t):
+                ## e.g., (1/2,1/2)*. What does this mean? Strong
+                ## LS-coupling so instead JJ levels are shown?, I will
+                ## incorrectly set S to zero
+                warning_text = f'Atomic term {t!r} not understood and setting S=0'
+                if warning_text not in warnings_issued:
+                    warnings.warn(warning_text)
+                    warnings_issued.append(warning_text)
+                S.append(0)     
             else:
                 raise Exception(f"Could not decode NIST atomic term: {repr(t)}")
         self['S'] = S
@@ -911,7 +921,7 @@ class Linear(Generic):
                 ## add to data
                 self.append(linear)
 
-class LinearTriatomic(Linear):
+class LinearTriatom(Linear):
     """A generic level."""
     defining_qn = ('species','label','ef','ν1','ν2','ν3','l2','J')
     defining_zkeys = ('species','label','ef','ν1','ν2','ν3','l2')
@@ -925,7 +935,7 @@ class LinearTriatomic(Linear):
     default_prototypes['l2']['description'] = "Vibrational angular momentum of the bending mode"
     default_prototypes['ν2']['description'] = "Vibrational quantum number for asymmetric stretching"
 
-class Diatomic(Linear):
+class Diatom(Linear):
     defining_qn = ('species','label','v','Σ','ef','J')
     default_zkeys = ('species','label','v','Σ','ef')
     default_prototypes = _collect_prototypes(

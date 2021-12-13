@@ -22,22 +22,22 @@ def test_assignment():
     assert all(t['E'] == [1,2])
 
 def test_load():
-    t = levels.Diatomic()
+    t = levels.Diatom()
     t.load('data/levels_14N2')
     assert all(t['species'] == ['14N2','14N2','14N2','14N2','14N2'])
     assert list(t['J']) == [0,1,2,3,4]
-    t = levels.Diatomic()
+    t = levels.Diatom()
     t.load('data/SO_rotational_levels')
     assert t.unique('species') == ['[32S][16O]']
     assert abs(np.sum(t['E'])-3383596.8)<1
 
 def test_plot():
-    t = levels.Diatomic()
+    t = levels.Diatom()
     t.load('data/SO_rotational_levels')
     t.plot('J','E',show=show_plots)
 
-# def test_load_HomonuclearDiatomicRotational():
-    # t = levels.HomonuclearDiatomicRotational(
+# def test_load_HomonuclearDiatomRotational():
+    # t = levels.HomonuclearDiatomRotational(
         # species='14N2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,J=[0,1,2,3])
     # assert set(t._prototypes) == set([ 'species', 'Eref', 'label', 'Λ',
                                   # 's', 'LSsign', 'v', 'Γv', 'τv', 'Atv', 'Adv', 'Aev', 'ηdv', 'ηev',
@@ -49,19 +49,19 @@ def test_plot():
                                      # 'Inuclear', 'gu','ΓD',])
 
 def test_level_degeneracy():
-    t = levels.Diatomic()
+    t = levels.Diatom()
     t.verbose = True
     t.load('data/SO_rotational_levels')
     assert t['g'][0] == 1
     assert t['g'][1] == 3
-    t = levels.Diatomic(species='[14N][15N]',label='X',v=0,S=0,Λ=0,s=0,J=[0,1,2,3])
+    t = levels.Diatom(species='[14N][15N]',label='X',v=0,S=0,Λ=0,s=0,J=[0,1,2,3])
     assert all(t['g'] == [1,3,5,7])
-    t = levels.Diatomic(species='[14N]2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,J=[0,1,2,3])
+    t = levels.Diatom(species='[14N]2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=1,J=[0,1,2,3])
     from spectr import kinetics
     print( kinetics.get_species('[14N]2').isotopes)
     print( kinetics.get_species('[14N]2').elements)
     print( kinetics.get_species('[14N]2').point_group)
     print( t['point_group'])
     assert list(t['g']) == [6,9,30,21]
-    t = levels.Diatomic(species='[15N]2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=0.5, J=[0,1,2,3],)
+    t = levels.Diatom(species='[15N]2',label='X',v=0,S=0,Λ=0,s=0,gu=1,Inuclear=0.5, J=[0,1,2,3],)
     assert list(t['g']) == [1,9,5,21]

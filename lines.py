@@ -1465,10 +1465,10 @@ class Generic(levels.Base):
                 key = key[:-2]
                 self[f'{key}_u'][i],self[f'{key}_l'][i] = self[f'{key}_l'][i],self[f'{key}_u'][i]
 
-class Atomic(Generic):
+class Atom(Generic):
 
     _level_class,defining_qn,default_prototypes = _collect_prototypes(
-        level_class=levels.Atomic,
+        level_class=levels.Atom,
         base_class=Generic,
         new_keys=(),
     )
@@ -1515,10 +1515,10 @@ class Linear(Generic):
             self.pop_format_input_function()
 
 
-class Diatomic(Linear):
+class Diatom(Linear):
 
     _level_class,defining_qn,default_prototypes = _collect_prototypes(
-        level_class=levels.Diatomic,
+        level_class=levels.Diatom,
         base_class=Linear,
         new_keys=(
             'Tvib', 'Trot', 'Δv',
@@ -1718,7 +1718,7 @@ class Diatomic(Linear):
             line.unset(key)
         ## for each line find lower levels for matching Q/P/R branch
         ## transitions and add to self
-        new_data = Diatomic()
+        new_data = Diatom()
         for i,row in enumerate(line.rows()):
             for Πef,ΔJ in (
                     (1,array([-1,+1])), # P/R branch
@@ -1732,11 +1732,11 @@ class Diatomic(Linear):
                     new_data.append(row|{f'{key}_l':val for key,val in row_l.items()})
         self.concatenate(new_data)
 
-class LinearTriatomic(Linear):
+class LinearTriatom(Linear):
     """E.g., CO2, CS2."""
 
     _level_class,defining_qn,default_prototypes = _collect_prototypes(
-        level_class=levels.LinearTriatomic,
+        level_class=levels.LinearTriatom,
         base_class=Linear,
         new_keys=(
             'fv', 'νv', 'μv',

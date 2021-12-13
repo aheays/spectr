@@ -1,5 +1,5 @@
 header
-classname    = 'lines.Atomic'
+classname    = 'lines.Atom'
 species      = 'Xe'                 # Chemical species with isotope specification
 conf_u                              # Electronic configuration.
 J_u                                 # Total angular momentum quantum number excluding nuclear spin
