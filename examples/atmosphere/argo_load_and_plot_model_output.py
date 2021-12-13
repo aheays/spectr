@@ -1,7 +1,7 @@
 ## Load, print, and plot various things from an ARGO atmospheric model
 ## output directory.
 
-from spectr import *
+from spectr.env import *
 tools.warnings_off()
 
 ## load model output
@@ -10,7 +10,7 @@ model.load_argo('data/ARGO_early_earth')
 model.reaction_network.calc_rates()
 
 ## Compute total atmosphere column density
-print(f"total column density:    {integrate.trapz(model['nt'],model['z']):10.3e}")
+print(f"total column density:    {integrate(model['nt'],model['z']):10.3e}")
 
 ## list surface mixing ratios
 print( )
