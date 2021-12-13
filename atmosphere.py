@@ -325,7 +325,7 @@ class AtmosphericChemistry():
             summary_value = {key:np.sum(val*weight)/np.sum(weight) for key,val in rates.items()} # mean value weighted by normalise_to_species density 
             xlabel = f'Rate normalised to the density of {normalise_to_species} (s$^{{-1}}$)'
         else:
-            summary_value = {key:integrate.trapz(val,self['z']) for key,val in rates.items()} # integrated value
+            summary_value = {key:tools.integrate(val,self['z']) for key,val in rates.items()} # integrated value
             xlabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
         ## sort species to plot by their descending summary value
         names = list(rates)
@@ -349,16 +349,16 @@ class AtmosphericChemistry():
 
     def summarise_species(self,species,doprint=True):
         """MAY NOT COUNT MULTIPLE PRODUCTS OF THE SAME SPECIES CORRECTLY"""
-        column_mixing_ratio = integrate.trapz(self.get_density(species),self['z']) / integrate.trapz(self['nt'],self['z'])
+        column_mixing_ratio = tools.integrate(self.get_density(species),self['z']) / tools.integrate(self['nt'],self['z'])
         ## production summary
         production_reactions = self.reaction_network.get_reactions(with_products=(species,)) 
         production_rate = np.sum([t.rate for t in production_reactions],0)
-        production_column_rate = integrate.trapz(production_rate,self['z'])
+        production_column_rate = tools.integrate(production_rate,self['z'])
         ## destruction summary
         destruction_reactions = self.reaction_network.get_reactions(with_reactants=(species,)) 
         destruction_rate = np.sum([t.rate for t in destruction_reactions],0)
-        destruction_column_rate = integrate.trapz(destruction_rate,self['z'])
-        destruction_mean_loss_rate = destruction_column_rate/integrate.trapz(self.get_density(species),self['z'])
+        destruction_column_rate = tools.integrate(destruction_rate,self['z'])
+        destruction_mean_loss_rate = destruction_column_rate/tools.integrate(self.get_density(species),self['z'])
         destruction_mean_lifetime = 1/destruction_mean_loss_rate
         lines = [
             f'species                                 : {species:>10s}',
