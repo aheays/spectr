@@ -269,7 +269,8 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     line_filename = f'{directory}/line'
     if not force_download and os.path.exists(line_filename):
         ## load existing data
-        line = deepcopy(_load_and_cache(line_filename))
+        # line = deepcopy(_load_and_cache(line_filename))
+        line = dataset.load(line_filename)
     else:
         ## download new data
         if is_known_chemical_species(species):
@@ -302,9 +303,6 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
                 Zsource='HITRAN',)
             line.load_from_hitran(hitran_filename)
             line['mass']                # compute now for speed later
-            # ## add extra quantum number myself in line in-place
-            # if 'load_tweak' in species_data[species]:
-                # species_data[species]['load_tweak'](line)
         else:    
             raise DatabaseException(f'Species or chemical_species unknown to hitran.py: {species!r}')
         ## save data

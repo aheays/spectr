@@ -2252,7 +2252,6 @@ class FitAbsorption():
         self.parameters |= more_parameters
         ## initialise control variables
         self.verbose = verbose
-        # self.make_plot =  make_plot
         self.max_nfev = max_nfev
         self.ncpus = ncpus
         ## the Experimebnt object
@@ -2319,9 +2318,10 @@ class FitAbsorption():
         print(f'{self.name}: fit with {make_model_kwargs=}')
         self.models,self.reference_models = [],[]
         model = self.make_model(**make_model_kwargs)
-        model.optimise(make_plot=False,verbose=self.verbose,max_nfev=self.max_nfev)
-        # if self.make_plot:
-            # self.plot(model)
+        model.optimise(
+            make_plot=False,
+            verbose=self.verbose,
+            max_nfev=self.max_nfev,)
 
     def fit_regions(self,xbeg=-inf,xend=inf,width=1000,overlap_factor=0.1,**make_model_kwargs):
         """Full model."""
@@ -2341,14 +2341,16 @@ class FitAbsorption():
         for iregion,region in enumerate(regions):
             print(f'region {iregion:3d} of {len(regions)} {region!r}')
             model = self.make_model(region,**make_model_kwargs)
-            model.optimise(make_plot=False,verbose=self.verbose,max_nfev=self.max_nfev)
-            # if self.make_plot:
-                # self.plot(ax=plotting.subplot(iregion))
+            model.optimise(
+                make_plot=False,
+                verbose=self.verbose,
+                max_nfev=self.max_nfev,)
 
     def fit_species(
             self,
             species_to_fit='default', # 'default','existing', or a list of species names
             regions='lines',          # 'lines','bands','full' or a list of regions [[xbeg0,xend0],[xbeg1,xend1],...]'
+            max_nfev=None,
             **make_model_kwargs,
     ):
         """Fit list of species individually from one another using their
@@ -2475,6 +2477,7 @@ class FitAbsorption():
             fit_sinusoid=False,          # fit sinusoidally varying intensity
             fit_instrument=False,        # fit instrumental broadening
             fit_temperature=False,       # fit excitation/Doppler temperature
+            fit_FTS_H2O=False,           # fit column density and air-broadening coefficient to H2O in the spectrometer
             nfwhmL=100,                  # compute this many Lorentizan full-width half-maximums
             min_S296K=1e-25,             # include lines from fitted species with this linestrength or more
             τpeak_min=1e-3,              # include lines from non-fitted species with this integrated optical depth or more
@@ -2583,6 +2586,24 @@ class FitAbsorption():
                 Nchemical_species=p['species'][species]['N'],
                 pair=p['species'][species]['pair'],
                 match={'min_S296K':t_min_S296K,},
+                ncpus=self.ncpus,
+                nfwhmL=nfwhmL,
+                lineshape='voigt',)
+        ## fit column density and air-broadening coefficient to H2O in the spectrometer
+        if fit_FTS_H2O:
+            p.setdefault('FTS_H2O',{})
+            p['FTS_H2O'].setdefault('N',P(1e17,False,1e15,bounds=(0,1e22)))
+            p['FTS_H2O'].setdefault('pair',P(1000,False,1,bounds=(10,1e5)))
+            p['FTS_H2O'].setdefault('Teq',296)
+        if 'FTS_H2O' in p:
+            p['FTS_H2O']['N'].vary = fit_FTS_H2O
+            p['FTS_H2O']['pair'].vary = fit_FTS_H2O
+            model.add_hitran_line(
+                species,
+                Teq=p['FTS_H2O']['Teq'],
+                Nchemical_species=p['FTS_H2O']['N'],
+                pair=p['FTS_H2O']['pair'],
+                match={'min_S296K':min_S296K,},
                 ncpus=self.ncpus,
                 nfwhmL=nfwhmL,
                 lineshape='voigt',)
