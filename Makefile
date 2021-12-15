@@ -17,7 +17,8 @@ FC := gfortran -fopenmp -lgomp -O3 -llapack -Wall -ffree-line-length-none # norm
 ## cronic f2py3 --quiet --opt="-O3 -fcheck=bounds" -llapack -c -m spectra_fortran myf.f90 spectra_fortran.f90 
 
 ## Outputs a .so file with machine dependent suffix.
-F2PY_SUFFIX := $(shell python3-config --extension-suffix)
+# F2PY_SUFFIX := $(shell python3-config --extension-suffix)
+F2PY_SUFFIX := $(python <<< "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
 
 ## compiler command with flags built in
 F2PY := f2py3 -c --quiet -lgomp -llapack --f90flags="-Wall -fopenmp -ffree-line-length-none" --opt="-O3"
