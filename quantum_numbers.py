@@ -204,37 +204,41 @@ def decode_linear_level(encoded):
     """Decode something of the form 32S16O_A.3Π(v=0,Ω=1,J=5) etc."""
     if '–' in encoded:
         raise Exception(f'Encoded linear level contains "–", perhaps it is a line: {repr(encoded)}')
-    ## 32S16O_A.3Π(v=0,Ω=1,J=5)
-    if r:=re.match(r'^(.+_)?([^(]+)(\(.*\))?$',encoded):
+    ## 32S16O_A.3Π or A.3Π or 32S16O_A.3Π(v=0,Ω=1,J=5) or
+    ## A.3Π(v=0,Ω=1,J=5) or 32S16O_(v=0,Ω=1,J=5) or (v=0,Ω=1,J=5)
+    if r:=re.match(r'^(.+_)?([^(]+)?(\(.*\))?$',encoded):
         qn = {}
         ## get species
         if r.group(1) is not None:
             qn['species'] = decode_species(r.group(1)[:-1])
         ## decode term.
-        term = r.group(2)
-        ## e.g., Ap, c3, c₃, c′₄
-        if r2:=re.match(r'^([A-Za-z]+[′″]?[0-9₀₁₂₃₄₅₆₇₈₉]*)?$',term):
-            qn['label'] = r2.group(1)
-        ## e.g., Ap.3Σ+g
-        elif r2:=re.match(r'^([A-Za-z]+[′″]?)?\.([0-9])?(Σ\+|Σ-|Π|Δ|Γ)([gu])?$',term):
-            qn['label'] = r2.group(1)
-            if r2.group(2) is not None:
-                qn['S'] = (float(r2.group(2))-1)/2
-            qn['Λ'],qn['s'] = decode_Λs(r2.group(3))
-            if r2.group(4) is not None:
-                qn['gu'] = decode_gu(r2.group(4))
-        ## e.g., Ap³Σ⁺g
-        elif r2:=re.match(r'^([A-Za-z]+[′″]?)?([⁰¹²³⁴⁵⁶⁷⁸⁹])?(Σ⁺|Σ⁻|Π|Δ|Γ)([gu])?$',term):
-            qn['label'] = r2.group(1)
-            if r2.group(2) is not None:
-                qn['S'] = (float(tools.regularise_unicode(r2.group(2)))-1)/2
-            qn['Λ'],qn['s'] = decode_Λs(r2.group(3))
-            if r2.group(4) is not None:
-                qn['gu'] = decode_gu(r2.group(4))
+        if r.group(2) is not None:
+            term = r.group(2)
+            ## e.g., Ap, c3, c₃, c′₄
+            if r2:=re.match(r'^([A-Za-z]+[′″]?[0-9₀₁₂₃₄₅₆₇₈₉]*)?$',term):
+                qn['label'] = r2.group(1)
+            ## e.g., Ap.3Σ+g
+            elif r2:=re.match(r'^([A-Za-z]+[′″]?)?\.([0-9])?(Σ\+|Σ-|Π|Δ|Γ)([gu])?$',term):
+                qn['label'] = r2.group(1)
+                if r2.group(2) is not None:
+                    qn['S'] = (float(r2.group(2))-1)/2
+                qn['Λ'],qn['s'] = decode_Λs(r2.group(3))
+                if r2.group(4) is not None:
+                    qn['gu'] = decode_gu(r2.group(4))
+            ## e.g., Ap³Σ⁺g
+            elif r2:=re.match(r'^([A-Za-z]+[′″]?)?([⁰¹²³⁴⁵⁶⁷⁸⁹])?(Σ⁺|Σ⁻|Π|Δ|Γ)([gu])?$',term):
+                qn['label'] = r2.group(1)
+                if r2.group(2) is not None:
+                    qn['S'] = (float(tools.regularise_unicode(r2.group(2)))-1)/2
+                qn['Λ'],qn['s'] = decode_Λs(r2.group(3))
+                if r2.group(4) is not None:
+                    qn['gu'] = decode_gu(r2.group(4))
         ## decode data in parentheses
         if r.group(3) is not None:
             qn |= decode_comma_separated_equalities(r.group(3)[1:-1])
-        return qn
+    else:
+        raise Exception(f'Could not decode_linear_level from {encoded!r}')
+    return qn
 
 def encode_linear_level(qn=None,**more_qn):
     """Turn quantum numbers etc (as in decode_level) into a string name. """

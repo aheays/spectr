@@ -329,13 +329,16 @@ class Dataset(optimise.Optimiser):
                     self[ykey] = default
             xspline,yspline = zip(*knots)
             ## get index limit to defined xkey range
-            get_combined_index_kwargs |= {f'min_{xkey}':np.min(xspline),f'max_{xkey}':np.max(xspline)}
+            # get_combined_index_kwargs |= {f'min_{xkey}':np.min(xspline),f'max_{xkey}':np.max(xspline)}
             self.permit_indexing = False
             _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
             _cache['xspline'],_cache['yspline'] = xspline,yspline
-        ## get cached data
+        ## get cached data 
         index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
-        self.set(ykey,'value',value=tools.spline(xspline,yspline,self[xkey,index],order=order),index=index)
+        ## set value to a newly-calculated spline — could include
+        ## code to only update value if necessary
+        value = tools.spline(xspline,yspline,self[xkey,index],order=order)
+        self.set(ykey,'value',value=value,index=index)
         ## set previously-set uncertainties to NaN
         if self.is_set(ykey,'unc'):
             self.set(ykey,'unc',nan,index=index)

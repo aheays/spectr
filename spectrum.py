@@ -1330,9 +1330,10 @@ class Model(Optimiser):
     ):
         """Fit a spline interpolated sinusoid to current model residual, and
         add it to the model."""
-        warnings.warn('Deprecated function in favour of auto_convolve_spline_signum')
+        if self.experiment is None:
+            raise Exception('auto_add_piecewise_sinusoid requires an experimental residual to fit')
         regions = tools.fit_piecewise_sinusoid(
-            self.x,
+            self.xexp,
             self.get_residual(),
             xi=xi,
             make_plot=make_plot,
@@ -1350,11 +1351,10 @@ class Model(Optimiser):
         """Scale by a piecewise function 1+A*sin(2πf(x-xa)+φ) for a set
         regions = [(xa,xb,A,f,φ),...].  Probably should initialise
         with auto_scale_by_piecewise_sinusoid."""
-        warnings.warn('Deprecated function in favour of convolve_spline_signum')
         if self._clean_construct:
             ## vary only those knots in model domain
             _cache.setdefault('first_invocation',True)
-            if autovary_in_range and _cache['first_invocation']:
+            if autovary and _cache['first_invocation']:
                 _cache['first_invocation'] = False
                 self.autovary_in_range(regions)
         if (self._clean_construct

@@ -1499,7 +1499,15 @@ class Linear(Generic):
         return quantum_numbers.decode_linear_line(encoded_qn)
 
     @format_input_method()
-    def set_spline_PQR(self,xkey='J_u',ykey='fv',Qknots=None,ΔPknots=None,ΔRknots=None,**set_spline_kwargs):
+    def set_spline_PQR(
+            self,
+            xkey='J_u',
+            ykey='fv',
+            Qknots=None,
+            ΔPknots=None,
+            ΔRknots=None,
+            **set_spline_kwargs
+    ):
         """Set a strength related quantity for P, R, and possibly Q branches.
         The splines defined by ΔPknots and ΔRknots are added to Qknots, if
         there is a Q branch it is set to Qknots."""

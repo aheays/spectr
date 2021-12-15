@@ -5465,6 +5465,7 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
                    for (xbeg,xend,amplitude,frequency,phase) in region_parameters]
     ## plot result
     if make_plot:
+        from . import plotting
         ax = plotting.qax()
         ax.plot(x,y,label='data')
         ax.plot(x,yf,label='fit')
