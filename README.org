@@ -2,12 +2,46 @@ spectr — a hodge-podge library used in the scientific work of Alan Heays
 
 * Install
 ** Python dependencies
- - python 3 (probably >3.9) required
- - Many python libraries are used, and are mostly available from linux
-   distributions or pip.
+This modules has been tested and works with python 3.9 and 3.10, and
+will not work with version <3.9. It might be necessary to install and
+use it in a virtual environment (venv) on linux distributions with python
+version <3.9.
+
+Many non-standard python libraries are used and are available
+from linux distributions or via pip, with the following package names:
+
+ - bidict
+ - cycler
+ - hitran-api
+ - immutabledict
+ - brukeropusreader
+ - dill
+ - h5py
+ - matplotlib
+ - numpy
+ - openpyxl
+ - periodictable
+ - py3nj
+ - scipy
+ - sympy
+ - xmltodict
+
 ** Build fortran components
-Run "make". The options in Makefile are for the gfortran compiler and
-use the lapack and openmp libraries.
+Run "make" in the root directory to create .so extensions.
+
+The options in Makefile are for the gfortran compiler and
+use the lapack and openmp libraries.  
+
+*** Linux packages that might be needed to build
+**** Debian/Ubuntu
+ - gfortran
+ - python-dev or python3-dev
+ - liblapack-dev
+ - libomp-dev
+**** Arch Linux
+ - gcc-gfortran
+ - lapack
+
 * Usage
 To import all submodules and many common functions directly into
 working namespace:
