@@ -101,7 +101,7 @@ def get_level(species,source='auto'):
     if source == 'levels':
         ## my collected data
         try:
-            retval =  deepcopy(_get_level_internal(species))
+            retval =  _get_level_internal(species).copy()
         except FileNotFoundError as err:
             raise DatabaseException(str(err))
     elif source == 'hitran':

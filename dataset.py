@@ -60,6 +60,7 @@ class Dataset(optimise.Optimiser):
         '_inferred_to'   : {'description':'List of keys inferred from this data',},
         '_inferred_from' : {'description':'List of keys used to infer this data',},
         '_modify_time'   : {'description':'When this data was last modified',},
+        # 'permit_dereferencing'   : {'description':'Allow the data value array to be reassigned',},
     }
 
     ## all subdata kinds in one convenient dictionary
@@ -329,9 +330,11 @@ class Dataset(optimise.Optimiser):
                     self[ykey] = default
             xspline,yspline = zip(*knots)
             ## get index limit to defined xkey range
-            # get_combined_index_kwargs |= {f'min_{xkey}':np.min(xspline),f'max_{xkey}':np.max(xspline)}
             self.permit_indexing = False
-            _cache['index'] = self.get_combined_index(**get_combined_index_kwargs)
+            index = self.get_combined_index(**get_combined_index_kwargs)
+            if index is None:
+                index = slice(0,len(self))
+            _cache['index'] = index
             _cache['xspline'],_cache['yspline'] = xspline,yspline
         ## get cached data 
         index,xspline,yspline = _cache['index'],_cache['xspline'],_cache['yspline']
@@ -466,7 +469,7 @@ class Dataset(optimise.Optimiser):
             ## set full array. It does not have to exist in in advance
             ## but if it does then prevent reinitialisation if
             ## permit_dereferencing=False
-            if not self.permit_dereferencing and self.is_set(key):
+            if self.is_set(key) and not self.permit_dereferencing:
                 raise Exception(f'Cannot re-initialise array: {self.permit_dereferencing=}')
             ## create entire data dict
             ## decide whether to permit if non-prototyped
@@ -627,7 +630,7 @@ class Dataset(optimise.Optimiser):
     def modify(self,key,rename=None,**new_metadata):
         """Modify metadata of a key, change its units, or rename it."""
         if not self.permit_dereferencing:
-            raise Exception(f'Cannot modify {key!r}: {self.permit_dereferencing=} (cold loosen this)')
+            raise Exception(f'Cannot modify {key!r}: {self.permit_dereferencing=} (could loosen this)')
         self.assert_known(key)
         ## rename key by adding a new one and unsetting the original --
         ## breaking inferences
@@ -1026,8 +1029,21 @@ class Dataset(optimise.Optimiser):
                 'combined_residual',
                 'store',
         ):
-            setattr(retval,attr_to_deepcopy, deepcopy(getattr(self,attr_to_deepcopy), memo))
+            setattr(retval, attr_to_deepcopy,
+                    deepcopy(getattr(self,attr_to_deepcopy), memo))
         return retval
+
+    # def __deepcopy__(self,memo):
+        # """Manually controlled deepcopy."""
+        # retval = self.__class__(name='copy_of_self.name') # new version of self
+        # retval.pop_format_input_function()
+        # retval.prototypes = deepcopy(self.prototypes)
+        # retval.global_attributes = deepcopy(self.global_attributes)
+        # retval.permit_indexing = self.permit_indexing 
+        # retval._length = self._length
+        # retval._data = deepcopy(self._data)
+        # memo[id(self)] = retval # add this in case of circular references to it below
+        # return retval
 
     def copy(
             self,
@@ -1043,10 +1059,23 @@ class Dataset(optimise.Optimiser):
         retval = self.__class__(name=name) # new version of self
         retval.copy_from(self,*args_copy_from,**kwargs_copy_from)
         retval.pop_format_input_function()
-        # if set_values is not None:
-            # for key,val in set_values.items():
-                # retval[key] = val
         return retval
+
+    # def copy(self,keys=None,index=None):
+        # """Return a copy of self with possible restriction to indices
+        # and keys."""
+        # retval = self.__class__(name='copy_of_self.name') # new version of self
+        # retval.pop_format_input_function()
+        # retval.prototypes = deepcopy(self.prototypes)
+        # retval.global_attributes = deepcopy(self.global_attributes)
+        # retval.permit_indexing = self.permit_indexing 
+        # retval._length = self._length
+        # retval._data = deepcopy(self._data)
+        # if keys is not None:
+            # self.limit_to_keys(keys)
+        # if index is not None:
+            # self.index(index)
+        # return retval
 
     def copy_from(
             self,
@@ -1695,33 +1724,82 @@ class Dataset(optimise.Optimiser):
         else:
             raise Exception(f'Do not know how save to {filetype=}')
             
-    def load(self,filename,filetype=None,**load_method_kwargs):
+    def load(
+            self,
+            filename,
+            filetype=None,
+            return_classname_only=False,
+            **kwargs
+    ):
         '''Load data from a file. Valid filetypes are ["hdf5",
         "directory", "npz", "org", "text", "rs", "psv", "csv"['''
+        ## kwargs are for load_from_dict or the load method.  Divide these up.
+        import inspect
+        all_load_from_dict_kwargs = inspect.getfullargspec(self.load_from_dict).args
+        load_from_dict_kwargs = {key:kwargs.pop(key)
+                                 for key in list(kwargs)
+                                 if key in all_load_from_dict_kwargs}
+        load_function_kwargs = kwargs
+        load_function_kwargs['filename'] = filename
+        ## determine filetype if not given
         if filetype is None:
             ## if not provided as an input argument then get save
             ## format form filename, or default to text
             filetype = tools.infer_filetype(filename)
             if filetype == None:
                 filetype = 'text'
+        ## load to dict according to filetype. Each load function
+        ## returns two dictionaries, the data, and any additional
+        ## keyword arguments required for load_from_dict
         if filetype == 'hdf5':
-            self._load_from_hdf5(filename,**load_method_kwargs)
+            load_function = self._load_from_hdf5
         elif filetype == 'directory':
-            self._load_from_directory(filename,**load_method_kwargs)
+            load_function = self._load_from_directory
         elif filetype == 'npz':
-            self._load_from_npz(filename,**load_method_kwargs)
+            load_function = self._load_from_npz
         elif filetype == 'org':
-            self._load_from_org(filename,**load_method_kwargs)
+            load_function = self._load_from_org
         elif filetype == 'text':
-            self._load_from_text(filename,**load_method_kwargs,delimiter=' ')
+            load_function = self._load_from_text
+            load_function_kwargs.setdefault('delimiter',' ')
         elif filetype == 'rs':
-            self._load_from_text(filename,**load_method_kwargs,delimiter='␞')
+            load_function = self._load_from_text
+            load_function_kwargs.setdefault('delimiter','␞')
         elif filetype == 'psv':
-            self._load_from_text(filename,**load_method_kwargs,delimiter='|')
+            load_function = self._load_from_text
+            load_function_kwargs.setdefault('delimiter','|')
         elif filetype == 'csv':
-            self._load_from_text(filename,**load_method_kwargs,delimiter=',')
+            load_function = self._load_from_text
+            load_function_kwargs.setdefault('delimiter',',')
         else:
             raise Exception(f"Unrecognised data filetype: {filename=} {filetype=}")
+        data,more_kwargs = load_function(**load_function_kwargs)
+        ## extract class name, alternatively return it at once
+        if 'classname' in data:
+            data['classname'] = data['classname'].strip(' "\'')
+            ## hacks for changed classnames
+            hack_changed_classnames = {
+                'levels.Atomic':'levels.Atom',
+                'levels.Diatomic':'levels.Diatom',
+                'levels.LinearDiatomic':'levels.Diatom',
+                'levels.Triatomic':'levels.Triatom',
+                'levels.LinearTriatomic':'levels.LinearTriatom',
+                'lines.Atomic':'lines.Atom',
+                'lines.Diatomic':'lines.Diatom',
+                'lines.LinearDiatomic':'lines.Diatom',
+                'lines.Triatomic':'lines.Triatom',
+                'lines.LinearTriatomic':'lines.LinearTriatom',
+            }
+            if data['classname'] in hack_changed_classnames:
+                warnings.warn(f'Changing old classname {data["classname"]!r} into new {hack_changed_classnames[data["classname"]]!r}')
+                data['classname'] = hack_changed_classnames[data["classname"]]
+        if return_classname_only:
+            if 'classname' in data:
+                return data['classname']
+            else:
+                return None
+        ## load data into self
+        self.load_from_dict(data,**load_from_dict_kwargs,**more_kwargs)
 
     def load_from_dict(
             self,
@@ -1732,7 +1810,6 @@ class Dataset(optimise.Optimiser):
             translate_keys=None, # from key in file to key in self, None for skip
             translate_keys_regexp=None, # a list of (regexp,subs) pairs to translate keys -- operate successively on each key
             translate_from_anh_spectrum=False, # HACK to translate keys from spectrum module
-            load_classname_only=False,
             match=None,         # limit what is loaded
     ):
         """Load from a structured dictionary as produced by as_dict."""
@@ -1770,36 +1847,7 @@ class Dataset(optimise.Optimiser):
                     data[key] = data.pop(original_key)
         ## hack -- sometimes classname is quoted, so remove them
         if 'classname' in data:
-            data['classname'] = str(data['classname'])
-            if ((data['classname'][0] == "'" and data['classname'][-1] == "'")
-                or  (data['classname'][0] == '"' and data['classname'][-1] == '"')):
-                data['classname'] = data['classname'][1:-1]
-            ## hacks for changed classnames
-            hack_changed_classnames = {
-                'levels.Atomic':'levels.Atom',
-                    'levels.Diatomic':'levels.Diatom',
-                    'levels.LinearDiatomic':'levels.Diatom',
-                    'levels.Triatomic':'levels.Triatom',
-                    'levels.LinearTriatomic':'levels.LinearTriatom',
-                    'lines.Atomic':'lines.Atom',
-                    'lines.Diatomic':'lines.Diatom',
-                    'lines.LinearDiatomic':'lines.Diatom',
-                    'lines.Triatomic':'lines.Triatom',
-                    'lines.LinearTriatomic':'lines.LinearTriatom',
-            }
-            if data['classname'] in hack_changed_classnames:
-                warnings.warn(f'Changing old classname {data["classname"]!r} into new {hack_changed_classnames[data["classname"]]!r}')
-                data['classname'] = hack_changed_classnames[data["classname"]]
-        ## if load_classname_only then return it do nothing else. None
-        ## if unknown. This is a hack, makes self pretty unusable
-        ##
-        ## apart from the classname attribute
-        if load_classname_only:
-            if 'classname' in data:
-                self.classname =  data['classname']
-            else:
-                self.classname =  None
-            return
+            data['classname'] = str(data['classname']).strip('" \'"')
         ## test loaded classname matches self
         if 'classname' in data:
             if data['classname'] != self.classname:
@@ -1927,12 +1975,12 @@ class Dataset(optimise.Optimiser):
         self.load_from_dict(data,flat=True)
 
 
-    def _load_from_directory(self,filename,**load_from_dict_kwargs):
+    def _load_from_directory(self,filename):
         """Load data stored in a structured directory tree."""
         data = tools.directory_to_dict(filename)
-        self.load_from_dict(data,**load_from_dict_kwargs)
+        return data,{}
 
-    def _load_from_hdf5(self,filename,load_attributes=True,**load_from_dict_kwargs):
+    def _load_from_hdf5(self,filename,load_attributes=True):
         """Load data stored in a structured or unstructured hdf5 file."""
         data = tools.hdf5_to_dict(filename,load_attributes=load_attributes)
         ## hack to get flat data or not
@@ -1942,9 +1990,9 @@ class Dataset(optimise.Optimiser):
                 break
         else:
             flat = True
-        self.load_from_dict(data,flat=flat,**load_from_dict_kwargs)
+        return data,{'flat':flat}
 
-    def _load_from_npz(self,filename,**load_from_dict_kwargs):
+    def _load_from_npz(self,filename):
         """numpy npz archive.  get as scalar rather than
         zero-dimensional numpy array"""
         data = {}
@@ -1952,12 +2000,12 @@ class Dataset(optimise.Optimiser):
             if val.ndim == 0:
                 val = val.item()
             data[key] = val
-        self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
+        return data,{'flat':True}
 
-    def _load_from_org(self,filename,table_name=None,**load_from_dict_kwargs):
+    def _load_from_org(self,filename,table_name=None):
         """Load form org table"""
         data = tools.org_table_to_dict(filename,table_name)
-        self.load_from_dict(data,flat=True,**load_from_dict_kwargs)
+        return data,{'flat':True}
 
     def _load_from_text(
             self,
@@ -1966,8 +2014,6 @@ class Dataset(optimise.Optimiser):
             labels_commented=False,
             delimiter=' ',
             txt_to_dict_kwargs=None,
-            load_classname_only=False,
-            **load_from_dict_kwargs
     ):
         """Load data from a text-formatted file."""
         ## text table to dict with header
@@ -2021,11 +2067,7 @@ class Dataset(optimise.Optimiser):
                     ## save classname 
                     if section_iline > 1:
                         raise Exception("Invalid classname section")
-                    classname = line
-                    if load_classname_only:
-                        ## shortcut, load classname ignore the rest of the data
-                        self.classname = classname
-                        return
+                    classname = line.strip()
                 elif current_section == 'description':
                     ## add to description
                     description += '\n'+line
@@ -2110,11 +2152,11 @@ class Dataset(optimise.Optimiser):
             if key not in metadata or 'kind' not in metadata[key]:
                 data[key] = tools.try_cast_to_numeric_array(data[key])
         ## load into self
-        self.load_from_dict(data,metadata=metadata,flat=True,**load_from_dict_kwargs)
+        return data,{'flat':True,'metadata':metadata}
 
     def load_from_string(
             self,
-            string,             # multi line string in the format expected by self.load
+            string,             # multi line string in the format expected by self._load_from_text
             delimiter='|',      # column delimiter
             **load_kwargs       # other kwargs passed to self.load
     ):     
@@ -2124,7 +2166,9 @@ class Dataset(optimise.Optimiser):
         tmpfile.write(string.encode())
         tmpfile.flush()
         tmpfile.seek(0)
-        self._load_from_text(tmpfile.name,delimiter=delimiter,**load_kwargs)
+        data,load_from_dict_kwargs = self._load_from_text(
+            tmpfile.name,delimiter=delimiter,**load_kwargs)
+        self.load_from_dict(data,**load_from_dict_kwargs)
 
     def load_from_lists(self,keys,*values):
         """Add many lines of data efficiently, with values possible
@@ -2688,7 +2732,6 @@ class Dataset(optimise.Optimiser):
     ##  __ilshift__ __irshift__ __iand__ __ixor__ __ior__
     
 
-
 def find_common(x,y,keys=None,verbose=False):
     """Return indices of two Datasets that have uniquely matching
     combinations of keys."""
@@ -2802,8 +2845,7 @@ def load(
     ## get classname
     if classname is None:
         d = Dataset()
-        d.load(filename,load_classname_only=True,**load_kwargs)
-        classname = d.classname
+        classname = d.load(filename,return_classname_only=True,**load_kwargs)
     ## make Dataset
     init_kwargs = {}
     if prototypes is not None:

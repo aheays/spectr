@@ -594,6 +594,11 @@ class Model(Optimiser):
     def add_hitran_line(self,species,match=None,*args,**kwargs):
         """Automatically load a HITRAN linelist for a species
         (isotopologue or natural abundance) and then call add_line."""
+        if match is None:
+            match = {
+                'min_ν':self.x[0]-10,
+                'max_ν':self.x[-1]+10,
+                }
         line = hitran.get_line(species,match=match)
         line.include_in_save_to_directory = False
         line.clear_format_input_functions()
@@ -1114,7 +1119,7 @@ class Model(Optimiser):
             knots=None,
             order=3,
             _cache=None,
-            autovary_in_range= True,
+            autovary= True,
     ):
         """Multiple y by a spline function."""
         if self._clean_construct:
@@ -1132,7 +1137,7 @@ class Model(Optimiser):
             _cache['spline'] = spline
             ## vary only those knots in model domain
             _cache.setdefault('first_invocation',True)
-            if autovary_in_range and _cache['first_invocation']:
+            if autovary and _cache['first_invocation']:
                 self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
                 _cache['first_invocation'] = False
         i = _cache['i']
@@ -1143,7 +1148,7 @@ class Model(Optimiser):
         self.y[i] *= _cache['yspline']
     
     @optimise_method()
-    def add_spline(self,knots=None,order=3,_cache=None,autovary_in_range=False):
+    def add_spline(self,knots=None,order=3,_cache=None,autovary=False):
         """Multiple y by a spline function."""
         if self._clean_construct:
             spline = Spline(knots=knots,order=order)
@@ -1158,7 +1163,7 @@ class Model(Optimiser):
             _cache['spline'] = spline
             ## vary only those knots in model domain
             _cache.setdefault('first_invocation',True)
-            if autovary_in_range and _cache['first_invocation']:
+            if autovary and _cache['first_invocation']:
                 self.autovary_in_range(knots,self.x[i][0],self.x[i][-1])
                 _cache['first_invocation'] = False
         i = _cache['i']
@@ -1202,7 +1207,7 @@ class Model(Optimiser):
             total_knots=None,
             shift_knots=None,
             order=3,
-            autovary_in_range=False,
+            autovary=False,
             _cache=None,
     ):
         """Assuming a self.y is normalised in some sense, shift it by
@@ -1226,7 +1231,7 @@ class Model(Optimiser):
 
             ## vary only those knots in model domain
             _cache.setdefault('first_invocation',True)
-            if autovary_in_range and _cache['first_invocation']:
+            if autovary and _cache['first_invocation']:
                 txbeg,txend = self.x[i][0],self.x[i][-1]
                 self.autovary_in_range(total_knots,txbeg,txend)
                 self.autovary_in_range(shift_knots,txbeg,txend)
@@ -1391,7 +1396,7 @@ class Model(Optimiser):
 
         ## vary only those knots in model domain
         _cache.setdefault('first_invocation',True)
-        if autovary_in_range and _cache['first_invocation']:
+        if autovary and _cache['first_invocation']:
             _cache['first_invocation'] = False
             self.autovary_in_range(amplitude_spline)
         x,y = self.x,self.y
@@ -2621,7 +2626,7 @@ class FitAbsorption():
             p['intensity']['spline'] = [[tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
         for x,parameter in p['intensity']['spline']:
             parameter.vary = False
-        model.multiply_spline(knots=p['intensity']['spline'],order=p['intensity']['spline_order'],autovary_in_range=fit_intensity)
+        model.multiply_spline(knots=p['intensity']['spline'],order=p['intensity']['spline_order'],autovary=fit_intensity)
         ## shift entires spectrum -- light leakage or inteferometry
         ## problem that adds signal and shifts zero baseline
         if fit_shift or 'shift' in p:

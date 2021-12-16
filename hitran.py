@@ -248,9 +248,6 @@ def load_spectrum(filename):
             retval.global_attributes['npoints'],
         )
     return retval
-        
-        
-
 
 @tools.cache
 def _load_and_cache(filename):
@@ -270,7 +267,7 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     if not force_download and os.path.exists(line_filename):
         ## load existing data
         # line = deepcopy(_load_and_cache(line_filename))
-        line = dataset.load(line_filename)
+        line = _load_and_cache(line_filename).copy()
     else:
         ## download new data
         if is_known_chemical_species(species):
@@ -313,9 +310,8 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     else:
         line.name = name
     ## limit data
-    if match is not None or len(match_kwargs) > 0:
-        line.limit_to_match(match,**match_kwargs)
-        line.unset_inferred()
+    line.limit_to_match(match,**match_kwargs)
+    line.unset_inferred()
     ## replace format input function with a reference to this function
     line.clear_format_input_functions()
     def f():
@@ -335,7 +331,8 @@ def get_level(species,name=None,match=None,force_download=False,**match_kwargs):
     filename = f'{database.data_directory}/hitran/cache/{species}/level'
     if not force_download and os.path.exists(filename):
         ## load existing data
-        level = deepcopy(_load_and_cache(filename))
+        # level = deecpopy(_load_and_cache(filename))
+        level = _load_and_cache(filename).copy()
     else:
         ## compute from line
         line = get_line(species,force_download=force_download)
@@ -348,6 +345,7 @@ def get_level(species,name=None,match=None,force_download=False,**match_kwargs):
     if name is not None:
         level.name = name
     level.limit_to_match(match,**match_kwargs)
+    level.unset_inferred()
     return level
 
 
