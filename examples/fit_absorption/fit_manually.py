@@ -36,7 +36,7 @@ model.optimise()
 ## plot model and experiment
 model.plot(fig=2)
 
-## save new input file
+## save new input file etc
 model.save_to_directory('output_fit_manually')
 
 ## show figures

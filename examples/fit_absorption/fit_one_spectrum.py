@@ -7,7 +7,7 @@ from spectr.env import *
 o = spectrum.FitAbsorption(filename='../scans/miniPALS/2021_11_25_HCN_723Torr_mix+N2.0')
 
 ## fit HCN
-o.fit_species('HCN', 'bands',fit_N= True, fit_pair= True,fit_intensity= True)
+o.fit('HCN', 'bands',fit_N= True, fit_pair= True,fit_intensity= True)
 o.plot(fig=1)
 
 ## fit background to entire scan

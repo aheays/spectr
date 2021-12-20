@@ -19,7 +19,13 @@ from .optimise import optimise_method,Parameter,Fixed,format_input_method
 
 class Dataset(optimise.Optimiser):
 
-    """A set of data vectors of common length."""
+    """Stores a table of data vectors of common length indexed by key.
+
+    For the types of data that can be bstored see "data_kinds".  For
+    the associated data that can be store alongside its value
+    "vector_subkinds" and "scalar_subkinds".
+
+    For indexing see __getitem__."""
 
     ## The kinds of data that may be stored as a 'value' and their
     ## default prototype data
@@ -1150,6 +1156,7 @@ class Dataset(optimise.Optimiser):
         ## get matching indices
         source_index = source.get_combined_index(**get_combined_index_kwargs)
         if source_index is None:
+            source_index = slice(0,len(source))
             index = slice(0,len(source))
         else:
             index = slice(0,len(source_index))
@@ -2232,7 +2239,8 @@ class Dataset(optimise.Optimiser):
             new_data_length = np.sum(new_data_index)
         ## process defaults, keys that are missing a subkey are
         ## converted to (key,'value'). Add defaults in self to list of
-        ## defaults.  Set defaults in self now so they are available when concatenating.
+        ## defaults.  Set defaults in self now so they are available
+        ## when concatenating.
         if defaults is None:
             defaults = {}
         for key in list(defaults):
@@ -2244,7 +2252,7 @@ class Dataset(optimise.Optimiser):
         for key,subkey in defaults:
             if not self.is_set(key,subkey):
                 self[key,subkey] = defaults[key,subkey]
-        ## if keys to concatenating not specified as an input argument
+        ## if keys to concatenate not specified as an input argument
         ## then use all explicitly set keys in self or new_data
         if keys is None:
             keys = copy(self.explicitly_set_keys())
@@ -2259,19 +2267,26 @@ class Dataset(optimise.Optimiser):
                 if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
                     keys_subkeys.append((key,subkey))
         ## test if self is totally empty or has zero length and all
-        ## keys have defaults set. If so then permit concatenated of
+        ## keys have defaults set. If so then permit concatenation of
         ## unset keys by initialising them here to empty arrays
         if ( len(self.keys()) == 0
             or ( len(self) == 0
                  and np.all([self.is_set(key,'default') for key in self]) )):
             ## currently no data at all then, initialise keys as empty
-            ## arrays to be concatenated, comlex indexing preserves
+            ## arrays to be concatenated, complex indexing preserves
             ## default if it exists
             for key in keys:
-                if key in self:
-                    self[key][:] = []
-                else:
-                    self[key] = []
+                # print('DEBUG:', key,self.is_set(key,'default'))
+                # if key in self:
+                #     self[key][:] = []
+                # else:
+                #     print('DEBUG:', key,new_dataset[key,'kind'])
+                #     self[key] = [] 
+                if not key in self:
+                    if key in self.prototypes:
+                        self[key] = []
+                    else:
+                        self.set_new(key,value=[],kind=new_dataset[key,'kind'])
         ## make sure concatenated keys are known to self
         for key,subkey in keys_subkeys:
             if not self.is_known(key,subkey):

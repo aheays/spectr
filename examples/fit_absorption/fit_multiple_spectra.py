@@ -181,7 +181,7 @@ for ilabel,label in enumerate(scans_to_fit):
     
     ## fit each one, save results, and plot
     o = spectrum.FitAbsorption(name=label,parameters=parameters[label])
-    o.fit_species('HCN',regions='bands',fit_N= True, fit_pair= True,fit_intensity= True)
+    o.fit('HCN',region='bands',fit_N= True, fit_pair= True,fit_intensity= True)
     o.save(f'output_fit_multiple_spectra/{label}')
     o.plot(fig=ilabel+1)
 
