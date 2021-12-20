@@ -3,7 +3,7 @@ class InferException(Exception):
     pass
 
 class DatabaseException(InferException):
-    """Data not found in database or some other problem."""
+    """Data not found in database or some other problem not indicating a code error."""
     pass             
 
 class InvalidEncodingException(InferException):

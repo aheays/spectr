@@ -13,7 +13,7 @@ from . import tools
 from . import dataset
 from . import kinetics
 from . import convert
-from .exceptions import DatabaseException,NonUniqueValueException
+from .exceptions import DatabaseException,NonUniqueValueException,DecodeSpeciesException
 from . import kinetics
 
 ## get a dynamic absolute path to the data directory.  Requires import
@@ -68,14 +68,28 @@ def get_species_data(species):
     retval = species_data[species]
     return retval
 
+# @tools.vectorise()
+# def get_species_property(species,prop):
+#     """Get a database property of this species. Data stored in data/species_data.py."""
+#     from .data.species_data import data as species_data
+#     species = normalise_species(species)
+#     if species not in species_data or prop not in species_data[species]:
+#         raise DatabaseException(f"Species property is unknown: {species=}, {prop=}")
+#     retval = species_data[species][prop]
+#     return retval
+
 @tools.vectorise()
 def get_species_property(species,prop):
     """Get a database property of this species. Data stored in data/species_data.py."""
     from .data.species_data import data as species_data
     species = normalise_species(species)
-    if species not in species_data or prop not in species_data[species]:
-        raise DatabaseException(f"Species property is unknown: {species=}, {prop=}")
-    retval = species_data[species][prop]
+    if species in species_data and prop in species_data[species]:
+        retval = species_data[species][prop]
+    else:
+        try: 
+            retval = kinetics.get_species_property(species,prop)
+        except DecodeSpeciesException:
+            raise DatabaseException(f"Species property is unknown: {species=}, {prop=}")
     return retval
 
 @tools.cache

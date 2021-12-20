@@ -144,7 +144,8 @@ def _f0(self,Ae,E_l,ν,g_u,species):
     Q = hitran.get_partition_function(species,296)
     return Ae/(8*π*c*ν**2*Q/(np.exp(-c2*E_l/T)*(1-np.exp(-c2*ν/T))*g_u))
 
-prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",units="cm-1.cm2", kind='f', fmt='<10.5e',
+prototypes['S296K'] = dict(description="Spectral line intensity at 296K reference temperature ). This is not quite the same as HITRAN which also weights line intensities by their natural isotopologue abundance.",
+                           units="cm-1.cm2", kind='f', fmt='<10.5e',default_step=1e-25,
                            infer=[
                                ## (('Ae','E_l','ν','g_u','species'),_f0),
                                (('f','α296K_l','ν',),lambda self,f,α_l_296K,ν: f/1.1296e12*α_l_296K*(1-np.exp(-convert.units(constants.Boltzmann,'J','cm-1')*ν/296))),

@@ -11,7 +11,7 @@ import scipy
 from . import tools
 from .tools import cache
 from .dataset import Dataset
-from .exceptions import DecodeSpeciesException
+from .exceptions import DecodeSpeciesException,InferException
 from . import database
 from . import plotting
 
@@ -215,6 +215,12 @@ def get_inchikey(name):
 @cache
 def get_species(name=None,inchikey=None):
     return Species(name=name,inchikey=inchikey)
+
+@cache
+def get_species_property(name,prop):
+    species = Species(name=name)
+    retval = species[prop]
+    return retval
 
 @cache
 def get_chemical_name(name):
@@ -453,8 +459,22 @@ class Species:
                     return 'C∞v'
             else:
                 raise ImplementationError("Can only compute reduced mass for atoms and diatomic species.")
+        elif key == 'matplotlib_name':
+            return self.translate_name('matplotlib')
         else:
-                raise Exception(f"Unknown species property: {key}")
+            raise InferException(f"Unknown species property: {key}")
+
+    def translate_name(self,encoding):
+        if encoding == 'matplotlib':
+            name = self['name']
+            while r:=re.match(r'(^[^⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁺⁻]*)([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁺⁻]+)(.*)$',name):
+                name = r.group(1)+r'$^{'+tools.regularise_unicode(r.group(2))+r'}$'+r.group(3)
+            while r:=re.match(r'^([^₀₁₂₃₄₅₆₇₈₉]*)([₀₁₂₃₄₅₆₇₈₉]+)(.*)$',name):
+                name = r.group(1)+r'$_{'+tools.regularise_unicode(r.group(2))+'}$'+r.group(3)
+        else:
+            raise Exception
+        return name
+
 
     def is_isotopologue(self):
         """Is this species a particular isotopologue."""

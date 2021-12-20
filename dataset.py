@@ -17,7 +17,6 @@ from . import optimise
 from .optimise import optimise_method,Parameter,Fixed,format_input_method
 
 
-
 class Dataset(optimise.Optimiser):
 
     """A set of data vectors of common length."""
@@ -303,6 +302,24 @@ class Dataset(optimise.Optimiser):
                 self.set(key,'value',value,index=index,set_changed_only=True)
                 if self.is_set(key,'unc'):
                     self.set(key,'unc',nan,index=index,set_changed_only=True)
+
+    def set_value_to_current(
+            self,
+            key,
+            unique_keys,
+            default=None,
+            **limit_to_match_kwargs
+    ):
+        """Find all unique_keys combinations and set the value of key to a
+        Parameter set to the first matching current value."""
+        from .optimise import P
+        unique_keys = tools.ensure_iterable(unique_keys)
+        ## set a default value if key is not currently known
+        if not self.is_known(key) and default is not None:
+            self[key] = default
+        matches = self.matches(**limit_to_match_kwargs)
+        for d,i in matches.unique_dicts_match(*unique_keys):
+            self.set_value(key,P(self[key,i][0],True),**d,**limit_to_match_kwargs)
 
     @optimise_method(format_multi_line=3)
     def set_spline(
@@ -681,7 +698,12 @@ class Dataset(optimise.Optimiser):
         else:
             return self.all_subkinds[subkey][attribute]
             
-    def get_combined_index(self,index=None,match=None,**match_kwargs):
+    def get_combined_index(
+            self,
+            index=None,
+            match=None,
+            return_bool=False,
+            **match_kwargs):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
         ## combine match dictionaries
@@ -713,11 +735,20 @@ class Dataset(optimise.Optimiser):
             if len(match) > 0:
                 imatch = self.match(match)
                 retval = retval[tools.find(imatch[retval])]
+        ## convert to a boolean array
+        if return_bool:
+            if retval is None:
+                bool_retval = np.full(len(self),True)
+            else:
+                bool_retval = np.full(len(self),False)
+                bool_retval[index] = True
+            retval = bool_retval
         return retval
             
     def get_combined_index_bool(self,*get_combined_index_args,**get_combined_index_kwargs):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
+        raise DeprecationWarning('use get_combined_index(return_bool=True) instead')
         index = self.get_combined_index(*get_combined_index_args,**get_combined_index_kwargs)
         if index is None:
             raise Exception('Cannot return bool array combined index if None.')
@@ -1314,7 +1345,7 @@ class Dataset(optimise.Optimiser):
             raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
         already_attempted.append(key)
         if key not in self.prototypes:
-            raise InferException(f"No prototype for key: {repr(key)}")
+            raise InferException(f"{self.name}: No prototype for key: {repr(key)}")
         ## loop through possible methods of inferences.
         self.prototypes[key].setdefault('infer',[])
         for dependencies,function in self.prototypes[key]['infer']:
