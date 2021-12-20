@@ -289,9 +289,10 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
             ## make line object
             print(f'Making linelist for {species!r}')
             try:
-                classname = database.get_species_property(
-                    database.get_species_property(species,'chemical_species'),
-                    'classname')
+                # classname = database.get_species_property(
+                #     database.get_species_property(species,'chemical_species'),
+                #     'classname')
+                classname = database.get_species_property(chemical_species,'classname')
             except DatabaseException:
                 classname = 'Generic'
             line = dataset.make(

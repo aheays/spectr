@@ -462,7 +462,7 @@ class Species:
         elif key == 'matplotlib_name':
             return self.translate_name('matplotlib')
         else:
-            raise InferException(f"Unknown species property: {key}")
+            raise DecodeSpeciesException(f"Unknown species property: {key}")
 
     def translate_name(self,encoding):
         if encoding == 'matplotlib':
