@@ -2233,6 +2233,7 @@ class FitAbsorption():
                               These are the arguments of convolve_with_instrument_function
                               and will be deduced automatically (hopefully) if
                               not present.
+     - 'FTS_H2O': Parameters controlling extra H2O absorption in from water in the evacuated FTS.
     
 
 """
@@ -2243,7 +2244,8 @@ class FitAbsorption():
             parameters=None,    # pass in values to parameters
             verbose= True,      # print more information for debugging
             # make_plot=False,     # plot results of every fit
-            max_nfev=20,         # iterate optimiser up to this many times
+            max_nfev=20,         
+            ftol=1e-3,
             ncpus=1,            # compute Voigt spectrum with 1 or more cpus
             default_species=None,
             **more_parameters   # some other values in parameters as kwargs
@@ -2257,7 +2259,8 @@ class FitAbsorption():
         self.parameters |= more_parameters
         ## initialise control variables
         self.verbose = verbose
-        self.max_nfev = max_nfev
+        self.max_nfev = max_nfev # stop optimisation after this many iterations
+        self.ftol = ftol # stop optimisation when RMS gradient falls below ftol
         self.ncpus = ncpus
         ## the Experimebnt object
         self.experiment = None
@@ -2308,9 +2311,6 @@ class FitAbsorption():
             self.parameters,
             newline_depth=3,
             max_line_length=1000,
-            # blank_depth=-1,
-            # _depth=0,
-            # keys=None,
         )
         return retval
 
@@ -2318,102 +2318,82 @@ class FitAbsorption():
         if self.verbose:
             print(*args,**kwargs)
 
-    def fit(self,**make_model_kwargs):
-        """Fit a model.  Defaults are the same as in make_model."""
-        print(f'{self.name}: fit with {make_model_kwargs=}')
-        self.models,self.reference_models = [],[]
-        model = self.make_model(**make_model_kwargs)
-        model.optimise(
-            make_plot=False,
-            verbose=self.verbose,
-            max_nfev=self.max_nfev,)
-
-    def fit_regions(self,xbeg=-inf,xend=inf,width=1000,overlap_factor=0.1,**make_model_kwargs):
-        """Full model."""
-        print(f'{self.name}: fit_regions with {xbeg=} {xend=} {width=} {overlap_factor=} {make_model_kwargs=}')
-        self.models,self.reference_models = [],[]
-        p = self.parameters
-        ## determine overlapping region intervals between xbeg and
-        ## xend
-        xbeg = max(xbeg,p['xbeg'])
-        xend = min(xend,p['xend'])
-        xi = linspace(xbeg,xend,int((xend-xbeg)/width)+2)
-        xbegs = copy(xi[:-1])
-        xends = copy(xi[1:])
-        xbegs[1:] -= (width*overlap_factor)/2
-        xends[:-1] += (width*overlap_factor)/2
-        regions = [*zip(xbegs,xends)]
-        for iregion,region in enumerate(regions):
-            print(f'region {iregion:3d} of {len(regions)} {region!r}')
-            model = self.make_model(region,**make_model_kwargs)
-            model.optimise(
-                make_plot=False,
-                verbose=self.verbose,
-                max_nfev=self.max_nfev,)
-
-    def fit_species(
+    def fit(
             self,
-            species_to_fit='default', # 'default','existing', or a list of species names
-            regions='lines',          # 'lines','bands','full' or a list of regions [[xbeg0,xend0],[xbeg1,xend1],...]'
-            max_nfev=None,
+            species='existing', # 'default','existing', or a list of species names
+            region='lines',          # 'lines','bands','full' or a list of regions [[xbeg0,xend0],[xbeg1,xend1],...]'
             **make_model_kwargs,
     ):
         """Fit list of species individually from one another using their
         preset 'lines' or 'bands' regions, or the full region."""
-        print(f'{self.name}:fit_species with {species_to_fit=} {regions=} {make_model_kwargs=}')
+        print(f'{self.name}:fit with {species=} {region=} {make_model_kwargs=}')
         p = self.parameters
-        self.models,self.reference_models = [],[]
-        ## get default species list
-        if species_to_fit is None:
-            species_to_fit = []
-        if species_to_fit == 'default':
-            species_to_fit = self.default_species
-        if species_to_fit == 'existing':
-            species_to_fit = list(p['N'])
-        species_to_fit = tools.ensure_iterable(species_to_fit)
-        ## fit species one by one
-        for species in species_to_fit:
-            print(species,end=" ",flush=True)
-            ## get region list
-            if regions == 'lines':
-                species_regions = database.get_species_property(species,'characteristic_infrared_lines')
-            elif regions == 'bands':
-                species_regions = database.get_species_property(species,'characteristic_infrared_bands')
-            elif regions == 'full':
-                species_regions = 'full'
-            elif len(regions) == 2 and np.isscalar(regions[0]):
-                species_regions = [[*regions]]
+        ## gather species list
+        if species is None:
+            species = []
+        if species == 'default':
+            species = self.default_species
+        if species == 'existing':
+            p.setdefault('species',{})
+            species = list(p['species'])
+        species = tools.ensure_iterable(species)
+        ## gather regions list
+        if region == 'lines':
+            region = []
+            for tspecies in species:
+               region += database.get_species_property(tspecies,'characteristic_infrared_lines')
+        elif region == 'bands':
+            region = []
+            for tspecies in species:
+               region += database.get_species_property(tspecies,'characteristic_infrared_bands')
+        elif region == 'full':
+            region = ['full']
+        elif isinstance(region[0],(float,int)):
+            region = [region]
+        ## model for each region
+        self.models = []
+        main = Optimiser(name=f'{self.name}_main_{"_".join(species)}')
+        for tregion in region:
+            print(region,end=" ",flush=True)
+            model = self.make_model(tregion,species,**make_model_kwargs)
+            if model is None:
+                print('no data',end=" ",flush=True)
             else:
-                species_regions = regions
-            ## make and optimise models for this species
-            main = Optimiser(name=f'{self.name}_fit_species_{species}')
-            for region in species_regions:
-                print(region,end=" ",flush=True)
-                model = self.make_model(region,[species],**make_model_kwargs)
-                if model is None:
-                    print('no data',end=" ",flush=True)
-                    continue
+                self.models.append(model)
                 main.add_suboptimiser(model)
-            ## make sure all instensity regions are optimised if requested
-            if 'fit_intensity' in make_model_kwargs and make_model_kwargs['fit_intensity']:
-                for i,(x,p) in enumerate(self.parameters['intensity']['spline']):
-                    p.vary = False
-                for xbeg,xend in species_regions:
-                    ## decide if in or out of range and parameter varies
-                    for i,(x,p) in enumerate(self.parameters['intensity']['spline']):
+        ## make sure all intensity values are optimised if requested,
+        ## no matter what region they appear in
+        if 'intensity' in p and 'fit_intensity' in make_model_kwargs and make_model_kwargs['fit_intensity']:
+            for i,(x,tp) in enumerate(p['intensity']['spline']):
+                tp.vary = False
+            for tregion in region:
+                ## decide if in or out of range and parameter varies
+                if tregion == 'full':
+                    for i,(x,tp) in enumerate(p['intensity']['spline']):
+                        tp.vary = True
+                else:
+                    xbeg,xend = tregion
+                    for i,(x,tp) in enumerate(p['intensity']['spline']):
                         if x>=xbeg and x<=xend:
-                            p.vary = True
-            ## optimise
-            residual = main.optimise(
-                make_plot=False,
-                max_nfev=self.max_nfev,
-                verbose=self.verbose)
-            ## make reference models neglecting the fitted species
-            for region in species_regions:
-                reference_model = self.make_model(
-                    region,[species],
-                    neglect_species_to_fit=True,
-                    **make_model_kwargs)
+                            tp.vary = True
+        ## optimise
+        residual = main.optimise(
+            make_plot=False,
+            max_nfev=self.max_nfev,
+            verbose=self.verbose,
+            ftol=self.ftol,
+        )
+        ## make reference models neglecting the fitted species
+        self.reference_models = []
+        for tregion in region:
+            reference_model = self.make_model(
+                tregion,species,
+                neglect_species_to_fit=True,
+                **make_model_kwargs)
+            if reference_model is None:
+                pass
+            else:
+                self.reference_models.append(reference_model)
 
     def plot(self,fig=None,**plot_kwargs):
         """Plot the results of some models on individual subplots. Residuals
@@ -2472,12 +2452,12 @@ class FitAbsorption():
     def make_model(
             self,
             region='full',       # 'full', or (xbeg,xend)
-            species_to_fit=None, # None or a list of species names
-            species_to_model='existing', # 'existing', 'default' or a list of names
+            species=None, # species for optimisation, None, a name, or a list of names
+            species_to_model= None, # species to model but not fit, defaults to existing list, always includes 'species'
             fit_intensity=False,         # fit background intensity spline
             fit_shift=False,             # fit baseline shift
-            fit_N=False,                 # fit species_to_fit column densities
-            fit_pair=False,              # fit species_to_fit pressure broadening (air coefficients)
+            fit_N=False,                 # fit species column densities
+            fit_pair=False,              # fit species pressure broadening (air coefficients)
             fit_scalex=False,            # fit uniformly scaled frequency  
             fit_sinusoid=False,          # fit sinusoidally varying intensity
             fit_instrument=False,        # fit instrumental broadening
@@ -2526,21 +2506,17 @@ class FitAbsorption():
         if region == 'full':
             region = (self.parameters['xbeg'],self.parameters['xend'])
         xbeg,xend = region
-        ## get species_to_fit list
+        ## get species list
         p.setdefault('species',{})
-        if species_to_fit is None:
-            species_to_fit = []
-        elif species_to_fit == 'default':
-            species_to_fit = self.default_species
-        elif species_to_fit == 'existing':
-            species_to_fit = list(p['species'])
-        elif isinstance(species_to_fit,str):
-            species_to_fit = [species_to_fit]
+        if species is None:
+            species = []
+        elif isinstance(species,str):
+            species = [species]
         ## whether to adjust experiment frequency scale
         p['scalex'].vary = fit_scalex
         ## start model
         model = Model(
-            name='_'.join([self.name,'model',str(int(xbeg)),str(int(xend)),*species_to_fit]),
+            name='_'.join([self.name,'model']+list(species)+[str(int(xbeg)),str(int(xend))]),
             experiment=self.experiment,
             xbeg=xbeg,xend=xend)
         ## if no experimental data for this region then immediately
@@ -2560,36 +2536,37 @@ class FitAbsorption():
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(20,1000)))
         p['Teq'].vary = fit_temperature
-        if species_to_model == 'existing':
+        if species_to_model is None:
             species_to_model = set(p['species'])
-        species_to_model = set(species_to_model) | set(species_to_fit)
-        for species in species_to_model:
-            if neglect_species_to_fit and species in species_to_fit:
+        species_to_model = set(species_to_model) | set(species)
+        for tspecies in species_to_model:
+            if neglect_species_to_fit and species in species:
                 continue
-            p['species'].setdefault(species,{})
+            p['species'].setdefault(tspecies,{})
+            pspecies = p['species'][tspecies]
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
-            p['species'][species].setdefault('N',P(1e16, False,1e13 ,nan,(0,np.inf)))
-            p['species'][species].setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1e6),))
-            if species in species_to_fit:
-                p['species'][species]['N'].vary = fit_N
-                p['species'][species]['pair'].vary = fit_pair
+            pspecies.setdefault('N',P(1e16, False,1e13 ,nan,(0,np.inf)))
+            pspecies.setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1e6),))
+            if tspecies in species:
+                pspecies['N'].vary = fit_N
+                pspecies['pair'].vary = fit_pair
             else:
-                p['species'][species]['N'].vary =False
-                p['species'][species]['pair'].vary =False
+                pspecies['N'].vary =False
+                pspecies['pair'].vary =False
             ## load data from HITRAN linelists
             ## Trim lines that are too weak to matter
-            if species in species_to_fit:
+            if tspecies in species:
                 t_min_S296K=min_S296K
             else:
                 τpeak_min = τpeak_min    # approx minimum peak τ to include a line
-                t_min_S296K = τpeak_min*1e-3/p['species'][species]['N']    # resulting approx min S296K
+                t_min_S296K = τpeak_min*1e-3/pspecies['N']    # resulting approx min S296K
             ## add lines
             model.add_hitran_line(
-                species,
+                tspecies,
                 Teq=p['Teq'],
-                Nchemical_species=p['species'][species]['N'],
-                pair=p['species'][species]['pair'],
+                Nchemical_species=pspecies['N'],
+                pair=pspecies['pair'],
                 match={'min_S296K':t_min_S296K,},
                 ncpus=self.ncpus,
                 nfwhmL=nfwhmL,
@@ -2597,14 +2574,14 @@ class FitAbsorption():
         ## fit column density and air-broadening coefficient to H2O in the spectrometer
         if fit_FTS_H2O:
             p.setdefault('FTS_H2O',{})
-            p['FTS_H2O'].setdefault('N',P(1e17,False,1e15,bounds=(0,1e22)))
-            p['FTS_H2O'].setdefault('pair',P(1000,False,1,bounds=(10,1e5)))
+            p['FTS_H2O'].setdefault('N',P(1e16,False,1e15,bounds=(0,1e22)))
+            p['FTS_H2O'].setdefault('pair',P(100,False,1,bounds=(1,1000)))
             p['FTS_H2O'].setdefault('Teq',296)
         if 'FTS_H2O' in p:
             p['FTS_H2O']['N'].vary = fit_FTS_H2O
             p['FTS_H2O']['pair'].vary = fit_FTS_H2O
             model.add_hitran_line(
-                species,
+                'H₂O',
                 Teq=p['FTS_H2O']['Teq'],
                 Nchemical_species=p['FTS_H2O']['N'],
                 pair=p['FTS_H2O']['pair'],
