@@ -30,13 +30,14 @@ class Dataset(optimise.Optimiser):
     ## The kinds of data that may be stored as a 'value' and their
     ## default prototype data
     data_kinds = {
-        'f': {'description': 'float'         , 'cast': lambda x: np.asarray(x,dtype=float) , 'fmt': '+12.8e', },
-        'a': {'description': 'positive float', 'cast': lambda x: np.asarray(x,dtype=float) , 'fmt': '+12.8e', },
-        'i': {'description': 'int'           , 'cast': lambda x: np.asarray(x,dtype=int)   , 'fmt': 'd'     , },
+        'f': {'description': 'float'         , 'cast': lambda x: np.array(x,dtype=float) , 'fmt': '+12.8e', },
+        'f': {'description': 'float'         , 'cast': lambda x: np.array(x,dtype=float) , 'fmt': '+12.8e', },
+        'a': {'description': 'positive float', 'cast': lambda x: np.array(x,dtype=float) , 'fmt': '+12.8e', },
+        'i': {'description': 'int'           , 'cast': lambda x: np.array(x,dtype=int)   , 'fmt': 'd'     , },
         'b': {'description': 'bool'          , 'cast': tools.convert_to_bool_vector_array  , 'fmt': ''      , },
-        'U': {'description': 'str'           , 'cast': lambda x: np.asarray(x,dtype=str)   , 'fmt': 's'     , },
-        'O': {'description': 'object'        , 'cast': lambda x: np.asarray(x,dtype=object), 'fmt': ''      , },
-        'h': {'description': 'SHA1 hash'     , 'cast': lambda x: np.asarray(x,dtype='S20') , 'fmt': ''      , },
+        'U': {'description': 'str'           , 'cast': lambda x: np.array(x,dtype=str)   , 'fmt': 's'     , },
+        'O': {'description': 'object'        , 'cast': lambda x: np.array(x,dtype=object), 'fmt': ''      , },
+        'h': {'description': 'SHA1 hash'     , 'cast': lambda x: np.array(x,dtype='S20') , 'fmt': ''      , },
     }
 
     ## Kinds of subdata associatd with a key that are vectors of the
@@ -47,7 +48,7 @@ class Dataset(optimise.Optimiser):
         'unc'   :  { 'description' : 'Uncertainty'                                 , 'default' : 0.0   , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '8.2e' ,  }  , 
         'step'  :  { 'description' : 'Default numerical differentiation step size' , 'default' : 1e-8  , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '8.2e' ,  }  , 
         'vary'  :  { 'description' : 'Whether to vary during optimisation'         , 'default' : False , 'kind' : 'b' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : tools.convert_to_bool_vector_array , 'fmt'    : ''           ,       }        , 
-        'ref'   :  { 'description' : 'Source reference'                            , 'default' : nan   , 'kind' : 'U' , 'cast'        : lambda x : np.asarray(x , dtype='U20') , 'fmt'                              : 's'      ,              }       , 
+        'ref'   :  { 'description' : 'Source reference'                            , 'default' : nan   , 'kind' : 'U' , 'cast'        : lambda x : np.array(x , dtype='U20') , 'fmt'                              : 's'      ,              }       , 
     }
     assert np.all(['default' in val or key == 'value' for key,val in vector_subkinds.items()])
 
@@ -63,9 +64,8 @@ class Dataset(optimise.Optimiser):
         'default'        : {'description':'Default value',},
         'default_step'   : {'description':'Default differentiation step size','valid_kinds':('f',)},
         '_inferred_to'   : {'description':'List of keys inferred from this data',},
-        '_inferred_from' : {'description':'List of keys used to infer this data',},
+        '_inferred_from' : {'description':'List of keys and the function used to infer this data',},
         '_modify_time'   : {'description':'When this data was last modified',},
-        # 'permit_dereferencing'   : {'description':'Allow the data value array to be reassigned',},
     }
 
     ## all subdata kinds in one convenient dictionary
@@ -82,9 +82,9 @@ class Dataset(optimise.Optimiser):
     def __init__(
             self,
             name=None,          # name of this Dataset
-            permit_nonprototyped_data = True, # allow addition of data that is not prototyped -- kind will be guessed
-            permit_indexing = True, # allow the dataset to unset explicitly set keys, or reindex. If false then can still be extended and add new keys, in this way 
-            permit_dereferencing = True, # allow the dataset unset a key or replace internal arrays with new ones
+            permit_nonprototyped_data = True, # if False then raise an error on the setting of any data that has no prototype
+            permit_indexing = True, # if False then raise an error on any operation that unsets or indexes any explicitly set data
+            permit_dereferencing = True, # if False raise an error on any operation that reallocates an array -- causes inferred data to be recomputed in place where it would otherwise be deleted
             prototypes = None,      # a dictionary of prototypes
             load_from_file = None,  # load from a file -- guess type
             load_from_string = None, # load from formatted string
@@ -112,11 +112,17 @@ class Dataset(optimise.Optimiser):
             self.permit_nonprototyped_data = self.default_permit_nonprototyped_data
         else:
             self.permit_nonprototyped_data = permit_nonprototyped_data
-        ## if False then data can be added to the end of arrays but
-        ## keys can not be removed or their data rearranged
+        ## If permit_indexing=False then data can be added to the end
+        ## of arrays and new keys added but explicitly set keys can
+        ## not be removed and the Dataset can not be internally
+        ## indexed.
         self.permit_indexing = permit_indexing 
-        ## if False then then it is not allowed to unset a key or
-        ## replace internal arrays with new ones
+        ## If permit_dereferencing=False then it is not allowed to
+        ## unset a key or replace internal arrays with new ones. This
+        ## will raise various errors.  It also changes the behaviour
+        ## when dependent data is changed, rather than deleting
+        ## inferred data (which can be recalculated later if needed)
+        ## this is instead recomputed immediately and stored in place.
         self.permit_dereferencing = permit_dereferencing
         ## print extra information at various places
         self.verbose = False 
@@ -124,11 +130,10 @@ class Dataset(optimise.Optimiser):
         self.prototypes = copy(self.default_prototypes)
         if prototypes is not None:
             self.prototypes |= prototypes
-        ## classname to identify type of Dataset
+        ## generate an encoded classname to identify type of Dataset
         self.classname = re.sub(r"<class 'spectr.(.+)'>", r'\1', str(self.__class__))
-        ## name, will be converted to a valid symbol
-        if name is None:
-            name = self.classname.lower()
+        ## name of this object, it will be converted to a valid symbol
+        ## and stored in the _name property
         self.name = name
         ## new format input function -- INCOMPLETE
         def format_input_function():
@@ -143,7 +148,14 @@ class Dataset(optimise.Optimiser):
             return retval
         self.add_format_input_function(format_input_function)
         ## save self to directory
-        self.add_save_to_directory_function(self._save_to_directory)
+        # def save_to_directory_function(self,directory):
+            # """Save data in directory as a directory, also save as psv
+            # file if data is not too much."""
+            # self.save(f'{directory}/data',filetype='directory')
+            # if len(self)*len(self.keys()) < 10000:
+                # self.save(f'{directory}/data.psv')
+        self.add_save_to_directory_function(
+            lambda self,directory: self.save(f'{directory}/data',filetype='directory'))
         ## copy data from another dataset provided as argument
         if copy_from is not None:
             self.copy_from(copy_from)
@@ -161,12 +173,12 @@ class Dataset(optimise.Optimiser):
             if isinstance(val,optimise.Parameter):
                 ## an optimisable parameter (input function already
                 ## handled)
-                self.set_and_optimise(key,val)
+                self.set_value(key,val)
                 self.pop_format_input_function()
             else:
                 ## set data
                 self[key] = val
-        ## limit to matching data somehow loaded above
+        ## limit to matching data
         if limit_to_match is not None:
             self.limit_to_match(**limit_to_match)
         ## dictionary to store global attributes
@@ -176,15 +188,11 @@ class Dataset(optimise.Optimiser):
 
     def _set_name(self,name):
         """Name is adjusted to be proper python symbol when set"""
+        if name is None:
+            name = self.classname.lower()
         self._name = tools.make_valid_python_symbol_name(name)
-    name = property(lambda self:self._name,_set_name)
 
-    def _save_to_directory(self,directory):
-        """Save data in directory as a directory, also save as psv
-        file if data is not too much."""
-        self.save(f'{directory}/data',filetype='directory')
-        if len(self)*len(self.keys()) < 10000:
-            self.save(f'{directory}/data.psv')
+    name = property(lambda self:self._name,_set_name)
 
     def __len__(self):
         return self._length
@@ -461,41 +469,29 @@ class Dataset(optimise.Optimiser):
                 t[:len(self)] = old_data
                 self._data[key][subkey] = t
 
-    def _set_value(self,key,value,index=None,dependencies=None,kind=None):
+    def _set_value(self,key,value,index=None,inferred_from=None,kind=None):
         """Set a value"""
         ## turn Parameter into its floating point value
         if isinstance(value,Parameter):
             value = float(value)
-        ## if key is already set then delete anything previously
-        ## inferred from it, and previous things it is inferred 
-        if key in self:
-            self.unlink_inferences(key)
-        ## if an index is provided then data must already exist, set
-        ## new indeed data and return
-        if index is not None:
+        ## If an index is provided then data must already exist, set
+        ## new indexed data.
+        if index is not None or self.is_set(key):
+            ## set index to all data if not provided
+            if index is None and self.is_set(key):
+                index = slice(0,len(self)) 
             if not self.is_known(key):
-                if key in self.prototypes and 'default' in self.prototypes[key]:
-                    self.set(key,'value',value=self.prototypes[key]['default'])
-                else:
-                    raise Exception(f'Setting {repr(key)} for (possible) partial indices but it is not already set')
-            data = self._data[key]
-            if key not in self:
-                raise Exception(f'Cannot set data by index for unset key: {key}')
+                raise Exception(f'Could not set unknown key {key!r} with index')
+                raise Exception(f'Cannot set data by index for unknown key: {key}')
             ## reallocate string arrays if needed
             self._increase_char_length_if_necessary(key,'value',value)
-            ## cast scalar data correctly
+            ## scalar to array so that casdt does not fail
             if np.isscalar(value):
-                value = self[key,'cast'](array([value]))
+                value = array([value])
             ## set indexed data
-            data['value'][:self._length][index] = data['cast'](value)
+            self._data[key]['value'][:self._length][index] = self[key,'cast'](value)
         else:
-            ## set full array. It does not have to exist in in advance
-            ## but if it does then prevent reinitialisation if
-            ## permit_dereferencing=False
-            if self.is_set(key) and not self.permit_dereferencing:
-                raise Exception(f'Cannot re-initialise array: {self.permit_dereferencing=}')
             ## create entire data dict
-            ## decide whether to permit if non-prototyped
             if not self.permit_nonprototyped_data and key not in self.prototypes:
                 raise Exception(f'New data is not in prototypes: {repr(key)}')
             ## new data
@@ -511,7 +507,7 @@ class Dataset(optimise.Optimiser):
             if kind is not None:
                 data['kind'] = kind
             if 'kind' not in data:
-                value = np.asarray(value)
+                value = np.array(value)
                 data['kind'] = self._guess_kind_from_value(value)
             ## convert bytes string to unicode
             if data['kind'] == 'S':
@@ -544,26 +540,36 @@ class Dataset(optimise.Optimiser):
             data['value'] = data['cast'](value)
             ## add to self
             self._data[key] = data
-        ## If this is inferred data then record dependencies
-        if dependencies is not None:
-            self._data[key]['_inferred_from'] = list(dependencies)
-            for dependency in dependencies:
-                self._data[dependency]['_inferred_to'].append(key)
+        ## If key is already set then delete or recompute anything
+        ## previously inferred from it, and if it is inferred from
+        ## something else then delete the record of it bcause it is
+        ## now explicitly set.
+        if key in self:
+            self.unlink_inferences(
+                key,
+                recompute_inferences=(not self.permit_dereferencing))
+        ## If the new data is inferred data then record dependencies
+        if inferred_from is not None:
+            self[key,'_inferred_from'] = inferred_from
+            for dependency in inferred_from[0]:
+                self[dependency,'_inferred_to'].append(key)
         ## Record key, global, row modify times if this is an explicit
         ## change.
         tstamp = timestamp()
-        if dependencies is None or len(dependencies) == 0:
+        if inferred_from is None or len(inferred_from[0]) == 0:
+            ## not inferred, or inferred from thin air, gets its own
+            ## up-to-date timestamp
             self._global_modify_time = tstamp
             if index is None:
                 self._row_modify_time[:self._length] = tstamp
             else:
                 self._row_modify_time[:self._length][index] = tstamp
-            self._data[key]['_modify_time'] = tstamp
+            self[key,'_modify_time'] = tstamp
         else:
             ## If inferred data record modification time of the most
             ## recently modified dependency
-            self._data[key]['_modify_time'] = max(
-                [self[tkey,'_modify_time'] for tkey in dependencies])
+            self[key,'_modify_time'] = max(
+                [self[tkey,'_modify_time'] for tkey in inferred_from[0]])
 
     def _set_subdata(self,key,subkey,value,index=None):
         """Set vector subdata."""
@@ -576,9 +582,7 @@ class Dataset(optimise.Optimiser):
         if subkind['kind'] == 'O':
             raise ImplementationError()
         ## set data
-        if index is None:
-            if not self.permit_dereferencing and self.is_set(key,subkey):
-                raise Exception(f'Cannot re-initialise {(key,subkey)!r}: {self.permit_dereferencing=}')
+        if index is None and not self.is_set(key,subkey):
             ## set entire array
             if not tools.isiterable(value):
                 ## expand scalar input
@@ -588,6 +592,9 @@ class Dataset(optimise.Optimiser):
             ## set data
             data[subkey] = subkind['cast'](value)
         else:
+            if index is None:
+                self.assert_known(key,subkey)
+                index = slice(0,len(self))
             ## set part of array by index
             if subkey not in data:
                 ## set missing data outside indexed range to a default
@@ -967,7 +974,7 @@ class Dataset(optimise.Optimiser):
                 self.unlink_inferences(key)
                 self.unset(key)
    
-    def unlink_inferences(self,keys):
+    def unlink_inferences(self,keys,recompute_inferences=False):
         """Delete any record of keys begin inferred. Also recursively unset
         any key inferred from these and not among keys itself."""
         keys = tools.ensure_iterable(keys)
@@ -978,15 +985,26 @@ class Dataset(optimise.Optimiser):
             if key not in self:
                 continue
             if self.is_inferred(key):
-                for tkey in self._data[key]['_inferred_from']:
+                for tkey in self._data[key]['_inferred_from'][0]:
                     if tkey in self._data:
                         if key in self._data[tkey]['_inferred_to']:
                             self._data[tkey]['_inferred_to'].remove(key)
                 self._data[key].pop('_inferred_from')
-            ## recursively delete everything inferred to
+            ## recursively delete or recompute everything inferred from key
             for tkey in copy(self._data[key]['_inferred_to']):
                 if tkey not in keys and tkey in self:
-                    self.unset(tkey)
+                    if recompute_inferences:
+                        ## recompute value and uncertainty and substitute data into the existing arrays
+                        dependencies,function = self[tkey,'_inferred_from']
+                        value,uncertainty = self._infer_compute(dependencies,function)
+                        cast = self[tkey,'cast']
+                        self[tkey][:] = value
+                        if uncertainty is not None:
+                            cast_uncertainty = self.vector_subkinds['unc']['cast']
+                            self[tkey,'unc'][:] = uncertainty
+                    else:
+                        ## unset 
+                        self.unset(tkey)
 
     def unlink_all_inferences(self):
         """Mark all data as not inferred."""
@@ -1349,19 +1367,13 @@ class Dataset(optimise.Optimiser):
         if already_attempted is None:
             already_attempted = []
         if key in already_attempted:
-            raise InferException(f"Already unsuccessfully attempted to infer key: {repr(key)}")
+            raise InferException(f"Already attempted or attempting to infer key: {repr(key)}")
         already_attempted.append(key)
         if key not in self.prototypes:
             raise InferException(f"{self.name}: No prototype for key: {repr(key)}")
         ## loop through possible methods of inferences.
         self.prototypes[key].setdefault('infer',[])
         for dependencies,function in self.prototypes[key]['infer']:
-            ## if function is a tuple of two functions then the second
-            ## is for computing uncertainties
-            if tools.isiterable(function):
-                function,uncertainty_function = function
-            else:
-                uncertainty_function = None
             if isinstance(dependencies,str):
                 ## sometimes dependencies end up as a string instead
                 ## of a list of strings
@@ -1371,52 +1383,17 @@ class Dataset(optimise.Optimiser):
                       ''.join(['    ' for t in range(depth)])
                       +f'Attempting to infer {repr(key)} from {repr(dependencies)}')
             try:
+                ## infer dependencies, or fail in the attempt, use a
+                ## copy of already_attempted so it will not feed back
+                ## here
                 for dependency in dependencies:
-                    ## use a  copy of already_attempted so it will not feed back here
                     self._infer(dependency,copy(already_attempted),depth=depth+1)
-                ## compute value if dependencies successfully
-                ## inferred.  If value is None then the data and
-                ## dependencies are set internally in the infer
-                ## function.
-                value = function(self,*[self[dependency] for dependency in dependencies])
-                if value is not None:
-                    self._set_value(key,value,dependencies=dependencies)
-                ## compute uncertainties by linearisation
-                if uncertainty_function is None:
-                    squared_contribution = []
-                    value = self[key]
-                    parameters = [self[t] for t in dependencies]
-                    for i,dependency in enumerate(dependencies):
-                        if self.is_set(dependency,'unc'):
-                            step = self.get(dependency,'step')
-                            parameters[i] = self[dependency] + step # shift one
-                            dvalue = value - function(self,*parameters)
-                            parameters[i] = self[dependency] # put it back
-                            squared_contribution.append((self.get(dependency,'unc')*dvalue/step)**2)
-                    if len(squared_contribution)>0:
-                        uncertainty = np.sqrt(np.sum(squared_contribution,axis=0))
-                        self._set_subdata(key,'unc',uncertainty)
-                        if self.verbose:
-                            print(f'{self.name}:',
-                                  ''.join(['    ' for t in range(depth)])
-                                  +f'{self.name}: Inferred uncertainty: {repr(key)}')
-                else:
-                    ## args for uncertainty_function.  First is the
-                    ## result of calculating keys, after that paris of
-                    ## dependencies and their uncertainties, if they
-                    ## have no uncertainty then None is substituted.
-                    args = [self,self[key]]
-                    for dependency in dependencies:
-                        if self.is_set(dependency,'unc'):
-                            t_uncertainty = self.get(dependency,'unc')
-                        else:
-                            t_uncertainty = None
-                        args.extend((self[dependency],t_uncertainty))
-                    try:
-                        self.set(key,'unc',uncertainty_function(*args))
-                    except InferException:
-                        pass
-                ## success
+                ## actual calculation, might still fail
+                value,uncertainty = self._infer_compute(dependencies,function)
+                ## success — set values in self
+                self._set_value(key,value,inferred_from=(dependencies,function))
+                if uncertainty is not None:
+                    self._set_subdata(key,'unc',uncertainty)
                 if self.verbose:
                     print(f'{self.name}:',''.join(['    ' for t in range(depth)])+f'Sucessfully inferred: {repr(key)}')
                 break           
@@ -1428,17 +1405,68 @@ class Dataset(optimise.Optimiser):
                           +'    InferException: '+str(err))
                 continue     
         else:
-            ## not set and cannot infer
+            ## could not infer from any dependencies
             if key in self.prototypes and 'default' in self.prototypes[key]:
                 ## use default value. Include empty dependencies so
                 ## this is not treated as explicitly set data
                 default_value = self.prototypes[key]['default']
                 if self.verbose:
                     print(f'{self.name}:',''.join(['    ' for t in range(depth)])+f'Cannot infer {repr(key)} and setting to default value: {repr(default_value)}')
-                self._set_value(key,default_value,dependencies=())
+                self._set_value(key,default_value,inferred_from=((),()))
             else:
                 ## complete failure to infer
                 raise InferException(f"Could not infer key: {repr(key)}")
+
+    def _infer_compute(self,dependencies,function):
+        """Calculate inferred value and uncertainty from dependencies that are
+        already known to be set."""
+        ## if function is a tuple of two functions then the second
+        ## is for computing uncertainties
+        if tools.isiterable(function):
+            function,uncertainty_function = function
+        else:
+            function,uncertainty_function = function,None
+        ## inferred.  If value is None then the data and
+        ## dependencies are set internally in the infer
+        ## function.
+        value = function(self,*[self[dependency] for dependency in dependencies])
+        ## compute uncertainties by linearisation
+        if uncertainty_function is None:
+            squared_contribution = []
+            parameters = [self[t] for t in dependencies]
+            for i,dependency in enumerate(dependencies):
+                if self.is_set(dependency,'unc'):
+                    step = self.get(dependency,'step')
+                    parameters[i] = self[dependency] + step # shift one
+                    dvalue = value - function(self,*parameters)
+                    parameters[i] = self[dependency] # put it back
+                    squared_contribution.append((self.get(dependency,'unc')*dvalue/step)**2)
+            if len(squared_contribution)>0:
+                uncertainty = np.sqrt(np.sum(squared_contribution,axis=0))
+                if self.verbose:
+                    print(f'{self.name}:',
+                          ''.join(['    ' for t in range(depth)])
+                          +f'{self.name}: Inferred uncertainty: {repr(key)}')
+            else:
+                uncertainty = None
+        else:
+            ## args for uncertainty_function.  First is the
+            ## result of calculating keys, after that paris of
+            ## dependencies and their uncertainties, if they
+            ## have no uncertainty then None is substituted.
+            args = [self,self[key]]
+            for dependency in dependencies:
+                if self.is_set(dependency,'unc'):
+                    t_uncertainty = self.get(dependency,'unc')
+                else:
+                    t_uncertainty = None
+                args.extend((self[dependency],t_uncertainty))
+            try:
+                uncertainty = uncertainty_function(*args)
+            except InferException:
+                uncertainty = None
+        return value,uncertainty
+
 
     def as_flat_dict(self,keys=None,index=None):
         """Return as a dict of arrays, including uncertainties encoded as
@@ -1814,7 +1842,7 @@ class Dataset(optimise.Optimiser):
         data,more_kwargs = load_function(**load_function_kwargs)
         ## extract class name, alternatively return it at once
         if 'classname' in data:
-            data['classname'] = data['classname'].strip(' "\'')
+            data['classname'] = str(data['classname']).strip(' "\'')
             ## hacks for changed classnames
             hack_changed_classnames = {
                 'levels.Atomic':'levels.Atom',
@@ -2276,12 +2304,6 @@ class Dataset(optimise.Optimiser):
             ## arrays to be concatenated, complex indexing preserves
             ## default if it exists
             for key in keys:
-                # print('DEBUG:', key,self.is_set(key,'default'))
-                # if key in self:
-                #     self[key][:] = []
-                # else:
-                #     print('DEBUG:', key,new_dataset[key,'kind'])
-                #     self[key] = [] 
                 if not key in self:
                     if key in self.prototypes:
                         self[key] = []
@@ -2291,7 +2313,8 @@ class Dataset(optimise.Optimiser):
         for key,subkey in keys_subkeys:
             if not self.is_known(key,subkey):
                 raise Exception(f'Concatenated (key,subkey) not known to self: {(key,subkey)!r}')
-        ## delete any inferences to concatenated keys in self
+        ## delete any inferences to concatenated keys in self, they
+        ## will now be explicitly set
         for key in keys:
             self.unlink_inferences(keys)
         ## remove unwanted keys from self
@@ -2446,7 +2469,8 @@ class Dataset(optimise.Optimiser):
 
     def _reallocate(self,new_length):
         """Lengthen data arrays."""
-        if not self.permit_dereferencing and new_length > len(self):
+        ## if not self.permit_dereferencing and new_length > len(self):
+        if not self.permit_dereferencing:
             raise Exception(f'Cannot reallocate: {self.permit_dereferencing=}')
         ## copy individual arrays, increasing length if necessary
         for key in self:
