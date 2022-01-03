@@ -2314,10 +2314,6 @@ class FitAbsorption():
         )
         return retval
 
-    def verbose_print(self,*args,**kwargs):
-        if self.verbose:
-            print(*args,**kwargs)
-
     def fit(
             self,
             species='existing', # 'default','existing', or a list of species names
@@ -2354,7 +2350,7 @@ class FitAbsorption():
         self.models = []
         main = Optimiser(name=f'{self.name}_main_{"_".join(species)}')
         for tregion in region:
-            print(region,end=" ",flush=True)
+            print(tregion,end=" ",flush=True)
             model = self.make_model(tregion,species,**make_model_kwargs)
             if model is None:
                 print('no data',end=" ",flush=True)
@@ -2522,11 +2518,11 @@ class FitAbsorption():
         ## if no experimental data for this region then immediately
         if len(model.x) == 0:
             return None
-        ## add to internal store of models
-        if neglect_species_to_fit:
-            self.reference_models.append(model)
-        else:
-            self.models.append(model)
+        # ## add to internal store of models
+        # if neglect_species_to_fit:
+            # self.reference_models.append(model)
+        # else:
+            # self.models.append(model)
         ## set interpolated model grid
         self.parameters.setdefault('interpolate_model',0.001)
         if p['interpolate_model'] is not None:
@@ -2540,7 +2536,7 @@ class FitAbsorption():
             species_to_model = set(p['species'])
         species_to_model = set(species_to_model) | set(species)
         for tspecies in species_to_model:
-            if neglect_species_to_fit and species in species:
+            if neglect_species_to_fit and tspecies in species:
                 continue
             p['species'].setdefault(tspecies,{})
             pspecies = p['species'][tspecies]
