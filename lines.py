@@ -294,8 +294,11 @@ prototypes['E_u']['infer'].insert(0,(('E_l','ν0'),lambda self,El,ν0: El+ν0))
 prototypes['Ee_l']['infer'].insert(0,(('Ee_u','ν0'),lambda self,Eu,ν0: Eu-ν0))
 prototypes['Ee_u']['infer'].insert(0,(('Ee_l','ν0'),lambda self,El,ν0: El+ν0))
 
+prototypes['λ'] = dict(description="Transition wavelength",units="nm",kind='f', fmt='>11.4f', infer=[('ν', lambda self,ν: convert.units(ν,'cm-1','nm','photon'),)],)
+
+
 ## vibrational transition frequencies
-prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert_units(λv,'nm','cm-1'),)])
+prototypes['νv'] = dict(description="Electronic-vibrational transition wavenumber",units="cm-1",kind='f', fmt='>11.4f', infer=[(('Tvp','Tvpp'), lambda self,Tvp,Tvpp: Tvp-Tvpp),( ('λv',), lambda self,λv: convert.units(λv,'nm','cm-1'),)])
 prototypes['λv'] = dict(description="Electronic-vibrational transition wavelength",units="nm",kind='f', fmt='>11.4f', infer=[(('νv',), lambda self,νv: convert_units(νv,'cm-1','nm'),)],)
 
 ## transition strengths
@@ -471,7 +474,7 @@ class Generic(levels.Base):
             'species', 'chemical_species','isotopologue_ratio',
             'point_group','mass','Zsource','_species_hash',
             'Eref',
-            'ν','ν0', # 'λ',
+            'ν','ν0','λ',
             'ΔJ', 'branch',
             'ΔJ',
             'f','σ',
