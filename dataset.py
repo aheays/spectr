@@ -1939,11 +1939,13 @@ class Dataset(optimise.Optimiser):
                     if key not in data:
                         data[key] = {}
                     data[key][subkey] = val
-        ## update metadata
+        ## add metadata to data dictionary, if metadata key is not
+        ## present in data then ignore it
         if metadata is not None:
             for key,info in metadata.items():
-                for subkey,val in info.items():
-                    data[key][subkey] = val
+                if key in data:
+                    for subkey,val in info.items():
+                        data[key][subkey] = val
         ## 2021-06-11 HACK TO ACCOUNT FOR DEPRECATED ATTRIBUTES DELETE ONE DAY
         if 'default_step' in data: # HACK
             data.pop('default_step') # HACK
@@ -2865,7 +2867,7 @@ def get_common(x,y,keys=None,**limit_to_matches):
     if limit_to_matches is not None:
         x = x.matches(**limit_to_matches)
         y = y.matches(**limit_to_matches)
-    i,j = find_common(x,y,keys)
+    i,j = find_common(x,y,tools.ensure_iterable(keys))
     return x[i],y[j]
 
 def _get_class(classname):
