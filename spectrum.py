@@ -1332,18 +1332,27 @@ class Model(Optimiser):
             make_plot=False,
             vary=False,
             add_construct=True,
+            xbeg=None,xend=None,
     ):
         """Fit a spline interpolated sinusoid to current model residual, and
         add it to the model."""
         if self.experiment is None:
             raise Exception('auto_add_piecewise_sinusoid requires an experimental residual to fit')
+        ## get i to incluode, if nothing do nothing
+        i = np.full(len(self),True)
+        if xbeg is not None:
+            i[self.x<xbeg] = False
+        if xend is not None:
+            i[self.x>xend] = False
+        if np.sum(i) < 2:
+            return []
+        ## get fitted regions
         regions = tools.fit_piecewise_sinusoid(
-            self.xexp,
-            self.get_residual(),
+            self.xexp[i],
+            self.get_residual()[i],
             xi=xi,
             make_plot=make_plot,
-            make_optimisation=False,
-        )
+            make_optimisation=False,)
         regions = [
             [xbeg,xend,P(amplitude,vary),P(frequency,vary),P(phase,vary,2*π*1e-5),]
                     for (xbeg,xend,amplitude,frequency,phase) in regions]
@@ -2372,6 +2381,21 @@ class FitAbsorption():
                     for i,(x,tp) in enumerate(p['intensity']['spline']):
                         if x>=xbeg and x<=xend:
                             tp.vary = True
+        ## make sure all sinusoid values are optimised if requested,
+        ## no matter what region they appear in
+        if 'sinusoid' in p and 'fit_sinusoid' in make_model_kwargs and make_model_kwargs['fit_sinusoid']:
+            for i,(xbeg,xend,p0,p1,p2) in enumerate(p['sinusoid']['spline']):
+                p0.vary = p1.vary = p2.vary = False
+            for tregion in region:
+                ## decide if in or out of range and parameter varies
+                if tregion == 'full':
+                    for i,(xbeg,xend,p0,p1,p2) in enumerate(p['sinusoid']['spline']):
+                        p0.vary = p1.vary = p2.vary = True
+                else:
+                    txbeg,txend = tregion
+                    for i,(xbeg,xend,p0,p1,p2) in enumerate(p['sinusoid']['spline']):
+                        if xbeg <= txend and xend >= txbeg:
+                            p0.vary = p1.vary = p2.vary = True
         ## optimise
         residual = main.optimise(
             make_plot=False,
@@ -2612,20 +2636,54 @@ class FitAbsorption():
         ## scale by sinusoidal background, vary points completely within range
         if fit_sinusoid and 'sinusoid' not in p:
                 ## add new sinusoid spline
-                p['sinusoid'] = {'spline_step':5}
+                p['sinusoid'] = {'spline_step':50}
                 p['sinusoid']['spline'] = model.auto_add_piecewise_sinusoid(xi=p['sinusoid']['spline_step'],vary=False,add_construct=False)
         if 'sinusoid' in p:
-            ## extend range of spline if necessary
-            if p['sinusoid']['spline'][0][0] - xbeg > 1:
-                xa,xb = xbeg,p['sinusoid']['spline'][0][0]
-                x = linspace(xa,xb, max(2,int((xb-xa)/p['sinusoid']['spline_step'])))
-                p['sinusoid']['spline'] = (model.auto_add_piecewise_sinusoid(xi=x,vary=False,add_construct=False) + p['sinusoid']['spline'])
-            if xend - p['sinusoid']['spline'][-1][1] > 1:
-                xa,xb = p['sinusoid']['spline'][-1][1],xend
-                x = linspace(xa,xb, max(2,int((xb-xa)/p['sinusoid']['spline_step'])))
-                p['sinusoid']['spline'] += model.auto_add_piecewise_sinusoid(xi=x,vary=False,add_construct=False)
-            ## add sinusoid to model
-            model.add_piecewise_sinusoid(regions=p['sinusoid']['spline'],autovary=fit_sinusoid)
+            ## add sinusoid spline points if the current region
+            ## includes new parts of the spectrum
+            spline_xbeg = np.array([t[0] for t in p['sinusoid']['spline']])
+            spline_xend = np.array([t[1] for t in p['sinusoid']['spline']])
+            ## if fit_sinusoid, then identify spectral intervals that
+            ## require more spline points
+            if fit_sinusoid:
+                regions_to_add = []
+                ## add lower frequency points if needed
+                if np.any( model.x < spline_xbeg[0] ):
+                    regions_to_add.append((
+                        model.x[0],
+                        min(model.x[-1],spline_xbeg[0])))
+                ## add higher frequency points if needed
+                if np.any( model.x > spline_xend[-1] ):
+                    regions_to_add.append((
+                        max(model.x[0],spline_xbeg[-1]),
+                        model.x[-1]))
+                ## add interstitial frequency points if needed
+                for txbeg,txend in zip(spline_xend[:-1],spline_xbeg[1:]):
+                    if np.any( (model.x>txbeg) & (model.x<txend) ):
+                        regions_to_add.append((
+                            max(model.x[0],txbeg),
+                            min(model.x[-1],txend)))
+                ## actual adding
+                for txbeg,txend in regions_to_add:
+                    p['sinusoid']['spline'].extend(
+                        model.auto_add_piecewise_sinusoid(
+                            xi=p['sinusoid']['spline_step'],
+                            xbeg=txbeg,xend=txend,
+                            add_construct=False,vary=False))
+            ## sort and set to False vary
+            p['sinusoid']['spline'].sort()
+            for t in p['sinusoid']['spline']:
+                t[2].vary = t[3].vary = t[4].vary = False
+            ## add sinusoid to model. Add each block of connected
+            ## regions separately
+            regions = p['sinusoid']['spline']
+            for i in range(len(regions)+1):
+                if i == 0:
+                    ibeg = 0
+                elif ((i == len(regions))
+                      or ( regions[i][0] > regions[i-1][1])):
+                    model.add_piecewise_sinusoid(regions=regions[ibeg:i])
+                    ibeg = i
         ## instrument function
         if 'instrument_function' not in p:
             p['instrument_function'] = model.auto_convolve_with_instrument_function(vary=fit_instrument)
@@ -2635,8 +2693,6 @@ class FitAbsorption():
                     val.vary = fit_instrument
                     val.bounds = (1e-4,1)  
             model.convolve_with_instrument_function(**p['instrument_function'])
-        # ## build it now
-        # model.construct()
         return model
         
     def load_parameters(self,filename):
@@ -2662,6 +2718,7 @@ class FitAbsorption():
                 yexp=model.yexp,
                 yres=model.get_residual(),
             ).save(f'{directory}/model/{name}',filetype='directory')
+
         
 
 def collect_fit_absorption_results(parameters):
