@@ -325,6 +325,7 @@ def save_dict(
     """Write names_dicts as into filename preceeded by header.  Designed
     to be imported as valid python."""
     mkdir(os.path.split(filename)[0])
+    format_dict_kwargs.setdefault('blank_depth',0)
     with open(filename,'w') as fid:
         ## add header
         if header is not None:
