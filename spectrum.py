@@ -9,7 +9,7 @@ from scipy.constants import pi as π
 import numpy as np
 from numpy import arange
 import h5py
-from immutabledict import immutabledict as idict
+# from immutabledict import immutabledict as idict
 
 
 from . import optimise
@@ -2368,34 +2368,60 @@ class FitAbsorption():
                 main.add_suboptimiser(model)
         ## make sure all intensity values are optimised if requested,
         ## no matter what region they appear in
-        if 'intensity' in p and 'fit_intensity' in make_model_kwargs and make_model_kwargs['fit_intensity']:
-            for i,(x,tp) in enumerate(p['intensity']['spline']):
-                tp.vary = False
-            for tregion in region:
+        if 'intensity' in p:
+            xs = array([t[0] for t in p['intensity']['spline']])
+            ys = array([t[1] for t in p['intensity']['spline']])
+            for t in ys:
+                t.vary = False
+            if 'fit_intensity' in make_model_kwargs and make_model_kwargs['fit_intensity']:
+                for regioni in region:
+                    ## decide if in or out of range and parameter varies
+                    if regioni == 'full':
+                        for t in ys:
+                            t.vary =  True
+                    else:
+                        ## set to vary if in region, or adjacent to it
+                        i = tools.inrange(xs,*regioni,include_adjacent=True)
+                        for t in ys[i]:
+                            t.vary = True
+        ## make sure all shift values are optimised if requested,
+        ## no matter what region they appear in
+        if 'shift' in p:
+            xs = array([t[0] for t in p['shift']['spline']])
+            ys = array([t[1] for t in p['shift']['spline']])
+            for t in ys:
+                t.vary = False
+            if 'fit_shift' in make_model_kwargs and make_model_kwargs['fit_shift']:
                 ## decide if in or out of range and parameter varies
-                if tregion == 'full':
-                    for i,(x,tp) in enumerate(p['intensity']['spline']):
-                        tp.vary = True
-                else:
-                    xbeg,xend = tregion
-                    for i,(x,tp) in enumerate(p['intensity']['spline']):
-                        if x>=xbeg and x<=xend:
-                            tp.vary = True
+                for regioni in region:
+                    if regioni == 'full':
+                        ## vary all
+                        for t in ys:
+                            t.vary =  True
+                    else:
+                        ## set to vary if in region, or adjacent to it
+                        i = tools.inrange(xs,*regioni,include_adjacent=True)
+                        for t in ys[i]:
+                            t.vary = True
         ## make sure all sinusoid values are optimised if requested,
         ## no matter what region they appear in
         if 'sinusoid' in p and 'fit_sinusoid' in make_model_kwargs and make_model_kwargs['fit_sinusoid']:
-            for i,(xbeg,xend,p0,p1,p2) in enumerate(p['sinusoid']['spline']):
-                p0.vary = p1.vary = p2.vary = False
-            for tregion in region:
-                ## decide if in or out of range and parameter varies
-                if tregion == 'full':
-                    for i,(xbeg,xend,p0,p1,p2) in enumerate(p['sinusoid']['spline']):
-                        p0.vary = p1.vary = p2.vary = True
+            ranges = array([t[0:1] for t in p['sinusoid']['spline']])
+            params = array([t[2:5] for t in p['sinusoid']['spline']])
+            for parami in params:
+                for t in parami:
+                    t.vary = False
+            ## decide if in or out of range and parameter varies
+            for regioni in region:
+                if regioni == 'full':
+                    for parami in params:
+                        for t in parami:
+                            t.vary =  True 
                 else:
-                    txbeg,txend = tregion
-                    for i,(xbeg,xend,p0,p1,p2) in enumerate(p['sinusoid']['spline']):
-                        if xbeg <= txend and xend >= txbeg:
-                            p0.vary = p1.vary = p2.vary = True
+                    for (rangei,parami) in zip(ranges,params):
+                        if rangei[0] < regioni[-1] and rangei[-1] > regioni[0]:
+                            for t in parami:
+                                t.vary =  True 
         ## optimise
         residual = main.optimise(
             make_plot=False,
@@ -2567,7 +2593,7 @@ class FitAbsorption():
             ## load column desnity and effective air-broadening
             ## pressure species-by-species and perhaps optimise them
             pspecies.setdefault('N',P(1e16, False,1e13 ,nan,(0,np.inf)))
-            pspecies.setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1e6),))
+            pspecies.setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1.2e5),))
             if tspecies in species:
                 pspecies['N'].vary = fit_N
                 pspecies['pair'].vary = fit_pair
@@ -2621,18 +2647,15 @@ class FitAbsorption():
                 self.experiment.y,
                 xi=p['intensity']['spline_step'])
             p['intensity']['spline'] = [[tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
-        for x,parameter in p['intensity']['spline']:
-            parameter.vary = False
         model.multiply_spline(knots=p['intensity']['spline'],order=p['intensity']['spline_order'],autovary=fit_intensity)
         ## shift entires spectrum -- light leakage or inteferometry
         ## problem that adds signal and shifts zero baseline
         if fit_shift or 'shift' in p:
             if 'shift' not in p:
-                p['shift'] = {'spline_step':500, 'spline_order':3,}
+                p['shift'] = {'spline_step':100, 'spline_order':3,}
                 xspline = linspace(p['xbeg'],p['xend'],int((p['xend']-p['xbeg'])/p['shift']['spline_step'])+2)
                 p['shift']['spline'] = [[tx,P(0,False,1e-7)] for tx in xspline]
-            model.autovary_in_range(p['shift']['spline'],vary=fit_shift)
-            model.add_spline(knots=p['shift']['spline'],order=p['shift']['spline_order'])
+            model.add_spline(knots=p['shift']['spline'],order=p['shift']['spline_order'],autovary=fit_shift)
         ## scale by sinusoidal background, vary points completely within range
         if fit_sinusoid and 'sinusoid' not in p:
                 ## add new sinusoid spline
@@ -2672,8 +2695,8 @@ class FitAbsorption():
                             add_construct=False,vary=False))
             ## sort and set to False vary
             p['sinusoid']['spline'].sort()
-            for t in p['sinusoid']['spline']:
-                t[2].vary = t[3].vary = t[4].vary = False
+            # for t in p['sinusoid']['spline']:
+                # t[2].vary = t[3].vary = t[4].vary = False
             ## add sinusoid to model. Add each block of connected
             ## regions separately
             regions = p['sinusoid']['spline']
@@ -2682,7 +2705,7 @@ class FitAbsorption():
                     ibeg = 0
                 elif ((i == len(regions))
                       or ( regions[i][0] > regions[i-1][1])):
-                    model.add_piecewise_sinusoid(regions=regions[ibeg:i])
+                    model.add_piecewise_sinusoid(regions=regions[ibeg:i],autovary=fit_sinusoid)
                     ibeg = i
         ## instrument function
         if 'instrument_function' not in p:
