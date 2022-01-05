@@ -114,6 +114,14 @@ def _collect_parameters_and_optimisers(x):
             optimisers.extend(to)
     return parameters,optimisers
 
+def set_contained_parameters(container,vary=None):
+    """Find all parameters in a container and set their suppoerted
+    attributes to common value."""
+    parameters,optimiser = _collect_parameters_and_optimisers(container)
+    for p in parameters:
+        if vary is not None:
+            p.vary = vary
+
 def optimise_method(
         add_format_input_function=True, # whether to create an input function for this method
         construct_on_add= True,         # run the method now
