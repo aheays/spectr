@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 from numpy import nan,array,linspace,inf
 from scipy import constants
-from immutabledict import immutabledict as idict
+# from immutabledict import immutabledict as idict
 
 # from . import *
 # from .dataset import Dataset
@@ -1297,7 +1297,7 @@ class Generic(levels.Base):
     def copy_level_data(
             self,
             level,
-            level_match=idict(), # only copy these levels
+            level_match=None, # only copy these levels
             check_for_unused_levels=False,
             check_for_unconstrained_lines=False,
             verbose=False,

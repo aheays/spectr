@@ -7,7 +7,7 @@ from pprint import pprint
 import numpy as np
 from scipy import linalg
 import sympy
-from immutabledict import immutabledict as idict
+# from immutabledict import immutabledict as idict
 
 from .dataset import Dataset
 from . import tools
@@ -595,14 +595,16 @@ def get_case_a_basis(S,Λ,s,verbose=False,**kwargs):
         print('\nNNef:'); pprint(NNef)
         print('\nNSpm:'); pprint(NSpm)
         print('\nNSef:'); pprint(NSef)
-    return idict(
-        n=len(qnpm),
-        qnpm=qnpm,qnef=qnef,
-        Mpm=Mpm,Mef=Mef,
-        NNpm=NNpm,NNef=NNef,
-        NSpm=NSpm,NSef=NSef,
-        σvpm=σvpm,
-    )
+    # return idict(
+    #     n=len(qnpm),
+    #     qnpm=qnpm,qnef=qnef,
+    #     Mpm=Mpm,Mef=Mef,
+    #     NNpm=NNpm,NNef=NNef,
+    #     NSpm=NSpm,NSef=NSef,
+    #     σvpm=σvpm,
+    # )
+    return {'n':len(qnpm), 'qnpm':qnpm, 'qnef':qnef, 'Mpm':Mpm, 'Mef':Mef,
+            'NNpm':NNpm, 'NNef':NNef, 'NSpm':NSpm, 'NSef':NSef, 'σvpm':σvpm,}
 
 # def get_case_a_to_case_b_transformation(Λ,s,S,J):
     # """Calculate matrices converting case (a) vector to case (b). Matrices
