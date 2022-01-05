@@ -1,6 +1,5 @@
 import numpy as np
 
-import brukeropusreader
 from .tools import *
 from .plotting import *
 
@@ -8,6 +7,7 @@ class OpusData:
 
     def __init__(self,filename):
         """Load a binary Bruker Opus file into a dictionary."""
+        import brukeropusreader
         self.filename = filename
         self.data = brukeropusreader.read_file(expand_path(filename))
         ##pprint(self.data)       #  DEBUG
