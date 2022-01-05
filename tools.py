@@ -3136,7 +3136,7 @@ def find_blocks(b,error_on_empty_block=True):
 def full_range(x):
     return np.max(x)-np.min(x)
 
-def inrange(x,xbeg,xend,include_adjacent=False):
+def inrange(x, xbeg, xend, include_adjacent=False):
     """Return slice of sortd vector x between xbeg and xend. If
     include_adjacent then neighbouring pionts included in slice."""
     i = np.searchsorted(x,xbeg,side='left')
@@ -3146,7 +3146,9 @@ def inrange(x,xbeg,xend,include_adjacent=False):
             i -= 1
         if j<len(x):
             j += 1
-    return slice(i,j)
+    retval = np.full(len(x),False)
+    retval[i:j] = True
+    return retval
 
 def limit_to_range(beg,end,x,*other_arrays):
     """Limit x to range between beg and end (using np.searchsorted, must
@@ -5399,7 +5401,7 @@ def fit_spline_to_extrema_or_median(
     # retval = A*np.cos(2*constants.pi*xs*f+p)
     # return retval
 
-def piecewise_sinusoid(x,regions,Aorder=3,forder=1):
+def piecewise_sinusoid(x,regions,Aorder=3,forder=3):
     """"""
     from scipy import constants
     xmid = []
@@ -5409,8 +5411,6 @@ def piecewise_sinusoid(x,regions,Aorder=3,forder=1):
     xs = np.full(x.shape,0.0)
     for iregion,(xbeg,xend,amplitude,frequency,phase) in enumerate(regions):
         i = slice(*np.searchsorted(x,[xbeg,xend]))
-        # if iregion == len(regions)-1:
-            # i = slice(*np.searchsorted(x,[xbeg,xend+np.inf]))
         p[i] = float(phase)
         xs[i] = x[i]-xbeg
         xmid.append((xbeg+xend)/2)
