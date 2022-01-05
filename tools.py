@@ -3136,14 +3136,17 @@ def find_blocks(b,error_on_empty_block=True):
 def full_range(x):
     return np.max(x)-np.min(x)
 
-def inrange(x,xbeg,xend=None):
-    """Return arrays of booleans same size as x, True for all those
-    elements that xbeg<=x<=xend.\n\nIf xend is none and xbeg is an
-    array, find elements of x in the range of y. """
-    if xend is None:
-        return (x>=np.min(xbeg))&(x<=np.max(xbeg))
-    else:
-        return (x>=xbeg)&(x<=xend)
+def inrange(x,xbeg,xend,include_adjacent=False):
+    """Return slice of sortd vector x between xbeg and xend. If
+    include_adjacent then neighbouring pionts included in slice."""
+    i = np.searchsorted(x,xbeg,side='left')
+    j = np.searchsorted(x,xend,side='right')
+    if include_adjacent:
+        if i>0:
+            i -= 1
+        if j<len(x):
+            j += 1
+    return slice(i,j)
 
 def limit_to_range(beg,end,x,*other_arrays):
     """Limit x to range between beg and end (using np.searchsorted, must
