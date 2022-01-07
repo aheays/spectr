@@ -1334,27 +1334,18 @@ class Model(Optimiser):
             make_plot=False,
             vary=False,
             add_construct=True,
-            xbeg=None,xend=None,
+            # xbeg=None,xend=None,
     ):
         """Fit a spline interpolated sinusoid to current model residual, and
         add it to the model."""
         if self.experiment is None:
             raise Exception('auto_add_piecewise_sinusoid requires an experimental residual to fit')
-        ## get i to incluode, if nothing do nothing
-        i = np.full(len(self),True)
-        if xbeg is not None:
-            i[self.x<xbeg] = False
-        if xend is not None:
-            i[self.x>xend] = False
-        if np.sum(i) < 2:
-            return []
-        ## get fitted regions
         regions = tools.fit_piecewise_sinusoid(
-            self.xexp[i],
-            self.get_residual()[i],
+            self.x,
+            self.get_residual(),
             xi=xi,
-            make_plot=make_plot,
-            make_optimisation=False,)
+            plot=make_plot,
+            optimise=False)
         regions = [
             [xbeg,xend,P(amplitude,vary),P(frequency,vary),P(phase,vary,2*π*1e-5),]
                     for (xbeg,xend,amplitude,frequency,phase) in regions]
@@ -1813,7 +1804,8 @@ class Model(Optimiser):
             # contaminants_to_plot=('default',), # what contaminant to label
             plot_contaminants=False,
             contaminants=None,
-            shift_residual=0.,
+            shift_residual=0,
+            scale_residual=1,
             xlabel=None,ylabel=None,
             invert_model=False,
             plot_kwargs=None,
@@ -1888,7 +1880,7 @@ class Model(Optimiser):
                 ymin,ymax = min(ymin,yres.min()+shift_residual),max(ymax,yres.max()+shift_residual)
                 xmin,xmax = min(xmin,self.x.min()),max(xmax,self.x.max())
                 tkwargs = dict(color=plotting.newcolor(2), label='Experiment-Model residual', **plot_kwargs)
-                ax.plot(self.xexp,yres+shift_residual,zorder=-1,**tkwargs) # plot fit residual
+                ax.plot(self.xexp,yres*scale_residual+shift_residual,zorder=-1,**tkwargs) # plot fit residual
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
@@ -2234,7 +2226,7 @@ class FitAbsorption():
                             [[x0,amplitude0,frequency0,phase0],...]
      - 'sinusoid'/'spline_step': Separation of spline grid for fitting sinusoid 
                                  intensity if 'intensity'/'sinusoid' is not present.
-     - 'instrument_function': Parameters controlling the instrumental lineshape.
+     - 'instrument': Parameters controlling the instrumental lineshape.
                               These are the arguments of convolve_with_instrument_function
                               and will be deduced automatically (hopefully) if
                               not present.
@@ -2382,7 +2374,12 @@ class FitAbsorption():
             else:
                 self.reference_models.append(reference_model)
 
-    def plot(self,fig=None,**plot_kwargs):
+    def plot(
+            self,
+            fig=None,
+            scale_residual=1,
+            **plot_kwargs,
+    ):
         """Plot the results of some models on individual subplots. Residuals
         from models_no_absorption will be underplotted."""
         ## default plot style
@@ -2408,7 +2405,7 @@ class FitAbsorption():
             pregion = self.parameters['region'][model.xbeg,model.xend]
             ## new subplot
             ax = plotting.subplot(imodel,fig=fig)
-            model.plot(ax=ax,**plot_kwargs)
+            model.plot(ax=ax,scale_residual=scale_residual,**plot_kwargs)
             ## show the fitted intensity and shift 
             x = model.x
             background_intensity = tools.spline(
@@ -2431,7 +2428,7 @@ class FitAbsorption():
                 reference_model = self.reference_models[imodel]
                 ax.plot(
                     reference_model.x,
-                    reference_model.get_residual(),
+                    reference_model.get_residual()*scale_residual,
                     color='orange',
                     zorder=-2)
 
@@ -2446,6 +2443,7 @@ class FitAbsorption():
             fit_pair=False,              # fit species pressure broadening (air coefficients)
             fit_scalex=False,            # fit uniformly scaled frequency  
             fit_sinusoid=False,          # fit sinusoidally varying intensity
+            sinusoid_spline_step=50,
             fit_instrument=False,        # fit instrumental broadening
             fit_temperature=False,       # fit excitation/Doppler temperature
             fit_FTS_H2O=False,           # fit column density and air-broadening coefficient to H2O in the spectrometer
@@ -2580,9 +2578,10 @@ class FitAbsorption():
         pregion['intensity'].setdefault('spline_step',10)
         pregion['intensity'].setdefault('spline_order',3)
         if 'spline' not in pregion['intensity']:
+            i = tools.inrange(self.experiment.x,*region)
             xspline,yspline,t = tools.fit_spline_to_extrema_or_median(
-                self.experiment.x,
-                self.experiment.y,
+                self.experiment.x[i],
+                self.experiment.y[i],
                 xi=pregion['intensity']['spline_step'])
             pregion['intensity']['spline'] = [
                 [tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
@@ -2594,7 +2593,7 @@ class FitAbsorption():
         if fit_shift: 
             pregion.setdefault('shift',{})
         if 'shift' in pregion:
-            pregion['shift'].setdefault('spline_step',100)
+            pregion['shift'].setdefault('spline_step',500)
             pregion['shift'].setdefault('spline_order',3)
             if 'spline' not in pregion['shift']:
                 xspline = linspace(
@@ -2605,27 +2604,30 @@ class FitAbsorption():
             optimise.set_contained_parameters(pregion['shift']['spline'],vary=fit_shift)
             model.add_spline(knots=pregion['shift']['spline'],
                              order=pregion['shift']['spline_order'],)
-        ## scale by sinusoidal background, vary points completely within range
+        ## instrument function
+        if 'instrument' not in p:
+            p['instrument'] = model.auto_convolve_with_instrument_function(vary=fit_instrument)
+        else:
+            for key,val in p['instrument'].items():
+                if isinstance(val,Parameter):
+                    val.vary = fit_instrument
+                    val.bounds = (1e-4,1)  
+            model.convolve_with_instrument_function(**p['instrument'])
+        ## Scale by sinusoidally-varying background with slowly
+        ## changing parameters. Put this last because it requires a
+        ## very good residual fit to the rest of the model.  
         if fit_sinusoid:
             pregion.setdefault('sinusoid',{})
         if 'sinusoid' in pregion:
-            pregion['sinusoid'].setdefault('spline_step',50)
+            pregion['sinusoid'].setdefault('spline_step',sinusoid_spline_step)
             pregion['sinusoid'].setdefault(
                 'spline',
                 model.auto_add_piecewise_sinusoid(
                     xi=pregion['sinusoid']['spline_step'],
-                    vary=False,add_construct=False))
+                    vary=False,add_construct=False,))
             optimise.set_contained_parameters(pregion['sinusoid']['spline'],vary=fit_sinusoid)
             model.add_piecewise_sinusoid(regions=pregion['sinusoid']['spline'])
-        ## instrument function
-        if 'instrument_function' not in p:
-            p['instrument_function'] = model.auto_convolve_with_instrument_function(vary=fit_instrument)
-        else:
-            for key,val in p['instrument_function'].items():
-                if isinstance(val,Parameter):
-                    val.vary = fit_instrument
-                    val.bounds = (1e-4,1)  
-            model.convolve_with_instrument_function(**p['instrument_function'])
+        ## return Model object
         return model
         
     def load_parameters(self,filename):
@@ -2644,13 +2646,16 @@ class FitAbsorption():
         ## get uniquified model names
         model_names = tools.uniquify_strings(
             [model.name for model in self.models])
-        for model,name in zip(self.models,model_names):
-            Dataset(
+        for i,(model,name) in enumerate(zip(self.models,model_names)):
+            d = Dataset(
                 x=model.x,
                 ymod=model.y,
                 yexp=model.yexp,
                 yres=model.get_residual(),
-            ).save(f'{directory}/model/{name}',filetype='directory')
+            )
+            if len(self.reference_models) > i:
+                d['yref'] = self.reference_models[i].y
+            d.save(f'{directory}/model/{name}',filetype='directory')
 
 def collect_fit_absorption_results(parameters):
     """Turn a dictionary of FitAbsorption parameters into a Dataset."""
@@ -2677,7 +2682,7 @@ def collect_fit_absorption_results(parameters):
             data.modify(key, rename=f'pair_{r.group(1)}',
                         description=f'Effective pressure for air broadening of {r.group(1)}',
                         units='Pa', kind='f')
-        if key == 'instrument_function_sinc_fwhm':
+        if key == 'instrument_sinc_fwhm':
             data.modify(key, rename=f'sinc_fwhm',
                         description=f'Instrument function sinc',
                         units='cm-1.FWHM', kind='f',fmt='0.6f')
