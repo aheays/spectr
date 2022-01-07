@@ -5427,7 +5427,12 @@ def piecewise_sinusoid(x,regions,Aorder=3,forder=3):
             +p[i]))
     return retval
 
-def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
+def fit_piecewise_sinusoid(
+        x,y,
+        xi=10,
+        plot=True,
+        optimise=False,
+):
     """Define piecewise sinusoids for regions joined by points xi (or on
     grid with interval xi)."""
     import scipy
@@ -5452,9 +5457,8 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
         frequency = 1/dx*imax/len(FT)
         amplitude = rms(yi)
         regions.append((xbegi,xendi,amplitude,frequency,phase))
-    yf = piecewise_sinusoid(x,regions) + shift
     ## nonlinear optimisation of  sinusoid parameters 
-    if make_optimisation:
+    if optimise:
         from .optimise import Optimiser,P,_collect_parameters_and_optimisers
         optimiser = Optimiser()
         region_parameters = [[xbeg,xend,P(amplitude,True),P(frequency,True),P(phase,True,2*scipy.constants.pi*1e-5),]
@@ -5468,12 +5472,15 @@ def fit_piecewise_sinusoid(x,y,xi=10,make_plot=True,make_optimisation=False):
         regions = [[xbeg,xend,float(amplitude),float(frequency),float(phase)]
                    for (xbeg,xend,amplitude,frequency,phase) in region_parameters]
     ## plot result
-    if make_plot:
+    if plot:
+        from . import tools
         from . import plotting
-        ax = plotting.qax()
-        ax.plot(x,y,label='data')
-        ax.plot(x,yf,label='fit')
-        ax.plot(x,y-yf,label='residual')
+        yf = piecewise_sinusoid(x,regions)# + shift
+        ax = plotting.gca()
+        ax.cla()
+        ax.plot(x,y,label=f'data (rms={tools.rms(y):0.2e})')
+        ax.plot(x,yf,label=f'fit (rms={tools.rms(yf):0.2e})')
+        ax.plot(x,y-yf,label=f'residual (rms={tools.rms(y-yf):0.2e})')
         plotting.legend()
         plotting.show()
     return regions
