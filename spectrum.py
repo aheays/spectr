@@ -1650,7 +1650,7 @@ class Model(Optimiser):
                 if vary is None:
                     kwargs['sinc_fwhm'] = float(sinc_fwhm)
                 else:
-                    kwargs['sinc_fwhm'] = P(sinc_fwhm,vary,bounds=(0,inf))
+                    kwargs['sinc_fwhm'] = P(sinc_fwhm,vary,1e-5,bounds=(0,inf))
             if data['apodisation_function'] == 'Blackman-Harris 3-term':
                 kwargs['blackman_harris_order'] = 3
                 if vary is None:
@@ -2242,7 +2242,8 @@ class FitAbsorption():
             verbose= True,      # print more information for debugging
             # make_plot=False,     # plot results of every fit
             max_nfev=20,         
-            ftol=1e-3,
+            ftol=1e-6,
+            # xtol=1e-16,
             ncpus=1,            # compute Voigt spectrum with 1 or more cpus
             default_species=None,
             **more_parameters   # some other values in parameters as kwargs
@@ -2314,7 +2315,9 @@ class FitAbsorption():
     def fit(
             self,
             species='existing', # 'default','existing', or a list of species names
-            region='lines',          # 'lines','bands','full' or a list of regions [[xbeg0,xend0],[xbeg1,xend1],...]'
+            region='full',          # 'lines','bands','full' or a list of regions [[xbeg0,xend0],[xbeg1,xend1],...]'
+            fig=None,
+            block_length=None,
             **make_model_kwargs,
     ):
         """Fit list of species individually from one another using their
@@ -2357,11 +2360,20 @@ class FitAbsorption():
                 self.models.append(model)
                 main.add_suboptimiser(model)
         ## optimise
-        residual = main.optimise(
-            make_plot=False,
-            max_nfev=self.max_nfev,
-            verbose=self.verbose,
-            ftol=self.ftol,)
+        optimise_kwargs = {
+            'make_plot':False,
+            'max_nfev':self.max_nfev,
+            'verbose':self.verbose,
+            'ftol':self.ftol,
+        }
+        if block_length is None:
+            residual = main.optimise(**optimise_kwargs)
+        else:
+            residual = main.block_optimise(
+                block_length=block_length,
+                # block_method='adjacent',
+                block_method='overlap',
+                **optimise_kwargs)
         ## make reference models neglecting the fitted species
         self.reference_models = []
         for tregion in region:
@@ -2373,6 +2385,9 @@ class FitAbsorption():
                 pass
             else:
                 self.reference_models.append(reference_model)
+        ## plot after fitting
+        if fig is not None:
+            self.plot(fig)
 
     def plot(
             self,
@@ -2438,6 +2453,7 @@ class FitAbsorption():
             species=None, # species for optimisation, None, a name, or a list of names
             species_to_model= None, # species to model but not fit, defaults to existing list, always includes 'species'
             fit_intensity=False,         # fit background intensity spline
+            intensity_spline_step=50,
             fit_shift=False,             # fit baseline shift
             fit_N=False,                 # fit species column densities
             fit_pair=False,              # fit species pressure broadening (air coefficients)
@@ -2488,6 +2504,7 @@ class FitAbsorption():
         ## get region
         if region == 'full':
             region = (self.parameters['xbeg'],self.parameters['xend'])
+        region = (int(np.floor(region[0])),int(np.ceil(region[1])))
         p.setdefault('region',{})
         p['region'].setdefault(region,{})
         pregion = p['region'][region]
@@ -2575,7 +2592,7 @@ class FitAbsorption():
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
         pregion.setdefault('intensity',{})
-        pregion['intensity'].setdefault('spline_step',10)
+        pregion['intensity'].setdefault('spline_step',intensity_spline_step)
         pregion['intensity'].setdefault('spline_order',3)
         if 'spline' not in pregion['intensity']:
             i = tools.inrange(self.experiment.x,*region)
@@ -2585,7 +2602,8 @@ class FitAbsorption():
                 xi=pregion['intensity']['spline_step'])
             pregion['intensity']['spline'] = [
                 [tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
-        optimise.set_contained_parameters(pregion['intensity']['spline'],vary=fit_intensity)
+        tp,to = collect_contained_parameters_and_optimisers(pregion['intensity']['spline'])
+        optimise.set_contained_parameters(pregion['intensity']['spline'],vary=fit_intensity) #  DEBUG
         model.multiply_spline(knots=pregion['intensity']['spline'],
                               order=pregion['intensity']['spline_order'])
         ## shift entires spectrum -- light leakage or inteferometry
