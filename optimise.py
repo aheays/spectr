@@ -51,7 +51,7 @@ class _Store(dict):
             __old_repr__ = old_repr
         stored_val = StoredObject(val)
         ## add and parameters/suboptimisers in the stored object
-        parameters,optimisers = _collect_parameters_and_optimisers(stored_val)
+        parameters,optimisers = collect_contained_parameters_and_optimisers(stored_val)
         for t in parameters:
             self._parent.add_parameter(t)
         for t in optimisers:
@@ -93,7 +93,7 @@ class CustomBool():
 ## False, and not intended to be changed
 Fixed = CustomBool('Fixed',False)
 
-def _collect_parameters_and_optimisers(x):
+def collect_contained_parameters_and_optimisers(x):
     """Iteratively and recursively collect Parameter and Optimiser objects
     from x descending into any iterable children."""
     maximum_length_for_searching = 10000
@@ -104,12 +104,12 @@ def _collect_parameters_and_optimisers(x):
         optimisers.append(x)
     elif isinstance(x,list) and len(x) < maximum_length_for_searching:
         for t in x:
-            tp,to = _collect_parameters_and_optimisers(t)
+            tp,to = collect_contained_parameters_and_optimisers(t)
             parameters.extend(tp)
             optimisers.extend(to)
     elif isinstance(x,dict):
         for t in x.values():
-            tp,to = _collect_parameters_and_optimisers(t)
+            tp,to = collect_contained_parameters_and_optimisers(t)
             parameters.extend(tp)
             optimisers.extend(to)
     return parameters,optimisers
@@ -117,7 +117,7 @@ def _collect_parameters_and_optimisers(x):
 def set_contained_parameters(container,vary=None):
     """Find all parameters in a container and set their suppoerted
     attributes to common value."""
-    parameters,optimiser = _collect_parameters_and_optimisers(container)
+    parameters,optimiser = collect_contained_parameters_and_optimisers(container)
     for p in parameters:
         if vary is not None:
             p.vary = vary
@@ -165,7 +165,7 @@ def optimise_method(
             else:
                 optimise = True
             ## add parameters suboptimisers in args to self unless optimise=False
-            parameters,suboptimisers =  _collect_parameters_and_optimisers(kwargs)
+            parameters,suboptimisers =  collect_contained_parameters_and_optimisers(kwargs)
             if optimise:
                 for t in parameters:
                     self.add_parameter(t)
@@ -535,10 +535,14 @@ class Optimiser:
             for suboptimiser in optimiser._suboptimisers:
                 if suboptimiser.include_in_save_to_directory:
                     tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/')
-                    os.symlink(
-                        f'../../{suboptimiser._unique_name}',
-                        f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
-                        target_is_directory=True)
+                    try:
+                        raise Exception("ddd")
+                        os.symlink(
+                            f'../../{suboptimiser._unique_name}',
+                            f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
+                            target_is_directory=True)
+                    except Exception as err:
+                        warnings.warn(f'{self.name}: save_to_directory: could not create symlink to {suboptimiser._unique_name!r}, with error message: {err!r}')
 
     def plot_residual(self,ax=None,**plot_kwargs):
         """Plot residual error."""
@@ -581,16 +585,18 @@ class Optimiser:
         retval = {}
         for key in ('value','unc','step','upper_bound','lower_bound'):
             retval[key] = []
-        unique_parameters = []  # to prevent the same parameter being loaded twice from suboptimisers
+        all_parameters = []  # list of all parameters, varied or not
+        unique_parameter_ids = []  # to prevent the same parameter being loaded twice from suboptimisers
         for optimiser in self.get_all_suboptimisers():
             for parameter in optimiser.parameters:
-                if id(parameter) not in unique_parameters and parameter.vary:
+                if id(parameter) not in unique_parameter_ids and parameter.vary:
                     retval['value'].append(parameter.value)
                     retval['unc'].append(parameter.step)
                     retval['step'].append(parameter.step)
                     retval['lower_bound'].append(parameter.bounds[0])
                     retval['upper_bound'].append(parameter.bounds[1])
-                    unique_parameters.append(id(parameter))
+                    unique_parameter_ids.append(id(parameter))
+                    all_parameters.append(parameter)
             if isinstance(optimiser,Dataset):
                 for key in optimiser.optimised_keys():
                     vary = optimiser.get(key,'vary')
@@ -599,9 +605,8 @@ class Optimiser:
                     retval['step'].extend(optimiser.get(key,'step',index=vary))
                     retval['lower_bound'].extend(np.full(np.sum(vary),-np.inf)) # requires implementation
                     retval['upper_bound'].extend(np.full(np.sum(vary),np.inf)) # requires implementation
-        # return value,step,unc,upper_bound,lower_bound
         number_of_parameters = len(retval['value'])
-        return retval,number_of_parameters
+        return retval,number_of_parameters,all_parameters
 
     def _set_parameters(self,p,dp=None):
         """Set assign elements of p and dp from optimiser to the
@@ -785,7 +790,45 @@ class Optimiser:
 
     number_of_parameters = property(lambda self:self._get_parameters()[1])
 
-    # @optimise_method(add_construct_function=False)
+    def block_optimise(
+            self,
+            block_length=1,
+            block_method='adjacent',
+            verbose=True,
+            **optimise_kwargs,
+    ):
+        """Run multiple optimisations for subsets of varied parameters."""
+        warnings.warn('Varied Dataset data not implemented.')
+        ## collect varied parameters
+        data,number_of_parameters,parameters = self._get_parameters()
+        ivary = tools.find([t.vary for t in parameters])
+        ## divide into blocks in some way 
+        if block_method == 'adjacent':
+            ## adjacent blocks of length block_length (or less)
+            j = list(range(0,len(ivary),block_length))+[len(ivary)]
+            iblocks = [slice(j[i],j[i+1]) for i in range(len(j)-1)]
+        elif block_method == 'overlap':
+            ## overlappign blocks, most parameters optimised twice
+            j = list(range(0,len(ivary),int(np.ceil(block_length/2))))+[len(ivary)]
+            iblocks = [slice(j[i],j[i+2]) for i in range(len(j)-2)]
+        else:
+            raise ValueError(f'{block_method=} is invalid')
+        ## optimise blocks separately
+        for t in parameters:
+            t.vary = False 
+        for i,iblock in enumerate(iblocks):
+            if verbose:
+                print(f'\n{self.name}: optimising block: {i+1} of {len(iblocks)} for parameters {iblock}')
+            for t in parameters[iblock]:
+                t.vary= True
+            optimise_retval = self.optimise(verbose=verbose,**optimise_kwargs)
+            for t in parameters[iblock]:
+                t.vary= False
+        for t in parameters:
+            t.vary = True
+        return optimise_kwargs
+
+    @format_input_method()
     def optimise(
             self,
             verbose=True,
@@ -801,7 +844,7 @@ class Optimiser:
         ## multiprocessing cpus
         self._ncpus = ncpus
         ## get initial values or parameters
-        parameters,number_of_parameters = self._get_parameters()
+        parameters,number_of_parameters,all_parameters = self._get_parameters()
         ## some communication variables between methods to do with
         ## monitoring the optimisation
         self._monitor_frequency = monitor_frequency
@@ -1048,7 +1091,7 @@ class Optimiser:
         self.construct()
         residual = self.combined_residual
         ## get current parameter
-        parameters,number_of_parameters = self._get_parameters()
+        parameters,number_of_parameters,all_parameters = self._get_parameters()
         if verbose or self.verbose:
             print(f'{self.name}: computing uncertainty for {number_of_parameters} parameters')
         ## get jacobian
