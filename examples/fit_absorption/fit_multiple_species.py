@@ -1,15 +1,13 @@
+
+
 ## automatically fit one spectrum with multiple species
-
 from spectr.env import *
-
-
-
-print('DEBUG: Timing initiated') ; import time; timer=time.perf_counter()
 
 o = spectrum.FitAbsorption(filename='../scans/miniPALS/2021_11_25_HCN_723Torr_mix+N2.0',)
 # o.load_parameters('t0.py')
 
-
+## fit species one at a time for a few lines, which is faster and uses
+## less memory
 for ispecies,species in enumerate([
         'CO',
         'H2O',
@@ -18,28 +16,35 @@ for ispecies,species in enumerate([
     ]):
     o.fit(
         species=species,
-        region='bands',
-        # region='lines',
+        region='lines',
         fit_N= True,
         fit_pair= True,
         fit_intensity= True,
         fit_FTS_H2O=( True if species=='H2O' else Fixed),
+        fit_instrument=False,
+        fig=100+ispecies,
     )
-    o.plot(fig=100+ispecies)
 
+## fit all species at the same time, which accounts for overlapping
+## spectra
 o.fit(
-    # region='full',
-    region=(1500,2000),
-    fit_N=False,
-    fit_pair=False,
-    fit_intensity=False,
-    fit_FTS_H2O=False,
+    species=('CO', 'CO2', 'HCN',),
+    region='bands',
+    fit_N= True,
+    fit_pair= True,
+    fit_intensity= True,
+    fit_FTS_H2O=( True if species=='H2O' else Fixed),
+    fit_instrument=False,
+    fig=200,
 )
-o.plot(fig=1)
 
-o.save_parameters('t0.py')
+## show entire spectrum
+o.fit(fit_intensity=True)
+o.plot(fig=300)
 
-print('DEBUG: Timing elapsed',format(time.perf_counter()-timer,'12.6f'))
+# o.save_parameters('t0.py')
+
 
 show()
+
 

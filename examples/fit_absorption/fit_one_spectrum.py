@@ -4,7 +4,9 @@
 from spectr.env import *
 
 ## make FitAbsorption object for this spectrum
-o = spectrum.FitAbsorption(filename='../scans/miniPALS/2021_11_25_HCN_723Torr_mix+N2.0')
+o = spectrum.FitAbsorption(
+    filename='../scans/miniPALS/2021_11_25_HCN_723Torr_mix+N2.0',
+)
 
 ## fit HCN
 o.fit('HCN', 'bands',fit_N= True, fit_pair= True,fit_intensity= True)
@@ -20,5 +22,4 @@ print(o)
 ## save everything to disk
 o.save('output_fit_one_spectrum')
 
-
-
+show()
