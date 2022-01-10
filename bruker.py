@@ -136,6 +136,11 @@ def load_spectrum(filename):
     """Load ScSm from a file"""
     o = OpusData(filename)
     return o.get_spectrum()
+        
+def load_background(filename):
+    """Load ScRf from a file"""
+    o = OpusData(filename)
+    return o.get_background()
 
 def load_data(filename):
     """Load ScSm from a file"""
