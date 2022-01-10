@@ -1843,9 +1843,26 @@ def directory_to_dict(directory):
     # else:
         # return(np.array([bool(re.match(regexp,t)) for t in array]))
 
-# def pause(message="Press any key to continue..."):
-    # """Wait for use to press enter. Not usable outsdie linux."""
-    # input(message)
+########################
+## system interaction ##
+########################
+
+def get_memory_usage():
+    import gc
+    import os, psutil
+    gc.collect()
+    process = psutil.Process(os.getpid())
+    before = 0
+    memory_usage = process.memory_info().rss
+    return memory_usage
+
+def print_memory_usage():
+    memory_usage = get_memory_usage()
+    print(f'memory usage (B): {memory_usage:0.3e}')
+
+def pause(message="Press any key to continue..."):
+    """Wait for use to press enter. Not usable outsdie linux."""
+    input(message)
 
 def get_clipboard():
     """Get a string from clipboard."""
