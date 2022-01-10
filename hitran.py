@@ -245,16 +245,24 @@ def load_spectrum(filename):
         retval['x'] = np.linspace(
             retval.global_attributes['xbeg'],
             retval.global_attributes['xend'],
-            retval.global_attributes['npoints'],
-        )
+            retval.global_attributes['npoints'],)
     return retval
 
-@tools.cache
-def _load_and_cache(filename):
-    line = dataset.load(filename)
-    return line
+# @tools.cache
+# def _load_and_cache(filename):
+    # line = dataset.load(filename)
+    # return line
 
-def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
+_get_line_cache = {}
+
+def get_line(
+        species,
+        name=None,
+        match=None,
+        force_download=False,
+        cache=True,             # cache loaded line for later faster loading
+        copy_cache=True,        # copy cached line to prevent side effects if loaded twice
+        **match_kwargs):
     """Hitran linelist.  If species not an isotopologue then load a list
     of the natural abundance mixture.  Adds some extra quantum numbers
     from additional_electronic_quantum_numbers_to_add."""
@@ -266,8 +274,17 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     line_filename = f'{directory}/line'
     if not force_download and os.path.exists(line_filename):
         ## load existing data
-        # line = deepcopy(_load_and_cache(line_filename))
-        line = _load_and_cache(line_filename).copy()
+        if cache:
+            if line_filename in _get_line_cache:
+                line = _get_line_cache[line_filename]
+                
+            else:
+                line = dataset.load(line_filename)
+                _get_line_cache[line_filename] = line
+            if copy_cache:
+                line = line.copy()
+        else:
+            line = dataset.load(line_filename)
     else:
         ## download new data
         if is_known_chemical_species(species):
@@ -326,14 +343,29 @@ def get_line(species,name=None,match=None,force_download=False,**match_kwargs):
     line.add_format_input_function(f)
     return line
 
-def get_level(species,name=None,match=None,force_download=False,**match_kwargs):
+_get_level_cache = {}
+
+def get_level(
+        species,
+        name=None,
+        match=None,
+        force_download=False,
+        cache=True,
+        **match_kwargs):
     """Get upper level from HITRAN data."""
     species = database.normalise_species(species)
     filename = f'{database.data_directory}/hitran/cache/{species}/level'
     if not force_download and os.path.exists(filename):
         ## load existing data
-        # level = deecpopy(_load_and_cache(filename))
-        level = _load_and_cache(filename).copy()
+        if cache:
+            if filename in _get_level_cache:
+                level = _get_level_cache[filename].copy()
+            else:
+                level = dataset.load(level_filename)
+                _get_level_cache[filename] = level.copy()
+        else:
+            level = dataset.load(filename)
+        # level = _load_and_cache(filename).copy()
     else:
         ## compute from line
         line = get_line(species,force_download=force_download)
