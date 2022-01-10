@@ -1712,10 +1712,44 @@ class Dataset(optimise.Optimiser):
         retval = tools.format_dict(metadata,newline_depth=0,enclose_in_braces=False)
         return retval
 
-    def print_metadata(self,*args_format_metadata,**kwargs_format_metadata):
-        """Print a string representation of metadata"""
-        string = self.format_metadata(*args_format_metadata,**kwargs_format_metadata)
-        print( string)
+    # def print_metadata(self,*args_format_metadata,**kwargs_format_metadata):
+        # """Print a string representation of metadata"""
+        # string = self.format_metadata(*args_format_metadata,**kwargs_format_metadata)
+        # print( string)
+
+    def describe(self):
+        """Print a convenient description of this Dataset."""
+        data = Dataset(
+            prototypes={
+                'key':{'kind':'U',},
+                'subkey':{'kind':'U',},
+                'dtype':{'kind':'U'},
+                'memory':{'kind':'f','fmt':"0.3e"},
+                'description':{'kind':'U'},
+            },
+        )
+        import gc,sys
+        total_memory = 0
+        for key in self:
+            for subkey in self.vector_subkinds:
+                if self.is_set(key,subkey):
+                    memory = sys.getsizeof(self._data[key][subkey])
+                    ## memory = sys.getsizeof(self[key,subkey])
+                    total_memory += memory
+                    if subkey == 'value':
+                        description = self[key,'description']
+                    else:
+                        description = self.vector_subkinds[subkey]['description']
+                    data.append(
+                        key=key,
+                        subkey=subkey,
+                        dtype=str(self[key,subkey].dtype),
+                        memory=memory,
+                        description=description,
+                        )
+        print(f'name: {self.name}')
+        print(f'total memory: {total_memory:0.2e}')
+        print(data)
 
     def format_as_list(self):
         """Form as a valid python list of lists. OBSOLETE?"""
