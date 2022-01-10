@@ -837,6 +837,7 @@ class Optimiser:
             monitor_parameters=False, # print parameters every iteration
             monitor_frequency='significant rms decrease', # run monitor functions 'never', 'end', 'every iteration', 'rms decrease', 'significant rms decrease'
             make_plot=False,
+            calculate_uncertainty=True,
             **least_squares_options
     ):
         """Optimise parameters."""
@@ -950,10 +951,11 @@ class Optimiser:
             except KeyboardInterrupt:
                 pass
             ## calculate uncertainties -- KeyboardInterrupt possible
-            try:
-                self.calculate_uncertainty(verbose=verbose)
-            except KeyboardInterrupt:
-                pass
+            if calculate_uncertainty:
+                try:
+                    self.calculate_uncertainty(verbose=verbose)
+                except KeyboardInterrupt:
+                    pass
         ## recalculate final solution
         residual = self.construct()
         ## monitor
