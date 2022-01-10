@@ -695,7 +695,7 @@ def _extra_interaction_on_key(event):
             line.set_visible( True)
     elif event.key=='a':
         ## autoscale
-        axes.autoscale(enable=True,axis='both')
+        axes.autoscale(enable=True,axis='both',tight=True)
     elif event.key=='z': 
         ## zoom to all data
         lines  = (axes.get_lines()
