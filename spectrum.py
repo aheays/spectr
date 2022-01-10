@@ -591,12 +591,27 @@ class Model(Optimiser):
             self._interpolate_factor = None
 
     @format_input_method()
-    def add_hitran_line(self,species,match=None,*args,**kwargs):
+    def add_hitran_line(
+            self,
+            species,
+            # match=None,
+            min_S296K=0,
+            *args,
+            **kwargs
+    ):
         """Automatically load a HITRAN linelist for a species
         (isotopologue or natural abundance) and then call add_line."""
-        if match is None:
-            match = {'min_ν':self.x[0]-10, 'max_ν':self.x[-1]+10,}
-        line = hitran.get_line(species,match=match)
+        line = hitran.get_line(
+            species,
+            cache=False,
+            # copy_cache=False,
+            match={
+                'min_ν':self.x[0]-10,
+                'max_ν':self.x[-1]+10,
+                'min_S296K':min_S296K,
+                },
+        )
+
         line.include_in_save_to_directory = False
         line.clear_format_input_functions()
         self.add_line(line,*args,**kwargs)
@@ -671,7 +686,7 @@ class Model(Optimiser):
             _cache['y'] = y
             _cache['imatch'] = imatch
             _cache['nmatch'] = nmatch
-            _cache['line_copy'] = line
+            _cache['line_copy'] = line_copy
             _cache['ykey'] = ykey
             _cache['_calculate_spectrum'] = _calculate_spectrum
         else:
@@ -682,7 +697,7 @@ class Model(Optimiser):
             y = _cache['y']
             imatch = _cache['imatch']
             nmatch = _cache['nmatch']
-            line = _cache['line_copy']
+            line_copy = _cache['line_copy']
             ykey = _cache['ykey']
             _calculate_spectrum = _cache['_calculate_spectrum']
             ## nothing to be done
@@ -2238,9 +2253,6 @@ class FitAbsorption():
             parameters=None,    # pass in values to parameters
             verbose= True,      # print more information for debugging
             # make_plot=False,     # plot results of every fit
-            max_nfev=20,         
-            ftol=1e-6,
-            # xtol=1e-16,
             ncpus=1,            # compute Voigt spectrum with 1 or more cpus
             default_species=None,
             **more_parameters   # some other values in parameters as kwargs
@@ -2254,9 +2266,6 @@ class FitAbsorption():
         self.parameters |= more_parameters
         ## initialise control variables
         self.verbose = verbose
-        self.max_nfev = max_nfev # stop optimisation after this many iterations
-        self.ftol = ftol # stop optimisation when RMS gradient falls below ftol
-        self.ncpus = ncpus
         ## the Experimebnt object
         self.experiment = None
         ## fit_* methods save Model objects and their reference
@@ -2279,17 +2288,6 @@ class FitAbsorption():
     def __setitem__(self,key,value):
         """Access parameters directly."""
         self.parameters[key] = value
-
-    # def set_all_parameters_vary(self,vary):
-        # """Set all parameteres to vary."""
-        # def _set_parameters_vary_recursive(obj,vary):
-            # if np.isscalar(obj):
-                # if isinstance(obj,Parameter):
-                    # obj.vary = vary
-            # else:
-                # for tobj in obj:
-                    # _set_parameters_vary_recursive(tobj,vary)
-        # _set_parameters_vary_recursive(self.parameters,vary)
 
     def keys(self):
         """Parameters keys as list."""
@@ -2314,7 +2312,13 @@ class FitAbsorption():
             species='existing', # 'default','existing', or a list of species names
             region='full',          # 'lines','bands','full' or a list of regions [[xbeg0,xend0],[xbeg1,xend1],...]'
             fig=None,
-            block_length=None,
+            ## optimisation keywords
+            optimise_block_length=None,
+            max_nfev=20,         
+            ftol=1e-6,
+            xtol=1e-8,
+            calculate_uncertainty=True,
+            ## model keywords
             **make_model_kwargs,
     ):
         """Fit list of species individually from one another using their
@@ -2359,16 +2363,18 @@ class FitAbsorption():
         ## optimise
         optimise_kwargs = {
             'make_plot':False,
-            'max_nfev':self.max_nfev,
             'verbose':self.verbose,
-            'ftol':self.ftol,
+            'max_nfev':max_nfev,
+            'ftol':ftol,
+            'xtol':xtol,
+            'calculate_uncertainty':calculate_uncertainty,
         }
-        if block_length is None:
+        if optimise_block_length is None:
             residual = main.optimise(**optimise_kwargs)
         else:
             residual = main.block_optimise(
-                block_length=block_length,
-                # block_method='adjacent',
+                block_length=optimise_block_length,
+                ## block_method='adjacent',
                 block_method='overlap',
                 **optimise_kwargs)
         ## make reference models neglecting the fitted species
@@ -2449,8 +2455,8 @@ class FitAbsorption():
             region='full',       # 'full', or (xbeg,xend)
             species=None, # species for optimisation, None, a name, or a list of names
             species_to_model= None, # species to model but not fit, defaults to existing list, always includes 'species'
-            fit_intensity=False,         # fit background intensity spline
-            intensity_spline_step=50,
+            fit_intensity=False,         # fit background intensity spline, True, False, or 'reset' to discard the replace intensity spline
+            intensity_spline_step=50,    # separation of points in the background intensity spline
             fit_shift=False,             # fit baseline shift
             fit_N=False,                 # fit species column densities
             fit_pair=False,              # fit species pressure broadening (air coefficients)
@@ -2550,19 +2556,23 @@ class FitAbsorption():
                 pspecies['pair'].vary =False
             ## load data from HITRAN linelists
             ## Trim lines that are too weak to matter
-            if speciesi in species:
-                t_min_S296K=min_S296K
-            else:
-                τpeak_min = τpeak_min    # approx minimum peak τ to include a line
-                t_min_S296K = τpeak_min*1e-3/pspecies['N']    # resulting approx min S296K
+            # if speciesi in species:
+                # match={'min_S296K':min_S296K}
+                # # t_min_S296K=min_S296K
+            # else:
+                # # τpeak_min = τpeak_min    # approx minimum peak τ to include a line
+                # match={'min_τ':τpeak_min*1e-3}
+                # t_min_S296K = τpeak_min*1e-3/pspecies['N']    # resulting approx min S296K
+            match={'min_S296K':min_S296K}
             ## add lines
             model.add_hitran_line(
                 speciesi,
                 Teq=p['Teq'],
                 Nchemical_species=pspecies['N'],
                 pair=pspecies['pair'],
-                match={'min_S296K':t_min_S296K,},
-                ncpus=self.ncpus,
+                min_S296K=min_S296K,
+                match=match,
+                ncpus=1,
                 nfwhmL=nfwhmL,
                 lineshape='voigt',)
         ## fit column density and air-broadening coefficient to H2O in the spectrometer
@@ -2588,6 +2598,8 @@ class FitAbsorption():
             model.uninterpolate(average=True)
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
+        if fit_intensity == 'reset':
+            pregion['intensity'] = {}
         pregion.setdefault('intensity',{})
         pregion['intensity'].setdefault('spline_step',intensity_spline_step)
         pregion['intensity'].setdefault('spline_order',3)
@@ -2599,8 +2611,7 @@ class FitAbsorption():
                 xi=pregion['intensity']['spline_step'])
             pregion['intensity']['spline'] = [
                 [tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
-        tp,to = collect_contained_parameters_and_optimisers(pregion['intensity']['spline'])
-        optimise.set_contained_parameters(pregion['intensity']['spline'],vary=fit_intensity) #  DEBUG
+        optimise.set_contained_parameters(pregion['intensity']['spline'],vary=fit_intensity)
         model.multiply_spline(knots=pregion['intensity']['spline'],
                               order=pregion['intensity']['spline_order'])
         ## shift entires spectrum -- light leakage or inteferometry
@@ -2653,10 +2664,10 @@ class FitAbsorption():
         """Save parameters to a file."""
         tools.save_dict(filename,parameters=self.parameters)
 
-    def save(self,directory):
+    def save(self,directory,trash_existing=True):
         """Save parameters and experimental and model spectrum to a
         directory."""
-        tools.mkdir(directory,trash_existing=True)
+        tools.mkdir(directory,trash_existing=trash_existing)
         self.save_parameters(f'{directory}/parameters.py')
         ## get uniquified model names
         model_names = tools.uniquify_strings(
