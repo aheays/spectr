@@ -595,10 +595,7 @@ class Model(Optimiser):
         """Automatically load a HITRAN linelist for a species
         (isotopologue or natural abundance) and then call add_line."""
         if match is None:
-            match = {
-                'min_ν':self.x[0]-10,
-                'max_ν':self.x[-1]+10,
-                }
+            match = {'min_ν':self.x[0]-10, 'max_ν':self.x[-1]+10,}
         line = hitran.get_line(species,match=match)
         line.include_in_save_to_directory = False
         line.clear_format_input_functions()
@@ -670,24 +667,24 @@ class Model(Optimiser):
             ## changed -- HACK
             data = {key:line_copy[key] for key in ('ν',ykey,'ΓL','ΓD') if line_copy.is_known(key)}
             ## cache
-            (
-                _cache['data'],_cache['y'],
-                _cache['imatch'],_cache['nmatch'],
-                _cache['line_copy'],_cache['ykey'],
-                _cache['_calculate_spectrum'],
-            ) = (
-                data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum,
-            )
+            _cache['data'] = data
+            _cache['y'] = y
+            _cache['imatch'] = imatch
+            _cache['nmatch'] = nmatch
+            _cache['line_copy'] = line
+            _cache['ykey'] = ykey
+            _cache['_calculate_spectrum'] = _calculate_spectrum
         else:
             ## subsequent runs -- maybe only recompute a few line
             ##
             ## load cache
-            (data,y,imatch,nmatch,line_copy,ykey,_calculate_spectrum,) = (
-                 _cache['data'],_cache['y'],
-                 _cache['imatch'],_cache['nmatch'],
-                 _cache['line_copy'],_cache['ykey'],
-                 _cache['_calculate_spectrum'],
-            ) 
+            data = _cache['data']
+            y = _cache['y']
+            imatch = _cache['imatch']
+            nmatch = _cache['nmatch']
+            line = _cache['line_copy']
+            ykey = _cache['ykey']
+            _calculate_spectrum = _cache['_calculate_spectrum']
             ## nothing to be done
             if nmatch == 0:
                 return
@@ -2588,7 +2585,7 @@ class FitAbsorption():
                 lineshape='voigt',)
         ## uninterpolate model grid
         if p['interpolate_model'] is not None:
-            model.uninterpolate(average= True)
+            model.uninterpolate(average=True)
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
         pregion.setdefault('intensity',{})
