@@ -88,6 +88,7 @@ class Dataset(optimise.Optimiser):
             prototypes = None,      # a dictionary of prototypes
             load_from_file = None,  # load from a file -- guess type
             load_from_string = None, # load from formatted string
+            load_from_parameters_dict = None, # load from a dictionary of dictionaries
             copy_from = None,        # copy form another dataset
             limit_to_match=None,     # reduce by this match dictionary after any data is loaded
             description='',          # description of this Dataset
@@ -165,6 +166,11 @@ class Dataset(optimise.Optimiser):
         ## load data from an encoded string provided as an argument
         if load_from_string is not None:
             self.load_from_string(load_from_string)
+        ## A dictionary of dictionaires. Keys become "key" and each
+        ## dictionaries contents are flattened and concatenated
+        ## together
+        if load_from_parameters_dict is not None:
+            self.load_from_parameters_dict(load_from_parameters_dict)
         ## load input data from data dictionary or keyword arguments
         if data is None:
             data = {}
@@ -1748,6 +1754,8 @@ class Dataset(optimise.Optimiser):
                         description=description,
                         )
         print(f'name: {self.name}')
+        print(f'length: {len(self)}')
+        print(f'number of keys: {len(self.keys())}')
         print(f'total memory: {total_memory:0.2e}')
         print(data)
 
