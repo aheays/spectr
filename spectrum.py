@@ -2320,7 +2320,7 @@ class FitAbsorption():
             ftol=1e-6,
             xtol=1e-8,
             calculate_uncertainty=True,
-            ## model keywords controlling what to fit
+            ## make_model keywords controlling what to fit
             **make_model_kwargs,
     ):
         """Fit list of species individually from one another using their
@@ -2351,12 +2351,12 @@ class FitAbsorption():
             for tspecies in species_to_fit:
                region += database.get_species_property(tspecies,'characteristic_infrared_bands')
         elif region == 'full':
-            self.make_model(0,0)
+            self.make_model(0,0,verbose=False)
             region = ((int(np.floor(p['xbeg'])),
                        int(np.ceil(p['xend']))),)
         elif isinstance(region[0],(float,int)):
             region = [region]
-        main = Optimiser(name=f'main_{"_".join(species_to_fit)}')
+        main = Optimiser(name="_".join(list(species_to_fit)+["main"]))
         ## initialise optimiser
         optimise_kwargs = {
             'make_plot':False,
@@ -2378,18 +2378,11 @@ class FitAbsorption():
                     species_to_fit=species_to_fit,
                     other_species=other_species,
                     **make_model_kwargs)
-                print(model.name)
                 if model is not None:
                     self.models.append(model)
                     main.add_suboptimiser(model)
             ## optimise
             residual = main.optimise(**optimise_kwargs)
-            # ## make reference models neglecting the fitted species
-            # if len(species_to_fit) > 0:
-                # for model in self.models:
-                    # model._reference_model = self.make_model(
-                        # model.xbeg,model.xend,
-                        # other_species=other_species,)
         else:
             ## loop through defined regions and their subreiongs,
             ## optimising them individually
@@ -2398,16 +2391,17 @@ class FitAbsorption():
                 ## linspace interval, a pair is a single subregion, a
                 ## list of pairs for multiple subregions
                 if np.isscalar(subregion):
-                    x = linspace(xbeg,xend,int(np.ceil(xend-xbeg)/subregion)+1)
-                    subregions = [
-                        (int(np.floor(t0)),int(np.ceil(t1)))
-                    for t0,t1 in zip(x[0:-1],x[1:])]
+                    x = linspace(xbeg,xend,int(np.ceil((xend-xbeg)/(subregion/2)))+1)
+                    x[:-1] = [int(np.floor(t)) for t in x[:-1]]
+                    x[-1] = int(np.ceil(x[-1]))
+                    subregions = [(x[i],x[i+2]) for i in range(len(x)-2)]
                 elif np.isscalar(subregion[0]):
                     subregions = [subregion]
                 else:
                     subregions = subregion
                 ## optimise a model for each subregion individually
                 for isubregion,(subregion_xbeg,subregion_xend) in enumerate(subregions):
+                    # print(f'subregion {isubregion+1} of {len(subregions)}: {(subregion_xbeg,subregion_xend)}')
                     model = self.make_model(
                         subregion_xbeg,subregion_xend,
                         species_to_fit=species_to_fit,
@@ -2415,24 +2409,15 @@ class FitAbsorption():
                         region=(xbeg,xend),
                         **make_model_kwargs)
                     model._is_subregion = True
-                    print(model.name,f'subregion ({isubregion+1} of {len(subregions)}: {(subregion_xbeg,subregion_xend)}')
                     self.subregion_models.append(model)
                     model.optimise(**optimise_kwargs)
-            ## compute full-region models without optimisation
-            for xbeg,xend in region:
-                model = self.make_model(
-                    xbeg,xend,
-                    species_to_fit=species_to_fit,
-                    other_species=other_species,)
-                if model is not None:
-                    self.models.append(model)
-                print(model.name)
         ## make reference models
         if len(species_to_fit) > 0:
             for model in self.models:
                 model._reference_model = self.make_model(
                     model.xbeg,model.xend,
-                    other_species=other_species,)
+                    other_species=other_species,
+                    verbose=False,)
         ## plot after fitting
         if fig is not None:
             self.plot(fig)
@@ -2497,6 +2482,8 @@ class FitAbsorption():
                     model._reference_model.x,
                     model._reference_model.get_residual()*scale_residual,
                     color='orange', zorder=-2)
+        ## finalise plot
+        fig.suptitle(self.name)
 
     def make_model(
             self,
@@ -2515,15 +2502,13 @@ class FitAbsorption():
             fit_instrument=False,        # fit instrumental broadening
             fit_temperature=False,       # fit excitation/Doppler temperature
             fit_FTS_H2O=False,           # fit column density and air-broadening coefficient to H2O in the spectrometer
-
-            # nfwhmL=100,                  # compute this many Lorentizan full-width half-maximums
-            # min_S296K=1e-25,             # include lines from fitted species with this linestrength or more
-            # τpeak_min=1e-3,              # include lines from non-fitted species with this integrated optical depth or more
-
-            verbose=False,                # print more info for debugging
+            name=None,
+            verbose=None,                # print more info for debugging
     ):
         """Make a model for fitting to the experimental spectrum.  Probably
         not called directly, instead used by various fit* methods."""
+        if verbose is None:
+            verbose = self.verbose
         ## get parameters — protect from changes if necessary
         p = self.parameters
         ## load experiment
@@ -2560,9 +2545,14 @@ class FitAbsorption():
         ## whether to adjust experiment frequency scale
         p['scalex'].vary = fit_scalex
         ## start model
-        model = Model(
-            name='_'.join(list(species_to_fit)+[str(t) for t in region]),
-            experiment=self.experiment, xbeg=xbeg,xend=xend)
+        if name is None:
+            name='_'.join(list(species_to_fit)+[str(t) for t in region])
+        model = Model(name=name,experiment=self.experiment,xbeg=xbeg,xend=xend)
+        if verbose:
+            if (xbeg,xend) == region:
+                print(f'make_model: {model.name}')
+            else:
+                print(f'make_model: {model.name} subregion from {xbeg} to {xend}')
         ## if no experimental data for this region then immediately
         if len(model.x) == 0:
             return None
@@ -2625,9 +2615,9 @@ class FitAbsorption():
                 Teq=p['FTS_H2O']['Teq'],
                 Nchemical_species=p['FTS_H2O']['N'],
                 pair=p['FTS_H2O']['pair'],
-                match={'min_S296K':min_S296K,},
-                ncpus=self.ncpus,
-                nfwhmL=nfwhmL,
+                min_S296K=p['min_S296K'],
+                ncpus=1,
+                nfwhmL=p['nfwhmL'],
                 lineshape='voigt',)
         ## uninterpolate model grid
         if p['interpolate_model'] is not None:
@@ -2705,7 +2695,7 @@ class FitAbsorption():
                     & (array([t[1] for t in pspline]) > xbeg)):
                 for parameter in pspline[i][2:]:
                     parameter.vary = fit_sinusoid
-            model.add_piecewise_sinusoid(regions=psplinei)
+            model.add_piecewise_sinusoid(regions=pspline)
         ## return Model object
         return model
         

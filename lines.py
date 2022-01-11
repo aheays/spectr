@@ -878,7 +878,7 @@ class Generic(levels.Base):
                         if level[level_key,'_modify_time'] > level._last_construct_time:
                             level.set(level_key,subkey,self[line_key,subkey,index_line],set_changed_only=True)
             level.add_suboptimiser(self)
-            level.add_construct_function(construct_function,construct_on_add=False)
+            level.add_construct_function(construct_function)
             ## make sure no optimised data is deleted from arrays or
             ## moved
             self.permit_indexing = False

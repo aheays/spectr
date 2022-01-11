@@ -1213,7 +1213,7 @@ class Dataset(optimise.Optimiser):
                                 self.set(key, subkey, source[key,subkey,source_index],index,set_changed_only=True)
                             else:
                                 self.set(key,subkey,source[key,subkey])
-            self.add_construct_function(construct_function,construct_on_add=False)
+            self.add_construct_function(construct_function)
             self.add_suboptimiser(source)
             ## prevent optimisation-breaking changes
             source.permit_indexing = False
