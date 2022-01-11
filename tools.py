@@ -1860,6 +1860,18 @@ def print_memory_usage():
     memory_usage = get_memory_usage()
     print(f'memory usage (B): {memory_usage:0.3e}')
 
+_memory_usage_cache = {}
+def memory_usage_start():
+    usage = get_memory_usage()
+    print(f'DEBUG: initial memory usage (B): {usage:0.3e}')
+    _memory_usage_cache['initial'] = usage
+
+def memory_usage_stop():
+    usage = get_memory_usage()
+    change = usage - _memory_usage_cache['initial']
+    print(f'DEBUG: final memory usage (B): total={usage:0.3e} change={change:0.3e}')
+    _memory_usage_cache['initial'] = usage
+    
 def pause(message="Press any key to continue..."):
     """Wait for use to press enter. Not usable outsdie linux."""
     input(message)
