@@ -1046,12 +1046,9 @@ class Model(Optimiser):
         self.add_construct_function(f) # multiply spline during construct
 
     @optimise_method()
-    def add_constant(self,intensity=1):
+    def add_constant(self,constant=1):
         """Shift by a spline defined function."""
-        self.y += float(intensity)
-
-    shift_by_constant = add_constant # deprecated
-    add_intensity_constant = add_constant # deprecated
+        self.y += float(constant)
 
     @optimise_method()
     def add_from_file(self,filename,scale=1,_cache=None):

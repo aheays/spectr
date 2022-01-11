@@ -59,6 +59,27 @@ _species_name_translation_dict = {}
 ## functions for converting a species name -- used after _species_name_translation_dict
 _species_name_translation_functions = {}
 
+## ascii
+_species_name_translation_dict['ascii'] = bidict({})
+
+def _f(name):
+    """Translate ASCII name into standard unicode name. E.g., echo
+    NH3→NH₃, 14N16O→¹⁴N¹⁶O"""
+    if r:=re.match(r'^([0-9]+)([A-Z][a-z]?)([0-9]+)([A-Z][a-z]?)$',''):
+        ## e.g., 14N16O→¹⁴N¹⁶O
+        name = (tools.superscript_numerals(r.group(1))+r.group(2)
+                  +tools.superscript_numerals(r.group(3))+r.group(4))
+    elif name[0] in '0123456789':
+        raise Exception(f'Cannot translate: {name}')
+    elif r:=re.match(r'^(.*[^+-])(\+*|-*)$', name):
+        name = (tools.subscript_numerals(r.group(1))
+                +tools.superscript_numerals(r.group(2)))
+    else:
+        raise Exception(f'Cannot translate: {name}')
+    return name
+_species_name_translation_functions[('ascii','standard')] = _f
+
+
 ## matplotlib
 _species_name_translation_dict['matplotlib'] = bidict({
     '14N2':'${}^{14}$N$_2$',

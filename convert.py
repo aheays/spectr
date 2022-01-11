@@ -1,10 +1,17 @@
+import re
+
 from scipy import constants
 import numpy as np
+from bidict import bidict
 
 from . import tools
 
 """Convert between units and rigorously related quantities."""
 
+
+#####################
+## unit conversion ##
+#####################
 
 ## relationship between units and a standard SI unit.  Elements can be
 ## conversion factors to SI, or a pair of conversion and inverse
@@ -190,10 +197,217 @@ def difference(difference,value,unit_in,unit_out,group=None):
         +units(value+difference/2.,unit_in,unit_out,group)
         -units(value-difference/2.,unit_in,unit_out,group)))
 
-        
-###################################
-## quantum mechanical quantities ##
-###################################
+
+##############################
+## translate chemical names ##
+##############################
+
+@tools.vectorise()
+def species(name,inp='standard',out='standard'):
+    """Translate species name between different formats."""
+    if inp == out:
+        ## trivial case
+        return name
+    elif ((inp,out) in _species_translation_dict
+          and name in _species_translation_dict[inp,out]):
+        ## translation dictionary exists
+        return _species_translation_dict[inp,out][name]
+    elif (inp,out) in _species_translation_functions:
+        ## a translation function exists
+        return _species_translation_functions[inp,out](name)
+    elif inp != 'standard' and out != 'standard':
+        ## use 'standard' as an intermediate
+        return species(
+            species(name,inp,'standard'),
+            'standard', out)
+    else:
+        raise Exception(f"Could not convert species {name=} from {inp=} to {out =}")
+
+## dictionary for converting species name standard:foreign
+_species_translation_dict = {}
+
+## functions for converting a species name -- used after _species_translation_dict
+_species_translation_functions = {}
+
+## ascii
+def _f(name):
+    """Translate ASCII name into standard unicode name. E.g., echo
+    NH3→NH₃, 14N16O→¹⁴N¹⁶O"""
+    if r:=re.match(r'^([0-9]+)([A-Z][a-z]?)([0-9]+)([A-Z][a-z]?)(\+*|-*)$',name):
+        ## e.g., 14N16O→¹⁴N¹⁶O
+        retval = (tools.superscript_numerals(r.group(1))+r.group(2)
+                  +tools.superscript_numerals(r.group(3))+r.group(4))
+        if len(r.group(5)) == 1:
+            retval += tools.superscript_numerals(r.group(5))
+        elif len(r.group(5)) > 1:
+            retval += tools.superscript_numerals(str(len(r.group(5)))+r.group(5)[0])
+    elif name[0] in '0123456789':
+        raise Exception(f'Cannot translate: {name}')
+    elif r:=re.match(r'^(.*[^+-])(\+*|-*)$', name):
+        retval = tools.subscript_numerals(r.group(1))
+        if len(r.group(2)) == 1:
+            retval += tools.superscript_numerals(r.group(2))
+        elif len(r.group(2)) > 1:
+            retval += tools.superscript_numerals(str(len(r.group(2)))+r.group(2)[0])
+    else:
+        raise Exception(f'Cannot translate: {name}')
+    return retval
+_species_translation_functions[('ascii','standard')] = _f
+
+## matplotlib
+_species_translation_dict['ascii','matplotlib'] = bidict({
+    '14N2':'${}^{14}$N$_2$',
+    '12C18O':r'${}^{12}$C${}^{18}$O',
+    '32S16O':r'${}^{32}$S${}^{16}$O',
+    '33S16O':r'${}^{33}$S${}^{16}$O',
+    '34S16O':r'${}^{34}$S${}^{16}$O',
+    '36S16O':r'${}^{36}$S${}^{16}$O',
+    '32S18O':r'${}^{32}$S${}^{18}$O',
+    '33S18O':r'${}^{33}$S${}^{18}$O',
+    '34S18O':r'${}^{34}$S${}^{18}$O',
+    '36S18O':r'${}^{36}$S${}^{18}$O',
+})
+
+def _f(name):
+    """Translate form my normal species names into something that
+    looks nice in matplotlib."""
+    name = re.sub(r'([0-9]+)',r'$_{\1}$',name) # subscript multiplicity 
+    name = re.sub(r'([+-])',r'$^{\1}$',name) # superscript charge
+    return(name)
+_species_translation_functions[('ascii','matplotlib')] = _f
+
+## cantera
+def _f(name):
+    """From cantera species name to standard. No translation actually"""
+    return name
+_species_translation_functions[('cantera','standard')] = _f
+
+## leiden
+_species_translation_dict['leiden'] = bidict({
+    'Ca':'ca', 'He':'he',
+    'Cl':'cl', 'Cr':'cr', 'Mg':'mg', 'Mn':'mn',
+    'Na':'na', 'Ni':'ni', 'Rb':'rb', 'Ti':'ti',
+    'Zn':'zn', 'Si':'si', 'Li':'li', 'Fe':'fe',
+    'HCl':'hcl', 'Al':'al', 'AlH':'alh',
+    'LiH':'lih', 'MgH':'mgh', 'NaCl':'nacl',
+    'NaH':'nah', 'SiH':'sih', 'Co':'cob'
+})
+
+def _f(leiden_name):
+    """Translate from Leidne data base to standard."""
+    ## default to uper casing
+    name = leiden_name.upper()
+    name = name.replace('C-','c-')
+    name = name.replace('L-','l-')
+    ## look for two-letter element names
+    name = name.replace('CL','Cl')
+    name = name.replace('SI','Si')
+    name = name.replace('CA','Ca')
+    ## look for isotopologues
+    name = name.replace('C*','13C')
+    name = name.replace('O*','18O')
+    name = name.replace('N*','15N')
+    ## assume final p implies +
+    if name[-1]=='P' and name!='P':
+        name = name[:-1]+'+'
+    return name
+_species_translation_functions[('leiden','standard')] = _f
+
+def _f(standard_name):
+    """Translate form my normal species names into the Leiden database
+    equivalent."""
+    standard_name  = standard_name.replace('+','p')
+    return standard_name.lower()
+_species_translation_functions[('standard','leiden')] = _f
+
+## meudon_pdr
+_species_translation_dict['meudon_pdr'] = bidict({
+    'Ca':'ca', 'Ca+':'ca+', 'He':'he', 'He+':'he+',
+    'Cl':'cl', 'Cr':'cr', 'Mg':'mg', 'Mn':'mn', 'Na':'na', 'Ni':'ni',
+    'Rb':'rb', 'Ti':'ti', 'Zn':'zn', 'Si':'si', 'Si+':'si+',
+    'Li':'li', 'Fe':'fe', 'Fe+':'fe+', 'HCl':'hcl', 'HCl+':'hcl+',
+    'Al':'al', 'AlH':'alh', 'h3+':'H3+', 'l-C3H2':'h2c3' ,
+    'l-C3H':'c3h' , 'l-C4':'c4' , 'l-C4H':'c4h' , 'CH3CN':'c2h3n',
+    'CH3CHO':'c2h4o', 'CH3OCH3':'c2h7o', 'C2H5OH':'c2h6o',
+    'CH2CO':'c2h2o', 'HC3N':'c3hn', 'e-':'electr', # not sure
+    ## non chemical processes
+        'phosec':'phosec', 'phot':'phot', 'photon':'photon', 'grain':'grain',
+    # '?':'c3h4',                 # one of either H2CCCH2 or H3CCCH
+    # '?':'c3o',                  # not sure
+    # '?':'ch2o2',                  # not sure
+    })
+
+def _f(name):
+    """Standard to Meudon PDR with old isotope labellgin."""
+    name = re.sub(r'\([0-9][SPDF][0-9]?\)','',name) # remove atomic terms e.g., O(3P1) ⟶ O
+    for t in (('[18O]','O*'),('[13C]','C*'),('[15N]','N*'),): # isotopes
+        name = name.replace(*t)
+    return(name.lower())
+_species_translation_functions[('standard','meudon old isotope labelling')] = _f
+
+def _f(name):
+    """Standard to Meudon PDR."""
+    name = re.sub(r'\([0-9][SPDF][0-9]?\)','',name) # remove atomic terms e.g., O(3P1) ⟶ O
+    for t in (('[18O]','_18O'),('[13C]','_13C'),('[15N]','_15N'),): # isotopes
+        name = name.replace(*t)
+    name = re.sub(r'^_', r'' ,name)
+    name = re.sub(r' _', r' ',name)
+    name = re.sub(r'_ ', r' ',name)
+    name = re.sub(r'_$', r'' ,name)
+    name = re.sub(r'_\+',r'+',name)
+    return(name.lower())
+_species_translation_functions[('standard','meudon')] = _f
+
+## STAND reaction network used in ARGO model
+_species_translation_dict['STAND'] = bidict({
+    'NH3':'H3N',
+    'O2+_X2Πg':'O2+_P',
+    'O2_a1Δg' :'O2_D',
+    'O+_3P':'O2P',       # error in STAND O^+^(^3^P) should be O^+^(^2^P)?
+    'O+_2D':'O2D',
+    'O_1S':'O1S',
+    'O_1D':'O1D',
+    'C_1S':'C1S',
+    'C_1D':'C1D',
+    'NH3':'H3N',
+    'OH':'HO',
+})
+def _f(name):
+    return(name)
+_species_translation_functions[('STAND','standard')] = _f
+
+## kida
+def _f(name):
+    return(name)
+_species_translation_functions[('kida','standard')] = _f
+
+## latex
+def _f(name):
+    """Makes a nice latex version of species. THIS COULD BE EXTENDED"""
+    try:
+        return(database.get_species_property(name,'latex'))
+    except:
+        return(r'\ce{'+name.strip()+r'}')
+_species_translation_functions[('standard','latex')] = _f
+
+_name_to_inchikey = {
+    'NH₃':  'QGZKDVFQNNGYKY-UHFFFAOYSA-N',
+}
+
+_inchikey_to_name = {
+    'QGZKDVFQNNGYKY-UHFFFAOYSA-N':'NH₃',
+}
+
+_chemical_name_hacks = {
+    'HCO₂H':'HCOOH',
+    'SCS': 'CS₂',
+}
+
+
+
+#################################
+## quantum mechanical formulae ##
+#################################
 
 def lifetime_to_linewidth(lifetime):
     """Convert lifetime (s) of transition to linewidth (cm-1 FWHM). tau=1/2/pi/gamma/c"""

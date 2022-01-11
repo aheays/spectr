@@ -241,8 +241,8 @@ class Optimiser:
         """Suboptimisers can be other Optimiser that are also
         optimised with this one."""
         assert isinstance(name,str),'Name must be a string.'
-        # self.name = tools.regularise_string_to_symbol(name) # for generating evaluatable references to self
-        self.name = name # for generating evaluatable references to self
+        self.name = tools.regularise_symbol(name) # for generating evaluatable references to self
+        # self.name = name # for generating evaluatable references to self
         self.residual_scale_factor = 1 # scale all resiudal by this amount -- useful when combining with other optimisers
         self.parameters = []           # Data objects
         self._ncpus = 1
@@ -931,7 +931,7 @@ class Optimiser:
                 result = scipy.optimize.least_squares(**least_squares_options)
                 self._optimisation_function(result['x'])
                 if verbose or self.verbose:
-                    print('{self.name}: optimisation complete')
+                    print(f'{self.name}: optimisation complete')
                     print('    number of parameters: ',len(result['x']))
                     print('    number of evaluations:',self._number_of_optimisation_function_calls)
                     print('    number of iterations: ',result['nfev'])
@@ -945,9 +945,7 @@ class Optimiser:
                 except KeyboardInterrupt:
                     pass
         ## recalculate final solution
-        print('DEBUG: Timing initiated') ; import time; timer=time.perf_counter()
         residual = self.construct()
-        print('DEBUG: Timing elapsed',format(time.perf_counter()-timer,'12.6f'))
         ## monitor
         if self._monitor_frequency != 'never':
             self.monitor() 

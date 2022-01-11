@@ -712,12 +712,15 @@ def mkdir(
 ## text formatting ##
 #####################
 
-def make_valid_python_symbol_name(string):
-    """Substitute characters in string so that it can be used as a symbol
-    name."""
-    string = re.sub(r'[-<!^.+|&/%]','_',string)
-    string = regularise_unicode(string)
-    return string
+def regularise_symbol(x):
+    """Turn an arbitrary string into a valid python symbol. INCOMPLETE
+Check out
+https://github.com/Ghostkeeper/Luna/blob/d69624cd0dd5648aec2139054fae4d45b634da7e/plugins/data/enumerated/enumerated_type.py#L91"""
+    x = regularise_unicode(x)
+    x = re.sub(r'[-<>(){}\[\]!^.+|&/%]','_',x)
+    if x[0] in '0123456789':
+        x = '_'+x
+    return x
 
 def regularise_unicode(s):
     """Turn unicode symbols into something more ascii"""
@@ -1028,15 +1031,6 @@ def round_to_significant_figures(x,significant_figures):
         # return format(x,'>+{}.{}e'.format(width,sigfigs-1))
     # except ValueError:
         # return format(x,'>'+str(width))
-
-def regularise_string_to_symbol(x):
-    """Turn an arbitrary string into a valid python symbol. NOT
-FINISHED!!  Check out https://github.com/Ghostkeeper/Luna/blob/d69624cd0dd5648aec2139054fae4d45b634da7e/plugins/data/enumerated/enumerated_type.py#L91"""
-    x = x.replace('.','_')
-    x = x.replace('-','_')
-    if re.match('[0-9]',x[0]):
-        x = 'x_'+x
-    return x
     
 def format_string_or_general_numeric(x):
     """Return a string which is the input formatted 'g' if it is numeric or else is str representation."""

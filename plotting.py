@@ -1773,15 +1773,24 @@ def annotate_corner(
     bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) #bbox in inches
     dx = xoffset/(bbox.width*72)          #in axes fraction
     dy = yoffset/(bbox.height*72)         #in axes fraction
-    if loc in ['top left','tl','upper left']: xy,ha,va = (dx,1.-dy),'left','top'
-    elif loc in ['bottom left','bl','lower left']: xy,ha,va = (dx,dy),'left','bottom'
-    elif loc in ['top right','tr','upper right']: xy,ha,va = (1-dx,1-dy),'right','top'
-    elif loc in ['bottom right','br','lower right']: xy,ha,va = (1-dx,dy),'right','bottom'
-    elif loc in ['center left' ,'centre left' ]: xy,ha,va = (dx,0.5),'left','center'
-    elif loc in ['top center','top centre','center top','centre top','upper center','upper centre','center upper','centre upper']: xy,ha,va = (0.5,1-dy),'center','top'
-    elif loc in ['bottom center','bottom centre','center bottom','centre bottom','lower center','lower centre','center lower','centre lower']: xy,ha,va = (1-dx,0.5),'center','bottom'
-    elif loc in ['center right','centre right']: xy,ha,va = (1-dx,0.5),'right','center'
-    else: ValueError('Bad input loc')
+    if loc in ['top left','tl','upper left']:
+        xy,ha,va = (dx,1.-dy),'left','top'
+    elif loc in ['bottom left','bl','lower left']:
+        xy,ha,va = (dx,dy),'left','bottom'
+    elif loc in ['top right','tr','upper right']:
+        xy,ha,va = (1-dx,1-dy),'right','top'
+    elif loc in ['bottom right','br','lower right']:
+        xy,ha,va = (1-dx,dy),'right','bottom'
+    elif loc in ['center left' ,'centre left' ]:
+        xy,ha,va = (dx,0.5),'left','center'
+    elif loc in ['top center','top centre','center top','centre top','upper center','upper centre','center upper','centre upper']:
+        xy,ha,va = (0.5,1-dy),'center','top'
+    elif loc in ['bottom center','bottom centre','center bottom','centre bottom','lower center','lower centre','center lower','centre lower']:
+        xy,ha,va = (1-dx,0.5),'center','bottom'
+    elif loc in ['center right','centre right']:
+        xy,ha,va = (1-dx,0.5),'right','center'
+    else:
+        ValueError('Bad input loc')
     return ax.annotate(string,xy,xycoords='axes fraction',ha=ha,va=va,**kwargs)
 
 def annotate_line(

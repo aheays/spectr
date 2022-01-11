@@ -128,7 +128,7 @@ def download_linelist(
     hapi.db_begin(data_directory)
     hapi.fetch(table_name,int(MOL),int(ISO),νbeg,νend)
 
-def calc_spectrum(
+def calculate_spectrum_with_hapi(
         species,
         data_directory,
         T,p,
@@ -155,6 +155,35 @@ def calc_spectrum(
         ax.set_xlabel('Wavenumber (cm-1)')
         ax.set_ylabel('Absorption coefficient')
     return ν,coef
+
+def calculate_spectrum(
+        species,
+        Teq=296,
+        pair=1e5,
+        N=1e16,
+        xkey='ν',
+        ykey='τ',
+        **line_calculate_spectrum_kwargs
+):
+    """Calculate cross section."""
+    line = get_line(species)
+    line['Teq'] = Teq
+    line['pair'] = pair
+    line['Nchemical_species'] = N
+    x,y = line.calculate_spectrum(
+        xkey=xkey,
+        ykey=ykey,
+        **line_calculate_spectrum_kwargs)
+    return x,y
+
+def plot_spectrum(species,**calculate_spectrum_kwargs):
+    ax = plotting.gca()
+    for speciesi in tools.ensure_iterable(species):
+        x,y = calculate_spectrum(
+            species=speciesi,
+            **calculate_spectrum_kwargs)
+        ax.plot(x,y,label=speciesi)
+    plotting.legend(ax=ax)
 
 def load_linelist(filename,modify=True):
     """Load HITRAN .data file into a dictionary. If modify=True then

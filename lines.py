@@ -648,6 +648,7 @@ class Generic(levels.Base):
             ymin=None, # minimum value of ykey before a line is ignored, None for use all lines
             ncpus=1, # 1 for single process, more to use up to this amount when computing spectrum
             index=None,         # only calculate for these indices
+            match=None,          # only calculate for matching lines
             **set_these_keys_vals_first, # set some data first, e..g, the tempertaure
     ):
         """Calculate a spectrum from the data in self. Returns (x,y)."""
@@ -695,17 +696,13 @@ class Generic(levels.Base):
         ## zkeys if these are given -- common x-grid
         if zkeys is not None:
             retval = []
-            for qn,match in self.unique_dicts_matches(*zkeys):
-                x,y = match.calculate_spectrum(
+            for tqn,tmatch in self.matches(match).unique_dicts_matches(*zkeys):
+                x,y = tmatch.calculate_spectrum(
                     x=x,xkey=xkey,ykey=ykey,zkeys=None,
                     lineshape=lineshape,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
                     dx=dx,nx=nx,ymin=ymin,ncpus=ncpus)
-                retval.append((qn,x,y))
+                retval.append((tqn,x,y))
             return retval
-        ## check frequencies, strengths, widths are as expected
-        # self.assert_known(xkey,ykey)
-        # assert np.all(~np.isnan(self[xkey])),f'NaN values in xkey: {repr(xkey)}'
-        # assert np.all(~np.isnan(self[ykey])),f'NaN values in ykey: {repr(ykey)}'
         ## indices given
         if index is not None:
             i = np.full(len(self),False)
@@ -717,6 +714,9 @@ class Generic(levels.Base):
         ## neglect lines out of y-range
         if ymin is not None:
             i &= self[ykey] > ymin
+        ## additional matching
+        if match is not None:
+            i &= self.match(match)
         ## get line function and arguments
         if lineshape == 'voigt':
             line_function = lineshapes.voigt

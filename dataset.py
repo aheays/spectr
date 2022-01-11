@@ -196,7 +196,7 @@ class Dataset(optimise.Optimiser):
         """Name is adjusted to be proper python symbol when set"""
         if name is None:
             name = self.classname.lower()
-        self._name = tools.make_valid_python_symbol_name(name)
+        self._name = tools.regularise_symbol(name)
 
     name = property(lambda self:self._name,_set_name)
 
