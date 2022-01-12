@@ -202,8 +202,8 @@ def difference(difference,value,unit_in,unit_out,group=None):
 ## translate chemical names ##
 ##############################
 
-@tools.vectorise()
-def species(name,inp='standard',out='standard'):
+@tools.vectorise(cache=True)
+def species(name,inp='ascii',out='unicode'):
     """Translate species name between different formats."""
     if inp == out:
         ## trivial case
@@ -215,24 +215,78 @@ def species(name,inp='standard',out='standard'):
     elif (inp,out) in _species_translation_functions:
         ## a translation function exists
         return _species_translation_functions[inp,out](name)
-    elif inp != 'standard' and out != 'standard':
-        ## use 'standard' as an intermediate
+    elif inp != 'unicode' and out != 'unicode':
+        ## use 'unicode' as an intermediate
         return species(
-            species(name,inp,'standard'),
-            'standard', out)
+            species(name,inp,'unicode'),
+            'unicode', out)
     else:
         raise Exception(f"Could not convert species {name=} from {inp=} to {out =}")
 
-## dictionary for converting species name standard:foreign
+## dictionary and functions for converting a species, their keys are
+## (inp,out) format strings
 _species_translation_dict = {}
-
-## functions for converting a species name -- used after _species_translation_dict
 _species_translation_functions = {}
+
+## stored on disk table of translations
+_species_dataset = {}
+def _species_database_translate(species,inp,out):
+    from . import dataset
+    from . import database
+    ## load datafile if needed
+    if len(_species_dataset) == 0:
+        filename = f'{database.data_directory}/species/translations.psv'
+        _species_dataset['data'] = dataset.load(filename)
+    ## get copy sorted by inp 
+    if inp not in _species_dataset:
+        data = _species_dataset['data']
+        _species_dataset[inp] = _species_dataset['data'].copy()
+        _species_dataset[inp].sort(inp)
+    data = _species_dataset[inp]
+    ## translate
+    i = np.searchsorted(data[inp],species)
+    if i == len(data) or species != data[i][inp]:
+        ## input not found
+        raise Exception(f'Could not translate {species!r} using from {inp!r} to {out!r}')
+    retval = data[out][i]
+    if retval in ['',0]:
+        ## blank output data
+        raise Exception(f'Could not translate {species!r} using from {inp!r} to {out!r}')
+    return retval
+
+## various translations possible using _species_dataset
+for inp,out in (
+        ('CASint'  , 'unicode') , 
+        # ('CASint'  , 'ascii')   , 
+        ('unicode' , 'CASint')  , 
+        # ('ascii'   , 'CASint')  , 
+):
+    _species_translation_functions[inp,out] = lambda species,inp=inp,out=out:_species_database_translate(species,inp,out)
+
+## experimental hash including isotopologues
+def _unicode_to_hash(species):
+    from . import database
+    ## if isotopologue compute isotope hash, else retrun CAS as integer
+    if re.match(r'[₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹]',species):
+        ## hash is CAS of chemical species * 100000000000 plus a 32bit
+        ## sha1 hash of the isotopologue unicode name. This is
+        ## sensitive to atom order, better to hash the inchi or inchi
+        ## key perhaps
+        import hashlib
+        isohash = int(hashlib.sha1(species.encode("utf-8")).hexdigest(), 16) % (10 ** 8)
+        chemical_species = database.normalise_chemical_species(species)
+        chemical_species_CASint = _species_database_translate(chemical_species,'unicode','CASint')
+        retval = chemical_species_CASint*100000000000 + isohash
+    else:
+        retval = _species_database_translate(species,'unicode','CASint')
+    return retval
+_species_translation_functions['unicode','hash'] = _unicode_to_mycas
 
 ## ascii
 def _f(name):
-    """Translate ASCII name into standard unicode name. E.g., echo
-    NH3→NH₃, 14N16O→¹⁴N¹⁶O"""
+    """Translate ASCII name into unicode unicode name. E.g., echo
+    NH3→NH₃, 14N16O→¹⁴N¹⁶O, AlBr3.6H2O→AlBr₃•6H₂O   
+    """
     if r:=re.match(r'^([0-9]+)([A-Z][a-z]?)([0-9]+)([A-Z][a-z]?)(\+*|-*)$',name):
         ## e.g., 14N16O→¹⁴N¹⁶O
         retval = (tools.superscript_numerals(r.group(1))+r.group(2)
@@ -242,9 +296,13 @@ def _f(name):
         elif len(r.group(5)) > 1:
             retval += tools.superscript_numerals(str(len(r.group(5)))+r.group(5)[0])
     elif name[0] in '0123456789':
+        ## initial multiplicity not allowed -- could implement
         raise Exception(f'Cannot translate: {name}')
     elif r:=re.match(r'^(.*[^+-])(\+*|-*)$', name):
+        ## atoms and multipliciteis plus charge
         retval = tools.subscript_numerals(r.group(1))
+        while r2:=re.match(r'(.*)\.([₀₁₂₃₄₅₆₇₈₉])(.*)',retval):
+            retval = (r2.group(1) +'•' +tools.regularise_unicode(r2.group(2)) +r2.group(3))
         if len(r.group(2)) == 1:
             retval += tools.superscript_numerals(r.group(2))
         elif len(r.group(2)) > 1:
@@ -252,7 +310,7 @@ def _f(name):
     else:
         raise Exception(f'Cannot translate: {name}')
     return retval
-_species_translation_functions[('ascii','standard')] = _f
+_species_translation_functions[('ascii','unicode')] = _f
 
 ## matplotlib
 _species_translation_dict['ascii','matplotlib'] = bidict({
@@ -269,7 +327,7 @@ _species_translation_dict['ascii','matplotlib'] = bidict({
 })
 
 def _f(name):
-    """Translate form my normal species names into something that
+    """Translate from my normal species names into something that
     looks nice in matplotlib."""
     name = re.sub(r'([0-9]+)',r'$_{\1}$',name) # subscript multiplicity 
     name = re.sub(r'([+-])',r'$^{\1}$',name) # superscript charge
@@ -396,11 +454,6 @@ _name_to_inchikey = {
 
 _inchikey_to_name = {
     'QGZKDVFQNNGYKY-UHFFFAOYSA-N':'NH₃',
-}
-
-_chemical_name_hacks = {
-    'HCO₂H':'HCOOH',
-    'SCS': 'CS₂',
 }
 
 
