@@ -93,7 +93,7 @@ class Dataset(optimise.Optimiser):
             limit_to_match=None,     # reduce by this match dictionary after any data is loaded
             description='',          # description of this Dataset
             data=None,               # load keys_vals into self, or set with set_value if they are Parameters
-            global_attributes=None,  # keys and values of this dictionary are stored as global_attributes
+            attributes=None,  # keys and values of this dictionary are stored as attributes
             **data_kwargs,           # data to add from keyword arguments
     ):
         ## init as optimiser, make a custom form_input_function, save
@@ -188,9 +188,9 @@ class Dataset(optimise.Optimiser):
         if limit_to_match is not None:
             self.limit_to_match(**limit_to_match)
         ## dictionary to store global attributes
-        self.global_attributes = {}
-        if global_attributes is not None:
-            self.global_attributes |= global_attributes
+        self.attributes = {}
+        if attributes is not None:
+            self.attributes |= attributes
 
     def _set_name(self,name):
         """Name is adjusted to be proper python symbol when set"""
@@ -1053,7 +1053,7 @@ class Dataset(optimise.Optimiser):
     # ##             '_data',
     # ##             '_row_modify_time',
     # ##             'prototypes',
-    # ##             'global_attributes',
+    # ##             'attributes',
     # ##             '_construct_functions',
     # ##             '_post_construct_functions',
     # ##             '_plot_functions',
@@ -1078,7 +1078,7 @@ class Dataset(optimise.Optimiser):
                 '_data',
                 '_row_modify_time',
                 'prototypes',
-                'global_attributes',
+                'attributes',
                 '_construct_functions',
                 '_post_construct_functions',
                 '_plot_functions',
@@ -1099,7 +1099,7 @@ class Dataset(optimise.Optimiser):
         # retval = self.__class__(name='copy_of_self.name') # new version of self
         # retval.pop_format_input_function()
         # retval.prototypes = deepcopy(self.prototypes)
-        # retval.global_attributes = deepcopy(self.global_attributes)
+        # retval.attributes = deepcopy(self.attributes)
         # retval.permit_indexing = self.permit_indexing 
         # retval._length = self._length
         # retval._data = deepcopy(self._data)
@@ -1128,7 +1128,7 @@ class Dataset(optimise.Optimiser):
         # retval = self.__class__(name='copy_of_self.name') # new version of self
         # retval.pop_format_input_function()
         # retval.prototypes = deepcopy(self.prototypes)
-        # retval.global_attributes = deepcopy(self.global_attributes)
+        # retval.attributes = deepcopy(self.attributes)
         # retval.permit_indexing = self.permit_indexing 
         # retval._length = self._length
         # retval._data = deepcopy(self._data)
@@ -1145,7 +1145,7 @@ class Dataset(optimise.Optimiser):
             keys_re=None,
             skip_keys=None,
             subkeys=('value','unc','description','units','fmt'),
-            copy_global_attributes=True,
+            copy_attributes=True,
             copy_prototypes=True,
             copy_inferred_data=False,
             optimise=False,
@@ -1173,8 +1173,8 @@ class Dataset(optimise.Optimiser):
             raise Exception(f"{subkeys=} must contain 'value'")
         ## copy other things
         self.permit_nonprototyped_data = source.permit_nonprototyped_data
-        if copy_global_attributes:
-            self.global_attributes = deepcopy(source.global_attributes)
+        if copy_attributes:
+            self.attributes = deepcopy(source.attributes)
         if copy_prototypes:
             self.prototypes = deepcopy(source.prototypes)
         ## get matching indices
@@ -1500,13 +1500,14 @@ class Dataset(optimise.Optimiser):
         retval = {}
         retval['classname'] = self.classname
         retval['description'] = self.description
-        if len(self.global_attributes) > 0:
-            retval['global_attributes'] = self.global_attributes
+        if len(self.attributes) > 0:
+            retval['attributes'] = self.attributes
+        retval['data'] = {}
         for key in keys:
-            retval[key] = {}
+            retval['data'][key] = {}
             for subkey in subkeys:
                 if self.is_set(key,subkey):
-                    retval[key][subkey] = self.get(key,subkey)
+                    retval['data'][key][subkey] = self.get(key,subkey)
         return retval
      
     def row(self,index,keys=None):
@@ -1673,8 +1674,8 @@ class Dataset(optimise.Optimiser):
             retval += f'[classname]\n{self.classname}\n'
         if not simple and self.description not in (None,''):
             retval += f'[description]\n{self.description}\n'
-        if len(self.global_attributes) > 0:
-            retval += f'[global_attributes]\n'+'\n'.join([f'{repr(tkey):20} : {repr(tval)}' for tkey,tval in self.global_attributes.items()])+'\n'
+        if len(self.attributes) > 0:
+            retval += f'[attributes]\n'+'\n'.join([f'{repr(tkey):20} : {repr(tval)}' for tkey,tval in self.attributes.items()])+'\n'
         if formatted_metadata != []:
             retval += '[metadata]\n'+'\n'.join(formatted_metadata)
         if columns != []:
@@ -1730,7 +1731,7 @@ class Dataset(optimise.Optimiser):
                 'key':{'kind':'U',},
                 'subkey':{'kind':'U',},
                 'dtype':{'kind':'U'},
-                'memory':{'kind':'f','fmt':"0.3e"},
+                'memory':{'kind':'f','fmt':"0.1e"},
                 'description':{'kind':'U'},
             },
         )
@@ -1756,7 +1757,7 @@ class Dataset(optimise.Optimiser):
         print(f'name: {self.name}')
         print(f'length: {len(self)}')
         print(f'number of keys: {len(self.keys())}')
-        print(f'total memory: {total_memory:0.2e}')
+        print(f'total memory: {total_memory:0.1e}')
         print(data)
 
     def format_as_list(self):
@@ -1995,13 +1996,19 @@ class Dataset(optimise.Optimiser):
         ## description is saved in data
         if 'description' in data:
             self.description = str(data.pop('description'))
-        ## global_attributes are saved in data, try to evalute as literal, or keep as string on fail
-        if 'global_attributes' in data:
-            for key,val in data.pop('global_attributes').items():
+        ## attributes are saved in data, try to evalute as literal, or keep as string on fail
+        if 'attributes' in data:
+            for key,val in data.pop('attributes').items():
                 try:
-                    self.global_attributes[key] = ast.literal_eval(val)
+                    self.attributes[key] = ast.literal_eval(val)
                 except ValueError:
-                    self.global_attributes[key] = val
+                    self.attributes[key] = val
+        ## Remaining data is data dict, so remove its subreference as
+        ## data['data'] to data. The logic is needed as a HACK to an
+        ## old version then didn't use data subdirectory -- delete one
+        ## day
+        if len(data)==1 and 'data' in data:
+            data = data['data']
         ## HACK REMOVE ASSOC 2021-06-21 DELETE ONE DAY
         for key in data:
             if 'assoc' in list(data[key]):
@@ -2017,7 +2024,7 @@ class Dataset(optimise.Optimiser):
                 continue
             ## no data
             if 'value' not in data[key]:
-                raise Exception(f'No "value" subkey in data {repr(key)} with subkeys {repr(list(data[key]))}')
+                raise Exception(f'No "value" subkey in data {keys[:50]} with subkeys {list(data[key])[:20]!r}')
             ## if kind is then add a prototype (or replace
             ## existing if the kinds do not match)
             if 'kind' in data[key]:
@@ -2141,11 +2148,11 @@ class Dataset(optimise.Optimiser):
         key_line_without_value_re = re.compile(f'^ *([^# ]+) *# *(.+) *') # no value in line
         key_line_with_value_re = re.compile(f'^ *([^= ]+) *= *([^#]*[^ #])') # may also contain description
         current_section = 'data'
-        valid_sections = ('classname','description','keys','data','metadata','global_attributes')
+        valid_sections = ('classname','description','keys','data','metadata','attributes')
         section_iline = 0       # how many lines read in this section
         classname = None
         description = None
-        global_attributes = []
+        attributes = []
         with open(filename,'r') as fid:
             for iline,line in enumerate(fid):
                 # print('DEBUG:', line)
@@ -2181,9 +2188,9 @@ class Dataset(optimise.Optimiser):
                 elif current_section == 'description':
                     ## add to description
                     description += '\n'+line
-                elif current_section == 'global_attributes':
+                elif current_section == 'attributes':
                     ## add global attribute
-                    global_attributes.append(line)
+                    attributes.append(line)
                 elif current_section == 'keys':
                     ## decode key line getting key, value, and any metadata
                     r = re.match(
@@ -2254,9 +2261,9 @@ class Dataset(optimise.Optimiser):
             data['classname'] = classname
         if description is not None:
             data['description'] = description
-        if len(global_attributes) > 0:
-            tdict = '{'+','.join(global_attributes)+'}'
-            self.global_attributes |= ast.literal_eval(tdict)
+        if len(attributes) > 0:
+            tdict = '{'+','.join(attributes)+'}'
+            self.attributes |= ast.literal_eval(tdict)
         ## if there is no kind for this key then try and cast to numeric data
         for key in data:
             if key not in metadata or 'kind' not in metadata[key]:

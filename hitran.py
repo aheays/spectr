@@ -243,7 +243,7 @@ def load_linelist(filename,modify=True):
 def load_spectrum(filename):
     from .spectrum import Spectrum
     retval = Spectrum('hitran_spectrum')
-    retval.global_attributes['filename'] = filename
+    retval.attributes['filename'] = filename
     with open(tools.expand_path(filename),'r') as fid:
         ## read header
         line = fid.readline()
@@ -267,14 +267,14 @@ def load_spectrum(filename):
                 ('broadener',3,broadener),
                 ('reference',3,int),
         ):
-            retval.global_attributes[key],line = cast(line[:length]),line[length:]
+            retval.attributes[key],line = cast(line[:length]),line[length:]
         ## read spectrum
         data = fid.readlines()
-        retval['y'] = np.concatenate([np.array(t.split(),dtype=float) for t in data])[:retval.global_attributes['npoints']]
+        retval['y'] = np.concatenate([np.array(t.split(),dtype=float) for t in data])[:retval.attributes['npoints']]
         retval['x'] = np.linspace(
-            retval.global_attributes['xbeg'],
-            retval.global_attributes['xend'],
-            retval.global_attributes['npoints'],)
+            retval.attributes['xbeg'],
+            retval.attributes['xend'],
+            retval.attributes['npoints'],)
     return retval
 
 # @tools.cache
