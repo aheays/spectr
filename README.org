@@ -13,7 +13,6 @@ from linux distributions or via pip, with the following package names:
  - bidict
  - cycler
  - hitran-api
- - immutabledict
  - brukeropusreader
  - dill
  - h5py
@@ -25,6 +24,8 @@ from linux distributions or via pip, with the following package names:
  - scipy
  - sympy
  - xmltodict
+
+Matplotlib will require a graphics binding package, perhaps pyqt5.
 
 ** Build fortran components
 Run "make" in the root directory to create .so extensions.
