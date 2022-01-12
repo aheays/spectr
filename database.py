@@ -1,4 +1,4 @@
-## standard library
+##standardlibrary
 import functools
 from functools import lru_cache
 import warnings

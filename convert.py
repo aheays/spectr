@@ -264,7 +264,7 @@ for inp,out in (
     _species_translation_functions[inp,out] = lambda species,inp=inp,out=out:_species_database_translate(species,inp,out)
 
 ## experimental hash including isotopologues
-def _unicode_to_hash(species):
+def _f(species):
     from . import database
     ## if isotopologue compute isotope hash, else retrun CAS as integer
     if re.match(r'[₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹]',species):
@@ -280,7 +280,7 @@ def _unicode_to_hash(species):
     else:
         retval = _species_database_translate(species,'unicode','CASint')
     return retval
-_species_translation_functions['unicode','hash'] = _unicode_to_mycas
+_species_translation_functions['unicode','hash'] = _f
 
 ## ascii
 def _f(name):
