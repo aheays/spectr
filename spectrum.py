@@ -151,7 +151,7 @@ class Experiment(Optimiser):
         """Load a spectrum to fit from an x,y file."""
         if len(_cache) == 0:
             data = dataset.load(filename)
-            _cache['experimental_parameters'] = deepcopy(data.global_attributes)
+            _cache['experimental_parameters'] = deepcopy(data.attributes)
             _cache['experimental_parameters']['filename'] = filename
             _cache['x'] = data[xkey]
             _cache['y'] = data[ykey]
