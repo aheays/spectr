@@ -107,6 +107,8 @@ class Dataset(optimise.Optimiser):
         self.description = description
         self._row_modify_time = np.array([],dtype=float,ndmin=1) # record modification time of each explicitly set row
         self._global_modify_time = timestamp() # record modification time of any explicit change
+        self.default_ykeys = None             # used by plot
+        self.default_xkeys = None             # used by plot
         ## whether to allow the addition of keys not found in
         ## prototypes
         if permit_nonprototyped_data is None:
@@ -1732,7 +1734,7 @@ class Dataset(optimise.Optimiser):
                 'subkey':{'kind':'U',},
                 'dtype':{'kind':'U'},
                 'memory':{'kind':'f','fmt':"0.1e"},
-                'description':{'kind':'U'},
+                'description':{'kind':'U','fmt':"0.100s"},
             },
         )
         import gc,sys
@@ -2024,7 +2026,7 @@ class Dataset(optimise.Optimiser):
                 continue
             ## no data
             if 'value' not in data[key]:
-                raise Exception(f'No "value" subkey in data {keys[:50]} with subkeys {list(data[key])[:20]!r}')
+                raise Exception(f'No "value" subkey in data {repr(keys):0.50s} with subkeys {repr(list(data[key])):0.50s}')
             ## if kind is then add a prototype (or replace
             ## existing if the kinds do not match)
             if 'kind' in data[key]:
