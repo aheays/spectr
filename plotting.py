@@ -2360,6 +2360,8 @@ def savefig(path,fig=None,**kwargs):
     order to achieve close to instant file creation."""
     path = tools.expand_path(path)
     name,ext = os.path.splitext(path)
+    directory,filename = os.path.split(name)
+    mkdir(directory)
     tmp = tempfile.NamedTemporaryFile(suffix=ext)
     kwargs.setdefault('dpi',300)
     if fig is None: 

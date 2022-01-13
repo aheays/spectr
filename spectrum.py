@@ -2415,6 +2415,7 @@ class FitAbsorption():
                     model.xbeg,model.xend,
                     other_species=other_species,
                     verbose=False,)
+                model._reference_model_neglected_species = species_to_fit
         ## plot after fitting
         if fig is not None:
             self.plot(fig)
@@ -2478,7 +2479,7 @@ class FitAbsorption():
                 ax.plot(
                     model._reference_model.x,
                     model._reference_model.get_residual()*scale_residual,
-                    color='orange', zorder=-2)
+                    color='orange',zorder=-2)
         ## finalise plot
         fig.suptitle(self.name)
 
@@ -2712,14 +2713,14 @@ class FitAbsorption():
         model_names = tools.uniquify_strings(
             [model.name for model in self.models])
         for model,name in zip(self.models,model_names):
-            d = Dataset(
-                x=model.x,
-                ymod=model.y,
-                yexp=model.yexp,
-                yres=model.get_residual(),
-            )
+            d = Dataset(description=f'Output of model {model.name!r} of FitAbsorption {self.name!r}')
+            d.set_new('x',model.x,kind='f',fmt='0.6f',units='cm-1',description='Wavenumber scale')
+            d.set_new('ymod',model.y,kind='f',fmt='0.4e',description='Model intensity')
+            d.set_new('yexp',model.yexp,kind='f',fmt='0.4e',description='Experimental intensity')
+            d.set_new('yres',model.get_residual(),kind='f',fmt='0.4e',description='Residual intensity error, model-experimental')
             if hasattr(model,'_reference_model'):
-                d['yref'] = model._reference_model.y
+                d.set_new('yref',model._reference_model.y,kind='f',fmt='0.4e',
+                          description=f'Residual intensity error of a model neglecting fitted species: {", ".join(model._reference_model_neglected_species)}')
             d.save(f'{directory}/{name}',filetype='directory')
 
     def save(self,directory,trash_existing=True):
