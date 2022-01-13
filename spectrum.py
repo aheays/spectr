@@ -2705,7 +2705,7 @@ class FitAbsorption():
         """Save parameters to a file."""
         tools.save_dict(filename,parameters=self.parameters)
 
-    def save_models(self,directory):
+    def save_models(self, directory,):
         """Save parameters and experimental and model spectrum to a
         directory."""
         tools.mkdir(directory)
@@ -2717,9 +2717,12 @@ class FitAbsorption():
             d.set_new('x',model.x,kind='f',fmt='0.6f',units='cm-1',description='Wavenumber scale')
             d.set_new('ymod',model.y,kind='f',fmt='0.4e',description='Model intensity')
             d.set_new('yexp',model.yexp,kind='f',fmt='0.4e',description='Experimental intensity')
-            d.set_new('yres',model.get_residual(),kind='f',fmt='0.4e',description='Residual intensity error, model-experimental')
+            d.set_new('yres',model.get_residual(),kind='f',fmt='+0.4e',description='Residual intensity error, model-experimental')
             if hasattr(model,'_reference_model'):
-                d.set_new('yref',model._reference_model.y,kind='f',fmt='0.4e',
+                d.set_new(
+                    'yref',
+                    model.yexp-model._reference_model.y,
+                    kind='f',fmt='+0.4e',
                           description=f'Residual intensity error of a model neglecting fitted species: {", ".join(model._reference_model_neglected_species)}')
             d.save(f'{directory}/{name}',filetype='directory')
 
@@ -2748,17 +2751,17 @@ def collect_fit_absorption_results(parameters):
     for key in list(data):
         ## species column densities and broadening pressures
         if r:=re.match(r'^species_([^_]+)_N',key):
-            data.modify(key, rename=f'N_{r.group(1)}',
-                        description=f'Column density of {r.group(1)}',
-                        units='cm-2', kind='f')
+            data.modify_key(key, rename=f'N_{r.group(1)}',
+                            description=f'Column density of {r.group(1)}',
+                            units='cm-2', kind='f')
         if r:=re.match(r'^species_([^_]+)_pair',key):
-            data.modify(key, rename=f'pair_{r.group(1)}',
-                        description=f'Effective pressure for air broadening of {r.group(1)}',
-                        units='Pa', kind='f')
+            data.modify_key(key, rename=f'pair_{r.group(1)}',
+                            description=f'Effective pressure for air broadening of {r.group(1)}',
+                            units='Pa', kind='f')
         if key == 'instrument_sinc_fwhm':
-            data.modify(key, rename=f'sinc_fwhm',
-                        description=f'Instrument function sinc',
-                        units='cm-1.FWHM', kind='f',fmt='0.6f')
+            data.modify_key(key, rename=f'sinc_fwhm',
+                            description=f'Instrument function sinc',
+                            units='cm-1.FWHM', kind='f',fmt='0.6f')
     ## remove some unimportant parameters
     for key in ('interpolate_model', 'intensity_spline_step', 'intensity_spline_order',):
         if data.is_set(key):
