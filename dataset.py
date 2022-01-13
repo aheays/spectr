@@ -665,7 +665,7 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
-    def modify(self,key,rename=None,**new_metadata):
+    def modify_key(self,key,rename=None,**new_metadata):
         """Modify metadata of a key, change its units, or rename it."""
         if not self.permit_dereferencing:
             raise Exception(f'Cannot modify {key!r}: {self.permit_dereferencing=} (could loosen this)')
@@ -702,7 +702,7 @@ class Dataset(optimise.Optimiser):
                 self[key,'fmt'] = val
             else:
                 raise NotImplementedError(f'Modify {subkey}')
-        
+
     def _has_subkey_attribute_property(self,key,subkey,attribute):
         """Test if key,subkey has a certain attribute."""
         self.assert_known(key,subkey)
@@ -782,6 +782,21 @@ class Dataset(optimise.Optimiser):
 
     def keys(self):
         return list(self._data.keys())
+
+    def sort_keys(self,keys):
+        """Keys are sorted into the given. If any keys are not listed in the
+        input argument `keys' they are sorted automatically."""
+        ## transfer keys form internal data dict to temporary dict in
+        ## sorted order
+        sorted_data = {}
+        for key in keys:
+            self.assert_known(key)
+            sorted_data[key] = self._data.pop(key)
+        other_keys = sorted(self._data.keys())
+        for key in other_keys:
+            sorted_data[key] = self._data.pop(key)
+        ## transfer back to internal data dict
+        self._data |= sorted_data
 
     def limit_to_keys(self,keys):
         """Unset all keys except these."""
@@ -1587,7 +1602,7 @@ class Dataset(optimise.Optimiser):
             line_ending='\n',
             simple=False,       # print data in a table
             unique_values_as_default=False,
-            subkeys=('value','unc','vary','step','ref','default','units','fmt','kind','description',),
+            subkeys=('value','unc','vary','step','ref','default','description','units','fmt','kind',),
             exclude_keys_with_leading_underscore=True, # if no keys specified, do not include those with leading underscores
             exclude_inferred_keys=False, # if no keys specified, do not include those which are not explicitly set
             quote=False,
@@ -1659,13 +1674,14 @@ class Dataset(optimise.Optimiser):
                         if tkey not in metadata:
                             continue
                         tval = metadata[tkey]
-                        ## description length for alignment is in
-                        ## 40-char quanta, else 15 char
-                        if tkey == 'description':
-                            tfmt = str(40*((len(tval)-1)//40+1))
-                        else:
-                            tfmt= '25'
-                        line += format(f'{tkey!r}: {tval!r}, ',tfmt)
+                        # ## description length for alignment is in
+                        # ## 40-char quanta, else 15 char
+                        # if tkey == 'description':
+                        #     tfmt = str(40*((len(tval)-1)//40+1))
+                        # else:
+                        #     tfmt= '25'
+                        # line += format(f'{tkey!r}: {tval!r}, ',tfmt)
+                        line += f'{tkey!r}: {tval!r}, '
                     line += '}'
                 else:
                     line = f'{key:20} = {metadata!r}'
@@ -2008,8 +2024,8 @@ class Dataset(optimise.Optimiser):
         ## Remaining data is data dict, so remove its subreference as
         ## data['data'] to data. The logic is needed as a HACK to an
         ## old version then didn't use data subdirectory -- delete one
-        ## day
-        if len(data)==1 and 'data' in data:
+        ## day and repalce with simply 'data = data["data"]'
+        if 'data' in data:
             data = data['data']
         ## HACK REMOVE ASSOC 2021-06-21 DELETE ONE DAY
         for key in data:
