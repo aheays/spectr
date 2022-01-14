@@ -471,7 +471,7 @@ prototypes['SR'] = dict(description="Signed projection of spin angular momentum 
 
 ## derived from defining quantum numbers
 prototypes['_qnhash'] = dict(description="Hash of defining quantum numbers", kind='i',infer=[])
-prototypes['encoded_qn'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[])
+prototypes['qn_encoded'] = dict(description="String-encoded defining quantum numbers", kind='U',infer=[])
 
 ## Effective Hamiltonian parameters
 prototypes['Tv']  = dict(description='Term origin' ,units='cm-1',kind='f',fmt='0.6f',default=0,infer=[])
@@ -587,8 +587,8 @@ def _collect_prototypes(*keys,defining_qn=()):
     ## defining_qn
     if '_qnhash' in default_prototypes:
         default_prototypes['_qnhash']['infer'].append((defining_qn,_qn_hash),)
-    if 'encoded_qn' in default_prototypes:
-        default_prototypes['encoded_qn']['infer'].append(
+    if 'qn_encoded' in default_prototypes:
+        default_prototypes['qn_encoded']['infer'].append(
             (defining_qn, lambda self,*qn:
                      [self.encode_qn({key:qni[j] for (key,qni) in zip(defining_qn,qn)}) for j in range(len(self))]))
     for key in defining_qn:
@@ -669,7 +669,8 @@ class Base(Dataset):
         Dataset.sort(self,*sort_keys,**dataset_sort_kwargs)
 
     def match(self,keys_vals=None,**kwargs):
-        """Overload Dataset.match to handle 'encoded_qn'."""
+        """Overload Dataset.match to handle 'encoded_qn' which is decoded
+before matching."""
         if keys_vals is None:
             keys_vals = {}
         keys_vals = keys_vals | kwargs 
@@ -680,15 +681,18 @@ class Base(Dataset):
         return Dataset.match(self,keys_vals)
 
     def set(self,key,subkey,value,index=None,match=None,set_changed_only=False,**match_kwargs):
-        """Overload  Dataset.set to handle 'encoded_qn'."""
+        """Overload Dataset.set to handle 'encoded_qn' which is decoded before
+        setting individual qn.."""
         if key == 'encoded_qn':
+            assert subkey == 'vector'
             for tkey,tvalue in self.decode_qn(value).items():
                 Dataset.set(self,tkey,subkey,tvalue,index,match,set_changed_only,**match_kwargs)
         else:
             Dataset.set(self,key,subkey,value,index,match,set_changed_only,**match_kwargs)
 
     def append(self,*args,**kwargs):
-        """Overload Dataset.append to handle 'encoded_qn'."""
+        """Overload Dataset.append to handle 'encoded_qn' which is decoded
+        before appending individual qn.."""
         if 'encoded_qn' in kwargs:
             qn = self.decode_qn(kwargs.pop('encoded_qn'))
             kwargs = qn | kwargs

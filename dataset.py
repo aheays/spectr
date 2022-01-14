@@ -1764,26 +1764,19 @@ class Dataset(optimise.Optimiser):
         for key in self:
             for subkey in self.vector_subkinds:
                 if self.is_set(key,subkey):
-                    memory = sys.getsizeof(self._data[key][subkey])
-                    ## memory = sys.getsizeof(self[key,subkey])
-                    total_memory += memory
-                    if subkey == 'value':
-                        description = self[key,'description']
-                        units = self[key,'units']
-                        kind = self[key,'kind']
-                    else:
-                        description = self.vector_subkinds[subkey]['description']
-                        kind = self.vector_subkinds[subkey]['kind']
-                        units = ''
-                    data.append(
-                        key=key,
-                        subkey=subkey,
-                        kind=kind,
-                        dtype=str(self[key,subkey].dtype),
-                        memory=memory,
-                        units=units,
-                        description=description,
-                        )
+                    d = {}
+                    d['key'] = key
+                    d['subkey'] = subkey
+                    # d['kind'] = (self[key,'kind'] if subkey == 'value' else '')
+                    d['dtype'] = str(self[key,subkey].dtype)
+                    d['memory'] = sys.getsizeof(self._data[key][subkey])
+                    total_memory += d['memory']
+                    d['units'] = (self[key,'units'] if subkey == 'value' else '')
+                    d['description'] = (self[key,'description'] if subkey == 'value'
+                                        else self.vector_subkinds[subkey]['description'])
+                    data.append(d)
+
+
         print(f'name: {self.name!r}')
         print(f'length: {len(self)}')
         print(f'number of keys: {len(self.keys())}')
@@ -1792,6 +1785,10 @@ class Dataset(optimise.Optimiser):
             print(f'description: {self.description!r}')
         for key,val in self.attributes.items():
             print(f'attribute: {key}: {val!r}')
+        if np.all(data['units']==''):
+            data.pop('units')
+        if np.all(data['subkey']=='value'):
+            data.pop('subkey')
         print(data)
 
     def format_as_list(self):

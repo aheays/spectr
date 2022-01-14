@@ -168,11 +168,6 @@ def presetRcParams(
         'font.size'            :10.,
         # 'axes.formatter.use_mathtext': True, # use math text for scientific notation . i.e,. not 1e-9
     })
-    presets['articleSingleColumn'] = presets['article_single_column'] # deprecated
-    presets['articleSingleColumnSmall']=deepcopy(presets['articleSingleColumn'])
-    presets['articleSingleColumnSmall'].update({
-            'figure.figsize':(3.,2.),
-            })
     presets['article_single_column_one_third_page']=deepcopy(presets['article_single_column'])
     presets['article_single_column_one_third_page'].update({
             'figure.figsize':(papersize['article_single_column_width'],papersize['article_full_page_height']/3.),
@@ -185,7 +180,6 @@ def presetRcParams(
             'figure.subplot.bottom':0.1,
             'figure.subplot.top'   :0.95,
             })
-    presets['articleSingleColumnTwoSubfigures'] = presets['article_single_column_half_page'] # deprecated
     presets['article_single_column_two_thirds_page']=deepcopy(presets['article_single_column_half_page'])
     presets['article_single_column_two_thirds_page'].update({
             'figure.figsize':(papersize['article_single_column_width'],papersize['article_full_page_height']*2./3.),
@@ -204,7 +198,6 @@ def presetRcParams(
             'figure.subplot.left':0.1,
             'lines.linewidth'    : 0.5,
             'figure.subplot.bottom':0.14,})
-    presets['articleDoubleColumn'] = presets['article_double_column']
     presets['article_double_column_half_page']=deepcopy(presets['article_double_column'])
     presets['article_double_column_half_page'].update({
             'figure.figsize':(papersize['article_full_page_width'],papersize['article_full_page_height']/2.),
@@ -231,9 +224,11 @@ def presetRcParams(
             'figure.figsize':(6.9,9.2),
             'figure.subplot.bottom':0.05,
             'figure.subplot.top'   :0.97,
-            'figure.subplot.hspace':0.15,
+            # 'figure.subplot.hspace':0.15,
+            'figure.subplot.hspace':0.27,
             'figure.subplot.left':0.1,
             })
+    presets['article_double_column_full_page'] = presets['article_full_page']
     presets['article_full_page_landscape']=deepcopy(presets['article_full_page'])
     presets['article_full_page_landscape'].update({
             'figure.figsize':(papersize['article_full_page_height'],papersize['article_full_page_width']),

@@ -614,6 +614,7 @@ class Model(Optimiser):
 
         line.include_in_save_to_directory = False
         line.clear_format_input_functions()
+        print('DEBUG:', species,len(line))
         self.add_line(line,*args,**kwargs)
         self.pop_format_input_function()
 
@@ -2580,15 +2581,6 @@ class FitAbsorption():
             else:
                 pspecies['N'].vary = False
                 pspecies['pair'].vary = False
-            ## load data from HITRAN linelists
-            ## Trim lines that are too weak to matter
-            # if speciesi in species:
-                # match={'min_S296K':min_S296K}
-                # # t_min_S296K=min_S296K
-            # else:
-                # # τpeak_min = τpeak_min    # approx minimum peak τ to include a line
-                # match={'min_τ':τpeak_min*1e-3}
-                # t_min_S296K = τpeak_min*1e-3/pspecies['N']    # resulting approx min S296K
             ## add lines
             model.add_hitran_line(
                 speciesi,

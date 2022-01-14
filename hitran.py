@@ -306,7 +306,6 @@ def get_line(
         if cache:
             if line_filename in _get_line_cache:
                 line = _get_line_cache[line_filename]
-                
             else:
                 line = dataset.load(line_filename)
                 _get_line_cache[line_filename] = line

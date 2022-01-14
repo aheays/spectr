@@ -53,7 +53,9 @@ for key in (
         'Teq','Tex','Tvib','Trot',
         'Zsource', 'Eref',
         'reference',
-        '_qnhash', 'encoded_qn', '_species_hash',
+        '_qnhash', 
+        'qn_encoded', 
+        '_species_hash',
 ):
     prototypes[key] = copy(levels.prototypes[key])
 
@@ -440,8 +442,8 @@ def _collect_prototypes(level_class,base_class,new_keys):
     if '_qnhash_l' in default_prototypes:
         default_prototypes['_qnhash_l']['infer'].append(
             ([f'{key}_l' for key in level_class.defining_qn], levels._qn_hash))
-    if 'encoded_qn' in default_prototypes:
-        default_prototypes['encoded_qn']['infer'].append(
+    if 'qn_encoded' in default_prototypes:
+        default_prototypes['qn_encoded']['infer'].append(
             (defining_qn, lambda self,*defining_qn_values:
                      [self.encode_qn(
                          {key:val[i] for key,val in zip(defining_qn,defining_qn_values)})
@@ -470,7 +472,8 @@ class Generic(levels.Base):
         level_class=levels.Generic,
         base_class=levels.Base,
         new_keys=(
-            'reference','_qnhash','encoded_qn',
+            'reference',
+            '_qnhash', 'qn_encoded',
             'species', 'chemical_species','isotopologue_ratio',
             'point_group','mass','Zsource','_species_hash',
             'Eref',
@@ -1204,7 +1207,7 @@ class Generic(levels.Base):
     def generate_from_levels(
             self,
             upper_level,         # upper level object
-            lower_level,         # lower level object of encoded_qn string, or dictionary of quantum numbers
+            lower_level,         # lower level object or encoded_qn string, or dictionary of quantum numbers
             match_line=None,     # only keep these matching lines
             match_upper=None,    # only use matching upper levels
             match_lower=None,    # only use matching lower levels
