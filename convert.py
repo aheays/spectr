@@ -203,30 +203,63 @@ def difference(difference,value,unit_in,unit_out,group=None):
 ##############################
 
 @tools.vectorise(cache=True)
-def species(name,inp='ascii',out='unicode'):
+def species(
+        value,
+        inp='ascii',
+        out='unicode',
+        error_on_fail=True,
+):
     """Translate species name between different formats."""
     if inp == out:
         ## trivial case
-        return name
-    elif ((inp,out) in _species_translation_dict
-          and name in _species_translation_dict[inp,out]):
-        ## translation dictionary exists
-        return _species_translation_dict[inp,out][name]
-    elif (inp,out) in _species_translation_functions:
-        ## a translation function exists
-        return _species_translation_functions[inp,out](name)
-    elif inp != 'unicode' and out != 'unicode':
-        ## use 'unicode' as an intermediate
-        return species(
-            species(name,inp,'unicode'),
-            'unicode', out)
-    else:
-        raise Exception(f"Could not convert species {name=} from {inp=} to {out =}")
+        return value
+    if inp in _species_translation:
+        translation = _species_translation[inp]
+        if out in translation:
+            d,f = translation[out]
+            if d is not None and value in d:
+                ## translation dictionary exists
+                return d[value]
+            elif f is not None:
+                ## translation function exists
+                return f(value)
+        ## try any possible intermediate format
+        for intermediate in translation:
+            test = species(
+                species(
+                    value,
+                    inp,
+                    intermediate,
+                    error_on_fail=False,
+                ),
+                intermediate,out,
+                error_on_fail=False
+            )
+            if test is not None:
+                return test
+    ## fail
+    if error_on_fail:
+        raise Exception(f"Could not convert species from {inp!r} to {out!r}: {value!r}")
+    return None
 
 ## dictionary and functions for converting a species, their keys are
-## (inp,out) format strings
-_species_translation_dict = {}
-_species_translation_functions = {}
+## (inp,out) format strings. Each value is pair (translation_dict,
+## translation_function) for direct and/or formulaic translation. The
+## dictionary is tried first.
+_species_translation = {
+    'ascii':{},
+    'unicode':{},
+    'matplotlib':{},
+    'stand':{},
+    'kida':{},
+    'meudon':{},
+    'cantera':{},
+    'leiden':{},
+    'inchikey':{},
+    'inchi':{},
+    'latex':{},
+    'CASint':{},
+}
 
 ## stored on disk table of translations
 _species_dataset = {}
@@ -261,7 +294,8 @@ for inp,out in (
         ('unicode' , 'CASint')  , 
         # ('ascii'   , 'CASint')  , 
 ):
-    _species_translation_functions[inp,out] = lambda species,inp=inp,out=out:_species_database_translate(species,inp,out)
+    _f = lambda species,inp=inp,out=out:_species_database_translate(species,inp,out)
+    _species_translation[inp][out] = (None,_f)
 
 ## experimental hash including isotopologues
 def _f(species):
@@ -280,7 +314,7 @@ def _f(species):
     else:
         retval = _species_database_translate(species,'unicode','CASint')
     return retval
-_species_translation_functions['unicode','hash'] = _f
+_species_translation['unicode']['hash'] = (None,_f)
 
 ## ascii
 def _f(name):
@@ -310,10 +344,10 @@ def _f(name):
     else:
         raise Exception(f'Cannot translate: {name}')
     return retval
-_species_translation_functions[('ascii','unicode')] = _f
+_species_translation['ascii']['unicode'] = (None,_f)
 
 ## matplotlib
-_species_translation_dict['ascii','matplotlib'] = bidict({
+_d = bidict({
     '14N2':'${}^{14}$N$_2$',
     '12C18O':r'${}^{12}$C${}^{18}$O',
     '32S16O':r'${}^{32}$S${}^{16}$O',
@@ -332,16 +366,16 @@ def _f(name):
     name = re.sub(r'([0-9]+)',r'$_{\1}$',name) # subscript multiplicity 
     name = re.sub(r'([+-])',r'$^{\1}$',name) # superscript charge
     return(name)
-_species_translation_functions[('ascii','matplotlib')] = _f
+_species_translation['ascii']['matplotlib'] = (_d,_f)
 
 ## cantera
 def _f(name):
     """From cantera species name to standard. No translation actually"""
     return name
-_species_translation_functions[('cantera','standard')] = _f
+_species_translation['cantera']['ascii'] = (None,_f)
 
 ## leiden
-_species_translation_dict['leiden'] = bidict({
+_d = bidict({
     'Ca':'ca', 'He':'he',
     'Cl':'cl', 'Cr':'cr', 'Mg':'mg', 'Mn':'mn',
     'Na':'na', 'Ni':'ni', 'Rb':'rb', 'Ti':'ti',
@@ -369,17 +403,17 @@ def _f(leiden_name):
     if name[-1]=='P' and name!='P':
         name = name[:-1]+'+'
     return name
-_species_translation_functions[('leiden','standard')] = _f
+_species_translation['leiden']['ascii'] = (_d,_f)
 
 def _f(standard_name):
     """Translate form my normal species names into the Leiden database
     equivalent."""
     standard_name  = standard_name.replace('+','p')
     return standard_name.lower()
-_species_translation_functions[('standard','leiden')] = _f
+_species_translation['ascii']['leiden'] = (None,_f)
 
 ## meudon_pdr
-_species_translation_dict['meudon_pdr'] = bidict({
+_d = bidict({
     'Ca':'ca', 'Ca+':'ca+', 'He':'he', 'He+':'he+',
     'Cl':'cl', 'Cr':'cr', 'Mg':'mg', 'Mn':'mn', 'Na':'na', 'Ni':'ni',
     'Rb':'rb', 'Ti':'ti', 'Zn':'zn', 'Si':'si', 'Si+':'si+',
@@ -401,7 +435,7 @@ def _f(name):
     for t in (('[18O]','O*'),('[13C]','C*'),('[15N]','N*'),): # isotopes
         name = name.replace(*t)
     return(name.lower())
-_species_translation_functions[('standard','meudon old isotope labelling')] = _f
+_species_translation['ascii','meudon old isotope labelling'] = (_d,_f)
 
 def _f(name):
     """Standard to Meudon PDR."""
@@ -414,14 +448,14 @@ def _f(name):
     name = re.sub(r'_$', r'' ,name)
     name = re.sub(r'_\+',r'+',name)
     return(name.lower())
-_species_translation_functions[('standard','meudon')] = _f
+_species_translation['ascii']['meudon'] = (None,_f)
 
 ## STAND reaction network used in ARGO model
-_species_translation_dict['STAND'] = bidict({
+_d = bidict({
     'NH3':'H3N',
     'O2+_X2Πg':'O2+_P',
     'O2_a1Δg' :'O2_D',
-    'O+_3P':'O2P',       # error in STAND O^+^(^3^P) should be O^+^(^2^P)?
+    'O+_3P':'O2P',       # error in stand O^+^(^3^P) should be O^+^(^2^P)?
     'O+_2D':'O2D',
     'O_1S':'O1S',
     'O_1D':'O1D',
@@ -432,12 +466,12 @@ _species_translation_dict['STAND'] = bidict({
 })
 def _f(name):
     return(name)
-_species_translation_functions[('STAND','standard')] = _f
+_species_translation['stand']['ascii'] = (_d,_f)
 
 ## kida
 def _f(name):
     return(name)
-_species_translation_functions[('kida','standard')] = _f
+_species_translation['kida']['ascii'] = (None,_f)
 
 ## latex
 def _f(name):
@@ -446,15 +480,14 @@ def _f(name):
         return(database.get_species_property(name,'latex'))
     except:
         return(r'\ce{'+name.strip()+r'}')
-_species_translation_functions[('standard','latex')] = _f
+_species_translation['ascii']['latex'] = (None,_f)
 
-_name_to_inchikey = {
+## inchikey to unicode
+_d = bidict({
     'NH₃':  'QGZKDVFQNNGYKY-UHFFFAOYSA-N',
-}
-
-_inchikey_to_name = {
-    'QGZKDVFQNNGYKY-UHFFFAOYSA-N':'NH₃',
-}
+})
+_species_translation['inchikey']['unicode'] = (_d,None)
+_species_translation['unicode']['inchikey'] = (_d,None)
 
 
 

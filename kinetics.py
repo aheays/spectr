@@ -9,6 +9,7 @@ from bidict import bidict
 import scipy
 
 from . import tools
+from . import convert
 from .tools import cache
 from .dataset import Dataset
 from .exceptions import DecodeSpeciesException,InferException
@@ -554,11 +555,11 @@ class Mixture():
 ## Chemical reactions ##
 ########################
 
-def decode_reaction(reaction,encoding='standard'):
+def decode_reaction(reaction,encoding='ascii'):
     """Decode a reaction into a list of reactants and products, and other
     information. Encoding is for species names. Encoding of reaction
     string formatting not implemented."""
-    if encoding == 'standard':
+    if encoding == 'ascii':
         ## split parts
         reactants_string,products_string = reaction.split('→')
         reactants,products = [],[]
@@ -604,9 +605,9 @@ def decode_reaction(reaction,encoding='standard'):
     
     return reactants,products
 
-def encode_reaction(reactants,products,encoding='standard'):
+def encode_reaction(reactants,products,encoding='ascii'):
     """Only just started"""
-    if encoding!='standard':
+    if encoding!='ascii':
         raise ImplementationError()
     return ' + '.join(reactants)+' → '+' + '.join(products)
 
@@ -684,7 +685,7 @@ def _f(c,p):
     pr = k0*p['nt']/kinf             # p['nt'] = total density = M 3-body density
     k2 = (kinf*pr)/(1+pr)
     return k2
-_reaction_coefficient_formulae['STAND 3-body'] = _f
+_reaction_coefficient_formulae['stand 3-body'] = _f
 
 class Reaction:
     """A class for manipulating a chemical reaction."""
@@ -696,13 +697,13 @@ class Reaction:
             products=None,
             formula='constant', # type of reaction, defined in get_rate_coefficient
             coefficients=None,     # used for computing rate coefficient according to formula
-            encoding='standard', # of reaction name or species in products/reactants
+            encoding='ascii', # of reaction name or species in products/reactants
     ):
 
         ## get reactants and products from name or provided lists
         if name is None and reactants is not None and products is not None:
-            self.reactants = [decode_species(t,encoding) for t in reactants]
-            self.products = [decode_species(t,encoding) for t in products]
+            self.reactants = [convert.species(t,encoding,'ascii') for t in reactants]
+            self.products = [convert.species(t,encoding,'ascii') for t in products]
         elif name is not None and reactants is None and products is None:
             self.reactants,self.products = decode_reaction(name,encoding)
         else:
@@ -957,7 +958,7 @@ class ReactionNetwork:
         """Load encoded reactions and coefficients from a file."""
         with open(tools.expand_path(filename),'r') as fid:
             for line in fid:
-                self.append(**eval(f'dict({line[:-1]})'),encoding='standard')
+                self.append(**eval(f'dict({line[:-1]})'),encoding='ascii')
 
     def check_reactions(self):
         """Sanity check on reaction list."""
@@ -980,19 +981,19 @@ class ReactionNetwork:
             ## decode
             retval = {'reactants':[],'products':[]}
             if (t:=line[0:8].strip()) != '':
-                retval['reactants'].append(decode_species(t,'STAND'))
+                retval['reactants'].append(convert.species(t,'stand','unicode'))
             if (t:=line[8:16].strip()) != '':
-                retval['reactants'].append(decode_species(t,'STAND'))
+                retval['reactants'].append(convert.species(t,'stand','unicode'))
             if (t:=line[16:24].strip()) != '':
-                retval['reactants'].append(decode_species(t,'STAND'))
+                retval['reactants'].append(convert.species(t,'stand','unicode'))
             if (t:=line[24:32].strip()) != '':
-                retval['products'].append(decode_species(t,'STAND'))
+                retval['products'].append(convert.species(t,'stand','unicode'))
             if (t:=line[32:40].strip()) != '':
-                retval['products'].append(decode_species(t,'STAND'))
+                retval['products'].append(convert.species(t,'stand','unicode'))
             if (t:=line[40:48].strip()) != '':
-                retval['products'].append(decode_species(t,'STAND'))
+                retval['products'].append(convert.species(t,'stand','unicode'))
             if (t:=line[48:54].strip()) != '':
-                retval['products'].append(decode_species(t,'STAND'))
+                retval['products'].append(convert.species(t,'stand','unicode'))
             retval['α'] = float(line[64:73])
             retval['β'] = float(line[73:82])
             retval['γ'] = float(line[82:91])
@@ -1040,7 +1041,7 @@ class ReactionNetwork:
                     line0 = line    # low-density limit
                     lineinf = get_line()    # high-density limit
                     self.append(Reaction(
-                        formula='STAND 3-body',
+                        formula='stand 3-body',
                         reactants=line['reactants'],products=line['products'],
                         coefficients=dict(
                             α0=line0['α'],β0=line0['β'],γ0=line0['γ'],

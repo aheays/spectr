@@ -84,7 +84,8 @@ class AtmosphericChemistry():
             self.state[key_to] = data.pop(key_from)
         for key in data:
             self.set_density(
-                kinetics.translate_species(key,'STAND','standard'),
+                # kinetics.translate_species(key,'stand','ascii'),
+                convert.species(key,'stand','ascii'),
                 data[key]*self.state['nt'])
 
         if load_reaction_network is not False:
