@@ -1,10 +1,8 @@
 import re
-import ast
 from copy import copy,deepcopy
 from pprint import pprint,pformat
 import importlib
 import warnings
-import ast
 
 import numpy as np
 from numpy import nan,arange,linspace,array
@@ -15,7 +13,7 @@ from .exceptions import InferException,NonUniqueValueException
 from . import convert
 from . import optimise
 from .optimise import optimise_method,Parameter,Fixed,format_input_method
-
+from . import __version__
 
 class Dataset(optimise.Optimiser):
 
@@ -60,7 +58,7 @@ class Dataset(optimise.Optimiser):
         'cast'           : {'description':'Vectorised function to cast data',},
         'fmt'            : {'description':'Format string for printing',},
         'description'    : {'description':'Description of data',},
-        'units'          : {'description':'Units of data',},
+        'units'          : {'description':'Units of data','default':''},
         'default'        : {'description':'Default value',},
         'default_step'   : {'description':'Default differentiation step size','valid_kinds':('f',)},
         '_inferred_to'   : {'description':'List of keys inferred from this data',},
@@ -1515,7 +1513,7 @@ class Dataset(optimise.Optimiser):
             keys = list(self.keys())
         ## add data
         retval = {}
-        retval['classname'] = self.classname
+        # retval['classname'] = self.classname
         retval['description'] = self.description
         if len(self.attributes) > 0:
             retval['attributes'] = self.attributes
@@ -1525,6 +1523,12 @@ class Dataset(optimise.Optimiser):
             for subkey in subkeys:
                 if self.is_set(key,subkey):
                     retval['data'][key][subkey] = self.get(key,subkey)
+        ## add data format information
+        retval['format'] = {
+            'classname':self.classname,
+            'description': f'spectr.Dataset directory format version {__version__} (https://github.com/aheays/spectr)',
+            'version':__version__,
+            }
         return retval
      
     def row(self,index,keys=None):
@@ -1748,9 +1752,11 @@ class Dataset(optimise.Optimiser):
             prototypes={
                 'key':{'kind':'U',},
                 'subkey':{'kind':'U',},
+                'kind':{'kind':'U'},
                 'dtype':{'kind':'U'},
                 'memory':{'kind':'f','fmt':"0.1e"},
-                'description':{'kind':'U','fmt':"0.100s"},
+                'units':{'kind':'U'},
+                'description':{'kind':'U'},
             },
         )
         import gc,sys
@@ -1763,19 +1769,29 @@ class Dataset(optimise.Optimiser):
                     total_memory += memory
                     if subkey == 'value':
                         description = self[key,'description']
+                        units = self[key,'units']
+                        kind = self[key,'kind']
                     else:
                         description = self.vector_subkinds[subkey]['description']
+                        kind = self.vector_subkinds[subkey]['kind']
+                        units = ''
                     data.append(
                         key=key,
                         subkey=subkey,
+                        kind=kind,
                         dtype=str(self[key,subkey].dtype),
                         memory=memory,
+                        units=units,
                         description=description,
                         )
-        print(f'name: {self.name}')
+        print(f'name: {self.name!r}')
         print(f'length: {len(self)}')
         print(f'number of keys: {len(self.keys())}')
         print(f'total memory: {total_memory:0.1e}')
+        if len(self.description) > 0:
+            print(f'description: {self.description!r}')
+        for key,val in self.attributes.items():
+            print(f'attribute: {key}: {val!r}')
         print(data)
 
     def format_as_list(self):
@@ -1831,7 +1847,10 @@ class Dataset(optimise.Optimiser):
             np.savez(filename,self.as_dict(keys=keys,subkeys=subkeys))
         elif filetype == 'directory':
             ## directory of npy files
-            tools.dict_to_directory(filename,self.as_dict(keys=keys,subkeys=subkeys),repr_strings=True)
+            tools.dict_to_directory(
+                filename,
+                self.as_dict(keys=keys,subkeys=subkeys),
+                repr_strings= True)
         elif filetype == 'text':
             ## space-separated text file
             format_kwargs.setdefault('delimiter',' ')
@@ -1930,7 +1949,7 @@ class Dataset(optimise.Optimiser):
 
     def load_from_dict(
             self,
-            data,
+            data_dict,
             keys=None,          # load only this data
             flat=False,
             metadata=None,
@@ -1943,6 +1962,7 @@ class Dataset(optimise.Optimiser):
         ## translate key with direct substitutions
         if translate_keys is None:
             translate_keys = {}
+        ## this block should be part of lines.py and levels.py not here
         if translate_from_anh_spectrum:
             translate_keys.update({
                 'Jp':'J_u', 'Sp':'S_u', 'Tp':'E_u',
@@ -1959,113 +1979,100 @@ class Dataset(optimise.Optimiser):
                 'Γ':'Γ','df':None,
             })
         for from_key,to_key in translate_keys.items():
-            if from_key in data:
+            if from_key in data_dict:
                 if to_key is None:
-                    data.pop(from_key)
+                    data_dict.pop(from_key)
                 else:
-                    data[to_key] = data.pop(from_key)
+                    data_dict[to_key] = data_dict.pop(from_key)
         ## translate keys with regexps
         if translate_keys_regexp is not None:
-            for key in list(data.keys()):
+            for key in list(data_dict.keys()):
                 original_key = key
                 for match_re,sub_re in translate_keys_regexp:
                     key = re.sub(match_re,sub_re,key)
                 if key != original_key:
-                    data[key] = data.pop(original_key)
+                    data_dict[key] = data_dict.pop(original_key)
         ## hack -- sometimes classname is quoted, so remove them
-        if 'classname' in data:
-            data['classname'] = str(data['classname']).strip('" \'"')
+        if 'classname' in data_dict:
+            # data_dict['classname'] = str(data_dict['classname']).strip('" \'"')
+            data_dict['classname'] = data_dict['classname']
         ## test loaded classname matches self
-        if 'classname' in data:
-            if data['classname'] != self.classname:
-                warnings.warn(f'The loaded classname, {repr(data["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
-            data.pop('classname')
-        ## build structured data from flat data 
+        if 'classname' in data_dict:
+            if data_dict['classname'] != self.classname:
+                warnings.warn(f'The loaded classname, {repr(data_dict["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
+            data_dict.pop('classname')
+        ## build structured data_dict from flat data_dict 
         if flat:
-            flat_data = data
-            data = {}
-            for key,val in flat_data.items():
+            flat_data_dict = data_dict
+            data_dict = {'data':{}}
+            for key,val in flat_data_dict.items():
                 if key == 'classname':
                     ## classname attribute
-                    data['classname'] = val
+                    data_dict['classname'] = str(val)
                 elif key == 'description':
                     ## description attribute
-                    self.description = val
+                    self.description = str(val)
                 else:
-                    ## if r:=re.match(r'([^:]+)[:]([^:]+)',key): # proper regexp
-                    if r:=re.match(r'([^:,]+)[:,]([^:,]+)',key): # HACK TO INCLUDE , SEPARATOR, REMOVE THIS ONE DAY 2021-06-22
+                    if r:=re.match(r'([^:]+)[:]([^:]+)',key): # proper regexp
+                    ## if r:=re.match(r'([^:,]+)[:,]([^:,]+)',key): # HACK TO INCLUDE , SEPARATOR, REMOVE THIS ONE DAY 2021-06-22
                         key,subkey = r.groups()
                     else:
                         subkey = 'value'
-                    if key not in data:
-                        data[key] = {}
-                    data[key][subkey] = val
-        ## add metadata to data dictionary, if metadata key is not
-        ## present in data then ignore it
+                    data_dict['data'].setdefault(key,{})
+                    data_dict['data'][key][subkey] = val
+        ## add metadata to data_dict dictionary, if metadata key is not
+        ## present in data_dict then ignore it
         if metadata is not None:
             for key,info in metadata.items():
-                if key in data:
+                if key in data_dict:
                     for subkey,val in info.items():
-                        data[key][subkey] = val
+                        data_dict[key][subkey] = val
         ## 2021-06-11 HACK TO ACCOUNT FOR DEPRECATED ATTRIBUTES DELETE ONE DAY
-        if 'default_step' in data: # HACK
-            data.pop('default_step') # HACK
+        if 'default_step' in data_dict: # HACK
+            data_dict.pop('default_step') # HACK
         ## END OF HACK
-        ## description is saved in data
-        if 'description' in data:
-            self.description = str(data.pop('description'))
-        ## attributes are saved in data, try to evalute as literal, or keep as string on fail
-        if 'attributes' in data:
-            for key,val in data.pop('attributes').items():
-                try:
-                    self.attributes[key] = ast.literal_eval(val)
-                except ValueError:
-                    self.attributes[key] = val
-        ## Remaining data is data dict, so remove its subreference as
-        ## data['data'] to data. The logic is needed as a HACK to an
-        ## old version then didn't use data subdirectory -- delete one
-        ## day and repalce with simply 'data = data["data"]'
-        if 'data' in data:
-            data = data['data']
-        ## HACK REMOVE ASSOC 2021-06-21 DELETE ONE DAY
-        for key in data:
-            if 'assoc' in list(data[key]):
-                for subkey in data[key]['assoc']:
-                    data[key][subkey] = data[key]['assoc'][subkey]
-                data[key].pop('assoc')
-        ## END OF HACK
-        ## Set data in self and selected attributes
-        scalar_data = {}
-        for key in data:
-            ## only load requested keys
-            if keys is not None and key not in keys:
-                continue
-            ## no data
-            if 'value' not in data[key]:
-                raise Exception(f'No "value" subkey in data {repr(keys):0.50s} with subkeys {repr(list(data[key])):0.50s}')
-            ## if kind is then add a prototype (or replace
-            ## existing if the kinds do not match)
-            if 'kind' in data[key]:
-                kind = data[key].pop('kind')
-                if key not in self.prototypes or self.prototypes[key]['kind'] != kind:
-                    self.set_prototype(key,kind)
-            ## vector data but given as a scalar -- defer loading
-            ## until after vector data so the length of data is known
-            if np.isscalar(data[key]['value']):
-                scalar_data[key] = data[key]
-            ## vector data -- add value and subkeys
-            else:
-                self[key,'value'] = data[key].pop('value')
-                for subkey in data[key]:
-                    self[key,subkey] = data[key][subkey]
-        ## load scalar data
-        for key in scalar_data:
-            self[key,'value'] = scalar_data[key].pop('value')
-            for subkey in scalar_data[key]:
-                self[key,subkey] = scalar_data[key][subkey]
-        ## limit to match if requested
-        if match is not None:
-            self.limit_to_match(match)
+        ## description is saved in data_dict
+        if 'description' in data_dict:
+            self.description = data_dict.pop('description')
+        ## attributes are saved in data_dict, try to evalute as literal, or keep as string on fail
+        if 'attributes' in data_dict:
+            for key,val in data_dict.pop('attributes').items():
+                self.attributes[key] = tools.safe_eval_literal(val)
+        ## actual data dict stored in 'data'
+        if 'data' in data_dict:
+            data = data_dict['data']
+            ## Set data in self and selected attributes
+            scalar_data = {}
+            for key in data:
+                ## only load requested keys
+                if keys is not None and key not in keys:
+                    continue
+                ## no data
+                if 'value' not in data[key]:
+                    raise Exception(f'No "value" subkey in data {repr(keys):0.50s} with subkeys {repr(list(data[key])):0.50s}')
+                ## if kind is then add a prototype (or replace
+                ## existing if the kinds do not match)
+                if 'kind' in data[key]:
+                    kind = str(data[key].pop('kind'))
+                    if key not in self.prototypes or self.prototypes[key]['kind'] != kind:
+                        self.set_prototype(key,kind)
+                ## vector data but given as a scalar -- defer loading
+                ## until after vector data so the length of data is known
+                if np.isscalar(data[key]['value']):
+                    scalar_data[key] = data[key]
+                ## vector data -- add value and subkeys
+                else:
+                    self[key,'value'] = data[key].pop('value')
+                    for subkey in data[key]:
+                        self[key,subkey] = data[key][subkey]
+            ## load scalar data
+            for key in scalar_data:
+                self[key,'value'] = scalar_data[key].pop('value')
+                for subkey in scalar_data[key]:
+                    self[key,subkey] = scalar_data[key][subkey]
+            ## limit to match if requested
+            if match is not None:
+                self.limit_to_match(match)
 
     def load_from_parameters_dict(self,parameters):
         """Load a dictionary of dictionaries
@@ -2112,8 +2119,44 @@ class Dataset(optimise.Optimiser):
 
     def _load_from_directory(self,filename):
         """Load data stored in a structured directory tree."""
-        data = tools.directory_to_dict(filename)
-        return data,{}
+        data_dict = tools.directory_to_dict(filename,evaluate_strings=True)
+        ## determine file formatting and version of spectr used to
+        ## save this directory
+        if 'format' in data_dict and isinstance(data_dict['format'],dict):
+            file_format = data_dict.pop('format')
+        else:
+            file_format = {}
+        if 'version' in file_format:
+            version = file_format['version']
+        else:
+            version = None
+        ## make any modificatiosn to make this compatible with the
+        ## current version
+        if version is None:
+            ## no version data
+            if 'data' not in data_dict:
+                ## no 'data' assume this is pre version 1.0.0 --
+                ## DELETE THIS BLOCK SOME DAY
+                ## 
+                ## add all keys to a data dict
+                data = {}
+                for key in list(data_dict):
+                    if key not in ('classname','description','attributes','default_step'):
+                        data[key] = data_dict.pop(key)
+                data_dict['data'] = data
+                ## move data out of old 'assoc' subdict
+                for key in data:
+                    if 'assoc' in list(data[key]):
+                        for subkey in data[key]['assoc']:
+                            data[key][subkey] = data[key]['assoc'][subkey]
+                        data[key].pop('assoc')
+            else:
+                ## assume most recent version
+                pass
+        else:
+            ## assume most recent version
+            pass
+        return data_dict,{}
 
     def _load_from_hdf5(self,filename,load_attributes=True):
         """Load data stored in a structured or unstructured hdf5 file."""
@@ -2125,6 +2168,14 @@ class Dataset(optimise.Optimiser):
                 break
         else:
             flat = True
+        ## if data consists of a single 2D array then replace it with
+        ## with enumerated columns
+        if len(data) == 1:
+            key = list(data)[0]
+            val = data[key]
+            if isinstance(val,np.ndarray) and val.ndim == 2:
+                for i,column in enumerate(data.pop(key).T):
+                    data[f'{key}{i}'] = column
         return data,{'flat':flat}
 
     def _load_from_npz(self,filename):
@@ -2173,8 +2224,6 @@ class Dataset(optimise.Optimiser):
         attributes = []
         with open(filename,'r') as fid:
             for iline,line in enumerate(fid):
-                # print('DEBUG:', line)
-                # import pdb; pdb.set_trace(); # DEBUG
                 ## remove newline
                 line = line[:-1]
                 ## check for bad section title
@@ -2221,10 +2270,10 @@ class Dataset(optimise.Optimiser):
                         if r.group(1) is not None:
                             key = r.group(1)
                         if r.group(2) is not None:
-                            value = ast.literal_eval(r.group(2))
+                            value = tools.safe_eval_literal(r.group(2))
                         if r.group(3) is not None:
                             try:
-                                info = ast.literal_eval(r.group(3))
+                                info = tools.safe_eval_literal(r.group(3))
                                 if not isinstance(info,dict):
                                     info = {'description':r.group(3)}
                             except:
@@ -2245,7 +2294,7 @@ class Dataset(optimise.Optimiser):
                             key_metadata = None
                         else:
                             try:
-                                key_metadata = ast.literal_eval(r.group(2))
+                                key_metadata = tools.safe_eval_literal(r.group(2))
                             except:
                                 raise Exception(f"Invalid metadata encoding for {repr(key)}: {repr(r.group(2))}")
                             if isinstance(key_metadata,dict):
@@ -2281,7 +2330,7 @@ class Dataset(optimise.Optimiser):
             data['description'] = description
         if len(attributes) > 0:
             tdict = '{'+','.join(attributes)+'}'
-            self.attributes |= ast.literal_eval(tdict)
+            self.attributes |= tools.safe_eval_literal(tdict)
         ## if there is no kind for this key then try and cast to numeric data
         for key in data:
             if key not in metadata or 'kind' not in metadata[key]:

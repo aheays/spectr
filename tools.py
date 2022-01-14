@@ -8,63 +8,10 @@ import io
 import inspect
 import sys
 import functools
-
-## from scipy import interpolate,constants,linalg,stats,signal,fft
-## import csv
-## import glob as glob_module
-import numpy as np
-from numpy import array,arange,nan,inf
-## import h5py
-# from sympy.printing.pycode import pycode
 from time import perf_counter as timestamp
 
-# from . import plotting
-# from . import fortran_tools
-# from .plotting import *
-
-
-class AutoDict:
-
-    """Kind of like a dictionary of lists. If an unknown key is given then
-    creates an empty list."""
-
-    def __init__(self,default_value):
-        self._dict = dict()
-        self.default_value = default_value
-
-    def __getitem__(self,key):
-        if key not in self._dict:
-            self._dict[key] = copy(self.default_value)
-        return(self._dict[key])
-
-    def __setitem__(self,key,val):
-        self._dict[key] = val
-    
-    def __str__(self):
-        return(str(self._dict))
-    
-    def __repr__(self):
-        return(repr(self._dict))
-
-    def __iter__(self):
-        for key in self._dict.keys():
-            yield key
-
-    def keys(self):
-        for key in self._dict.keys():
-            yield key
-
-    def values(self):
-        for val in self._dict.values():
-            yield val
-
-    def items(self):
-        for key,val in self._dict.items():
-            yield key,val
-
-
-
-
+import numpy as np
+from numpy import array,arange,nan,inf
 
 #######################################################
 ## decorators / decorator factories / function tools ##
@@ -164,77 +111,9 @@ def vectorise_arguments(function):
             return function(*[np.full(arglen,arg) if np.isscalar(arg) else np.asarray(arg) for arg in args])
     return function_with_vectorised_arguments
 
-# def frozendict_args(f):
-    # """A decorator that aims to be like functools.lru_cache except it
-    # deepcopies the retrun value, so that mutable object can safely
-    # cached. """
-    # from frozendict import frozendict
-    # def fnew(*args,**kwargs):
-        # return(f(*[frozendict(arg) if isinstance(arg,dict) else arg for arg in args],
-                 # **{key:(frozendict(val) if isinstance(val,dict) else val) for key,val in kwargs.items()}))
-    # return(fnew)
-
-# def lru_cache_copy(f,*lru_cache_args,**lru_cache_kwargs):
-    # """A decorator that aims to be like functools.lru_cache except it
-    # deepcopies the retrun value, so that mutable object can safely
-    # cached. """
-    # import functools
-    # import copy
-    # @functools.lru_cache(*lru_cache_args,**lru_cache_kwargs)    
-    # def fcached(*args,**kwargs):
-        # return(f(*args,**kwargs))
-    # def fcached_copied(*args,**kwargs):
-        # return(copy.deepcopy(fcached(*args,**kwargs)))
-    # return(fcached_copied)
-
-# @functools.lru_cache
-# def cached_pycode(*args,**kwargs):
-    # return(pycode(*args,**kwargs))
-
-# def pick_function_kwargs(kwargs,function):
-    # """Find which kwargs belong to this function, return as a dict."""
-    # import inspect
-    # ## get a list of acceptable args, special case for plot (and others?)
-    # if function.__name__ == 'plot':    # special case for plot since args not in function definition line
-        # args = ('agg_filter','alpha','animated','antialiased','aa','clip_box','clip_on','clip_path','color','c','contains','dash_capstyle','dash_joinstyle','dashes','drawstyle','figure','fillstyle','gid','label','linestyle','ls','linewidth','lw','marker','markeredgecolor','mec','markeredgewidth','mew','markerfacecolor','mfc','markerfacecoloralt','mfcalt','markersize','ms','markevery','path_effects','picker','pickradius','rasterized','sketch_params','snap','solid_capstyle','solid_joinstyle','transform','url','visible','xdata','ydata','zorder')
-    # else:
-        # # args,varargs,keywords,defaults = inspect.getargspec(function)
-        # t = inspect.signature(function)
-        # print( t)
-        # print( dir(t))
-        # t = inspect.getfullargspec(function)
-        # print( t)
-        # args,varargs,keywords,defaults = inspect.signature(function)
-    # ## pick these into a new dict
-    # picked_kwargs = dict()
-    # for key,val in kwargs.items():
-        # if key in args: picked_kwargs[key] = val
-    # other_kwargs = dict()
-    # for key,val in kwargs.items():
-        # if key not in picked_kwargs:
-            # other_kwargs[key] = val
-    # return(picked_kwargs,other_kwargs)
-
-# def repr_args_kwargs(*args,**kwargs):
-    # """Format args and kwargs into evaluable args and kwargs."""
-    # retval = ''
-    # if len(args)>0:
-        # retval += ','.join([repr(arg) for arg in args])+','
-    # if len(kwargs)>0:
-        # retval += ','.join([str(key)+'='+repr(val) for key,val in kwargs.items()])+','
-    # return(retval)
-
 #############################
 ## things for dictionaries ##
 #############################
-
-# def combine_dicts(*input_dicts):
-    # """Combine input dicts into one, ignoring any that are None."""
-    # retval = {}
-    # for d in input_dicts:
-        # if d is not None:
-            # retval |= d
-    # return retval
 
 def dict_to_kwargs(d,keys=None):
     """Expand a dict into evaluable kwargs. Default to all keys."""
@@ -592,27 +471,6 @@ def date_string():
     t = datetime.datetime.now()
     return('-'.join([str(t.year),format(t.month,'02d'),format(t.day,'02d')]))
 
-# def dump(o,f):
-    # """Like pickle.dump except that f can string filename."""
-    # if type(f)==str:
-        # f=file(f,'w')
-        # pickle.dump(o,f)
-        # f.close()
-    # else: pickle.dump(o,f)
-
-# def load(f):
-    # """Like pickle.load except that f can string filename."""
-    # if type(f)==str:
-        # f=file(f,'r')
-        # o = pickle.load(f)
-        # f.close()
-    # else: o = pickle.load(f)
-    # return o
-
-# def take_from_list(l,b):
-    # """Return part of a list.\n\nReturn elements of l for which b is
-    # true. l and b must be the same length."""
-    # return [ll for (ll,bb) in zip(l,b) if bb]
 
 def isiterable(x):
     """Test if x is iterable, False for strings."""
@@ -623,16 +481,6 @@ def isiterable(x):
     except TypeError:
         return False
     return True
-
-# def isiterable_not_string(x):
-    # """Test if x is iterable, False for strings."""
-    # if isinstance(x,str): 
-        # return False
-    # try:
-        # iter(x)
-    # except TypeError:
-        # return False
-    # return True
 
 def indices(arr):
     """Generator return all combinations of indices for an array."""
@@ -662,13 +510,6 @@ def tmpdir():
     automatically deleted. Pathname is returned."""
     import tempfile
     return tempfile.mkdtemp()
-
-# def cp(src,dest):
-    # return(shutil.copy(expand_path(src),expand_path(dest)))
-
-# def cptree(src,dest):
-    # """"""
-    # return(shutil.copytree(expand_path(src),expand_path(dest)))
 
 def trash(filename):
     """Put file in the trash can. Silence on error. No filename expansion."""
@@ -711,6 +552,21 @@ def mkdir(
 #####################
 ## text formatting ##
 #####################
+
+
+def safe_eval_literal(string,string_on_error=False):
+    """Evaluate a string into a python literal safely. If
+    string_on_error=True then return the original string if it cannot be
+    evaluated for any reason."""
+    import ast
+    try:
+        retval = ast.literal_eval(string)
+    except Exception as err:
+        if string_on_error:
+            retval = string
+        else:
+            raise Exception(f'Could not evaluate string: {repr(string):0.50s}')
+    return retval
 
 def regularise_symbol(x):
     """Turn an arbitrary string into a valid python symbol. INCOMPLETE
@@ -1103,98 +959,6 @@ def printcols(*columns):
     """Print the data into readable columns heuristically."""
     print(format_columns(columns))
 
-# def dict_array_to_str(d,keys=None,fmts=None,**kwargs_for_make_table):
-    # """Return a string listing the contents of a dictionary made up of
-    # arrays of the same length. If no keys specified, print all keys."""
-    # if keys is None: keys = list(d.keys())
-    # if fmts is None:
-        # fmts = [max('12',len(key)) for key in keys]
-    # elif isinstance(fmts,str):
-        # fmts = [fmts for key in keys]
-    # columns = [Value_Array(name=key,val=d[key],fmt=fmt) for (key,fmt) in zip(keys,fmts)]
-    # return make_table(columns,**kwargs_for_make_table)
-
-# def recarray_to_str(d,*args,**kwargs):
-    # kwargs.setdefault('headers',d.dtype.names)
-    # return(tabulate(d,*args,**kwargs))
-                            
-
-# def make_latex_table(columns,environment='tabular',preamble='',postscript='',):
-    # """Convenient method to create a simple LaTeX table from data.
-
-    # Columns is a list of Value_Arrays or dictionaries with the following keys:
-
-    # val -- an array or somesuch, not necessarily numerical
-    # fmt -- (optional?) format string, or an arbitrary function that
-           # converts elements of data to a string
-    # latex_table_alignment -- (optional?) latex table alignment code
-    # name -- (optional?) To go at top of table.
-
-    # Other options:
-
-    # environment -- enclosing latex environment, i.e., tabular or longtable
-    # preamble -- appears before environment
-    # postscript -- appears after environment """
-    # ## convert dictionary to Value_Array if necessary
-    # for i in range(len(columns)):
-        # if isinstance(columns[i],dict):
-            # columns[i] = Value_Array(**columns[i])
-    # string = '\n'.join([
-        # preamble,
-        # r'\begin{'+environment+'}{'+''.join([col.latex_table_alignment for col in columns])+'}',
-        # # r'\hline\hline',
-        # r'\toprule',
-        # ' & '.join([col.name for col in columns])+' \\\\',
-        # # r'\hline',
-        # r'\midrule',
-        # make_table(columns,field_separator=' & ',row_separator=' \\\\\n',comment='',print_description=False,print_keys=False)+' \\\\',
-        # # r'\hline\hline',
-        # r'\bottomrule',
-        # r'\end{'+environment+'}',
-        # postscript,
-    # ])
-    # return string
-
-# def make_table(columns,header=None,row_separator='\n',
-               # field_separator=' ', comment='#',
-               # print_description=True, print_keys=True):
-    # """Convenient method to create a simple table from data.\n
-    # Columns is a list of Value_Array objects\n
-    # Other options:\n
-    # header -- put at top of table
-    # """
-    # ## keys and data
-    # rows = list(zip(*[t.get_formatted_list(include_column_label=print_keys) for t in columns]))
-    # rows = [field_separator.join(row) for row in rows]
-    # rows[0] = comment+' '+rows[0] # comment keys
-    # ## add space to align commented keys with data
-    # comment_space = ''.join([' ' for t in comment])
-    # for i in range(len(comment)):
-        # comment_space = comment_space+' '
-    # rows[1:] = [comment_space+t for t in rows[1:]]
-    # ## header and description
-    # if print_description:
-        # for col in columns[-1::-1]:
-            # rows.insert(0,comment+' '+col.name.strip()+': '+col.description)
-    # if header!=None:
-        # for header_line in header.split('\n')[-1::-1]:
-            # rows.insert(0,comment+' '+header_line)
-    # return row_separator.join(rows)
-
-# def tabulate(tabular_data, headers=[], tablefmt="plain",
-             # floatfmt="g", numalign="decimal", stralign="left",
-             # missingval=""):
-    # """From tabulate.tabulate with "csv" tablefmt added."""
-    # import tabulate as _tabulate
-    # _tabulate._table_formats["csv"] = _tabulate.TableFormat(
-        # lineabove=None, linebelowheader=None,
-        # linebetweenrows=None, linebelow=None,
-        # headerrow=_tabulate.DataRow("", ", ", ""),
-        # datarow=_tabulate.DataRow("", ", ", ""),
-        # padding=0, with_header_hide=None)
-    # return(_tabulate.tabulate(tabular_data,headers,tablefmt,floatfmt,numalign,stralign,missingval))
-
-
 
 #####################################
 ## save / load /convert array data ##
@@ -1211,11 +975,6 @@ def find_inverse(index_array,total_shape):
 def cast_abs_float_array(x):
     """Return as 1D array of absolute floating point values."""
     return np.abs(np.asarray(x,dtype=float))
-
-# def cast_normalise_species_string_array(x):
-    # """Return as 1D array of strings of normalised species names."""
-    # from . import database
-    # return np.array(database.normalise_species(x),dtype=str)
 
 def repmat_vector(x,repeats=(),axis=-1):
     """x must be 1D. Expand to as many other dimension as length of
@@ -1248,35 +1007,10 @@ def repmat(x,repeats):
         x = np.concatenate(tuple([x for t in range(repeat)]),axis=axis)
     return(x)
 
-# def transpose(x):
-    # """Take any 2D interable and transpose it. Returns a list of
-    # tuples. \n\nnumpy.transpose is similar but returns an array cast to the
-    # most general type."""
-    # return list(zip(*tuple(x)))
-
 def file_to_array_unpack(*args,**kwargs):
     """Same as file_to_array but unpack data by default."""
     kwargs.setdefault('unpack',True)
     return file_to_array(*args,**kwargs)
-
-# def txt_to_array_via_hdf5(path,**kwargs):
-    # """Loads ASCII text to an array, converting to hdf5 on the way
-    # because it is faster.  Also deletes commented rows. MASSIVE
-    # HACK."""
-    # import os,tempfile,subprocess
-    # ## default comment char is #
-    # kwargs.setdefault('comments','#')
-    # comments = kwargs.pop('comments')
-    # path = os.path.expanduser(path)
-    # ## expand path if possible and ensure exists - or else awk will hang
-    # if not os.path.lexists(path):
-        # raise IOError(1,'file does not exist',path)
-    # tmpfile=tempfile.NamedTemporaryFile()
-    # command = 'cat "'+path+'" | sed "/^ *'+comments+'/d" | h5fromtxt '+tmpfile.name
-    # (status,output)=subprocess.getstatusoutput(command)
-    # assert status==0,"Conversion to hdf5 failed:\n"+output
-    # retval = hdf5_to_array(tmpfile.name,**kwargs)
-    # return retval
 
 def hdf5_to_array(filename,unpack=False,dataset=None,usecols=None):
     """Loads dataset dataset in hdf5 file into an array. If None then look
@@ -1426,67 +1160,6 @@ def append_to_hdf5(filename,**keys_vals):
         for key,val in keys_vals.items() :
             d[key] = val
 
-
-# def print_hdf5_tree(filename_or_hdf5_object,make_print=True):
-    # """Print out a tree of an hdf5 object or file."""
-    # if not isinstance(filename_or_hdf5_object,h5py.HLObject):
-        # filename_or_hdf5_object = h5py.File(expand_path(filename_or_hdf5_object),'r')
-    # retval = []
-    # for key in filename_or_hdf5_object.keys():
-        # if isinstance(filename_or_hdf5_object[key],h5py.Dataset):
-            # retval.append('['+repr(key)+']')
-        # else:
-            # sub_retval = hdf5_print_tree(filename_or_hdf5_object[key],make_print=False)
-            # retval.extend(['['+repr(key)+']'+t for t in sub_retval])
-    # if make_print:
-        # ## original call -- print
-        # print('\n'.join(retval))
-    # else:
-        # ## recursive call -- return data
-        # return(retval)
-
-# def print_dict_tree(d):
-    # print(format_dict_key_tree(d))
-
-# def pprint_dict_recursively(d,max_indent_level=None,indent_level=0):
-    # """Actual works on anything with an 'items' method."""
-    # indent = ''.join(['  ' for t in range(indent_level)])
-    # for (key,val) in d.items():
-        # if hasattr(val,'items') and (max_indent_level is None or indent_level < max_indent_level):
-            # print(indent+str(key))
-            # pprint_dict_recursively(val,max_indent_level,indent_level=indent_level+1)
-        # else:
-            # print(indent+str(key)+': '+repr(val))
-
-# def walk_dict_items(d,maxdepth=np.inf):
-    # """A generator that walks through dictionary d (depth first) and any
-    # subdictionary returning keys and values ones by one."""
-    # if maxdepth<0: return
-    # for (key,val) in d.items():
-        # yield(key,val)
-        # if isinstance(val,dict):
-            # for tkey,tval in walk_dict_items(val,maxdepth=maxdepth-1):
-                # yield(tkey,tval)
-
-# def format_dict_key_tree(d,prefix='└─ '):
-    # """Print out a tree of a dicts keys, not the values though."""
-    # s = []
-    # for i,key in enumerate(d):
-            # # for t in range(depth): prefix = '│  '+prefix
-        # s.append(prefix+key)
-        # if hasattr(d[key],'keys'):
-            # s.append(format_dict_key_tree(d[key],'    '+prefix))
-    # return('\n'.join(s))
-
-# def recarray_to_dict(ra):
-    # """Convert a record array to a dictionary. There may be a builtin
-    # way to do this."""
-    # retval = dict()
-    # for key in ra.dtype.names:
-        # retval[key] = np.array(ra[key])
-    # return(retval)
-    # # return({key:np.array(ra[key]) for key in ra.dtype.names})
-
 def dict_to_recarray(d):
     """Convert a dictionary of identically sized arrays into a
     recarray. Names are dictionary keys. Add some dictionary-like
@@ -1502,82 +1175,6 @@ def make_recarray(**kwargs):
     which to make recarray."""
     ra = np.rec.fromarrays(kwargs.values(),names=list(kwargs.keys()))
     return(ra)
-
-# def append_fields_to_recarray(recarray,**keyvals):
-    # """Add a new field of name name to recarray. All values of keyvals must
-    # be the same length as recarray."""
-    # d = recarray_to_dict(recarray)
-    # for key,val in keyvals.items():
-        # if np.isscalar(val): val = np.full(recarray.shape,val) # expand scalara data
-        # d[key] = val
-    # return(dict_to_recarray(d))
-
-# def recarray_concatenate_fields(*recarrays):
-    # """Join recarrays into one. Both must be the same length.  Common keys
-    # causes an error."""
-    # for t in recarrays: assert len(t)==len(recarrays[0]),'Recarrays not all same length' # check lengths equal
-    # ## check keys are unique
-    # all_keys = []
-    # for t in recarrays: all_keys.extend(t.dtype.names)
-    # assert len(all_keys)==len(np.unique(all_keys)),f'keys not unique: {repr(all_keys)}'
-    # ## join into one recarray
-    # keys_vals = dict()
-    # for t in recarrays:
-        # for key in t.dtype.names:
-            # keys_vals[key] = t[key]
-    # return(dict_to_recarray(keys_vals))
-
-# def concatenate_recarrays_unify_dtype(recarrays_list,casting='safe',**concatenate_kwargs):
-    # """Concatenate recarrays, but first try and align dtype to avoid
-    # promotion errors. Various heuristic design decisions in here."""
-    # assert(len(recarrays_list)>0),'one at recarray to contenate at least'
-    # ## get all dtypes as a list of list of strings to manipulate
-    # dtypes = [
-        # [(t.names[i],t[i].str) for i in range(len(t))]
-        # for t in [t.dtype for t in recarrays_list]]
-    # ## determine a unifying dtype to cast all arrays to
-    # dtype_cast = dtypes[0]      # initialise to first
-    # for dtype in dtypes[1:]:    # update with others
-        # if dtype==dtype_cast: continue # already compliant
-        # for idtype,((namei,stri),(namej,strj)) in enumerate(zip(dtype,dtype_cast)): # check individual dtypes, order must be the same
-            # assert namei==namej,f'Names do not match {repr(namei)} {repr(namej)}' # names do not match
-            # if stri==strj:
-                # continue
-            # elif stri[0:2]=='<U' and strj[0:2]=='<U': # if strings are different lengths, cast to the longer
-                # max_length = max(int(stri[2:]),int(strj[2:]))
-                # dtype_cast[idtype] = (namei,'<U'+str(max_length))
-            # elif (stri[0:2]=='<i' and strj[0:2]=='<f') or (strj[0:2]=='<i' and stri[0:2]=='<f'): # i and f, cast to f8
-                # dtype_cast[idtype] = (namei,'<f8')
-            # else:               # this combination not implemented
-                # raise Exception(f"dtype rectification not implemented: {repr((namei,stri))} {repr((namej,strj))}")
-    # return(                     # return concatenated array
-        # np.concatenate(         # concatenate 
-            # [t.astype(dtype_cast,casting=casting) for t in recarrays_list], # cast individudal arrays
-            # **concatenate_kwargs))
-
-# def recarray_remove(recarray,*keys):
-    # """Return a copy of recarray with keys removed."""
-    # return(dict_to_recarray({key:val for key,val in recarray_to_dict(recarray).items() if key not in keys}))
-
-# def append_to_recarray(recarray,**kwargs):
-    # """Make a new and longer recarray. kwargs must match the complete dtype
-    # of the recarray.  WOULDN'T CONCATENAT WORK WELL ENOUGH?"""
-    # assert set(recarray.dtype.names)==set(kwargs), 'dtype.names in old and new recarrays do not match. Old: '+repr(set(recarray.dtype.names))+' new: '+repr(set(kwargs))
-    # new_recarray = np.rec.fromarrays([kwargs[key] for key in recarray.dtype.names],dtype=recarray.dtype)
-    # return(np.append(recarray,new_recarray))
-
-# def recarray_to_hdf5(filename,recarray,header=None,**kwargs):
-    # """Used dict_to_hdf5 to save a recarray to hdf5 file."""
-    # d = recarray_to_dict(recarray)
-    # if header is not None: d['README'] = str(header)
-    # return(dict_to_hdf5(filename,d,**kwargs))
-
-# def kwargs_to_hdf5(filename,**kwargs):
-    # return(dict_to_hdf5(filename,dict(**kwargs)))
-
-
-# def kwargs_to_directory(directory, **dict_to_directory_kwargs,):
-    # dict_to_directory(directory,dict_to_directory_kwargs)
 
 def dict_to_directory(
         directory,
@@ -1601,7 +1198,10 @@ def dict_to_directory(
             raise ImplementationError(f'Not implemented character for dict_to_directory [/] in key: {repr(key)}')
         if isinstance(val,dict):
             ## recursively save dictionaries as subdirectories
-            dict_to_directory(f'{directory}/{str_key}',val,array_format,trash_existing=False)
+            dict_to_directory(
+                f'{directory}/{str_key}',val,
+                array_format,trash_existing=False,
+                repr_strings=repr_strings)
         elif isinstance(val,str):
             ## save strings to text files
             if repr_strings:
@@ -1617,15 +1217,21 @@ def dict_to_directory(
             ## save as repr of whatever it is
             string_to_file(f'{directory}/{str_key}',repr(val))
 
-def directory_to_dict(directory):
-    """Load all contents of a directory into a dictionary, recursive."""
+def directory_to_dict(
+        directory,
+        evaluate_strings=False,
+):
+    """Load all contents of a directory into a dictionary, recursive. If
+    evaluate_strings=True then attempt to interpret these into python
+    objects."""
     retval = {}
     directory = expand_path(directory)
     for filename in os.listdir(directory):
         full_filename = f'{directory}/{filename}'
         if os.path.isdir(full_filename):
             ## load subdirectories as subdictionaries
-            retval[filename] = directory_to_dict(full_filename)
+            retval[filename] = directory_to_dict(
+                full_filename,evaluate_strings=evaluate_strings)
         else:
             root,extension = os.path.splitext(filename)
             if extension in ('.npz','.npy','.h5','.hdf5'):
@@ -1634,208 +1240,9 @@ def directory_to_dict(directory):
             else:
                 ## load as string
                 retval[filename] = file_to_string(full_filename)
+                if evaluate_strings:
+                    retval[filename] = safe_eval_literal(retval[filename],string_on_error=True)
     return retval 
-
-
-# class Data_Directory:
-    # """Data is stored in a directory and accessed by key."""
-
-
-    # def __init__(self,directory_path):
-        # self.root = expand_path(re.sub(r'(.*[^/])/*',r'\1',directory_path))
-        # self._cache = {}
-
-    # def __getitem__(self,key):
-        # ## return from cache if possible
-        # if key in self._cache: return(self._cache[key])
-        # ## get full filename. If it does not exist look for a version
-        # ## with a unique extension
-        # filename = f'{self.root}/{key}'
-        # if not os.path.exists(filename):
-            # try:
-                # filename = glob_unique(f'{self.root}/{key}.*')
-            # except FileNotFoundError:
-                # raise KeyError(f"Cannot find file with or without extension: {self.root}/{key}")
-        # ## if recursive subdir access
-        # if '/' in key:
-            # i = key.find('/')
-            # retval = self[key[:i]][key[i+1:]]
-        # ## load subdirectories as dictionaries
-        # elif os.path.isdir(filename):
-            # retval = Data_Directory(filename)
-        # ## read README as string
-        # elif filename in ('README',):
-            # retval = file_to_string(filename)
-        # ## load array data
-        # else:
-            # retval = file_to_array(filename)
-        # ## save to cache and return
-        # self._cache[key] = retval
-        # return(retval)
-
-    # def keys_deep(self):
-        # """Keys expanded to all levels."""
-        # retval = []
-        # for filename in glob(f'{self.root}/*'):
-            # key = filename[len(self.root)+1:]
-            # if os.path.isdir(filename):
-                # retval.extend([f'{key}/{t}' for t in self[key].keys()])
-            # else:
-                # retval.append(key)
-        # return(retval)
-
-    # def keys(self):
-        # """Keys in top level."""
-        # return([t[len(self.root)+1:] for t in glob(f'{self.root}/*')])
-
-    # def __len__(self):
-        # return(len(self.keys()))
-
-    # def __str__(self):
-        # return(str(self.keys()))
-
-
-
-# def percentDifference(x,y):
-    # """Calculate percent difference, i.e. (x-y)/mean(x,y)."""
-    # return 100.*2.*(x-y)/(x+y)
-
-# def notNan(arg):
-    # """Return part of arg that is not nan."""
-    # return arg[~np.isnan(arg)]
-
-# def bestPermutation(x,y):
-    # """Find permuation of x that best matches y in terms of
-    # rms(x-y). A brute force approach"""
-    # assert len(x)==len(y), 'Inputs must have same shape.'
-    # x = copy(np.array(x))
-    # y = copy(np.array(y))
-    # permutations = itertools.permutations(list(range(len(x))))
-    # bestRms = np.inf
-    # bestPermutation = None
-    # while True:
-        # try:
-            # permutation = np.array(next(permutations))
-            # nextRms = rms(x[permutation]-y)
-            # if nextRms < bestRms:
-                # bestPermutation = permutation
-                # bestRms = nextRms
-        # except StopIteration:
-            # break
-    # return bestPermutation
-
-# def minimise_differences(a,b):
-    # """Returns an index which reorders a to best match b. This is done by
-    # finding the best possible match, fixing that, then the second etc. So
-    # may not give the best summed RMS or whatever."""
-    # assert len(a)==len(b), "Nonmatching array lengths."
-    # # ## if one of the arrays is incomplete then pad with infs. As a
-    # # ## side effect of numpy argmin these will retain their current
-    # # ## ordering, which may not be reliable in the future.
-    # # if len(a)<len(b):
-        # # a = np.concatenate((a,np.inf*np.ones(len(b)-len(a)),))
-    # # if len(b)<len(a):
-        # # b = np.concatenate((b,np.inf*np.ones(len(a)-len(b)),))
-    # x,y = np.meshgrid(a,b)          
-    # t = np.abs(x-y)                    # all possible differences
-    # ifinal = np.ones(a.shape,dtype=int)*-1          # final sorted ai indices
-    # ilist = list(range(len(a))) 
-    # jlist = list(range(len(b)))
-    # ## find best match, reducing size of t iteratively
-    # while t.shape[0]>0 and t.shape[1]>0:
-        # i,j = np.unravel_index(np.argmin(t),t.shape) # minimum difference
-        # ifinal[ilist[i]] = jlist[j] # save this index
-        # ilist.pop(i)                # remove the minimum values from further consideration
-        # jlist.pop(j)                # remove the minimum values from further consideration
-        # t = t[list(range(0,i))+list(range(i+1,t.shape[0])),:] # shrink array
-        # t = t[:,list(range(0,j))+list(range(j+1,t.shape[1]))] # shrink array
-    # return(ifinal)
-
-# def user_string():
-    # """Return string describing user."""
-    # import getpass
-    # return getpass.getuser()+'@'+os.uname()[1]
-
-# def sum_in_quadrature(*args):
-    # """returns sqrt(sum(args**2))"""
-    # return(np.sqrt(sum([np.square(t) for t in args])))
-
-# def triangle_sum(x,axis=None):
-    # """Return sqrt of sum of squares.
-
-    # If input is an array then calculates according to axis, like other
-    # numpy functions.  Else, triangle sums all elements of x, vector or
-    # not (axis kwarg ignored).
-    # """
-    # x = np.asarray(x)
-    # ## Tries to sum as numpy array.
-    # try:
-        # return (np.sqrt((x**2).sum(axis=axis)))
-    # ## Upon failure, sums elements
-    # except:
-        # retval = 0.
-        # for xx in x: retval = retval + xx**2
-        # return np.sqrt(retval)
-
-# def sum_in_quadrature(*args):
-    # return(np.sqrt(np.sum([t**2 for t in args],axis=0)))
-
-# def combine_product_errors(product,factors,errors):
-    # """Combine uncorrelated normally distributed errors dx, dy, dz etc
-    # to get error of x*y*z etc"""
-    # return(product*np.sqrt(np.sum([(error/factor)**2 for (error,factor) in zip(errors,factors)])))
-
-# def set_dict_default(dictionary,default_values_dictionary):
-    # """Copy all keys,vals from default_values_dictionary to dictionary
-    # unless key is already present in dictionary. """
-    # for key,val in default_values_dictionary.items():
-        # if not key in dictionary:
-            # dictionary[key] = val
-
-# def update_dict(dictionary,update_values_dictionary):
-    # """Update dictionary with all keys,vals in
-    # update_values_dictionary. Raise error if key in
-    # update_values_dictionary is not in dictionary."""
-    # for key,val in update_values_dictionary.items():
-        # if key in dictionary:
-            # dictionary[key] = val
-        # else:
-            # raise Exception("Updating key not in dictionary: "+repr(key))
-
-# def safeUpdate(a,b):
-    # """Update dictionary a from dictionary b. If any keys in b not
-    # found in a an error is raised. Update of a done in place."""
-    # i = isin(list(b.keys()),list(a.keys()))
-    # if not all(i):
-        # raise Exception('Bad keys: '+ str([key for (key,ii) in zip(list(b.keys()),i) if not ii]))
-    # a.update(b)
-
-# def safe_update_attr(a,b):
-    # """Update attributes of a from dictionary b. If any keys in b not
-    # found in a an error is raised. Update of a done in place."""
-    # for (key,val) in list(b.items()):
-        # if hasattr(a,key):
-            # setattr(a,key,val)
-        # else:
-            # raise AttributeError('Bad attr: '+key)
-
-# def index_dict_array(d,i):
-    # """Assumes all elements of dictionary d are arrays which can be
-    # indexed by i. Then returns a copy of d containing such
-    # subarrays."""
-    # dnew = {}
-    # for key in d:
-        # dnew[key] = d[key][i]
-    # return dnew
-
-# def match_array_to_regexp(array,regexp,strip=True):
-    # """Match an array of strings to a regular expression and return a
-    # boolean array. If strip=True strip whitespace from strings."""
-    # # assert array.ndim==1, "Currently only implemented for 1D arrays."
-    # if strip:
-        # return(np.array([bool(re.match(regexp,t.strip())) for t in array]))
-    # else:
-        # return(np.array([bool(re.match(regexp,t)) for t in array]))
 
 ########################
 ## system interaction ##
@@ -1906,43 +1313,6 @@ def pa():
     except:
         return x
 
-# def wget(url):
-    # """Downloads data from url and returns it."""
-    # import subprocess
-    # code,data = subprocess.getstatusoutput("wget --restrict-file-names=nocontrol --quiet -O /dev/stdout '"+url+"'")
-    # if code!=0: raise Exception("wget failed: "+str(code)+" "+str(data))
-    # return(data)
-
-# def printfmt(*args,fmt='8g'):
-    # """Print all args with the same format."""
-    # print(' '.join([format(arg,fmt) for arg in args]))
-
-# def printcols(*args,fmt='15',labels=None):
-    # """Print args in with fixed column width. Labels are column
-    # titles."""
-    # if not np.iterable(args) or isinstance(args,str): 
-        # args = (args,)
-    # else:
-        # args = [arg for arg in args]
-        # for i in range(len(args)): 
-            # if not np.iterable(args[i]) or isinstance(args[i],str):
-                # args[i] = [args[i]]
-    # if labels!=None:
-        # assert len(labels)==len(args),'Not enough/too many labels.'
-        # print((' '.join(format(t,fmt) for t in labels)))
-    # print((array2str(list(zip(*args)),fmt=fmt)))
-
-# def recarray_to_file(filename,recarray,*args,**kwargs):
-    # """Output a recarray to a text file."""
-    # return(string_to_file(filename,recarray_to_string(recarray,*args,**kwargs)))
-
-# def dict_array_to_file(filename,d,**kwargs_for_dict_array_to_str):
-    # """Write dictionary of arrays to a file."""
-    # kwargs_for_dict_array_to_str.setdefault('print_description',False)
-    # f = open(os.path.expanduser(filename),'w')
-    # f.write(dict_array_to_str(d,**kwargs_for_dict_array_to_str))
-    # f.close()
-
 def glob(path='*',regexp=None):
     """Shortcut to glob.glob(os.path.expanduser(path)). Returns a list
     of matching paths. Also sed alphabetically. If re is provided filter names accordingly."""
@@ -1963,32 +1333,6 @@ def glob_unique(path):
         raise FileNotFoundError('No files matched path: '+repr(path))
     elif len(filenames)>1:
         raise Exception('Multiple files matched path: '+repr(path))
-
-# def grep(regexp,string=None,filename=None):
-    # """Poor approx to grep."""
-    # if string is not None and filename is None:
-        # pass
-    # elif string is None and filename is not None:
-        # string = file_to_string(filename)
-        # pass
-    # else:
-        # raise Exception('Require string or filename, but not both.')
-    # return('\n'.join([t for t in string.split('\n') if re.match(regexp,t)]))
-
-# def rootname(path,recurse=False):
-    # """Returns path stripped of leading directories and final
-    # extension. Set recurse=True to remove all extensions."""
-    # path = os.path.splitext(os.path.basename(path))[0]
-    # if not recurse or path.count('.')+path.count('/') == 0:
-        # return path
-    # else:
-        # return rootname(path,recurse=recurse)
-
-# def get_filename_extension(path):
-    # """Return extension, or return None if none."""
-    # t = os.path.splitext(path)
-    # if t[1]=='': return(None)
-    # return(t[1][1:])
 
 def basename(path):
     """Remove all leading directories. If the path is a directory strip
@@ -2140,36 +1484,12 @@ def polyfit(
         chisqprob=chisqprob,chisq=chisq,chisqnorm=chisqnorm,
         fixed=fixed)
 
-# def dot(x,y):
-    # """Like numpy dot but sums over last dimension of first argument
-    # and first dimension of last argument."""
-    # return np.tensordot(x,y,(-1,0))
-
 def ensure_iterable(x):
     """If input is not iterable enclose it as a list."""
     if np.isscalar(x): 
         return (x,)
     else: 
         return x
-
-# def as_scalar_or_first_value(x):
-    # """Return x if scalar, else return its first value."""
-    # if np.isscalar(x): 
-        # return(x)
-    # else: 
-        # return(x[0])
-
-# def flip(x):
-    # """ 
-    # Flipud 1D arrays or 2D arrays where 2nd dimension is length 1.
-    # Fliplr 2D arrays where first dimension is length 1.
-    # """
-    # if x.ndim == 1:
-        # return np.flipud(x)
-    # if x.ndim==2:
-        # if shape(x)[0]==1: return np.fliplr(x)
-        # if shape(x)[1]==1: return np.flipud(x)
-    # raise Exception("Could not flip array, shape is wrong probably.")
 
 def spline(
         xs,ys,x,s=0,order=3,
@@ -2223,116 +1543,6 @@ def spline_from_list(spline_points,x,**spline_kwargs):
     [[x0,y0],[x1,y1],...]."""
     xspline,yspline = zip(*spline_points)
     return spline(xspline,yspline,x,**spline_kwargs)
-    
-# def splinef(xi,yi,s=0,order=3,sort_data=True):
-    # """Return spline function for points (xi,yi). Will return order
-    # or (less if fewer points). Sort data for convenience (takes time)."""
-    # order = min(order,len(xi)-1)
-    # xi,yi = np.array(xi),np.array(yi)
-    # if sort_data:
-        # i = np.argsort(xi)
-        # xi,yi = xi[i],yi[i]
-    # return interpolate.UnivariateSpline(xi,yi,k=order,s=s)
-
-# def spline_with_smooth_ends(xi,yi,x):
-    # """Evaluate spline defined by xi,yi at x. The first and last
-    # intevals defined by xi are replaced with a 5th order polynomial
-    # with C2 continuity with internal points and endpoint derivatives
-    # set to zero.  Smooth end intervals by substituting a fifth order
-    # polynomial that has 1-2nd derivatives zero at it's outer boundary
-    # and matches the spline at the inner boundary.
-    # Second output is the spline function without the edge smoothing.
-    # """
-    # from scipy import interpolate, linalg, integrate
-    # xi = np.squeeze(xi);yi=np.squeeze(yi);x=np.squeeze(x)
-    # ## generate spline function
-    # spline_function=interpolate.UnivariateSpline(xi,yi,s=0)
-    # ## evaluate spline function
-    # y=spline_function(x)
-    # ## change last interval to have smooth finish
-    # ## internal point spline coeffs
-    # a = spline_function.derivatives(xi[-2]) 
-    # b = spline_function.derivatives(xi[-1]) 
-    # ## range of last interval
-    # i=np.argwhere((x>=xi[-2])&(x<=xi[-1])) 
-    # ## new poly coordinate - range [0,1] -need to adjust derivs
-    # L = (x[i[-1]]-x[i[0]])
-    # ab = (x[i]-x[i[0]])/L
-    # a[1] = a[1]*L
-    # a[2] = a[2]*L**2
-    # ## calc 5th order poly with desired properties
-    # A = np.matrix([[1,1,1],[3,4,5],[6,12,20]])
-    # z = np.matrix([[b[0]-a[0]-a[1]-a[2]],[-a[1]-2*a[2]],[-a[2]]])
-    # v=linalg.inv(A)*z
-    # ## new polynomial coefficients
-    # anew = np.arange(0.,6.)
-    # anew[0:3] = a[0:3]
-    # anew[3:6] = np.squeeze(np.array(v))
-    # ## substitute into potential array
-    # y[i]=np.polyval(flip(anew),ab)
-    # ##
-    # ## change first interval to have smooth finish
-    # a = spline_function.derivatives(xi[1]) 
-    # b = spline_function.derivatives(xi[0]) 
-    # ## range of last interval
-    # i=np.argwhere((x>=xi[0])&(x<=xi[1])) 
-    # ## new poly coordinate - range [0,1] -need to adjust derivs
-    # L = (x[i[-1]]-x[i[0]])
-    # ab = 1.-(x[i]-x[i[0]])/L
-    # a[1] = -a[1]*L
-    # a[2] = a[2]*L**2
-    # ## calc 5th order poly with desired properties
-    # A = np.matrix([[1,1,1],[3,4,5],[6,12,20]])
-    # z = np.matrix([[b[0]-a[0]-a[1]-a[2]],[-a[1]-2*a[2]],[-a[2]]])
-    # v=linalg.inv(A)*z
-    # ## new polynomial coefficients
-    # anew = np.arange(0.,6.)
-    # anew[0:3] = a[0:3]
-    # anew[3:6] = np.squeeze(np.array(v))
-    # ## substitute into potential array
-    # y[i]=np.polyval(flip(anew),ab)
-    # ## 
-    # return(y)
-
-# def piecewise_linear_interpolation_and_extrapolation(xa,ya,x):
-    # """Linearly interpolate and extrapolate) points xa and ya over domain x."""
-    # y = np.zeros(x.shape,dtype=float)
-    # ## interpolate
-    # for (x0,x1,y0,y1) in zip(xa[0:-1],xa[1:],ya[0:-1],ya[1:]):
-        # p = np.polyfit([x0,x1],[y0,y1],1)
-        # i = (x>=x0)&(x<=x1)
-        # if any(i): y[i] = np.polyval(p,x[i])
-    # ## extrapolate
-    # p = np.polyfit([xa[0],xa[1]],[ya[0],ya[1]],1)
-    # i = x<=xa[0]
-    # if any(i): y[i] = np.polyval(p,x[i])
-    # p = np.polyfit([xa[-2],xa[-1]],[ya[-2],ya[-1]],1)
-    # i = x>=xa[-1]
-    # if any(i): y[i] = np.polyval(p,x[i])
-    # return(y)
-
-# def interpolate_to_mesh(x,y,z,xbins=100,ybins=100):
-    # """Takes coordinates (x,y,z) and interpolates to a mesh divided
-    # into bins (xbins,ybins) between min and max of x and y. Retrun
-    # arrays (x,y,z) of shape (xbins,ybins)."""
-    # xnew = np.linspace(min(x),max(x),xbins)
-    # ynew = np.linspace(min(y),max(y),ybins)
-    # f = interpolate.interp2d(x,y,z,kind='linear')
-    # znew = f(xnew,ynew)
-    # xnew,ynew = np.meshgrid(xnew,ynew)
-    # return(xnew,ynew,znew)
-
-# def array_to_txt_via_hdf5(path,*args,**kwargs):
-    # """Loads ASCII text to an array, converting to hdf5 on the way
-    # because it is faster.  Also deletes commented rows. MASSIVE
-    # HACK."""
-    # path = os.path.expanduser(path)
-    # tmpfile=tempfile.NamedTemporaryFile()
-    # array_to_hdf5(tmpfile.name,*args)
-    # # command = 'cat "'+path+'" |sed "/^ *'+comments+'/d" | h5fromtxt '+tmpfile.name
-    # command = 'h5totxt -s " " {hdf5file:s} > {txtfile:s}'.format(hdf5file=tmpfile.name,txtfile=path)
-    # (status,output)=subprocess.getstatusoutput(command)
-    # assert status==0,"Conversion from hdf5 failed:\n"+output
 
 def array_to_hdf5(
         filename,
@@ -2356,340 +1566,93 @@ def array_to_hdf5(
         if description is not None:
             fid.attrs.create('description',description)
 
-# def savetxt(filename,*args,**kwargs):
-    # """Column-stacks arrays given as *args and saves them to
-    # filename. 
-    # A short cut for savetxt(filename,column_stack(args)). Kwargs passed to
-    # np.savetxt.
-    # If *args consists of one string, write this to file, ignore
-    # everything else.
-    # Also writes to 
-    # """
-    # ## This roundabout method is used in case this file is beind
-    # ## watched by a graphing program which might fail if the writing
-    # ## takes a long time. I.e. kst2, but probably not actually
-    # ## important at all
-    # # tmpfd,tmpfilename  = tempfile.mkstemp()
-    # fid = open(expand_path(filename),'w')
-    # if 'header' in kwargs:
-        # fid.write(kwargs.pop('header')+'\n')
-    # # np.savetxt(tmpfilename,np.column_stack(args),**kwargs)
-    # np.savetxt(fid,np.column_stack(args),**kwargs)
-    # # tmpfd.close()
-    # # shutil.copyfile(tmpfilename,os.path.expanduser(filename))
+def solve_linear_least_squares_symbolic_equations(
+        system_of_equations,
+        plot_residual=False,
+):
+    """Solve an overspecified system of linear equations. This is encoded pretry strictly e.g.,:
+    1*x +  2*y =  4
+    1*x +  3*y =  8
+    0*x + -1*y = -3
+    Important separators are: newline, =, + , *.
+    """
+    ## get system of equations
+    equations = []
+    for t in system_of_equations.split('\n'):
+        t = t.split('#')[0]            # eliminate trailling comments
+        if len(t.strip())==0: continue # blank line
+        equations.append(t)
+    ## decode into terms
+    Aij,bi,variables = [],[],[]
+    for i,equation in enumerate(equations):
+        lhs,rhs = equation.split('=')
+        for term in lhs.split('+'):
+            coeff,var = term.split('*')
+            coeff = float(coeff)
+            var = var.strip()
+            if var not in variables: variables.append(var)
+            Aij.append((i,variables.index(var),coeff))
+        bi.append(float(rhs))
+    ## form matrices
+    A = np.zeros((len(equations),len(variables)))
+    for i,j,x in Aij: A[i,j] = x
+    b = np.array(bi)
+    ## solve. If homogeneous assume first variable==1
+    homogeneous = True if np.all(b==0) else False
+    if homogeneous:
+        b = -A[:,0].squeeze()
+        A = A[:,1:]
+    x = np.dot( np.linalg.inv(np.dot(np.transpose(A),A)),   np.dot(np.transpose(A),b))
+    if homogeneous:
+        x = np.concatenate(([1],x))
+        A = np.column_stack((-b,A))
+        b = np.zeros(len(equations))
+    if plot_residual:
+        fig = plt.gcf()
+        fig.clf()
+        ax = fig.gca()
+        ax.plot(b-np.dot(A,x),marker='o')
+    ## return solution dictionary
+    return({var:val for var,val in zip(variables,x)})
 
-# def savetxt_append(filename,*args,**kwargs):
-    # """Open file filename. Append text made from column_stack of remaining args."""
-    # f = open(filename,'a')
-    # np.savetxt(f,np.column_stack(args),**kwargs)
-    # f.close()
-# savetxtAppend=savetxt_append
-# save_append=savetxtAppend
-
-# def solve_linear_least_squares_symbolic_equations(
-        # system_of_equations,
-        # plot_residual=False,
-# ):
-    # """Solve an overspecified system of linear equations. This is encoded pretry strictly e.g.,:
-    # 1*x +  2*y =  4
-    # 1*x +  3*y =  8
-    # 0*x + -1*y = -3
-    # Important separators are: newline, =, + , *.
-    # """
-    # ## get system of equations
-    # equations = []
-    # for t in system_of_equations.split('\n'):
-        # t = t.split('#')[0]            # eliminate trailling comments
-        # if len(t.strip())==0: continue # blank line
-        # equations.append(t)
-    # ## decode into terms
-    # Aij,bi,variables = [],[],[]
-    # for i,equation in enumerate(equations):
-        # lhs,rhs = equation.split('=')
-        # for term in lhs.split('+'):
-            # coeff,var = term.split('*')
-            # coeff = float(coeff)
-            # var = var.strip()
-            # if var not in variables: variables.append(var)
-            # Aij.append((i,variables.index(var),coeff))
-        # bi.append(float(rhs))
-    # ## form matrices
-    # A = np.zeros((len(equations),len(variables)))
-    # for i,j,x in Aij: A[i,j] = x
-    # b = np.array(bi)
-    # ## solve. If homogeneous assume first variable==1
-    # homogeneous = True if np.all(b==0) else False
-    # if homogeneous:
-        # b = -A[:,0].squeeze()
-        # A = A[:,1:]
-    # x = np.dot( np.linalg.inv(np.dot(np.transpose(A),A)),   np.dot(np.transpose(A),b))
-    # if homogeneous:
-        # x = np.concatenate(([1],x))
-        # A = np.column_stack((-b,A))
-        # b = np.zeros(len(equations))
-    # if plot_residual:
-        # fig = plt.gcf()
-        # fig.clf()
-        # ax = fig.gca()
-        # ax.plot(b-np.dot(A,x),marker='o')
-    # ## return solution dictionary
-    # return({var:val for var,val in zip(variables,x)})
-
-# def leastsq_model(y,f,v,monitor_rms=True,optimise=True,print_result=False,xtol=1e-12):
-    # """
-    # Optimises a least squares model. Higher level than leastsq.
-    # Inputs:
-    # y -- Array of experimental data to model.
-    # f -- Function that generates model data. Input arguments are kwargs
-         # corresponding to keys in dictionary v.
-    # v -- Dictionary. Each key is a function argument of f which is
-         # either a real number or an array of real numbers. Each key indexes
-         # a subdictionary containing elements: 
-             # pin  -- initial value of real number or array, 
-             # grad -- gradient calculation step estimate, same dimension size as pin,
-             # vary -- boolean array whether to vary or fix elements the same dimension 
-                     # and size as pin.
-   # monitor_rms -- print whenever rms is lowered during optimisation
-   # optimise    -- set to False to return function using initial parameters
-   # Outputs (yf,r,v):
-   # yf -- model data
-   # r  -- residual exp - mod data
-   # v  -- modified v dictionary, elements now contain new elements:
-           # p     -- fitted parameters
-           # sigma -- estimated fit uncertainty.
-    # """
-    # ## prep v dictionary in some convenient ways
-    # v = copy(v)            # make local
-    # vkeys = list(v.keys())          # get here in case key order changes in dictionary
-    # for key in vkeys:
-        # if np.iterable(v[key]['pin']):
-            # v[key]['pin'] = np.array(v[key]['pin'])
-            # if not np.iterable(v[key]['grad']):
-                # v[key]['grad'] = v[key]['grad']*np.ones(v[key]['pin'].shape,dtype=float)
-            # if not np.iterable(v[key]['vary']):
-                # v[key]['vary'] = v[key]['vary']*np.ones(v[key]['pin'].shape,dtype=bool)
-            # v[key]['vary'] = np.array(v[key]['vary'])
-            # v[key]['grad'] = np.array(v[key]['grad'])
-    # ## encode varied parameters and their gradient calculation step size
-    # p,grad = [],[]
-    # for key in vkeys:
-        # if np.iterable(v[key]['pin']):
-            # p.extend(v[key]['pin'][v[key]['vary']])
-            # grad.extend(v[key]['grad'][v[key]['vary']])
-        # elif v[key]['vary']:
-                # p.append(v[key]['pin'])
-                # grad.append(v[key]['grad'])
-    # lowest_rms_thus_far = [np.inf]
-    # def calc_residual(p):
-        # residual = y-calc_function(p)
-        # if monitor_rms:
-            # if rms(residual) < lowest_rms_thus_far[0]:
-                # lowest_rms_thus_far[0] = rms(residual)
-                # print('RMS:',lowest_rms_thus_far[0])
-        # return residual
-    # def calc_function(p):
-        # ## call function, return value. Need to build kwargs for
-        # ## function.
-        # decode_p(p)
-        # kwargs = {key:v[key]['p'] for key in vkeys}
-        # return f(**kwargs)
-    # def decode_p(p):
-        # ## loop through variables, extracts varied parametres
-        # ## from p and shortens p accordingly
-        # p = list(p)
-        # for key in vkeys:
-            # v[key]['p'] = copy(v[key]['pin'])
-            # ## if a list
-            # if np.iterable(v[key]['pin']):
-                # v[key]['p'][v[key]['vary']] = p[:sum(v[key]['vary'])]
-                # p = p[sum(v[key]['vary']):]
-            # ## if a varied float
-            # elif v[key]['vary']:
-                # v[key]['p'] = p.pop(0)
-            # ## if not varied
-            # else:
-                # v[key]['p'] = v[key]['pin']
-            # ## ensure abslute value if required
-            # try:
-                # if v[key]['strictly_positive']:
-                    # v[key]['p'] = np.abs(v[key]['p'])
-            # except KeyError:    # implies strictly_positive not defined
-                # pass
-    # def decode_sigma(sigma):
-        # ## similar to decode_p
-        # sigma = np.abs(sigma)   # make all positive
-        # for key in vkeys:
-            # if np.iterable(v[key]['pin']):
-                # v[key]['sigma'] = np.nan*np.ones(v[key]['pin'].shape)
-                # v[key]['sigma'][v[key]['vary']] = sigma[:sum(v[key]['vary'])]
-                # sigma = sigma[sum(v[key]['vary']):]
-            # elif v[key]['vary']:
-                # v[key]['sigma'] = sigma[0]
-                # sigma = sigma[1:]
-            # else:
-                # v[key]['sigma'] = np.nan
-    # ## actual least squares fit
-    # if optimise:
-        # p,sigma = leastsq(calc_residual,p,grad,print_error_mesg=True,error_only=False,xtol=xtol)
-    # else:
-        # sigma = np.zeros(len(p))
-    # decode_p(p)
-    # decode_sigma(sigma)
-    # r = calc_residual(p)
-    # yf = calc_function(p)
-    # ## print summary of fitted parameters
-    # if print_result:
-        # print(('\n'.join([
-            # '{:20s} = {:20s} +- {:8s}'.format(key,str(val['p']),str(val['sigma']))
-                                              # for (key,val) in list(v.items())])))
-    # return(yf,r,v)
-
-# def weighted_mean(
-        # x,
-        # dx,
-        # error_on_nan_zero=True, # otherwise edit out affected values
-# ):
-    # """Calculate weighted mean and its variance. If
-    # error_on_nan_zero=False then remove data with NaN x or dx, or 0
-    # dx."""
-    # # ## if ufloat, separate into nominal and error parts -- return as ufloat
-    # # if isinstance(x[0],uncertainties.AffineScalarFunc):
-        # # (mean,variance) = weighted_mean(*decompose_ufloat_array(x))
-        # # return(ufloat(mean,variance))
-    # x,dx = np.array(x,dtype=float),np.array(dx,dtype=float) 
-    # ## trim data to non nan if these are to be neglected, or raise an error
-    # i = np.isnan(x)
-    # if np.any(i):
-        # if error_on_nan_zero:
-            # raise Exception('NaN values present.') 
-        # else:
-            # x,dx = x[~i],dx[~i]
-    # i = np.isnan(dx)
-    # if np.any(i):
-        # if error_on_nan_zero:
-            # raise Exception('NaN errors present.') 
-        # else:
-            # x,dx = x[~i],dx[~i]
-    # i = (dx==0)
-    # if np.any(i):
-        # if error_on_nan_zero:
-            # raise Exception('NaN errors present.') 
-        # else:
-            # x,dx = x[~i],dx[~i]
-    # ## make weighed mean
-    # weights = dx**-2           # assuming dx is variance of normal pdf
-    # weights = weights/sum(weights) # normalise
-    # mean = np.sum(x*weights)
-    # variance = np.sqrt(np.sum((dx*weights)**2))
-    # return (mean,variance)
-
-# def average(x,dx,axis=1,returned=True,warningsOn=True):
-    # """ 
-    # Based on numpy.average.\n
-    # Return weighted mean along a particular. Nan data x, or nan or zero
-    # errors dx are ignored.\n
-    # May not word for >2D.
-    # """
-    # ## avoid overwriting originals - slows things down probably
-    # x = np.array(x)
-    # dx = np.array(dx)
-    # ## calculate weights from standard error
-    # weights = dx.astype(float)**-2.
-    # ## set weight of zero error or nan data to zero
-    # i = np.isnan(dx)|(dx==0)|np.isnan(x)
-    # x[i] = 0.
-    # weights[i] = 0.
-    # ## if all data invalid avoid a ZeroDivisionError
-    # i = weights.sum(axis)==0
-    # if axis==0:
-        # weights[:,i] = 1.
-    # elif axis==1:
-        # weights[i,:] = 1.
-    # ## the actual averaging
-    # m,tmp = np.average(x,weights=weights,returned=returned,axis=axis)
-    # s = np.sqrt(tmp**-1)
-    # ## correct for the avoided ZeroDivisionError
-    # m[i] = np.nan
-    # s[i] = np.nan
-    # return m,s
-
-# def common_weighted_mean(*data):
-    # """Take a weighted mean of all arguments which are arrays of form
-    # [x,y,dy].  Those arguments for which certain values of x are
-    # missing are not included in mean of that value. Alternatively you
-    # could provide the arrays already concatenated into one big array
-    # with some repeating x values.\n\nZero or NaN error data is removed
-    # and forgotten. """
-    # ## one 2D array (three colummns (x,y,dy)
-    # if len(data)==1:
-        # x,y,dy = data[0]
-    # ## join all input data given as three inputs, x,y,dy
-    # else:        
-        # x=np.concatenate([d[0] for d in data])
-        # y=np.concatenate([d[1] for d in data])
-        # dy=np.concatenate([d[2] for d in data])
-    # ## remove NaN x or y data
-    # i = ~(np.isnan(y)|np.isnan(x))
-    # x,y,dy = x[i],y[i],dy[i]
-    # ## zero or NaN errors are increased so as to remove this freom the
-    # ## weighting - POTENTIAL BUG
-    # i = (dy==0)|np.isnan(dy)
-    # ## if all are 0 or nan - set to some random value, otherwise make
-    # ## sufficiently large
-    # if all(i): dyDefault = 1
-    # else:      dyDefault = dy[~i].max()*1e5
-    # dy[i] = dyDefault
-    # ## prepare arrays for output data
-    # xout=np.unique(x)
-    # yout=np.zeros(xout.shape)
-    # dyout=np.zeros(xout.shape)
-    # ## take various means
-    # for i in range(len(xout)):
-        # ii = np.argwhere(x==xout[i])
-        # (yout[i],dyout[i])=weighted_mean(y[ii],dy[ii])
-    # ## return zero error
-    # dyout[dyout>dyDefault*1e-2] = np.nan
-    # return(xout,yout,dyout)
-
-# def mean_ignore_missing(x):
-    # """Calc unweighted mean of columns of a 2D array. Any nan values
-    # are ignored."""
-    # return np.array([float(t[~np.isnan(t)].mean()) for t in x])
-
-# def equal_or_none(x,y):
-    # if x is None and y is None:
-        # return(True)
-    # elif x==y:
-        # return(True)
-    # else:
-        # return(False)
-
-# def nanequal(x,y):
-    # """Return true if x and y are equal or both NaN. If they are vector,
-    # do this elementwise."""
-    # if np.isscalar(x) and np.isscalar(y):
-        # if x==y:
-            # return(True)
-        # else:
-            # try:
-                # if np.isnan(x) and np.isnan(y):
-                    # return(True)
-            # except TypeError:
-                # pass
-            # return(False)
-    # elif not np.isscalar(x) and not np.isscalar(y):
-        # if x.dtype.kind!='f' or x.dtype.kind!='f':
-            # return(x==y)
-        # else:
-            # return((x==y)|(np.isnan(x)&np.isnan(y)))
-    # else:
-        # raise Exception('Not implemented')
-
-# def nancumsum(x,*args,**kwargs):
-    # """Calculate cumsum, first set nans to zero."""
-    # x = np.asarray(x)
-    # x[np.isnan(x)] = 0.
-    # return np.cumsum(x,*args,**kwargs)
+def weighted_mean(
+        x,
+        dx,
+        error_on_nan_zero=True, # otherwise edit out affected values
+):
+    """Calculate weighted mean and its variance. If
+    error_on_nan_zero=False then remove data with NaN x or dx, or 0
+    dx."""
+    # ## if ufloat, separate into nominal and error parts -- return as ufloat
+    # if isinstance(x[0],uncertainties.AffineScalarFunc):
+        # (mean,variance) = weighted_mean(*decompose_ufloat_array(x))
+        # return(ufloat(mean,variance))
+    x,dx = np.array(x,dtype=float),np.array(dx,dtype=float) 
+    ## trim data to non nan if these are to be neglected, or raise an error
+    i = np.isnan(x)
+    if np.any(i):
+        if error_on_nan_zero:
+            raise Exception('NaN values present.') 
+        else:
+            x,dx = x[~i],dx[~i]
+    i = np.isnan(dx)
+    if np.any(i):
+        if error_on_nan_zero:
+            raise Exception('NaN errors present.') 
+        else:
+            x,dx = x[~i],dx[~i]
+    i = (dx==0)
+    if np.any(i):
+        if error_on_nan_zero:
+            raise Exception('NaN errors present.') 
+        else:
+            x,dx = x[~i],dx[~i]
+    ## make weighed mean
+    weights = dx**-2           # assuming dx is variance of normal pdf
+    weights = weights/sum(weights) # normalise
+    mean = np.sum(x*weights)
+    variance = np.sqrt(np.sum((dx*weights)**2))
+    return (mean,variance)
 
 def cumtrapz(y,
              x=None,               # if None assume unit xstep
@@ -2706,13 +1669,6 @@ def cumtrapz(y,
     if reverse:
         yintegrated = -yintegrated[::-1] # minus sign to account for change in size of dx when going backwards, which is probably not intended
     return yintegrated 
-
-# def cumtrapz_reverse(y,x):
-    # """Return a cumulative integral ∫y(x) dx from high to low limit."""
-    # x,i = np.unique(x,return_index=True)
-    # y = y[i]
-    # return(integrate.cumtrapz(y[-1::-1],-x[-1::-1])[-1::-1])
-
 
 def power_spectrum(
         x,y,
@@ -2762,17 +1718,6 @@ def power_spectrum(
     else:
         return(f,F)
 
-
-# def find_in_recarray(recarray,**key_value):
-    # """Find elements of recarray which match (key,value) pairs."""
-    # # return(np.prod([recarray[key]==value for (key,value) in key_value.items()],axis=0))
-    # return(np.prod([recarray[key]==value for (key,value) in key_value.items()],axis=0,dtype=bool))
-
-# def unique(x):
-#     """Returns unique elements."""
-#     if not np.iterable(x): return([x])
-#     return(list(set(x)))
-
 def argmedian(x):
     """Return index of median point."""
     isorted = np.argsort(x)
@@ -2790,36 +1735,10 @@ def unique(x,preserve_ordering=False):
     else:
         return(list(set(x)))
 
-
-# def argunique(x):
-    # """Find indices of unique elements of x. Picks first such
-    # element. Does not sort."""
-    # y = np.unique(x)
-    # x = list(x)
-    # return np.array([x.index(yi) for yi in y])
-
-# def unique_iterable(x):
-    # """Find unique elements of x assuming each element is an iterable,
-    # returns as a tuple of tuples. E.g., [[1,2],[1,2,],[1,1,]]] returns
-    # ((1,2),(1,1,))."""
-    # return(tuple(           # return as tuple
-            # set(            # do the uniquifying by using a set object
-                # tuple(tuple(t) for t in x)))) # convert 2D elements into immutable tuple of tuples
-
 def unique_combinations(*args):
     """All are iterables of the same length. Finds row-wise combinations of
     args that are unique. Elements of args must be hashable."""
     return(set(zip(*args)))
-
-# def unique_array_combinations(*arrs,return_mask=False):
-#     """All are iterables of the same length. Finds row-wise combinations of
-#     args that are unique. Elements of args must be hashable."""
-#     ra = np.rec.fromarrays(arrs)
-#     unique_values = np.unique(ra)
-#     if return_mask:
-#         return([(t,ra==t) for t in unique_values])
-#     else:
-#         return(unique_values)
 
 def unique_combinations_masks(*arrs):
     """All are iterables of the same length. Finds row-wise combinations of
@@ -2833,51 +1752,6 @@ def unique_combinations_masks(*arrs):
         i = hashes == unique_hash
         retval.append((ra[ifirst],i))
     return retval
-
-# def unique_combinations_masks(*arrs):
-    # """All are iterables of the same length. Finds row-wise combinations of
-    # args that are unique. Elements of args must be hashable."""
-    # ## pack into recarray, find unique hashes (cannot figure out how
-    # ## to hash recarray rows).
-    # ra = np.rec.fromarrays(arrs)
-    # import pdb; pdb.set_trace(); # DEBUG
-   #  
-    # import time ; timer = time.time() # DEBUG
-
-    # # print('DEBUG:', 'unique')
-    # # sorted_idx = np.unique(arrs)
-    # # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-
-    # # print('DEBUG:', 'argsort')
-    # # sorted_idx = np.argsort(arrs)
-    # # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-
-    # print('DEBUG:', 'lex')
-    # # i = np.lexsort(arrs)
-    # i = np.lexsort(arrs)
-    # np.diff(arrs[1])
-    # print( np.diff(i)[:10],np.min(np.diff(i)),np.max(np.diff(i)))
-   #  
-   #  
-    # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-   #  
-    # # Perform lex sort and get sorted data
-    # # sorted_idx = np.lexsort(data.T)
-    # # sorted_data =  data[sorted_idx,:]
-    # # row_mask = np.append([True],np.any(np.diff(sorted_data,axis=0),1))
-    # # out = sorted_data[row_mask]
-    # # ra.sort()
-
-    # print('DEBUG:', 'hash')
-    # hashes = np.array([hash(t) for t in zip(*arrs)],dtype=int)
-    # retval = []
-    # for unique_hash,ifirst in zip(*np.unique(hashes,return_index=True)):
-        # i = hashes == unique_hash
-        # retval.append((ra[ifirst],i))
-
-    # print('Time elapsed:',format(time.time()-timer,'12.6f')) ; timer = time.time() # DEBUG
-    # return retval
-
 
 def unique_combinations_first_index(*arrs):
     """All are iterables of the same length. Finds row-wise combinations of
@@ -2897,64 +1771,6 @@ def sortall(x,*others,reverse=False):
     if reverse:
         retval = [t[::-1] for t in retval]
     return retval
-
-# def sortByFirst(*args,**kwargs):
-    # """Returns iterable args all sorted by the elements of the first
-    # arg. Must be same length of course.  Optional key-word argument
-    # outputType=type will cast outputs into type. Otherwise tuples are
-    # returned regardless of the input types."""
-
-    # outputs = list(zip(*(sorted(zip(*args),key=lambda x:x[0]))))
-    # if 'outputType' in kwargs:
-        # outputs = (kwargs['outputType'](output) for output in outputs)
-    # return outputs
-
-# def sortByFirstInPlace(*args):
-    # """Sorts all arrays in args in place, according to sorting of
-    # first arg. Returns nothing. Must be arrays or something else that
-    # supports fancy indexing."""
-    # i = np.argsort(args[0])
-    # for j in range(len(args)):
-        # args[j][:] = args[j][i]
-
-# def vectorise_function(fcn,*args,**kwargs):
-    # """Run function multiple times if any argument is vector, possibly
-    # broadcasting the rest. If all arguments are scalar return None."""
-    # ## get length of data or if needs to be vectorise
-    # length = None
-    # for arg in list(args)+list(kwargs.values()):
-        # if not np.isscalar(arg) and arg is not None:
-            # if length is None:
-                # length = len(arg)
-            # else:
-                # assert len(arg)==length,'Cannot vectorise, argument lengths mismatch.'
-    # ## indicates no vectorisation needed
-    # if length is None:
-        # return(None)
-    # ## extend short data
-    # if length is not None:
-        # args = list(args)
-        # for i,arg in enumerate(args):
-            # if np.isccalar(arg) or arg is None:
-                # args[i] = [arg for t in range(length)]
-        # for key,val in kwargs.items():
-            # if np.isscalar(val) or val is None:
-                # kwargs[key] = [val for t in range(length)]
-    # ## run and return list of results
-    # return([fcn(
-        # *[arg[i] for arg in args],
-        # **{key:val[i] for key,val in kwargs.items()})
-            # for i in range(length)])
-
-# def vectorise_dicts(*dicts):
-    # """Input arguments are multiple dicts with the keys. Output argument
-    # is one dict with the same keys and all input values in lists."""
-    # if len(dicts)==0:
-        # return({})
-    # retval = {}
-    # for key in dicts[0]:
-        # retval[key] = [t[key] for t in dicts]
-    # return(retval)
 
 def common(x,y,use_hash=False):
     """Return indices of common elements in x and y listed in the order
@@ -2998,44 +1814,10 @@ def common(x,y,use_hash=False):
         ix,iy = ix[i],iy[i]
         return(ix,iy)
 
-
-# def get_common(x,y):
-    # """Return common subsets of x and y."""
-    # i,j = common(x,y)
-    # return(x[i],y[i])
-
-# def sort_to_match(x,y):
-    # """Return a copy of x sorted into the smae dissaray as y. That is
-    # the same reordering will sort both y and the return value."""
-    # x = np.array(x,ndmin=1)
-    # y = np.array(y,ndmin=1)
-    # return x[np.argsort(x)[np.argsort(np.argsort(y))]]
-
-# def argsort_to_match(x,y):
-    # """Returns indices which will sort x to give the same dissaray as y."""
-    # x = np.array(x,ndmin=1)
-    # y = np.array(y,ndmin=1)
-    # return np.argsort(x)[np.argsort(np.argsort(y))]
-
 def isin(x,y):
     """Return arrays of booleans same size as x, True for all those
     elements that exist in y."""
     return np.array([i in y for i in x],dtype=bool,ndmin=1)
-
-# def find_overlap(x,y):
-    # """Return boolean arrays (i,j) indicating (x,y) that cover an
-    # overlapping region. Outermost points are taken from x, i.e., x[i]
-    # encompasses y[j]. Assumes x and y are ordered. """
-    # i = (x>=y[0])&(x<=y[-1])
-    # j = (y>=x[0])&(y<=x[-1])
-    # if any(i):                  # if not overlap then don't proceed with this
-        # if not i[0]  and  x[i][0]!=y[j][0] : i[my.find(i)[0] -1]  = True
-        # if not i[-1] and x[i][-1]!=y[j][-1]: i[my.find(i)[-1]+1] = True
-    # return(i,j)
-
-# def argminabs(x): return(np.argmin(np.abs(x)))
-
-# def argmaxabs(x): return(np.argmax(np.abs(x)))
 
 def find(x):
     """Convert boolean array to array of True indices."""
@@ -3090,28 +1872,6 @@ def findin_numeric(x,y,tolerance=1e-10):
     i = i[np.argsort(ix)]                 # undo x sort
     i = np.argsort(iy)[i]                 # undo y sort
     return(i)
-
-# def inv(x):
-    # """Invert a symmetric matrix."""
-    # x = np.array(x,order='F',dtype=float)
-    # y = copy(x)
-    # myf.inv(x,y)
-    # return(y)
-
-# def integrate_trapz_uniform(y,dx=1.):
-    # """Trapezium integration on a uniform grid. If x is 2D then integrate
-    # along the first axis. Seems to be about 3x faster than
-    # scipy.integrate.trapz. Speed up if 2D array is order='F'."""
-    # if y.ndim==1:
-        # yint = np.zeros(1,dtype=float)
-        # myf.integrate_trapz_uniform_grid(y.astype(float),dx,yint)
-        # return(float(yint))
-    # elif y.ndim==2:
-        # yint = np.zeros(y.shape[1],dtype=float)
-        # myf.integrate_trapz_uniform_grid_two_dimensional(np.asfortranarray(y),dx,yint)
-        # return(yint)
-    # else:
-        # raise Exception('Only implemented for 1D and 2D arrays.')
 
 def integrate(x,y,method='trapz'):
     """Integrate x vs. y"""
@@ -3188,37 +1948,6 @@ def total_fractional_range(x):
         total_fractional_range = abs((xmax-xmin)/((xmax+xmin)/2))
     return total_fractional_range
 
-# def common_range(x,y):
-    # """Return min max of values in both x and y (may not be actual
-    # values in x and y)."""
-    # return(max(min(x),min(y)),min(max(x),max(y)))
-
-# def in_common_range(x,y):
-    # """Return indices of arrays x and y that line inside their common range."""
-    # t0,t1 = common_range(x,y)
-    # return(inrange(x,t0,t1),inrange(y,t0,t1))
-
-# def find_in_range_sorted(x,x0,x1):
-    # """Find return i0,i1, indices of x bounding x0 and x1. Assumes
-    # x1>x0 and x is sorted., NOT COMLETELY ACCURATE -- MIGHT GET
-    # EDGTEST SLIGHTLY WRONGE"""
-    # ## prepare fortran inputs
-    # x = np.array(x,dtype=float,ndmin=1)
-    # n = np.array(len(x),dtype=int)
-    # x0 = np.array(x0,dtype=float)
-    # x1 = np.array(x1,dtype=float)
-    # i0 = np.array(0,dtype=int)
-    # i1 = np.array(1,dtype=int)
-    # ## call compiled coe
-    # myf.find_in_range_sorted(x,x0,x1,i0,i1)
-    # return(int(i0),int(i1))
-
-# # def find_regexp(regexp,x):
-# #     """Returns boolean array of elements of x whether or not they match
-# #     regexp."""
-# #     return np.array([bool(re.match(regexp,t)) for t in x])
-
-
 def match_regexp(regexp,x):
     """Returns boolean array of elements of x whether or not they match
     regexp."""
@@ -3237,59 +1966,29 @@ def match_lines(string,regexp):
     retval = '\n'.join(retval)
     return retval
 
-# def meshgrid(*args):
-    # """ meshgrid(arr1,arr2,arr3,...)
-    # Expand 1D arrays arr1,... into multiple multidimensional arrays
-    # that loop over the values of arr1, ....  Similar to matlab/octave
-    # meshgrid. Sorry about the poor documentation, an example:
-    # meshgrid(np.array([1,2]),np.array([3,4]),)
-    # returns
-    # (array([[1, 1],[2, 2]]), array([[3, 4],[3, 4]]))
-    # """
-    # ## a sufficiently confusing bit of code its probably easier to
-    # ## rewrite than figure out how it works
-    # n = len(args)
-    # assert n>=2, 'requires at least two arrays'
-    # l = [len(arg) for arg in args]
-    # ret = []
-    # for i in range(n):
-        # x = np.array(args[i])
-        # for j in range(n):
-            # if i==j: continue
-            # x = np.expand_dims(x,j).repeat(l[j],j)
-        # ret.append(x)
-    # return tuple(ret)
+def meshgrid(*args):
+    """ meshgrid(arr1,arr2,arr3,...)
+    Expand 1D arrays arr1,... into multiple multidimensional arrays
+    that loop over the values of arr1, ....  Similar to matlab/octave
+    meshgrid. Sorry about the poor documentation, an example:
+    meshgrid(np.array([1,2]),np.array([3,4]),)
+    returns
+    (array([[1, 1],[2, 2]]), array([[3, 4],[3, 4]]))
+    """
+    ## a sufficiently confusing bit of code its probably easier to
+    ## rewrite than figure out how it works
+    n = len(args)
+    assert n>=2, 'requires at least two arrays'
+    l = [len(arg) for arg in args]
+    ret = []
+    for i in range(n):
+        x = np.array(args[i])
+        for j in range(n):
+            if i==j: continue
+            x = np.expand_dims(x,j).repeat(l[j],j)
+        ret.append(x)
+    return tuple(ret)
 
-# def sum_with_nans_as_zero(args,**kwargs):
-    # """Add arrays in args, as if nan values are actually zero. If
-# revert_to_nans is True, then turn all zeros back to nans after
-# summation."""
-    # kwargs.setdefault('revert_to_nans',False)
-    # is_scalar = np.isscalar(args[0])
-    # args = [np.array(arg,ndmin=1) for arg in args]
-    # retval = np.zeros(args[0].shape)
-    # for arg in args:
-        # i = ~np.isnan(arg)
-        # retval[i] += arg[i]
-    # if is_scalar: 
-        # retval = float(retval)
-    # if kwargs['revert_to_nans']:
-        # retval[retval==0.] = np.nan
-    # return retval
-
-# def mystack(*args): 
-    # return(column_stack(args))
-
-# def flatten(*args):
-    # """
-    # All args are flattened into 1D and concatentated into one 1D
-    # array. Wont flatten strings.
-    # """
-    # return(np.array([x for x in mpl.cbook.flatten(args)]))
-
-# def unpack(*args):
-    # """Flatten all args and join together into tuple."""
-    # return tuple(x for x in matplotlib.cbook.flatten(args))
 
 def normal_distribution(x,μ=0.,σ=1):
     """Normal distribution."""
@@ -3435,353 +2134,6 @@ def convolve_with_spline_signum_regular_grid_2(
     ynew = y + yadd
     return ynew
 
-    # fortran_tools.convolve_with_variable_signum_regular_grid(x,y,s,xmax,yconv)
-    # return yconv
-
-# def convolve_with_gaussian_to_grid(x,y,xout,fwhm):
-    # """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate
-    # convolution after a certain number of fwhms. x must be on a
-    # regular grid."""
-    # yout = np.zeros(xout.shape)
-    # myf.convolve_with_gaussian(x,y,xout,yout,float(fwhm))
-    # return(yout)
-
-# def convolve_with_lorentzian(x,y,fwhm,fwhms_to_include=50,regrid_if_necessary=False):
-    # """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate
-    # convolution after a certain number of fwhms. x must be on a
-    # regular grid."""
-    # dx = (x[-1]-x[0])/(len(x)-1)
-    # ## check on regular grid, if not then spline to a new one
-    # t = np.diff(x)
-    # regridded = False
-    # if (t.max()-t.min())>dx/1000.:
-        # if regrid_if_necessary:
-            # regridded = True
-            # x_original = x
-            # xstep = t.min()
-            # # x = np.arange(x[0],x[-1]+xstep/2.,xstep)
-            # x = np.linspace(x[0],x[-1],(x[-1]-x[0])/xstep)
-            # y = spline(x_original,y,x)
-        # else:
-            # raise Exception("Data not on a regular x grid")
-    # ## add padding to data
-    # xpad = np.arange(dx,fwhms_to_include*fwhm,dx)
-    # x = np.concatenate((x[0]-xpad[-1::-1],x,x[-1]+xpad))
-    # y = np.concatenate((np.full(xpad.shape,y[0]),y,np.full(xpad.shape,y[-1])))
-    # ## convolve
-    # gx = np.arange(-fwhms_to_include*fwhm,fwhms_to_include*fwhm,dx)
-    # if iseven(len(gx)): gx = gx[0:-1]
-    # gx = gx-gx.mean()
-    # gy = lorentzian(gx,k0=0,S=1,Gamma=fwhm,norm='sum')
-    # assert len(y)>len(gy), 'Data vector is shorter than convolving function.'
-    # y = np.convolve(y,gy,mode='same')
-    # ## remove padding
-    # y = y[len(xpad):-len(xpad)]
-    # x = x[len(xpad):-len(xpad)]
-    # ## return to original grid if regridded
-    # if regridded:
-        # y = spline(x,y,x_original)
-    # return y
-
-# def convolve_with_gaussian_with_prebinning(
-        # x,y,
-        # gaussian_FWHM,
-        # bins_per_gaussian_FWHM=10,
-# ):
-    # """Convolve data x,y with a Gaussian of full-width half-maximum
-    # gaussian_FWHM. To speed up the process first bin data by an amount
-    # dictated by bins_per_gaussian_FWHM. Then return a new pair (x,y)
-    # on the binned grid and convolved by the Gaussian."""
-    # ## calculate bin centres
-    # binwidth = gaussian_FWHM/bins_per_gaussian_FWHM
-    # xbin = np.arange(x.min()+binwidth/2.,x.max(),binwidth)
-    # ## for each bin get the mean value (using trapezium integration)
-    # ## of input function over that range
-    # ybin = np.zeros(xbin.shape)
-    # for i,xi in enumerate(xbin):
-        # j = (x>(xi-binwidth/2))&(x<=(xi+binwidth/2))
-        # try:
-            # ybin[i] = integrate.trapz(y[j],x[j])/(x[j].max()-x[j].min())
-            # if np.isnan(ybin[i]): ybin[i] = 0 # probably should do this more intelligently -- or raise an exception
-        # except ValueError:      # catch empty j -- much faster than prechecking
-            # ybin[i] = 0
-    # ## convolve with gaussian
-    # ybin = convolve_with_gaussian(xbin,ybin,gaussian_FWHM)
-    # return(xbin,ybin)
-
-# def convolve_with_sinc(x,y,fwhm,fwhms_to_include=10,):
-    # """Convolve function y(x) with a sinc of FWHM fwhm. Truncate
-    # convolution after a certain number of fwhms. x must be on a
-    # regular grid."""
-    # ## add padding to data
-    # dx = (x[-1]-x[0])/(len(x)-1)
-    # xpad = np.arange(dx,fwhms_to_include*fwhm,dx)
-    # x = np.concatenate((x[0]-xpad[-1::-1],x,x[-1]+xpad))
-    # y = np.concatenate((np.full(xpad.shape,y[0]),y,np.full(xpad.shape,y[-1])))
-    # ## get sinc to convolve with
-    # gx = np.arange(-fwhms_to_include*fwhm,fwhms_to_include*fwhm,dx)
-    # if iseven(len(gx)): gx = gx[0:-1]
-    # gx = gx-gx.mean()
-    # gy = sinc(gx,fwhm=fwhm,mean=0.,norm='sum')
-    # ## convolve
-    # y = np.convolve(y,gy,mode='same')
-    # ## remove padding
-    # y = y[len(xpad):-len(xpad)]
-    # x = x[len(xpad):-len(xpad)]
-    # return(y)
-
-# def lorentzian(k,k0=0,S=1,Gamma=1,norm='area'):
-    # """Lorentzian profile.
-    # Inputs:
-        # k     energy
-        # k0    resonance central energy
-        # S     integrated cross-section
-        # Gamma full-width half-maximum
-    # """
-    # if norm=='area':
-        # return S*Gamma/2./3.1415926535897931/((k-k0)**2+Gamma**2/4.)
-    # elif norm=='sum':
-        # t = S*Gamma/2./3.1415926535897931/((k-k0)**2+Gamma**2/4.)
-        # t = t/t.sum()
-        # return(t)
-    # else:
-        # raise Exception('normalisation other than area not implemented, easy to do though.')
-
-# def voigt_fwhm(gaussian_width,lorentzian_width):
-    # """Approximate calculationg from wikipedia"""
-    # return 0.5346*lorentzian_width + np.sqrt(0.2166*lorentzian_width**2 + gaussian_width**2)
-
-# def _voigt_cachetools_hashkey(*args,**kwargs):
-    # """A bespoke cachetoosl memoizing cache key. Uses arary beg,end,len
-    # instead of array itself as a hash."""
-    # args = list(args)
-    # for i,arg in enumerate(args): # convert arrays into three value hashes
-        # if isinstance(arg,np.ndarray):
-            # if len(arg)==0:
-                # args[i]=None
-            # else:
-                # args[i] = (arg[0],arg[-1],len(arg))
-    # return(cachetools.keys.hashkey(*args,**kwargs))
-
-# # @cachetools.cached(cache=cachetools.LRUCache(1e4),key=_voigt_cachetools_hashkey)
-# def voigt(
-        # k,                      # assumes k sorted
-        # k0=0,
-        # strength=1.,
-        # gaussian_width=1.,
-        # lorentzian_width=1, 
-        # # method='mclean_etal1994',normalisation='area',
-        # # method='wofz',
-        # # method='wofz_parallel',
-        # method='wofz_approx_long_range',
-        # normalisation='area',
-        # minimum_width=0.,
-        # long_range_gaussian_cutoff_widths=10,
-        # widths_cutoff=None,
-# ):
-    # """Approximates a voigt-profile.
-
-    # Inputs:
-
-    # k -- Array at which to evaluate function.
-    # k0 -- Center of peak.
-    # strength -- The meaning of this depends on normalisation.
-    # method -- 'whiting1968', 'whiting1968 fortran', 'convolution',  
-              # 'mclean_etal1994', 'wofz'
-    # normalisation -- 'area', 'peak', 'sum', 'none'
-    # minimum_width -- For Gaussian or Lorentzian widths below this just, ignore this
-                    # component and return a pure Lorentzian or Gaussian.
-
-    # Outputs:
-
-    # v -- Array same size as k.
-
-    # All methods are approximate, even convolution because of the
-    # finite grid step employed.
-
-    # References:
-
-    # E. E. Whiting 1968, Journal Of Quantitative Spectroscopy &
-    # Radiative Transfer 8:1379.
-
-    # A. B. McLean et al. 1994, Journal of Electron Spectrosocpy and
-    # Related Phenomena, 69:125.
-
-     # Notes:
-
-    # McLean et al. is more accurate than Whiting and slightly faster,
-    # and convolution should be most accurate for sufficiently small
-    # step size, but is very slow. Fortran version of Whiting is the
-    # fastest, fotran version of Mclean is slightly slower!
-
-    # Whiting method leads to zeros at small values (underflow
-    # somewhere?).
-
-    # Some of the analytical approximations for voigt profiles below are
-    # area normalised by their definition, so I do not explicitly
-    # normalise these, this leads to possible errors in their
-    # normalisation of perhaps 0.5% or below.
-
-    # wofz -- Use the real part of the Fadeeva function
-
-    # wofz_approx_long_range -- Use the real part of the Fadeeva
-           # function, after a certain range, just use a pure
-           # Lorentzian.
-
-    # """
-    # if widths_cutoff is not None:
-        # krange = (gaussian_width+lorentzian_width)*widths_cutoff
-        # if (k[0]-k0)>krange or (k0-k[-1])>krange: return(np.zeros(k.shape)) # no line in range -- return zero
-        # if np.abs(k[0]-k0)<krange and np.abs(k0-k[-1])<krange:          # all k is in range of line -- calculate all
-            # return(voigt(k,k0,strength,gaussian_width,lorentzian_width,method,normalisation,minimum_width,widths_cutoff=None,))
-        # ## else search for important range
-        # ibeg,iend = k.searchsorted(k0-krange),k.searchsorted(k0+krange)
-        # v = np.zeros(k.shape)
-        # v[ibeg:iend] = voigt(k[ibeg:iend],k0,strength,gaussian_width,lorentzian_width,method,normalisation,minimum_width,widths_cutoff=None,)
-        # return(v)
-    # ## short cuts for negligible widths one way or the other
-    # if   gaussian_width<=minimum_width:   method = 'lorentzian'
-    # elif lorentzian_width<=minimum_width: method = 'gaussian'
-    # ## Calculates profile.
-    # if method == 'lorentzian':
-        # v = lorentzian(k,k0,1.,lorentzian_width,norm='area')
-    # elif method == 'gaussian':
-        # v = gaussian(k,gaussian_width,k0,norm='area')
-    # elif method == 'wofz':
-        # from scipy import special
-        # norm = 1.0644670194312262*gaussian_width # sqrt(2*pi/8/log(2))
-        # b = 0.8325546111576 # np.sqrt(np.log(2))
-        # v = special.wofz((2.*(k-k0)+1.j*lorentzian_width)*b/gaussian_width).real/norm
-    # elif method == 'wofz_parallel':
-        # from scipy import special
-        # norm = 1.0644670194312262*gaussian_width # sqrt(2*pi/8/log(2))
-        # b = 0.8325546111576 # np.sqrt(np.log(2))
-        # results = multiprocessing.Pool().map(special.wofz,(2.*(k-k0)+1.j*lorentzian_width)*b/gaussian_width)
-        # v = np.array(results).real/norm
-    # elif method == 'wofz_approx_long_range':
-        # from scipy import special
-        # # i = np.abs(k-k0)<(gaussian_width+lorentzian_width)*long_range_gaussian_cutoff_widths
-        # kcutoff = (gaussian_width+lorentzian_width)*long_range_gaussian_cutoff_widths
-        # ibeg,iend = np.searchsorted(k,[k0-kcutoff,k0+kcutoff])
-        # v = np.zeros(k.shape)
-        # norm = 1.0644670194312262*gaussian_width # sqrt(2*pi/8/log(2))
-        # b = 0.8325546111576 # np.sqrt(np.log(2))
-        # v[ibeg:iend] = special.wofz((2.*(k[ibeg:iend]-k0)+1.j*lorentzian_width)*b/gaussian_width).real/norm
-        # v[:ibeg] = lorentzian(k[:ibeg],k0,1.,lorentzian_width,norm='area')
-        # v[iend:] = lorentzian(k[iend:],k0,1.,lorentzian_width,norm='area')
-    # elif method == 'whiting1968':
-        # ## total FWHM - approximate formula
-        # voigt_width=np.abs(lorentzian_width)/2.+np.sqrt(lorentzian_width**2/4+gaussian_width**2)
-        # ## adjust for mean and width
-        # x=np.abs(k-k0)/voigt_width
-        # ## ratio of widths
-        # a = abs(lorentzian_width)/voigt_width
-        # ## lorentzian width and area normalised - approximate formula
-        # v = (  ((1-a)*np.exp(-2.772*x**2) + a/(1+4*x**2) +  
-                # 0.016*(1-a)*a*(np.exp(-0.4*x**2.25)-10/(10+x**2.25)))/  
-               # (voigt_width*(1.065 + 0.447*a + 0.058*a**2))  )
-    # elif method == 'whiting1968 fortran':
-        # import pyvoigt
-        # v = np.zeros(k.shape)
-        # pyvoigt.voigt_whiting1968(lorentzian_width,gaussian_width,50.,k0,1.,k,v)
-    # elif method == 'convolution':
-        # ## convolution becomes displaced one grid point unless length k odd
-        # if iseven(len(k)):
-            # ktmp = k[1::]
-            # l = lorentzian(ktmp,k0,1.,lorentzian_width)
-            # g = gaussian(ktmp-ktmp[(len(ktmp)-1)/2],gaussian_width)
-            # v = np.convolve(l,g,mode='same')
-            # v = np.concatenate((v[0:1],v))
-        # else:
-            # l = lorentzian(k,0,1.,lorentzian_width)
-            # g = gaussian(k-k[(len(k)-1)/2].mean(),gaussian_width,0.)
-            # v = np.convolve(l,g,mode='same')
-    # elif method == 'mclean_etal1994':
-        # ## The method is inherently area normalised.
-        # ## 0.939437278 = 2/pi*sqrt(pi*np.log(2))
-        # A=[-1.2150,-1.3509,-1.2150,-1.3509]
-        # B=[1.2359, 0.3786, -1.2359, -0.3786,]
-        # C = [ -0.3085, 0.5906, -0.3085, 0.5906, ]
-        # D = [0.0210, -1.1858, -0.0210, 1.1858, ]
-        # X = 1.665109/gaussian_width*(k-k0)
-        # Y = 0.8325546*lorentzian_width/gaussian_width
-        # v = ( (C[0]*(Y-A[0])+D[0]*(X-B[0]))/((Y-A[0])**2+(X-B[0])**2)
-              # + (C[1]*(Y-A[1])+D[1]*(X-B[1]))/((Y-A[1])**2+(X-B[1])**2)
-              # + (C[2]*(Y-A[2])+D[2]*(X-B[2]))/((Y-A[2])**2+(X-B[2])**2)
-              # + (C[3]*(Y-A[3])+D[3]*(X-B[3]))/((Y-A[3])**2+(X-B[3])**2) ) *0.939437278/gaussian_width
-    # elif method == 'mclean_etal1994 fortran':
-        # import pyvoigt
-        # v = np.zeros(k.shape)
-        # pyvoigt.voigt(lorentzian_width,gaussian_width,k0,1.,k,v)
-    # else:
-        # raise Exception(f'Unknown method: {repr(method)}')
-    # ## Normalises and returns the profile.  Some methods are already
-    # ## area normalised by their formulation.
-    # if normalisation == 'none':
-        # v = v*strength
-    # elif normalisation == 'sum':
-        # v = v/v.sum()*strength
-    # elif normalisation == 'peak':
-        # v = v/v.max()*strength
-    # elif normalisation == 'area':
-        # ## some methods are automatically area normalised
-        # if method in ['whiting1968','whiting1968 fortran','mclean_etal1994',
-                      # 'mclean_etal1994 fortran','lorentzian','gaussian',
-                      # 'wofz','wofz_approx_long_range']:
-            # v = v*strength
-        # else:
-            # v = v/integrate.simps(v,k)*strength
-    # return(v)
-
-# # def cross_correlate(x,y,max_shift=None,return_shift=False):
-    # # """Normalised cross correlation."""
-    # # retval = np.correlate(x,y,mode='same')
-    # # n = len(retval)
-    # # imid = int((n-1)/2)
-    # # t = np.arange(n-imid,n,1)
-    # # norm = np.concatenate((t,[n],t[::-1]))
-    # # retval /= norm
-    # # if return_shift:
-        # # shift = np.arange(len(retval))-imid
-        # # return(shift,retval)
-    # # else:
-        # # return(retval)
-
-# def cross_correlate(
-        # x0,y0,                  # x,y data one
-        # x1,y1,                  # more x,y data
-        # conv_width=None,          # how wide (in terms of x) to cross correlation
-        # max_shift=None,           # maximum shift of cross corelation
-# ):
-    # """Normalised cross correlation."""
-    # ## spline all data to min grid step
-    # dx = min(np.min(x0[1:]-x0[:-1]),np.min(x1[1:]-x1[:-1]))
-    # ##
-    # tx0 = np.arange(x0.min(),x0.max(),dx)
-    # y0 = spline(x0,y0,tx0)
-    # x0 = tx0
-    # tx1 = np.arange(x1.min(),x1.max(),dx)
-    # y1 = spline(x1,y1,tx1)
-    # x1 = tx1
-    # ## mid points -- might drop a half pointx
-    # imid0 = np.floor((len(x0)-1)/2)
-    # imid1 = np.floor((len(x1)-1)/2)
-    # ## get defaults conv_width and max_shift -- whole domain when added
-    # if conv_width is None:
-        # conv_width = dx*(min(imid0,imid1)-1)/2
-    # if max_shift is None:
-        # max_shift = conv_width
-    # ## initalise convolved grid
-    # xc = np.arange(0,max_shift,dx)
-    # xc = np.concatenate((-xc[::-1],xc[1:]))
-    # yc = np.full(xc.shape,0.0)
-    # imidc = int((len(xc)-1)/2)
-    # ## convert conv_width, max_shift to indexes, ensuring compatible
-    # ## with data length
-    # iconv_width = int(conv_width/dx) - 1
-    # imax_shift = min(int(max_shift/dx),imid0-1,imid1-1) 
-    # myf.cross_correlate(y0,y1,yc,imax_shift,iconv_width)
-    # return(xc,yc)
 
 def autocorrelate(x,nmax=None):
     if nmax is None:
@@ -3793,56 +2145,9 @@ def autocorrelate(x,nmax=None):
             retval[i] = np.sum(x[i:]*x[:len(x)-i])/np.sum(x[i:]**2)
     return retval
 
-# def sinc(x,fwhm=1.,mean=0.,strength=1.,norm='area',):
-    # """ Calculate sinc function. """
-    # t = np.sinc((x-mean)/fwhm*1.2)*1.2/fwhm # unit integral normalised
-    # if norm=='area':
-        # return strength*t
-    # elif norm=='sum':
-        # return strength*t/t.sum()
-    # elif norm=='peak':
-        # return strength*t/np.sinc(0.)*1.2/fwhm
-
-# def isfloat(a):
-    # """Test if input is a floating point number - doesn't distinguish
-    # between various different kinds of floating point numbers like a
-    # simple test would."""
-    # return type(a) in [float,float64]
-
-# def isint(a):
-    # """Test if input is an integer - doesnt distinguish between
-    # various different kinds of floating point numbers like a simple
-    # test would."""
-    # return type(a) in [int,np.int64]
-
 def isnumeric(a):
     """Test if constant numeric value."""
     return type(a) in [int,np.int64,float,np.float64]
-
-# def iseven(x):
-    # """Test if argument is an even number."""
-    # return np.mod(x,2)==0
-
-# def loadtxt(path,**kwargs):
-    # """Sum as numpy.loadtxt but sets unpack=True. And expands '~' in
-    # path."""
-    # path = os.path.expanduser(path)
-    # kwargs.setdefault('unpack',True)
-    # return np.loadtxt(path,**kwargs)
-
-# def loadawk(path,script,use_hdf5=False,**kwargs):
-    # """Load text file as array after parsing through an
-    # awkscript. Data is saved in a temporary file and all kwargs are
-    # passed to loadtxt."""
-    # path = expand_path(path)
-    # tmpfile = pipe_through_awk(path,script)
-    # if os.path.getsize(tmpfile.name)==0:
-        # raise IOError(None,'No data found',path)
-    # if use_hdf5:
-        # output = txt_to_array_via_hdf5(tmpfile,**kwargs)
-    # else:
-        # output = np.loadtxt(tmpfile,**kwargs)
-    # return output
 
 
 def rootname(path,recurse=False):
@@ -3875,16 +2180,6 @@ def array_to_file(filename,*args,make_leading_directories=True,**kwargs):
             except:
                 pass
         np.savetxt(filename, np.column_stack(args),**kwargs) # fall back
-
-# def load_and_spline(filename,x,missing_data=0.):
-    # """Load data file using file_to_array. Resplines the results to a
-    # grid x. Missing data set to zero. Returns splined y."""
-    # xn,yn = file_to_array(filename,unpack=True)
-    # y = np.zeros(x.shape)
-    # i = (x>xn.min())&(x<xn.max())
-    # y[i] = spline(xn,yn,x[i])
-    # y[~i] = missing_data
-    # return y
 
 def loadxy(
         filename,
@@ -3977,69 +2272,6 @@ def file_to_array(
     if unpack:
         d = d.transpose()
     return(d)
-
-# def file_to_xml_tree(filename):
-    # """Load an xml file using standard library 'xml'."""
-    # from xml.etree import ElementTree
-    # return(ElementTree.parse(expand_path(filename)))
-
-# def pipe_through_awk(original_file_path, awk_script):
-    # """
-    # Pass file path through awk, and return the temporary file where
-    # the result is sent. Doesn't load the file into python memory.
-    # """
-    # ## expand path if possible and ensure exists - or else awk will hang
-    # original_file_path = expand_path(original_file_path)
-    # if not os.path.lexists(original_file_path):
-        # raise IOError(1,'file does not exist',original_file_path)
-    # # if new_file is None:
-    # new_file=tempfile.NamedTemporaryFile(mode='w+',encoding='utf-8')
-    # # command = 'awk '+'\''+awk_script+'\' '+original_file_path+'>'+new_file_path
-    # # # (status,output)=commands.getstatusoutput(command)
-    # status = subprocess.call(['awk',awk_script,original_file_path],stdout=new_file.file)
-    # assert status==0,"awk command failed"
-    # new_file.seek(0)
-    # return new_file
-
-# def loadsed(path,script,**kwargs):
-    # """
-# `Load text file as array after parsing through an
-    # sedscript. Data is saved in a temporary file and all kwargs are
-    # passed to loadtxt.
-    # """
-    # tmpfile = sedFilteredFile(path,script)
-    # output = np.loadtxt(tmpfile,**kwargs)
-    # return output
-
-# def sedFilteredFile(path,script):
-    # """Load text file as array after parsing through a sed
-    # script. Data is saved in a temporary file and all kwargs are
-    # passed to loadtxt."""
-    # tmpfile=tempfile.NamedTemporaryFile()
-    # command = 'sed '+'\''+script+'\' '+path+'>'+tmpfile.name
-    # (status,output)=subprocess.getstatusoutput(command)
-    # if status!=0: raise Exception("sed command failed:\n"+output)
-    # return tmpfile
-
-# def ensureArray(arr):
-    # """Return an at least 1D array version of input if not already one."""
-    # if type(arr) != np.array:
-        # if np.iterable(arr):
-            # arr = np.array(arr)
-        # else:
-            # arr = np.array([arr])
-    # return arr
-
-# def string_to_list(string):
-    # """Convert string of numbers separated by spaces, tabs, commas, bars,
-    # and newlines into an array. Empty elements are replaced with NaN
-    # if tabs are used as separators. If spaces are used then the excess
-    # is removed, including all leading and trailing spaces."""
-    # retval = [t.strip() for t in re.split(r'\n',string)
-             # if not (re.match(r'^ *#.*',t) or re.match(r'^ *$',t))] # remove blank and # commented lines
-    # retval = flatten([re.split(r'[ \t|,]+',t) for t in retval]) # split each x on space | or ,
-    # retval = [try_cast_to_numeric(t) for t in retval]
-    # return(retval)
 
 def string_to_array(s,**array_kwargs):
     """Convert string of numbers separated by spaces, tabs, commas, bars,
@@ -4163,38 +2395,6 @@ def string_to_file(
     # return dd/((1.+d**2.)**(3./2.)) 
 
 
-# def execfile(filepath):
-    # """Execute the file in current namespace. Not identical to python2 execfile."""
-    # with open(filepath, 'rb') as fid:
-        # # exec(compile(fid.read(),filepath,'exec'))
-        # exec(fid.read())
-
-# def file_to_string(filename):
-    # with open(expand_path(filename),mode='r',errors='replace') as fid:
-        # string = fid.read(-1)
-    # return(string)
-
-# def file_to_lines(filename,**open_kwargs):
-    # """Split file data on newlines and return as a list."""
-    # fid = open(expand_path(filename),'r',**open_kwargs)
-    # string = fid.read(-1)
-    # fid.close()
-    # return(string.split('\n'))
-
-# def file_to_tokens(filename,**open_kwargs):
-    # """Split file on newlines and whitespace, then return as a list of
-    # lists."""
-    # return([line.split() for line in file_to_string(filename).split('\n')])
-
-# def file_to_regexp_matches(filename,regexp):
-    # """Return match objects for each line in filename matching
-    # regexp."""
-    # with open(expand_path(filename),'r') as fid:
-        # matches = []
-        # for line in fid:
-            # match = re.match(regexp,line)
-            # if match: matches.append(match)
-    # return(matches)
 
 def file_to_dict(filename,*args,filetype=None,**kwargs):
     """Convert text file to dictionary.
@@ -4355,21 +2555,6 @@ def string_to_dict(string,**kwargs_txt_to_dict):
     kwargs_txt_to_dict.setdefault('labels_commented',False)
     return(txt_to_dict(io.StringIO(string),**kwargs_txt_to_dict))
 
-# def string_to_recarray(string):
-    # """Convert a table in string from into a recarray. Keys taken from
-    # first row. """
-    # ## turn string into an IO object and pass to txt_to_dict to decode the lines. 
-    # string = re.sub(r'^[ \n]*','',string) # remove leading blank lines
-    # import io
-    # return(dict_to_recarray(txt_to_dict(io.StringIO(string), labels_commented=False,)))
-
-# # def string_to_dynamic_recarray(string):
-    # # string = re.sub(r'^[ \n]*','',string) # remove leading blank lines
-    # # import io
-    # # d = txt_to_dict(io.StringIO(string), labels_commented=False,)
-    # # from data_structures import Dynamic_Recarray
-    # # return(Dynamic_Recarray(**d))
-
 def file_to_recarray(filename,*args,**kwargs):
     """Convert text file to record array, converts from dictionary
     returned by file_to_dict."""
@@ -4378,108 +2563,6 @@ def file_to_recarray(filename,*args,**kwargs):
 def file_to_dataset(*args,**kwargs):
     from . import dataset
     return dataset.Dataset(**file_to_dict(*args,**kwargs))
-
-# def decompose_ufloat_array(x):
-    # """Return arrays of nominal_values and std_devs of a ufloat array."""
-    # return(np.array([t.nominal_value for t in x],dtype=float),np.array([t.std_dev for t in x],dtype=float),)
-
-# def item(x):
-    # """Recursively penetrate layers of iterable containers to get at
-    # the one number inside. Also tries to get value out of zero
-    # dimensional array"""
-    # if iterable(x): return(item(x[0]))  # first value only
-    # elif hasattr(x,'item'): return x.item()
-    # else: return x
-
-# def jj(x): return x*(x+1)
-
-# def txt2multiarray(path):
-    # """Text file contains 1 or 2D arrays which are separated by blank
-    # lines or a line beginning with a comment character. These are read
-    # into separate arrays and returned."""
-    # f = open(expand_path(path),'r')
-    # s = f.read()
-    # f.close()
-    # s,n = re.subn('^(( *($|\n)| *#.*($|\n)))+','',s)
-    # s,n = re.subn('((\n *($|\n)|\n *#.*($|\n)))+','#',s)
-    # if s=='':
-        # s = []
-    # else:
-        # s = s.split('#')
-    # ## return, also removes empty arrays
-    # return [str2array(tmp).transpose() for tmp in s if len(tmp)!=0]
-
-# def fwhm(x,y,plot=False,return_None_on_error=False):
-    # """Roughly calculate full-width half-maximum of data x,y. Linearly
-    # interpolates nearest points to half-maximum to get
-    # full-width. Requires single peak only in view. """
-    # hm = (np.max(y)-np.min(y))/2.
-    # i = find((y[1:]-hm)*(y[:-1]-hm)<0)
-    # if len(i)!=2:
-        # if return_None_on_error:
-            # return(None)
-        # else:
-            # raise Exception("Poorly defined peak, cannot find fwhm.")
-    # x0 = (hm-y[i[0]])*(x[i[0]]-x[i[0]+1])/(y[i[0]]-y[i[0]+1]) + x[i[0]]
-    # x1 = (hm-y[i[1]])*(x[i[1]]-x[i[1]+1])/(y[i[1]]-y[i[1]+1]) + x[i[1]]
-    # if plot==True:
-        # ax = plt.gca()
-        # ax.plot(x,y)
-        # ax.plot([x0,x1],[hm,hm])
-    # return x1-x0
-
-# def estimate_fwhm(
-        # x,y,
-        # imax=None,              # index of peak location -- else uses maximum of y
-        # plot=False,             
-# ):
-    # """Roughly calculate full-width half-maximum of data x,y. Linearly
-    # interpolates nearest points to half-maximum to get
-    # full-width. Looks around tallest peak."""
-    # if imax is None: imax = np.argmax(y)
-    # half_maximum = y[imax]/2.
-    # ## index of half max nearest peak on left
-    # if all(y[1:imax+1]>half_maximum): raise Exception('Could not find lower half maximum.')
-    # i = find((y[1:imax+1]>half_maximum)&(y[:imax+1-1]<half_maximum))[-1]
-    # ## position of half max on left
-    # x0 = (half_maximum-y[i])*(x[i]-x[i+1])/(y[i]-y[i+1]) + x[i]
-    # ## index of half max nearest peak on left
-    # if all(y[imax:]>half_maximum): raise Exception('Could not find upper half maximum.')
-    # i = find((y[imax+1:]<half_maximum)&(y[imax:-1]>half_maximum))[0]+imax
-    # ## position of half max on left
-    # x1 = (half_maximum-y[i])*(x[i]-x[i+1])/(y[i]-y[i+1]) + x[i]
-    # if plot==True:
-        # ax = plt.gca()
-        # ax.plot(x,y)
-        # ax.plot([x0,x1],[half_maximum,half_maximum])
-    # return x1-x0
-
-# def fixedWidthString(*args,**kwargs):
-    # """Return a string joining *args in g-format with given width, and
-    # separated by one space."""
-    # if 'width' in kwargs: width=kwargs['width']
-    # else: width=13
-    # return ' '.join([format(s,str(width)+'g') for s in args])
-
-# def string_to_number(s,default=None):
-    # """ Attempt to convert string to either int or float. If fail use
-    # default, or raise error if None."""
-    # ## if container, then recursively operate on elements instead
-    # if np.iterable(s) and not isinstance(s,str):
-        # return([str2num(ss) for ss in s])
-    # elif not isinstance(s,str):
-        # raise Exception(repr(s)+' is not a string.')
-    # ## try to return as int
-    # try:
-        # return int(s)
-    # except ValueError:
-        # ## try to return as float
-        # try:
-            # return float(s)
-        # except ValueError:
-            # if default is not None:
-                # return(default)
-            # raise Exception(f'Could not convert string to number: {repr(s)}')
 
 def string_to_number_if_possible(s):
     """ Attempt to convert string to either int or float. If fail use
@@ -4498,10 +2581,6 @@ def string_to_number_if_possible(s):
     except ValueError:
         pass
     return s 
-
-# def txt_to_recarray(*args,**kwargs):
-    # """See txt_to_dict."""
-    # return(dict_to_recarray(txt_to_dict(*args,**kwargs)))
 
 def txt_to_dict(
         filename,              # path or open data stream (will be closed)
@@ -4590,55 +2669,6 @@ def txt_to_dict(
         if try_cast_numeric:
             data[key] = try_cast_to_numeric_array(data[key])
     return data 
-            
-# def txt_to_array_unpack(filename,skiprows=0,comment='#'):
-    # """Read a text file of 2D data into a seperate array for each
-    # column. Attempt to cast each column independently."""
-    # ## Reads all data.
-    # fid = open(filename,'r')
-    # lines = fid.readlines()
-    # fid.close()
-    # ## remove blank and commented lines
-    # lines = [l for l in lines if not re.match(r'^\s*$|^ *'+comment,l)]
-    # ## skiprows
-    # for i in range(skiprows): lines.pop(0)
-    # ## initialise data lists
-    # data = [[] for t in lines[0].split()]
-    # ## get data
-    # for line in lines:
-        # for x,y in zip(data,line.split()):
-            # x.append(y)
-    # ## cast to arrays, numerical if possiblec
-    # data = [try_cast_to_numeric_array(t) for t in data]
-    # return(data)
-            
-# def org_table_to_recarray(filename,table_name):
-    # """Read org-mode table from a file, convert data into a recarray, as
-# numbers if possible, else strings. The table_name is expected to be an
-# org-mode name: e.g., #+NAME: table_name"""
-    # fid = open(expand_path(filename),'r')
-    # data = dict()
-    # ## read file to table found
-    # for line in fid:
-        # if re.match('^ *#\\+NAME\\: *'+re.escape(table_name.strip())+' *$',line): break
-    # else:
-        # raise Exception('table: '+table_name+' not found in file: '+filename)
-    # ## get keys line and initiate list in data dict
-    # for line in fid:
-        # if re.match(r'^ *\|-',line): continue # skip hlines
-        # line = line.strip(' |\n')
-        # keys = [key.strip('| ') for key in line.split('|')]
-        # break
-    # for key in keys: data[key] = []
-    # ## loop through until blank line (end of table) adding data
-    # for line in fid:
-        # if line[0]!='|': break                # end of table
-        # if re.match(r'^ *\|-',line): continue # skip hlines
-        # line = line.strip(' |')
-        # vals = [val.strip() for val in line.split('|')]
-        # for (key,val) in zip(keys,vals): data[key].append(val)
-    # for key in data: data[key] = try_cast_to_numeric_array(data[key]) # cast to arrays, numerical if possiblec
-    # return(dict_to_recarray(data))
 
 def try_cast_to_numeric(string):
     """Try to cast into a numerical type, or else return as a string."""
@@ -4660,112 +2690,6 @@ def try_cast_to_numeric_array(x):
             return np.array(x,dtype=float)
         except ValueError:
             return np.array(x,dtype=str)
-
-# def prefix_postfix_lines(string,prefix='',postfix=''):
-    # """Prefix and postfix every line of string."""
-    # return(prefix+string.replace('\n',postfix+'\n'+prefix)+postfix)
-
-# def extractHeader(path):
-    # """
-    # Extract info of the from XXX=YYY from a txt or csv file returning
-    # a dictionary with all keys and values given by strings.
-
-    # Header indicated by comment character '#'.
-
-    # All quotes are stripped.
-
-    # Wildly unfinished.
-    # """
-    # retDict = {}
-    # fid = open(path,'r')
-    # while True:
-        # line = fid.readline()
-        # ## eliminate all quotes
-        # line = line.replace("'","")
-        # line = line.replace('"','')
-        # ## break once header pased
-        # if not re.match(r'^\s*#',line): break
-        # ## eliminate leading comments
-        # line = re.sub(r'^\s*#*','',line)
-        # ## tokenise on space and ','
-        # toks = re.split(r' +| *, *',line)
-        # ## find tokens containing '=' and extract key/vals as
-        # ## dictionary
-        # for tok in toks:
-            # if re.match(r'.*=.*',tok):
-                # key,val = tok.split('=')
-                # retDict[key.strip()] = val.strip()
-    # fid.close()
-    # return retDict
-
-
-# def odsReader(fileName,tableIndex=0):
-    # """
-    # Opens an odf spreadsheet, and returns a generator that will
-    # iterate through its rows. Optional argument table indicates which
-    # table within the spreadsheet. Note that retures all data as
-    # strings, and not all rows are the same length.
-    # """
-    # import odf.opendocument,odf.table,odf.text
-    # ## common path expansions
-    # fileName = expand_path(fileName)
-    # ## loads sheet
-    # sheet = odf.opendocument.load(fileName).spreadsheet
-    # ## Get correct table. If 'table' specified as an integer, then get
-    # ## from numeric ordering of tables. If specified as a string then
-    # ## search for correct table name.
-    # if isinstance(tableIndex,int):
-        # ## get by index
-        # table = sheet.getElementsByType(odf.table.Table)[tableIndex]
-    # elif isinstance(tableIndex,str):
-        # ## search for table by name, if not found return error
-        # for table in sheet.getElementsByType(odf.table.Table):
-            # # if table.attributes[(u'urn:oasis:names:tc:opendocument:xmlns:table:1.0', u'name')]==tableIndex:
-            # if table.getAttribute('name')==tableIndex: break
-        # else:
-            # raise Exception('Table `'+str(tableIndex)+'\' not found in `'+str(fileName)+'\'')
-    # else:
-        # raise Exception('Table name/index`'+table+'\' not understood.')
-    # ## divide into rows
-    # rows = table.getElementsByType(odf.table.TableRow)
-    # ## For each row divide into cells and then insert new cells for
-    # ## those that are repeated (multiple copies are not stored in ods
-    # ## format). The number of multiple copies is stored as a string of
-    # ## an int.
-    # for row in rows:
-        # cellStrs = []
-        # for cell in row.getElementsByType(odf.table.TableCell):
-            # cellStrs.append(str(cell))
-            # if cell.getAttribute('numbercolumnsrepeated')!=None:
-                # for j in range(int(cell.getAttribute('numbercolumnsrepeated'))-1):
-                    # cellStrs.append(str(cell))
-        # ## yield each list of cells to make a generator
-        # yield cellStrs
-
-# def loadsheet(path,tableIndex=0):
-    # """Converts contents of a spreadsheet to a list of lists or
-    # strings. For spreadsheets with multiple tables, this can be
-    # specified with the optional argument."""
-    # ## opens file according to extension
-    # if path[-4:]=='.csv' or path[-4:]=='.CSV':
-        # assert tableIndex==0, 'Multiple tables not defined for csv files.'
-        # fid = open(path,'r')
-        # sheet = csv.reader(fid)
-    # elif path[-4:]=='.ods':
-        # sheet = odsReader(path,tableIndex=tableIndex)
-    # ## get data rows into list of lists
-    # ret = [row for row in sheet]
-    # ## close file if necessary
-    # if path[-4:]=='.csv' or path[-4:]=='.CSV':
-        # fid.close()
-    # return(ret)      
-
-# def sheet_to_recarray(*args,**kwargs):
-    # return(dict_to_recarray(sheet_to_dict(*args,**kwargs)))
-
-# def sheet_to_dataframe(*args,**kwargs):
-    # import pandas as pd
-    # return(pd.DataFrame(sheet_to_dict(*args,**kwargs)))
 
 def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
     """Converts csv or ods file, or list of lists to a dictionary.\n\nFor
@@ -4946,196 +2870,60 @@ def stream_to_dict(
                 data[key] = try_cast_to_numeric_array(data[key])
     return data
 
-# def read_structured_data_file(filename):
-    # """Read a file containing tables and key-val pairs"""
-    # d = {'header':[]}
-    # with open(expand_path(filename)) as f:
-        # # for i in range(50):
-        # while True:
-            # l = f.readline()    # read a line
-            # if l=='': break     # end of text file
-            # l = re.sub('^ *# *(.*)',r'\1',l) # remove comments
-            # l = l[:-1]          # remove newline
-            # ## look for lines like: a = b
-            # r = re.match('^ *([^=]*[^= ]) *= *(.+) *$',l)
-            # if r:
-                # d[r.groups()[0]] = r.groups()[1]
-                # d['header'].append(l)
-                # continue
-            # ## look for tables like: <tablename> ...
-            # r = re.match('^ *< *(.+) *> *$',l)
-            # if r:
-                # table_name = r.groups()[0]
-                # d[table_name] = stream_to_dict(f,split=' ',table_name=table_name,comment='#')
-                # continue
-            # ## rest is just text of some kind
-            # d['header'].append(l)
-    # return d 
-
-# def csv2array(fileObject,tableName=None,skiprows=0,**kwargs):
-    # """Convert csv file to array.
-    # \nFile can be open file object or path.
-    # \nIf tableName is supplied string then keys and data are read
-    # between first column flags <tableName> and <\\tableName>. Other
-    # wise reads to end of file.
-    # \nFurther kwargs are passed to csv.reader."""
-    # ## open csv.reader
-    # if type(fileObject)==str:
-        # f=open(expand_path(fileObject),'r')
-        # reader=csv.reader(f,**kwargs)
-    # else: 
-        # reader=csv.reader(fileObject,**kwargs)
-    # ## skip to specific table if requested
-    # while tableName!=None:
-        # try: 
-            # line = next(reader)
-        # except StopIteration: 
-            # raise Exception('Table `'+tableName+'\' not found in file '+str(fileObject))
-        # ## skip empty lines
-        # if len(line)==0:
-            # continue
-        # ## table found, break loop
-        # if '<'+tableName+'>'==str(line[0]): 
-            # break
-    # ## skiprows - IF READING TABLE AND GET TO END OF TABLE IN HERE THERE WILL BE A BUG!!!!
-    # for i in range(skiprows): 
-        # next(reader)
-    # ## initialise list of lists
-    # data = []
-    # ## read data
-    # while True:
-        # ## break on end of file
-        # try:    line = next(reader)
-        # except: break
-        # ## if table specified stop reading at the end of it
-        # if tableName!=None and '<\\'+tableName+'>'==str(line[0]): break
-        # if tableName!=None and '<\\>'==str(line[0]): break
-        # ## add new row to data and convert to numbers
-        # data.append([str2num(cell) for cell in line])
-    # ## convert lists to array
-    # if isiterable(data[0]):
-        # ## if 2D then pad short rows
-        # data = array2DPadded(data)
-    # else:
-        # data = np.array(data)
-    # ## close file if necessary
-    # if type(fileObject)==str: f.close()
-    # ## return
-    # return data
-
-# def loadcsv(path,**kwargs):
-    # """Convert csv file to array. Further kwargs are passed to
-    # csv.reader."""
-    # ## open csv.reader
-    # f = open(expand_path(path),'r')
-    # reader = csv.reader(f,**kwargs)
-    # ## initialise list of lists
-    # data = []
-    # ## read data
-    # while True:
-        # ## break on end of file
-        # try:    line = next(reader)
-        # except: break
-        # ## add new row to data and convert to numbers
-        # data.append([str2num(cell) for cell in line])
-    # ## convert lists to array
-    # # if isiterable(data[0]):
-        # # ## if 2D then pad short rows
-        # # data = np.array2DPadded(data)
-    # # else:
-    # data = np.array(data)
-
-    # ## close file if necessary
-    # f.close()
-    # ## return
-    # return data
-
-# sheet2array = csv2array         # doesn't currently work with ods, fix one day
-
-# def writeCSV(path,data,**kwargs):
-    # """
-    # Writes data to path as a CSV file.\n\nPath is filename.
-    # Data is a 2D iterable.
-    # Kwargs are passed as options to csv.writer, with sensible defaults.
-    # """
-    # kwargs.setdefault('skipinitialspace',True)
-    # kwargs.setdefault('quoting',csv.QUOTE_NONNUMERIC)
-    # fid = open(path,'w')
-    # writer = csv.writer(fid,**kwargs)
-    # writer.writerows(data)
-    # fid.close()
-
-# def isuvalue(x):
-    # """Test if uvalue in a fairly general way."""
-    # if x in (uncertainties.Variable,ufloat): return(True)
-    # if isinstance(x,uncertainties.Variable): return(True)
-    # if isinstance(x,uncertainties.AffineScalarFunc): return(True)
-    # return(False)
-
-# def array2DPadded(x):
-    # """Take 2D nested iterator x, and turn it into array, extending
-    # any dim=1 arrays by NaNs to make up for missing values."""
-    # dim1 = max([len(xi) for xi in x])
-    # for xi in x:
-        # xi.extend([np.nan for i in range(dim1-len(xi))])
-    # return np.array(x)
-
 ###################
 ## miscellaneous ##
 ###################
 
-# def digitise_postscript_figure(
-        # filename,
-        # xydpi_xyvalue0 = None,  # ((xdpi,ydpi),(xvalue,yvalue)) for fixing axes
-        # xydpi_xyvalue1 = None,  # 2nd point for fixing axes
+def digitise_postscript_figure(
+        filename,
+        xydpi_xyvalue0 = None,  # ((xdpi,ydpi),(xvalue,yvalue)) for fixing axes
+        xydpi_xyvalue1 = None,  # 2nd point for fixing axes
 
-# ):
-    # """Get all segments in a postscript file. That is, an 'm' command
-    # followed by an 'l' command. Could find points if 'm' without an 'l' or
-    # extend to look for 'moveto' and 'lineto' commands."""
-    # data = file_to_string(filename).split() # load as list split on all whitespace
-    # retval = []                  # line segments
-    # ## loop through looking for line segments
-    # i = 0
-    # while (i+3)<len(data):
-        # if data[i]=='m' and data[i+3]=='l': # at least one line segment
-            # x,y = [float(data[i-1])],[-float(data[i-2])]
-            # while (i+3)<len(data) and data[i+3]=='l':
-                # x.append(float(data[i+2]))
-                # y.append(-float(data[i+1]))
-                # i += 3
-            # retval.append([x,y])
-        # i += 1
-    # ## make into arrays
-    # for t in retval:
-        # t[0],t[1] = np.array(t[0],ndmin=1),np.array(t[1],ndmin=1)
-    # ## transform to match axes if possible
-    # if xydpi_xyvalue0 is not None:
-        # a0,b0,a1,b1 = xydpi_xyvalue0[0][0],xydpi_xyvalue0[1][0],xydpi_xyvalue1[0][0],xydpi_xyvalue1[1][0]
-        # m = (b1-b0)/(a1-a0)
-        # c = b0-a0*m
-        # xtransform = lambda t,c=c,m=m:c+m*t
-        # a0,b0,a1,b1 = xydpi_xyvalue0[0][1],xydpi_xyvalue0[1][1],xydpi_xyvalue1[0][1],xydpi_xyvalue1[1][1]
-        # m = (b1-b0)/(a1-a0)
-        # c = b0-a0*m
-        # ytransform = lambda t,c=c,m=m:c+m*t
-        # for t in retval:
-            # t[0],t[1] = xtransform(t[0]),ytransform(t[1])
-    # return(retval)
+):
+    """Get all segments in a postscript file. That is, an 'm' command
+    followed by an 'l' command. Could find points if 'm' without an 'l' or
+    extend to look for 'moveto' and 'lineto' commands."""
+    data = file_to_string(filename).split() # load as list split on all whitespace
+    retval = []                  # line segments
+    ## loop through looking for line segments
+    i = 0
+    while (i+3)<len(data):
+        if data[i]=='m' and data[i+3]=='l': # at least one line segment
+            x,y = [float(data[i-1])],[-float(data[i-2])]
+            while (i+3)<len(data) and data[i+3]=='l':
+                x.append(float(data[i+2]))
+                y.append(-float(data[i+1]))
+                i += 3
+            retval.append([x,y])
+        i += 1
+    ## make into arrays
+    for t in retval:
+        t[0],t[1] = np.array(t[0],ndmin=1),np.array(t[1],ndmin=1)
+    ## transform to match axes if possible
+    if xydpi_xyvalue0 is not None:
+        a0,b0,a1,b1 = xydpi_xyvalue0[0][0],xydpi_xyvalue0[1][0],xydpi_xyvalue1[0][0],xydpi_xyvalue1[1][0]
+        m = (b1-b0)/(a1-a0)
+        c = b0-a0*m
+        xtransform = lambda t,c=c,m=m:c+m*t
+        a0,b0,a1,b1 = xydpi_xyvalue0[0][1],xydpi_xyvalue0[1][1],xydpi_xyvalue1[0][1],xydpi_xyvalue1[1][1]
+        m = (b1-b0)/(a1-a0)
+        c = b0-a0*m
+        ytransform = lambda t,c=c,m=m:c+m*t
+        for t in retval:
+            t[0],t[1] = xtransform(t[0]),ytransform(t[1])
+    return(retval)
 
-# def bibtex_file_to_dict(filename):
-    # """Returns a dictionary with a pybtex Fielddict, indexed by bibtex
-    # file keys."""
-    # from pybtex.database import parse_file
-    # database  = parse_file(filename)
-    # entries = database.entries
-    # retval_dict = dict()
-    # for key in entries:
-        # fields = entries[key].rich_fields
-        # retval_dict[key] = {key:str(fields[key]) for key in fields}
-    # return(retval_dict)
-
-
+def bibtex_file_to_dict(filename):
+    """Returns a dictionary with a pybtex Fielddict, indexed by bibtex
+    file keys."""
+    from pybtex.database import parse_file
+    database  = parse_file(filename)
+    entries = database.entries
+    retval_dict = dict()
+    for key in entries:
+        fields = entries[key].rich_fields
+        retval_dict[key] = {key:str(fields[key]) for key in fields}
+    return(retval_dict)
 
 ##############################################################
 ## functions for time series / spectra / cross sections etc ##
@@ -5372,58 +3160,6 @@ def fit_spline_to_extrema_or_median(
         # return xspline,yspline,yf
     return xspline,yspline,yf
 
-# def piecewise_sinusoid(x,regions,order=3):
-    # """"""
-    # sinusoid = np.full(x.shape,0.0)
-    # xmid = []
-    # As = []
-    # for iregion,(xbeg,xend,amplitude,frequency,phase) in enumerate(regions):
-        # if iregion <= len(regions):
-            # i = slice(*np.searchsorted(x,[xbeg,xend]))
-        # else:
-            # i = slice(*np.searchsorted(x,[xbeg,np.inf]))
-        # sinusoid[i] = np.cos(2*constants.pi*(x[i]-xbeg)*float(frequency)+float(phase))
-        # xmid.append((xbeg+xend)/2)
-        # As.append(amplitude)
-    # if len(As) == 1:
-        # ## no spline -- one value only
-        # A = np.full(x.shape,float(As[0]))
-    # else:
-        # A = tools.spline(xmid,As,x,set_out_of_bounds_to_zero=False,check_bounds=False,order=order)
-    # retval = A*sinusoid
-    # return retval
-
-# def piecewise_sinusoid(x,regions,order=3):
-    # """"""
-    # from scipy import constants
-    # # sinusoid = np.full(x.shape,0.0)
-    # xmid = []
-    # As = []
-    # fs = []
-    # p = np.full(x.shape,0.0)
-    # xs = []
-    # for iregion,(xbeg,xend,amplitude,frequency,phase) in enumerate(regions):
-        # i = slice(*np.searchsorted(x,[xbeg,xend]))
-        # if iregion == len(regions)-1:
-            # i = slice(*np.searchsorted(x,[xbeg,xend+np.inf]))
-        # p[i] = float(phase)
-        # xs.append(x[i]-xbeg)
-        # xmid.append((xbeg+xend)/2)
-        # fs.append(float(frequency))
-        # As.append(float(amplitude))
-    # xs = np.concatenate(xs)     # phase adjusted x scale
-    # ## spline interpolate amplitude and frequency. Phase is kept
-    # ## pieciewise-constant
-    # if len(As) == 1:
-        # ## no spline -- one value only
-        # A = np.full(x.shape,float(As[0]))
-        # f = np.full(x.shape,float(fs[0]))
-    # else:
-        # A = spline(xmid,As,x,out_of_bounds='extrapolate',order=order)
-        # f = spline(xmid,fs,x,out_of_bounds='extrapolate',order=1)
-    # retval = A*np.cos(2*constants.pi*xs*f+p)
-    # return retval
-
 def piecewise_sinusoid(x,regions,Aorder=3,forder=3):
     """"""
     from scipy import constants
@@ -5507,53 +3243,6 @@ def fit_piecewise_sinusoid(
         plotting.legend()
         plotting.show()
     return regions
-
-# def localmax(x):
-    # """Return array indices of all local (internal) maxima. The first point is returned
-    # for adjacent equal points that form a maximum."""
-    # j = np.append(np.argwhere(x[1:]!=x[0:-1]),len(x)-1)
-    # y = x[j]
-    # i = np.squeeze(np.argwhere((y[1:-1]>y[0:-2])&(y[1:-1]>y[2:]))+1)
-    # return np.array(j[i],ndmin=1)
-
-# def localmin(x):
-    # """Return array indices of all local (internal) minima. The first point is returned
-    # for adjacent equal points that form a minimum."""
-    # return localmax(-x)
-
-# # def down_sample(x,y,dx):
-    # # """Down sample into bins dx wide.
-    # # An incomplete final bin is discarded.
-    # # Reduce the number of points in y by factor, summing
-    # # n-neighbours. Any remaining data for len(y) not a multiple of n is
-    # # discarded. If x is given, returns the mean value for each bin, and
-    # # return (y,x)."""
-    # # if x is None:
-        # # return np.array([np.sum(y[i*n:i*n+n]) for i in range(int(len(y)/n))])
-    # # else:
-        # # return np.array(
-            # # [(np.sum(y[i*n:i*n+n]),np.mean(x[i*n:i*n+n])) for i in range(int(len(y)/n))]).transpose()
-
-# def average_to_grid(x,y,xgrid):
-    # """Average y on grid-x to a new (sparser) grid. This might be useful
-    # when you want to average multiple noisy traces onto a common
-    # grid. Splining wont work because of the noise."""
-    # i = ~np.isnan(y);x,y = x[i],y[i] # remove bad data, i.e., nans
-    # ygrid = np.ones(xgrid.shape)*np.nan
-    # ## loop over output grid - SLOW!
-    # for i in np.argwhere((xgrid>x[0])&(xgrid<x[-1])):
-        # if i==0:
-            # ## first point, careful about bounds
-            # j = False*np.ones(x.shape,dtype=bool)
-        # elif i==len(xgrid)-1:
-            # ## first point, careful about bounds
-            # j = False*np.ones(x.shape,dtype=bool)
-        # else:
-            # ## find original data centred around current grid point
-            # j = (x>0.5*(xgrid[i]+xgrid[i-1]))&(x<=0.5*(xgrid[i]+xgrid[i+1]))
-        # if j.sum()>0:
-            # ygrid[i] = y[j].sum()/j.sum()
-    # return ygrid
 
 def bin_data(x,n,mean=False):
     """Reduce the number of points in y by factor n, either summing or computing the mean of 
@@ -5714,3 +3403,4 @@ def lambdify_sympy_expression(
     arglist = list(args) + [f'{key}={repr(val)}' for key,val in kwargs.items()] 
     eval_expression = f'lambda {",".join(arglist)},**kwargs: np.asarray({t},dtype=float)' # NOTE: includes **kwargs
     return eval(eval_expression)
+
