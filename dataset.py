@@ -43,8 +43,8 @@ class Dataset(optimise.Optimiser):
     ## a default.
     vector_subkinds = {
         'value' :  { 'description' : 'Value of this data'                          }           , 
-        'unc'   :  { 'description' : 'Uncertainty'                                 , 'default' : 0.0   , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '8.2e' ,  }  , 
-        'step'  :  { 'description' : 'Default numerical differentiation step size' , 'default' : 1e-8  , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '8.2e' ,  }  , 
+        'unc'   :  { 'description' : 'Uncertainty'                                 , 'default' : 0.0   , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '0.1e' ,  }  , 
+        'step'  :  { 'description' : 'Default numerical differentiation step size' , 'default' : 1e-8  , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '0.1e' ,  }  , 
         'vary'  :  { 'description' : 'Whether to vary during optimisation'         , 'default' : False , 'kind' : 'b' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : tools.convert_to_bool_vector_array , 'fmt'    : ''           ,       }        , 
         'ref'   :  { 'description' : 'Source reference'                            , 'default' : nan   , 'kind' : 'U' , 'cast'        : lambda x : np.array(x , dtype='U20') , 'fmt'                              : 's'      ,              }       , 
     }
@@ -227,13 +227,16 @@ class Dataset(optimise.Optimiser):
         elif subkey in self.vector_subkinds:
             ## combine indices -- might need to sort value if an index array is given
             combined_index = self.get_combined_index(index,match,**match_kwargs)
-            ## reduce index and value to changed data only
+            ## reduce index and value to changed data only. If nothing
+            ## has changed return without setting anything.
             if set_changed_only and self.is_set(key,subkey):
                 index_changed = self[key,subkey,combined_index] != value
                 if combined_index is None:
-                    combined_index = index_changed
+                    combined_index = tools.find(index_changed)
                 else:
                     combined_index = combined_index[index_changed]
+                if len(combined_index) == 0:
+                    return
                 if tools.isiterable(value):
                     value = np.array(value)[index_changed]
             ## set value or other subdata
@@ -723,8 +726,8 @@ class Dataset(optimise.Optimiser):
             match=None,
             return_bool=False,
             **match_kwargs):
-        """Combined specified index with match arguments as integer array. If
-        no data given the return None"""
+        """Combined specified index with match arguments as integer
+        array. If no data given the return None"""
         ## combine match dictionaries
         if match is None:
             match = {}
@@ -1697,7 +1700,7 @@ class Dataset(optimise.Optimiser):
         if not simple and self.description not in (None,''):
             retval += f'[description]\n{self.description}\n'
         if len(self.attributes) > 0:
-            retval += f'[attributes]\n'+'\n'.join([f'{repr(tkey):20} : {repr(tval)}' for tkey,tval in self.attributes.items()])+'\n'
+            retval += f'[attributes]\n'+'\n'.join([f'{repr(tkey)}: {repr(tval)}' for tkey,tval in self.attributes.items()])+'\n'
         if formatted_metadata != []:
             retval += '[metadata]\n'+'\n'.join(formatted_metadata)
         if columns != []:
@@ -2071,13 +2074,18 @@ class Dataset(optimise.Optimiser):
             if match is not None:
                 self.limit_to_match(match)
 
-    def load_from_parameters_dict(self,parameters):
+    def load_from_parameters_dict(
+            self,
+            parameters,         # a dictionary
+            index_key='key',
+    ):
         """Load a dictionary of dictionaries
         recursively. Subdictionary keys are joined to their parent key
         with '_'.  Only scalar data, Parameters, and dictionaries with
         string keys are added. Everything else is ignored completely
         and silently."""
         def recursively_flatten_scalar_dict(data,prefix=''):
+            """Join keys of successive subdicts with '_' until a scalar value of Parameter is reach."""
             from .optimise import Parameter
             retval = {}
             for key,val in data.items():
@@ -2089,28 +2097,38 @@ class Dataset(optimise.Optimiser):
                         retval[key] = val.value
                         retval[key+':unc'] = val.unc
                     elif isinstance(val,dict):
+                        ## subdict -- join to key
                         tdata = recursively_flatten_scalar_dict(val,prefix=key+'_')
                         for tkey,tval in tdata.items():
                             retval[tkey] = tval
+                    else:
+                        ## ignore other kinds of data
+                        pass
             return retval
-        ## load columns
-        data = {}
+        ## load data into vectors
+        data = {}               
         for i,(keyi,datai) in enumerate(parameters.items()):
             ## new data point
             datai = recursively_flatten_scalar_dict(datai)
-            datai['key'] = keyi
-            ## ensure key consistency
+            datai[index_key] = keyi 
+            ## initialise vectors
             for key in datai:
                 if key not in data:
                     if i==0:
                         data[key] = []
                     else:
+                        ## missing data thus far, initalise nans -- SHOULD BE
+                        ## GENERALISED
                         data[key] = [nan for i in range(i)]
+            ## append to vectors
             for key in data:
+                ## missing data in this row, set to nan, -- SHOULD BE
+                ## GENERALISED
                 if key not in datai:
                     datai[key] = nan
             for key,val in datai.items():
                 data[key].append(val)
+        ## add to self
         self.load_from_dict(data,flat=True)
 
 
