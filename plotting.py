@@ -2515,12 +2515,14 @@ def annotate_spectrum_by_branch(
     if label_key is not None and not line.is_known(label_key):
         label_key = None
     line.assert_known(xkey)
-    line.assert_known(label_key)
+    if label_key is not None:
+        line.assert_known(label_key)
     retval = []
     iz = 0
     for iz,(qn,zline) in enumerate(line.unique_dicts_matches(*zkeys)):
         zline.assert_known(xkey)
-        zline.assert_known(label_key)
+        if label_key is not None:
+            zline.assert_known(label_key)
         if match_qn is not None:
             zline.limit_to_matches(**match_qn)
         if len(zline)==0: continue
