@@ -178,18 +178,18 @@ def format_dict(
     retval = '\n'.join(lines)
     return retval
 
-def load_dict(filename,name_or_names):
+def load_dict(filename,attrs):
     """Import filename and return a dictionary of its named attributes. If
     name is a string, return the value of that attribute.  If it is a
-    list of strings then return a dictionary of attribute.."""
+    list of strings then return a dictionary of attributes."""
     ## import file as 'temporary_module'
     from importlib.machinery import SourceFileLoader
     module = SourceFileLoader('_import_data_temporary_module',filename).load_module()
     ## get requested attributes
-    if isinstance(name_or_names,str):
-        retval = getattr(module,name_or_names)
+    if isinstance(attrs,str):
+        retval = getattr(module,attrs)
     else:
-        retval = {name:getattr(module,name) for name in name_or_names}
+        retval = {t:getattr(module,t) for t in attrs}
     ## as far as possible unimport module so different data can be
     ## loaded/reloaded with this function
     sys.modules.pop('_import_data_temporary_module')
