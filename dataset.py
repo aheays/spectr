@@ -1774,7 +1774,7 @@ class Dataset(optimise.Optimiser):
                     d['dtype'] = str(self[key,subkey].dtype)
                     d['memory'] = sys.getsizeof(self._data[key][subkey])
                     total_memory += d['memory']
-                    d['units'] = (self[key,'units'] if subkey == 'value' else '')
+                    d['units'] = (self[key,'units'] if subkey == 'value' and self.is_known(key,'units') else '')
                     d['description'] = (self[key,'description'] if subkey == 'value'
                                         else self.vector_subkinds[subkey]['description'])
                     data.append(d)
@@ -1788,11 +1788,12 @@ class Dataset(optimise.Optimiser):
             print(f'description: {self.description!r}')
         for key,val in self.attributes.items():
             print(f'attribute: {key}: {val!r}')
-        if np.all(data['units']==''):
-            data.pop('units')
-        if np.all(data['subkey']=='value'):
-            data.pop('subkey')
-        print(data)
+        if len(data) > 0:
+            if np.all(data['units']==''):
+                data.pop('units')
+            if np.all(data['subkey']=='value'):
+                data.pop('subkey')
+            print(data)
 
     def format_as_list(self):
         """Form as a valid python list of lists. OBSOLETE?"""
