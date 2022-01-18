@@ -2063,7 +2063,12 @@ def convolve_with_padding(x,y,xconv,yconv):
     yout = scipy.signal.oaconvolve(ypad,yconv,mode='same')[npadding:npadding+len(x)]
     return yout
 
-def convolve_with_gaussian(x,y,fwhm,fwhms_to_include=10,regrid_if_necessary=False):
+def convolve_with_gaussian(
+        x,y,
+        fwhm,
+        fwhms_to_include=10,
+        regrid_if_necessary=False,
+):
     """Convolve function y(x) with a gaussian of FWHM fwhm. Truncate
     convolution after a certain number of fwhms. x must be on a
     regular grid."""
@@ -3395,7 +3400,7 @@ def lambdify_sympy_expression(
     import sympy
     ## make into a python string
     # t =  cached_pycode(sympy_expression,fully_qualified_modules=False)
-    t =  sympy.printing.pycode.pycode(sympy_expression,fully_qualified_modules=False)
+    t =  sympy.printing.pycode(sympy_expression,fully_qualified_modules=False)
     ## replace math functions
     for t0,t1 in (('sqrt','np.sqrt'),):
         t = t.replace(t0,t1)
