@@ -2551,6 +2551,7 @@ class FitAbsorption():
                 plotting.legend(ax=ax)
         ## finalise plot
         fig.suptitle(self.name)
+        return fig
         
 
     def make_model(
@@ -2566,11 +2567,10 @@ class FitAbsorption():
             fit_pair=False,              # fit species pressure broadening (air coefficients)
             fit_scalex=False,            # fit uniformly scaled frequency  
             fit_sinusoid=False,          # fit sinusoidally varying intensity
-            sinusoid_spline_step=50,     # separation of points in the spline scale
+            sinusoid_spline_step=50,     # separation of points in the spline describing the sinusoidal variation
             fit_instrument=False,        # fit instrumental broadening
             fit_temperature=False,       # fit excitation/Doppler temperature
             fit_FTS_H2O=False,           # fit column density and air-broadening coefficient to H2O in the spectrometer
-            name=None,
             verbose=None,                # print more info for debugging
     ):
         """Make a model for fitting to the experimental spectrum.  Probably
@@ -2613,9 +2613,10 @@ class FitAbsorption():
         ## whether to adjust experiment frequency scale
         p['scalex'].vary = fit_scalex
         ## start model
-        if name is None:
-            name='_'.join(list(species_to_fit)+[str(t) for t in region])
-        model = Model(name=name,experiment=self.experiment,xbeg=xbeg,xend=xend)
+        model = Model(
+            name='_'.join(list(species_to_fit)+[str(t) for t in region]),
+            experiment=self.experiment,xbeg=xbeg,xend=xend
+        )
         if verbose:
             if (xbeg,xend) == region:
                 print(f'make_model: {model.name}')
