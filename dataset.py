@@ -29,7 +29,6 @@ class Dataset(optimise.Optimiser):
     ## default prototype data
     data_kinds = {
         'f': {'description': 'float'         , 'cast': lambda x: np.array(x,dtype=float) , 'fmt': '+12.8e', },
-        'f': {'description': 'float'         , 'cast': lambda x: np.array(x,dtype=float) , 'fmt': '+12.8e', },
         'a': {'description': 'positive float', 'cast': lambda x: np.array(x,dtype=float) , 'fmt': '+12.8e', },
         'i': {'description': 'int'           , 'cast': lambda x: np.array(x,dtype=int)   , 'fmt': 'd'     , },
         'b': {'description': 'bool'          , 'cast': tools.convert_to_bool_vector_array  , 'fmt': ''      , },
