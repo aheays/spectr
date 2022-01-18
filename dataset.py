@@ -58,7 +58,7 @@ class Dataset(optimise.Optimiser):
         'cast'           : {'description':'Vectorised function to cast data',},
         'fmt'            : {'description':'Format string for printing',},
         'description'    : {'description':'Description of data',},
-        'units'          : {'description':'Units of data','default':''},
+        'units'          : {'description':'Units of data'},
         'default'        : {'description':'Default value',},
         'default_step'   : {'description':'Default differentiation step size','valid_kinds':('f',)},
         '_inferred_to'   : {'description':'List of keys inferred from this data',},
@@ -1516,7 +1516,6 @@ class Dataset(optimise.Optimiser):
             keys = list(self.keys())
         ## add data
         retval = {}
-        # retval['classname'] = self.classname
         retval['description'] = self.description
         if len(self.attributes) > 0:
             retval['attributes'] = self.attributes
@@ -1531,6 +1530,7 @@ class Dataset(optimise.Optimiser):
             'classname':self.classname,
             'description': f'spectr.Dataset directory format version {__version__} (https://github.com/aheays/spectr)',
             'version':__version__,
+            'creation_date':tools.date_string(),
             }
         return retval
      
@@ -1919,33 +1919,44 @@ class Dataset(optimise.Optimiser):
             load_function_kwargs.setdefault('delimiter',',')
         else:
             raise Exception(f"Unrecognised data filetype: {filename=} {filetype=}")
-        data,more_kwargs = load_function(**load_function_kwargs)
-        ## extract class name, alternatively return it at once
-        if 'classname' in data:
-            data['classname'] = str(data['classname']).strip(' "\'')
-            ## hacks for changed classnames
-            hack_changed_classnames = {
-                'levels.Atomic':'levels.Atom',
-                'levels.Diatomic':'levels.Diatom',
-                'levels.LinearDiatomic':'levels.Diatom',
-                'levels.Triatomic':'levels.Triatom',
-                'levels.LinearTriatomic':'levels.LinearTriatom',
-                'lines.Atomic':'lines.Atom',
-                'lines.Diatomic':'lines.Diatom',
-                'lines.LinearDiatomic':'lines.Diatom',
-                'lines.Triatomic':'lines.Triatom',
-                'lines.LinearTriatomic':'lines.LinearTriatom',
-            }
-            if data['classname'] in hack_changed_classnames:
-                warnings.warn(f'Changing old classname {data["classname"]!r} into new {hack_changed_classnames[data["classname"]]!r}')
-                data['classname'] = hack_changed_classnames[data["classname"]]
+        data_dict,more_kwargs = load_function(**load_function_kwargs)
+        ## deduce classname
+        if 'classname' in data_dict:
+            classname = data_dict.pop('classname')
+        elif ('format' in data_dict
+              and isinstance(data_dict['format'],dict)
+              and 'classname' in data_dict['format']):
+            classname = data_dict['format']['classname']
+        else:
+            classname = None
+        ## hack -- sometimes classname is quoted, so remove them
+        if isinstance(classname,str):
+            classname = str(classname).strip('" \'"')
+        ## hacks for changed deprecated classnames
+        hack_changed_classnames = {
+            'levels.Atomic':'levels.Atom',
+            'levels.Diatomic':'levels.Diatom',
+            'levels.LinearDiatomic':'levels.Diatom',
+            'levels.Triatomic':'levels.Triatom',
+            'levels.LinearTriatomic':'levels.LinearTriatom',
+            'lines.Atomic':'lines.Atom',
+            'lines.Diatomic':'lines.Diatom',
+            'lines.LinearDiatomic':'lines.Diatom',
+            'lines.Triatomic':'lines.Triatom',
+            'lines.LinearTriatomic':'lines.LinearTriatom',
+        }
+        if classname in hack_changed_classnames:
+            warnings.warn(f'Changing old classname {classname!r} into new {hack_changed_classnames[classname]!r}')
+            classname = hack_changed_classnames[classname]
+        ## return classname only
         if return_classname_only:
-            if 'classname' in data:
-                return data['classname']
-            else:
-                return None
+            return classname
+        else:
+            ## test loaded classname matches self
+            if classname is not None and classname != self.classname:
+                warnings.warn(f'The loaded classname {repr(data_dict["classname"])} does not match self {repr(self.classname)}')
         ## load data into self
-        self.load_from_dict(data,**load_from_dict_kwargs,**more_kwargs)
+        self.load_from_dict(data_dict,**load_from_dict_kwargs,**more_kwargs)
 
     def load_from_dict(
             self,
@@ -1992,29 +2003,16 @@ class Dataset(optimise.Optimiser):
                     key = re.sub(match_re,sub_re,key)
                 if key != original_key:
                     data_dict[key] = data_dict.pop(original_key)
-        ## hack -- sometimes classname is quoted, so remove them
-        if 'classname' in data_dict:
-            # data_dict['classname'] = str(data_dict['classname']).strip('" \'"')
-            data_dict['classname'] = data_dict['classname']
-        ## test loaded classname matches self
-        if 'classname' in data_dict:
-            if data_dict['classname'] != self.classname:
-                warnings.warn(f'The loaded classname, {repr(data_dict["classname"])}, does not match self, {repr(self.classname)}, and it will be ignored.')
-            data_dict.pop('classname')
         ## build structured data_dict from flat data_dict 
         if flat:
             flat_data_dict = data_dict
             data_dict = {'data':{}}
             for key,val in flat_data_dict.items():
-                if key == 'classname':
-                    ## classname attribute
-                    data_dict['classname'] = str(val)
-                elif key == 'description':
+                if key == 'description':
                     ## description attribute
                     self.description = str(val)
                 else:
-                    if r:=re.match(r'([^:]+)[:]([^:]+)',key): # proper regexp
-                    ## if r:=re.match(r'([^:,]+)[:,]([^:,]+)',key): # HACK TO INCLUDE , SEPARATOR, REMOVE THIS ONE DAY 2021-06-22
+                    if r:=re.match(r'([^:]+)[:]([^:]+)',key): 
                         key,subkey = r.groups()
                     else:
                         subkey = 'value'
@@ -2024,9 +2022,9 @@ class Dataset(optimise.Optimiser):
         ## present in data_dict then ignore it
         if metadata is not None:
             for key,info in metadata.items():
-                if key in data_dict:
+                if key in data_dict['data']:
                     for subkey,val in info.items():
-                        data_dict[key][subkey] = val
+                        data_dict['data'][key][subkey] = val
         ## 2021-06-11 HACK TO ACCOUNT FOR DEPRECATED ATTRIBUTES DELETE ONE DAY
         if 'default_step' in data_dict: # HACK
             data_dict.pop('default_step') # HACK
@@ -2131,18 +2129,15 @@ class Dataset(optimise.Optimiser):
         ## add to self
         self.load_from_dict(data,flat=True)
 
-
     def _load_from_directory(self,filename):
         """Load data stored in a structured directory tree."""
         data_dict = tools.directory_to_dict(filename,evaluate_strings=True)
         ## determine file formatting and version of spectr used to
         ## save this directory
-        if 'format' in data_dict and isinstance(data_dict['format'],dict):
-            file_format = data_dict.pop('format')
-        else:
-            file_format = {}
-        if 'version' in file_format:
-            version = file_format['version']
+        if ('format' in data_dict
+            and isinstance(data_dict['format'],dict)
+            and 'version' in data_dict['format']):
+            version = data_dict['format']['version']
         else:
             version = None
         ## make any modificatiosn to make this compatible with the
@@ -2665,7 +2660,7 @@ class Dataset(optimise.Optimiser):
             fig = plt.gcf()
             fig.clf()
         elif isinstance(fig,int):
-            fig = plotting.qfig()
+            fig = plotting.qfig(fig)
         ## xkey, ykeys, zkeys
         if xkeys is None:
             if self.default_xkeys is not None:
