@@ -398,7 +398,7 @@ def get_level(
             if filename in _get_level_cache:
                 level = _get_level_cache[filename].copy()
             else:
-                level = dataset.load(level_filename)
+                level = dataset.load(filename)
                 _get_level_cache[filename] = level.copy()
         else:
             level = dataset.load(filename)
