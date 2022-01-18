@@ -77,6 +77,13 @@ class _Store(dict):
         """Save to file containing represenatino of self"""
         tools.string_to_file(filename,f'from spectr.env import *\nstore = {repr(self)}')
 
+    def __ior__(self,other_dict_like):
+        """In place addition of key or substitution like a dictionary using |=."""
+        for key in other_dict_like.keys():
+            self[key] = other_dict_like[key]
+        return self
+
+
 
 class CustomBool():
     """Create Boolean alternatives to True and False."""
@@ -516,7 +523,6 @@ class Optimiser:
                 if suboptimiser.include_in_save_to_directory:
                     tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/')
                     try:
-                        raise Exception("ddd")
                         os.symlink(
                             f'../../{suboptimiser._unique_name}',
                             f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
@@ -640,17 +646,6 @@ class Optimiser:
     ## get last_construct_time in a protected way
     last_construct_time = property(lambda self: self._last_construct_time)
 
-    def _cast_residual(self,residual):
-        """Make sure residual is a list of residuals, or empty."""
-        if residual is None:
-            return []
-        elif np.isscalar(residual):
-            return [residual]
-        elif len(residual)==0:
-            return []
-        else:
-            return residual
-    
     def construct(self,clean=False):
         """Run all construct functions and return collected residuals. If
         clean is True then discard all cached data and completely
@@ -692,10 +687,18 @@ class Optimiser:
                     o._first_construct = False
                 else:
                     construct_functions = list(o._construct_functions.values()) + list(o._post_construct_functions.values())[::-1]
-                ## run construct functions, get residual if there is one
+                ## run construct functions, get residual if there is
+                ## one, make sure residual is a list of residuals, or
+                ## empty.
                 for f in construct_functions:
                     residual = f()
-                    residual = self._cast_residual(residual)
+                    # residual = self._cast_residual(residual)
+                    if residual is None:
+                        residual = []
+                    elif np.isscalar(residual):
+                        residual = [residual]
+                    elif len(residual)==0:
+                        residual= []
                     o.residual.append(residual) # add residual to overall residual
                 ## combine construct function residuals into one
                 if o.residual is not None and len(o.residual)>0:
@@ -822,7 +825,6 @@ class Optimiser:
     def optimise(
             self,
             verbose=True,
-            method=None,
             ncpus=1, # Controls the use of multiprocessing of the Jacobian
             monitor_parameters=False, # print parameters every iteration
             monitor_frequency='significant rms decrease', # run monitor functions 'never', 'end', 'every iteration', 'rms decrease', 'significant rms decrease'
@@ -870,52 +872,40 @@ class Optimiser:
             else:
                 self._make_plot = None    
             ## collect options for least squares fit
-            x0,diff_step = [],[]
-            for pi,stepi in zip(parameters['value'],parameters['step']):
-                x0.append(pi)
-                ## logic necessary to get correct stepsize into least_squares
-                if pi < 1:
-                    diff_step.append(stepi)
-                else:
-                    diff_step.append(stepi/abs(pi))
             least_squares_options |= {
                 'fun':self._optimisation_function,
-                'x0':x0,
-                'diff_step':diff_step,
-                # 'x0':np.full(number_of_parameters,0),
-                # 'diff_step':np.full(number_of_parameters,1),
-                ## 'x0':copy(self._initial_p),
-                ## 'diff_step':copy(self._initial_step),
-                ## 'diff_step':1e-8,
-                # 'xtol':(1e-10 if xtol is None else xtol),
-                # 'ftol':(1e-10 if ftol is None else ftol),
-                # 'gtol':(1e-10 if gtol is None else gtol),
-                'gtol':None,
-                # 'max_nfev':max_nfev,
-                'method':None,
+                'x0':parameters['value'],
+                'method':'trf',
+                ## 'method':'lm',  
                 'jac':'2-point',
                 }
-            ## maximum number of iterations -- approx
-            # if maxiter is not None:
-                # least_squares_options['max_nfev'] = maxiter 
             ## get a default method
-            if least_squares_options['method'] is None:
-                if number_of_parameters == 1:
-                    # least_squares_options['method'] = 'lm'
-                    least_squares_options['method'] = 'trf'
-                else:
-                    least_squares_options['method'] = 'trf'
             if least_squares_options['method'] == 'lm':
                 ## use 'lm' Levenberg-Marquadt
-                pass
+                least_squares_options |= {
+                    'x_scale':'jac',
+                    'loss':'linear',
+                    ## correct diff step for method=lm?!?
+                    'diff_step':1e-8,
+                    # 'diff_step':array([step if abs(x)<1 else step/abs(x)
+                                 # for x,step in zip(parameters['value'],parameters['step'])]),
+                }
             elif least_squares_options['method'] == 'trf':
                 ## use 'trf' -- trust region
-                least_squares_options['x_scale'] = 'jac'
-                least_squares_options['loss'] = 'linear'
+                least_squares_options |= {
+                    'x_scale':'jac',
+                    'loss':'linear',
+                    'gtol':None,
+                    ## logic necessary to get correct stepsize into
+                    ## least_squares, some weird algorithm within
+                    ## scipy.
+                    'diff_step':[step if abs(x)<1 else step/abs(x)
+                                 for x,step in zip(parameters['value'],parameters['step'])],
+                }
                 if number_of_parameters < 5:
-                    least_squares_options['tr_solver'] = 'exact'
+                    least_squares_options |= {'tr_solver':'exact',}
                 else:
-                    least_squares_options['tr_solver'] = 'lsmr'
+                    least_squares_options |= {'tr_solver':'lsmr',}
                 ## set bounds
                 least_squares_options['bounds'] = (parameters['lower_bound'], parameters['upper_bound'])
             else:
