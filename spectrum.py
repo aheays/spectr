@@ -71,7 +71,15 @@ class Experiment(Optimiser):
         self.background = None  # on same grid as x and y, the "background" spectrum – whatever that means
 
     @optimise_method()
-    def set_spectrum(self,x,y,xbeg=None,xend=None,_cache=None,**experimental_parameters):
+    def set_spectrum(
+            self,
+            x,y,
+            xbeg=None,
+            xend=None,
+            xspline=None,
+            _cache=None,
+            **experimental_parameters
+    ):
         """Set x and y as the experimental spectrum. With various safety
         checks. Not optimisable, no format_input_function."""
         if self._clean_construct:
@@ -92,6 +100,22 @@ class Experiment(Optimiser):
                 raise Exception('only one point in spectrum')
             self.experimental_parameters['xbeg'] = xbeg 
             self.experimental_parameters['xend'] = xend
+            ## spline to a new grid:
+            if xspline == 'auto':
+                ## respline the data to the smallest trid step in its range
+                dx = np.min(np.diff(x))
+                xnew = linspace(x[0],x[-1],int((x[-1]-x[0])/dx)+1)
+                ynew = tools.spline(x,y,xnew)
+                x,y = xnew,ynew
+            elif tools.isnumeric(xspline):
+                ## respline to given grid step
+                dx = np.min(np.diff(x))
+                xnew = arange(x[0],x[-1],xspline)
+                ynew = tools.spline(x,y,xnew)
+                x,y = xnew,ynew
+            elif tools.isnumeric(xspline):
+                ## respline to given grid
+                x,y = xspline,tools.spline(x,y,xspline)
             ## check for regular x grid
             t0,t1 = np.diff(x).min(),np.diff(x).max()
             assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
@@ -696,11 +720,8 @@ class Model(Optimiser):
                     y = np.exp(-y)
                 return y
             y = _calculate_spectrum(line_copy,None)
-            ## important data — only update spectrum if these have
-            ## changed -- HACK
-            data = {key:line_copy[key] for key in ('ν',ykey,'ΓL','ΓD') if line_copy.is_known(key)}
             ## cache
-            _cache['data'] = data
+            _cache['line_copy_prev'] = line_copy.copy()
             _cache['y'] = y
             _cache['imatch'] = imatch
             _cache['nmatch'] = nmatch
@@ -711,7 +732,7 @@ class Model(Optimiser):
             ## subsequent runs -- maybe only recompute a few line
             ##
             ## load cache
-            data = _cache['data']
+            line_copy_prev = _cache['line_copy_prev']
             y = _cache['y']
             imatch = _cache['imatch']
             nmatch = _cache['nmatch']
@@ -748,9 +769,9 @@ class Model(Optimiser):
                         ## ykey has changed
                         and (line_copy[ykey,'_modify_time'] > self._last_construct_time)
                         ## no key other than ykey has changed
-                        and (np.all([line_copy[key,'_modify_time'] < self._last_construct_time for key in data if key != ykey]))
+                        and (np.all([line_copy[key,'_modify_time'] < self._last_construct_time for key in line_copy_prev if key != ykey]))
                         ## ykey has changed by a near-constant factor -- RISKY!!!!
-                        and _similar_within_fraction(data[ykey],line_copy[ykey])
+                        and _similar_within_fraction(line_copy_prev[ykey],line_copy[ykey])
                         ## if ymin is set then scaling is dangerous -- lines can fail to appear when scaled up
                         and (ymin is None or ymin == 0)
                 ):
@@ -760,33 +781,37 @@ class Model(Optimiser):
                     if verbose:
                         print(f'add_line: {line.name}: constant factor scaling all lines')
                     ## ignore zero values
-                    i = (line_copy[ykey]!=0)&(data[ykey]!=0)
-                    scale = np.mean(line_copy[ykey,i]/data[ykey][i])
+                    i = (line_copy[ykey]!=0)&(line_copy_prev[ykey]!=0)
+                    scale = np.mean(line_copy[ykey,i]/line_copy_prev[ykey][i])
                     if kind == 'absorption':
                         y = y**scale
                     else:
                         y = y*scale
+                    ## new previous data
+                    _cache['data'] = line_copy.copy()
+
                 elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
                     ## recalculation
                     if verbose:
                         print(f'add_line: {line.name}: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
+                    ## new previous data
+                    _cache['data'] = line_copy.copy()
                 elif nchanged > 0:
                     ## a few lines have changed, update these only
                     if verbose:
                         print(f'add_line: {line.name}: {nchanged} lines have changed, recalculate these')
                     ## temporary object to calculate old spectrum
-                    line_old = dataset.make(
-                        classname=line_copy.classname,
-                        **{key:data[key][ichanged] for key in data})
-                    yold = _calculate_spectrum(line_old,None)
+                    yold = _calculate_spectrum(line_copy_prev,None)
                     ## partial recalculation
                     ynew = _calculate_spectrum(line_copy,ichanged)
                     if kind == 'absorption':
                         y = y * ynew / yold
                     else:
                         y = y + ynew - yold
+                    ## new previous data
+                    _cache['data'] = line_copy.copy()
                 else:
                     ## nothing changed keep old spectrum
                     pass
@@ -802,7 +827,6 @@ class Model(Optimiser):
         else:
             self.y += y
         _cache['y'] = y
-        _cache['data'] = {key:line_copy[key] for key in data}
         _cache['set_keys_vals'] = {key:(val.value if isinstance(val,Parameter) else val) for key,val in set_keys_vals.items()}
         if verbose:
             print(f'add_line: {line.name}: time = {timestamp()-timer_start:0.3e}')
@@ -2614,7 +2638,7 @@ class FitAbsorption():
         p['scalex'].vary = fit_scalex
         ## start model
         model = Model(
-            name='_'.join(list(species_to_fit)+[str(t) for t in region]),
+            name='_'.join(['model']+list(species_to_fit)+[str(t) for t in region]),
             experiment=self.experiment,xbeg=xbeg,xend=xend
         )
         if verbose:
@@ -2832,7 +2856,10 @@ def fit_species_absorption(
     }
     kwargs |= fit_kwargs
     ## load and fit spectrum
-    o = FitAbsorption(filename=filename)
+    o = FitAbsorption(
+        filename=filename,
+        min_S296K=0,
+    )
     o.fit(**kwargs)
     ## print results
     d = o.get_species_dataset()
