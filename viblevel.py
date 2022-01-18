@@ -13,6 +13,8 @@ from . import levels,lines
 from . import quantum_numbers
 from . import tools
 from . import dataset
+from . import database
+from .exceptions import DatabaseException
 from . import plotting
 from .dataset import Dataset
 from .tools import find,cache,timestamp
@@ -277,16 +279,34 @@ class Level(Optimiser):
             return residual
 
     @optimise_method()
-    def add_manifold(self,name,Γv=0,_cache=None,**kwargs):
+    def add_manifold(self,name=None,Γv=0,_cache=None,**kwargs):
         """Add a new electronic vibrational level. kwargs contains fitting
         parameters and optionally extra quantum numbers."""
         ## process inputs
         if self._clean_construct:
-            ## all quantum numbers and molecular parameters
-            kw = quantum_numbers.decode_linear_level(name) | kwargs
+            ## collect all quantum numbers and molecular parameters
+            kw = {}
+            if name is not None:
+                kw |= quantum_numbers.decode_linear_level(name) 
+            kw |= kwargs
             kw['species'] = self.species.name
-            if 'S' not in kw or 's' not in kw or 'Λ' not in kw:
-                raise Exception('Quantum numbers S, s, and Λ are required.')
+            for key in ('S','s','Λ'):
+                if key not in kw:
+                    if 'species' in kw and 'label' in kw:
+                        from . import database
+                        try:
+                            kw[key] = database.get_electronic_state_property(
+                                kw['species'],kw['label'],key)
+                        except DatabaseException as err:
+                            raise Exception(f'Quantum number {key!r} is required and could not be computed from the database.')
+                    else:
+                        raise Exception(f'Quantum number {key!r} is required or "species" and "label" to use the database.')
+            ## ## if name not given, then generate from quantum numbers
+            ## if name is None:
+            ##     name = quantum_numbers.encode_linear_level(
+            ##         {key:kw[key]
+            ##          for key in ('label','Λ','S','s','gu','v',)
+            ##          if key in kw})
             ## check kwargs contains necessary quantum numbers
             for key in ('species','label','S','Λ','s','v'):
                 if key not in kw:
