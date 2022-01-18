@@ -190,7 +190,12 @@ prototypes['conf'] = dict(description="Electronic configuration", kind='U', fmt=
 # @vectorise(cache=True,vargs=(1,2))
 
 ## partition function
-_valid_Zsource = ("self", "HITRAN", "database")
+_valid_Zsource = (
+    "self",                     # calculate from levels in self
+    "HITRAN",                   # access HITRAN through hapy
+    "database",                 # use the internal database of levels
+    'unity',                    # set to 1
+)
 _Zsource_char_length = max(*[len(t) for t in _valid_Zsource])
 def _f2(Zsource):
     retval = np.asarray(Zsource,dtype=f'U{_Zsource_char_length}')
@@ -200,6 +205,12 @@ def _f2(Zsource):
     return retval
 prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', cast=_f2,kind='U', fmt='8s',default='self',infer=[])
 
+def _f6(self,Tex,Zsource):
+    """Get partition function set to unity."""
+    if np.any(Zsource != 'unity'):
+        raise InferException(f'Zsource not all "unity"')
+    Z = np.full(len(self),1.0)
+    return Z
 def _f5(self,species,Tex,Eref,Zsource):
     """Get HITRAN partition function."""
     if np.any(Zsource != 'HITRAN'):
@@ -209,7 +220,6 @@ def _f5(self,species,Tex,Eref,Zsource):
     from . import hitran
     Z = hitran.get_partition_function(species,Tex)
     return Z
-
 def _f4(self,species,Tex,Eref,Zsource):
     """Get partition function from internal database."""
     if np.any(Zsource != 'database'):
@@ -234,11 +244,13 @@ prototypes['Z'] = dict(description="Partition function", kind='f', fmt='<11.3e',
     (('species','Tex','E','Eref','g','_qnhash','Zsource'),_f3),
     (('species','Tex','Eref','Zsource'),_f5),
     (('species','Tex','Eref','Zsource'),_f4),
+    (('Tex','Zsource'),_f6),
 ])
+
 def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
-    """Compute partition function from data in self with separate
-     vibrational temperature. Compute separately for
-    different species and sum over unique levels only."""
+    """Compute vibrational partition function from data in self with
+     separate vibrational temperature. Compute separately for
+     different species and sum over unique levels only."""
     if np.any(Zsource != 'self'):
         raise InferException(f'Zsource not all "self"')
     Zvib = np.full(species.shape,nan)
@@ -250,9 +262,17 @@ def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
         t,k = np.unique(v[i][j],return_index=True)
         Zvib[i] = np.sum(np.exp(-(Tv[i][j][k]-Eref[i][j][k])/(kB*Tvib[0])))
     return Zvib
+def _f7(self,Tvib,Zsource):
+    """Get vibrational partition function set to unity."""
+    if np.any(Zsource != 'unity'):
+        raise InferException(f'Zsource not all "unity"')
+    Zvib = np.full(len(self),1.0)
+    return Zvib
 prototypes['Zvib'] = dict(description="Vibrational partition function", kind='f', fmt='<11.3e', infer=[
     (('species','Tvib','Eref','Tv','v','_qnhash','Zsource'),_f6),
+    (('Tvib','Zsource'),_f7),
 ])
+
 def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
     """Compute partition function from data in self with separate
      vibrational temperature. Compute separately for
@@ -267,8 +287,15 @@ def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
         t,j = np.unique(_qnhash[i],return_index=True)
         Zrot[i] = np.sum(np.exp(-(E[i][j]-Tv[i][j])/(kB*Trot[0])))
     return Zrot
+def _f7(self,Trot,Zsource):
+    """Get vibrational partition function set to unity."""
+    if np.any(Zsource != 'unity'):
+        raise InferException(f'Zsource not all "unity"')
+    Zrot = np.full(len(self),1.0)
+    return Zrot
 prototypes['Zrot'] = dict(description="Vibrational partition function", kind='f', fmt='<11.3e', infer=[
     (('species','Trot','E','Tv','g','v','_qnhash','Zsource'),_f6),
+    (('Trot','Zsource'),_f7),
 ])
 
 ## level populations
@@ -350,10 +377,10 @@ def _f0(self,ef,J):
     i = np.full(ef.shape,+1,dtype=int)
     i[ef==-1] *= -1
     i[J%2==1] *= -1
-    return σi
+    return i
 prototypes['i'] = dict(description="Sign change on inversion, total parity", kind='i',infer=[(('ef','J'),_f0,)])
 prototypes['σv'] = dict(description="Linear molecule sign change on σv reflection", kind='i',infer=[('i',lambda self,i:i,)])
-prototypes['gu'] = dict(description="Sign change on inversion through the centre of symmetry", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'gu'))])
+prototypes['gu'] = dict(description="Sign change on inversion through the centre of symmetry", kind='i',infer=[(('chemical_species','label'),lambda self,chemical_species,label: database.get_electronic_state_property(chemical_species,label,'gu'))], cast=quantum_numbers.decode_gu,)
 prototypes['sa'] = dict(description="Linear molecule sign change on nuclear exchange)", kind='i',infer=[(('i','gu'),lambda self,i,gu: i*gu)])
 def _f0(self,S,Λ,s):
     """Calculate ef symmetry for non-degenerate 1Σ- and 1Σ+ states."""
