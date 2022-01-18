@@ -2560,13 +2560,13 @@ class FitAbsorption():
             other_species=(), # species to model but not fit, defaults to existing list, always includes 'species'
             region=None,       #  key to 'region' parameters if different from (xbeg,xend)
             fit_intensity=False,         # fit background intensity spline, True, False
-            intensity_spline_step=10,    # separation of points in the background intensity spline
+            intensity_spline_step=10,    # separation of points in the background intensity spline 
             fit_shift=False,             # fit baseline shift
             fit_N=False,                 # fit species column densities
             fit_pair=False,              # fit species pressure broadening (air coefficients)
             fit_scalex=False,            # fit uniformly scaled frequency  
             fit_sinusoid=False,          # fit sinusoidally varying intensity
-            sinusoid_spline_step=50,
+            sinusoid_spline_step=50,     # separation of points in the spline scale
             fit_instrument=False,        # fit instrumental broadening
             fit_temperature=False,       # fit excitation/Doppler temperature
             fit_FTS_H2O=False,           # fit column density and air-broadening coefficient to H2O in the spectrometer
@@ -2742,7 +2742,7 @@ class FitAbsorption():
             pregion['sinusoid'].setdefault('spline_step',sinusoid_spline_step)
             pregion['sinusoid'].setdefault(
                 'spline',
-                model.auto_add_piecewise_sinusoid(
+                model.auto_scale_piecewise_sinusoid(
                     xi=pregion['sinusoid']['spline_step'],
                     vary=False,add_construct=False,))
             pspline = pregion['sinusoid']['spline']
@@ -2752,7 +2752,7 @@ class FitAbsorption():
                     & (array([t[1] for t in pspline]) > xbeg)):
                 for parameter in pspline[i][2:]:
                     parameter.vary = fit_sinusoid
-            model.add_piecewise_sinusoid(regions=pspline)
+            model.scale_piecewise_sinusoid(regions=pspline)
         ## return Model object
         return model
         
