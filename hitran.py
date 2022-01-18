@@ -1,6 +1,7 @@
 ## standard library
 import functools
 from copy import deepcopy
+import os,shutil
 
 ## nonstandard library
 import numpy as np
@@ -288,8 +289,9 @@ def get_line(
         species,
         name=None,
         match=None,
-        force_download=False,
-        cache=True,             # cache loaded line for later faster loading
+        force_download=False,   # download HITRAN data even if it is already present
+        force_convert=False,    # recompute line object from HITRAN data even if it is alreay present
+        use_cache=True,             # cache loaded line for later faster loading
         copy_cache=True,        # copy cached line to prevent side effects if loaded twice
         **match_kwargs):
     """Hitran linelist.  If species not an isotopologue then load a list
@@ -301,9 +303,10 @@ def get_line(
     ## delete data directory to force download if requested
     hitran_filename = f'{directory}/hitran_linelist.data'
     line_filename = f'{directory}/line'
-    if not force_download and os.path.exists(line_filename):
-        ## load existing data
-        if cache:
+    if not force_download and not force_convert and os.path.exists(line_filename):
+        ## get data cached on disk
+        if use_cache:
+            ## get data cached in memory
             if line_filename in _get_line_cache:
                 line = _get_line_cache[line_filename]
             else:
@@ -314,42 +317,49 @@ def get_line(
         else:
             line = dataset.load(line_filename)
     else:
-        ## download new data
-        if is_known_chemical_species(species):
-            ## a chemical species -- get natural abundance mixture
-            for j,tspecies in enumerate(get_isotopologues(species)):
-                new_line = get_line(tspecies,force_download=force_download)
-                new_line['isotopologue_ratio'] = get_natural_abundance(tspecies)
-                if j == 0:
-                    line = new_line
-                else:
-                    line.concatenate(new_line)
-            line['chemical_species'] = species
-        elif is_known_species(species):
-            ## an isotopologue download HITRAN linelist if necessary
-            ## and convert lines
-            if not os.path.exists(hitran_filename) or force_download:
+        ## get new data onto disk
+        if is_known_species(species):
+            ## an isotopologue download HITRAN linelist
+            if force_download or not os.path.exists(hitran_filename):
+                ## download new data
                 print(f'Downloading hitran data for {species!r}')
                 download_linelist(species,νbeg=0,νend=999999,data_directory=directory,table_name='hitran_linelist')
-            ## make line object
-            print(f'Making linelist for {species!r}')
-            try:
-                # classname = database.get_species_property(
-                #     database.get_species_property(species,'chemical_species'),
-                #     'classname')
-                classname = database.get_species_property(chemical_species,'classname')
-            except DatabaseException:
-                classname = 'Generic'
-            line = dataset.make(
-                classname=f'lines.{classname}',
-                description=f'HITRAN linelist for {species}, downloaded {date_string()}',
-                Zsource='HITRAN',)
-            line.load_from_hitran(hitran_filename)
-            line['mass']                # compute now for speed later
+                ## delete any existing line list
+                if os.path.exists(line_filename):
+                    shutil.rmtree(line_filename)
+            if force_convert or not os.path.exists(line_filename):
+                ## make new line object from HITRAN data
+                print(f'Making linelist for {species!r}')
+                try:
+                    classname = database.get_species_property(chemical_species,'classname')
+                except DatabaseException:
+                    classname = 'Generic'
+                line = dataset.make(
+                    classname=f'lines.{classname}',
+                    description=f'HITRAN linelist for {species}, downloaded {date_string()}',
+                    Zsource='HITRAN',)
+                line.load_from_hitran(hitran_filename)
+                line['mass']                # compute now for speed later
+                line.save(line_filename,filetype='directory')
+        elif is_known_chemical_species(species):
+            ## a chemical species -- get natural abundance mixture
+            if force_download or force_convert or not os.path.exists(line_filename):
+                ## need to make a linelist
+                for j,tspecies in enumerate(get_isotopologues(species)):
+                    ## concatenate all isotopologues
+                    tline = get_line(tspecies,force_download=force_download,force_convert=force_convert)
+                    tline['isotopologue_ratio'] = get_natural_abundance(tspecies)
+                    if j==0:
+                        line = tline.copy()
+                    else:
+                        line.concatenate(tline)
+                line['chemical_species'] = species
+                line.save(line_filename,filetype='directory')
         else:    
             raise DatabaseException(f'Species or chemical_species unknown to hitran.py: {species!r}')
-        ## save data
-        line.save(line_filename,filetype='directory')
+        ## save to cache
+        if use_cache:
+            _get_line_cache[line_filename] = line
     ## filter data
     if name is None:
         line.name =f'hitran_line_{species}'
@@ -378,7 +388,6 @@ def get_level(
         name=None,
         match=None,
         force_download=False,
-        cache=True,
         **match_kwargs):
     """Get upper level from HITRAN data."""
     species = database.normalise_species(species)
