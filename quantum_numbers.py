@@ -133,12 +133,17 @@ def encode_rotational_transition(qn,mathtext=False):
     return retval
 
 _decode_ΔJ = {'O':-2,'P':-1,'Q':0,'R':1,'S':2,'o':-2,'p':-1,'q':0,'r':1,'s':2}
+@vectorise(dtype=int)
 def decode_ΔJ(encoded):
     return _decode_ΔJ[encoded]
 
 _encode_ΔJ = {-2:'O',-1:'P',0:'Q',1:'R',2:'S'}
+@vectorise(dtype='<U1')
+def encode_ΔJ(decode) :
+    return _encode_ΔJ[decoded]
 
 _decode_Λ = {'Σ':0,'Σ⁺':0,'Σ⁻':0,'Π':1,'Φ':2,'Γ':3}
+@vectorise(dtype=int)
 def decode_Λ(encoded):
     return _decode_Λ[encoded]
 
@@ -147,18 +152,27 @@ def decode_Λs(encoded):
     return _decode_Λs[encoded]
     
 _decode_ef = {'e':+1,'f':-1}
+@vectorise(dtype=int)
 def decode_ef(encoded):
     return _decode_ef[encoded]
     
 _encode_ef = {+1:'e',-1:'f'}
+@vectorise(dtype='<U1')
 def encode_ef(x):
     return _encode_ef[x]
     
-_decode_gu = {'g':+1,'u':-1}
+_decode_gu = {'g':+1,'u':-1,+1:+1,-1:-1}
+@vectorise(dtype=int)
 def decode_gu(encoded):
     return _decode_gu[encoded]
 
+_encode_gu = {'g':'g','u':'u',+1:'g',-1:'u'}
+@vectorise(dtype='<U1')
+def encode_gu(decoded):
+    return _encode_gu[decoded]
+
 _decode_sa = {'s':+1,'a':-1}
+@vectorise(dtype=int)
 def decode_sa(encoded):
     return _decode_sa[encoded]
 
@@ -266,17 +280,12 @@ def encode_linear_level(qn=None,**more_qn):
             retval = 'Φ'
         else:
             raise InvalidEncodingException('Λ>3 not implemented')
-        if Λ>0 and 's' in qn: qn.pop('s') # not needed
+        if Λ>0 and 's' in qn:
+            qn.pop('s') # not needed
         if 'S' in qn:
             retval = tools.superscript_numerals(str(int(2*float(qn.pop('S'))+1)))+retval
         if 'gu' in qn:
-            gu = qn.pop('gu')
-            if gu == +1:
-                retval += 'g'
-            elif gu == -1:
-                retval += 'u'
-            else:
-                raise InvalidEncodingException(f'Invalid quantum number value: {gu=}')
+            gu = encode_gu(qn.pop('gu'))
     ## add electronic state label
     if 'label' in qn and retval=='':
         retval =  qn.pop('label')
@@ -536,9 +545,10 @@ def get_case_a_basis(S,Λ,s,verbose=False,**kwargs):
     assert Λ>=0 and (s==0 or s==1) and S>=0,'Some quantum number has an invalid value.'
     ## signed-Ω wavefunction
     qnpm = [dict(Λ=Λi,s=s,S=S,Σ=Σ,Ω=Λi+Σ) for (Λi,Σ) in itertools.product(((Λ,-Λ) if Λ>0 else (Λ,)),np.arange(S,-S-0.1,-1))]
-    σvpm = (-1)**(-S+S%1+s)     # phase change when σv operation on converts +Ω to -Ω states
+    # σvpm = (-1)**(-S+S%1+s)     # phase change when σv operation on converts +Ω to -Ω states
+    σvpm = (-1)**(S-S%1+s)     # phase change when σv operation on converts +Ω to -Ω states
     for t in qnpm:
-        t['σv'] = (-1)**(-S+S%1+s) # symmetry of signed-Ω wavefunctions under inversion
+        t['σv'] = (-1)**(S-S%1+s) # symmetry of signed-Ω wavefunctions under inversion
     ## ef symmetrised wavefunctions (maybe not both)
     qnef = []
     for Σ in (np.arange(S,-0.1,-1) if Λ==0 else np.arange(S,-S-0.1,-1)):
