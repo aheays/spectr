@@ -109,54 +109,70 @@ if args.verbose:
 plot_count = 0
 original_args = deepcopy(args)  # cache args because they can be changed below, and each file should begin the same
 for filename in args.filenames:
+    if args.verbose:
+        print(f'loading: {filename!r}')
 
-    args = deepcopy(original_args)
+    ## try block surrounding file loading, so that successive files
+    ## may continue if one fails
+    try:
 
-    ## include filename in label if multiple files plotted
-    label_prefix = ''
-    if len(args.filenames)>1:
-        label_prefix = filename+' -- '
 
-    ## if only one file use title
-    if len(args.filenames)==1:
-        if args.plot_library=='matplotlib':
-            t = ax.set_title(filename)
-            t.set_in_layout(False)
+        args = deepcopy(original_args)
 
-    ## load data into a dictionary of arrays
-    if args.xkey is not None or (len(filename)>3 and filename[-3:]=='.h5'):
-        ## load as dictionary
-        # data = tools.file_to_dict(filename,labels_commented=args.labels_commented,filetype=args.filetype)
-        kwargs = {}
-        if args.labels_commented is not None:
-            kwargs['labels_commented'] = args.labels_commented
-        if args.filetype is not None:
-            kwargs['filetype'] = args.filetype
+        ## include filename in label if multiple files plotted
+        label_prefix = ''
+        if len(args.filenames)>1:
+            label_prefix = filename+' -- '
+
+        ## if only one file use title
+        if len(args.filenames)==1:
+            if args.plot_library=='matplotlib':
+                t = ax.set_title(filename)
+                t.set_in_layout(False)
+
+        ## load data into a dictionary of arrays
+        if args.xkey is not None or (len(filename)>3 and filename[-3:]=='.h5'):
+            ## load as dictionary
+            # data = tools.file_to_dict(filename,labels_commented=args.labels_commented,filetype=args.filetype)
+            kwargs = {}
+            if args.labels_commented is not None:
+                kwargs['labels_commented'] = args.labels_commented
+            if args.filetype is not None:
+                kwargs['filetype'] = args.filetype
+            else:
+                kwargs['filetype'] = tools.infer_filetype(filename)
+            if kwargs['filetype'] == 'hdf5':
+                kwargs.setdefault('load_attributes',False)
+            data = Dataset()
+            data.load(filename,**kwargs)
+            ## special cases one data series only 'data' which must be a
+            ## 1- or 2-dimensional array then load columns a 'column0' etc
+            if len(list(data.keys()))==1 and 'data' in data:
+                data = {f'column{t0}':t1 for (t0,t1) in enumerate(data['data'].transpose())}
+
         else:
-            kwargs['filetype'] = tools.infer_filetype(filename)
-        if kwargs['filetype'] == 'hdf5':
-            kwargs.setdefault('load_attributes',False)
-        data = Dataset()
-        data.load(filename,**kwargs)
-        ## special cases one data series only 'data' which must be a
-        ## 1- or 2-dimensional array then load columns a 'column0' etc
-        if len(list(data.keys()))==1 and 'data' in data:
-            data = {f'column{t0}':t1 for (t0,t1) in enumerate(data['data'].transpose())}
-        
-    else:
-        ## load as array, convert to dictionary with index labels
-        file_to_array_kwargs = dict(unpack=True, awkscript=args.awkscript, skip_header=args.skip_header)
-        if args.delimiter is not None:
-            file_to_array_kwargs['delimiter'] = args.delimiter
-        t = tools.file_to_array(filename,**file_to_array_kwargs)
-        if t.ndim==0:
-            data = {'column0':np.array(float(t))}
-        elif t.ndim==1:
-            data = {'column0':t}
-        else:
-            data = collections.OrderedDict()
-            for (t0,t1) in enumerate(t):
-                data['column'+str(t0)] = t1
+            ## load as array, convert to dictionary with index labels
+            file_to_array_kwargs = dict(unpack=True, awkscript=args.awkscript, skip_header=args.skip_header)
+            if args.delimiter is not None:
+                file_to_array_kwargs['delimiter'] = args.delimiter
+            t = tools.file_to_array(filename,**file_to_array_kwargs)
+            if t.ndim==0:
+                data = {'column0':np.array(float(t))}
+            elif t.ndim==1:
+                data = {'column0':t}
+            else:
+                data = collections.OrderedDict()
+                for (t0,t1) in enumerate(t):
+                    data['column'+str(t0)] = t1
+
+    except Exception as err:
+
+        ## file failed to load for some reason
+        print(f'failed to load: {filename}')
+        if args.verbose:
+            raise err
+        continue
+
 
 
     ## get a deafult xkey
