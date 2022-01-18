@@ -98,6 +98,9 @@ Classes for simulating diatomic levels and lines defined by effective Hamiltonia
 ** fortran_tools.f90
 Various fortran functions and subroutines.
 * Bugs / improvements
+** optimise.py
+*** inhibit =add_input_function= in =input_function_method=?
+
 ** viblevel.py
 *** Implement general Λ-doubling formula of brown1979
 Currently the o/p/q Λ-doubling is handled with effective
