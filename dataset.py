@@ -1416,10 +1416,14 @@ class Dataset(optimise.Optimiser):
                 value,uncertainty = self._infer_compute(dependencies,function)
                 ## success — set values in self
                 self._set_value(key,value,inferred_from=(dependencies,function))
-                if uncertainty is not None:
-                    self._set_subdata(key,'unc',uncertainty)
                 if self.verbose:
                     print(f'{self.name}:',''.join(['    ' for t in range(depth)])+f'Sucessfully inferred: {repr(key)}')
+                if uncertainty is not None:
+                    self._set_subdata(key,'unc',uncertainty)
+                    if self.verbose:
+                        print(f'{self.name}:',
+                              ''.join(['    ' for t in range(depth)])
+                              +f'Sucessfully inferred uncertainty: {repr(key)}')
                 break           
             ## some kind of InferException, try next set of dependencies
             except InferException as err:
@@ -1467,10 +1471,6 @@ class Dataset(optimise.Optimiser):
                     squared_contribution.append((self.get(dependency,'unc')*dvalue/step)**2)
             if len(squared_contribution)>0:
                 uncertainty = np.sqrt(np.sum(squared_contribution,axis=0))
-                if self.verbose:
-                    print(f'{self.name}:',
-                          ''.join(['    ' for t in range(depth)])
-                          +f'{self.name}: Inferred uncertainty: {repr(key)}')
             else:
                 uncertainty = None
         else:
