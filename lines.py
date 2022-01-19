@@ -545,8 +545,6 @@ class Generic(levels.Base):
                     x,y,
                     label=tools.dict_to_kwargs(qn),
                     **plot_kwargs)
-            # if plot_legend or (plot_legend is None and not plot_labels):
-                # plotting.legend(loc='upper left')
         else:
             ## single spectrum only
             x,y = spectrum
