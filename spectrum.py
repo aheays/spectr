@@ -669,7 +669,8 @@ class Model(Optimiser):
             ymin=0,             # minimum value of ykey to include
             lineshape=None,     # as in lineshapes.py, or will be automatically selected
             ncpus=1,            # for multiprocessing
-            verbose=None,       # print info 
+            verbose=None,       # print info
+            force_full_recalc=None,
             match=None,         # only include lines matching keys:vals in this dictionary
             xedge=1, # include lines within this much of the domain edges
             _cache=None,
@@ -763,7 +764,14 @@ class Model(Optimiser):
                 ## get indices of local lines that has been changed
                 ichanged = line_copy.row_modify_time > self._last_construct_time
                 nchanged = np.sum(ichanged)
-                if (
+                if force_full_recalc:
+                    ##  full ## recalculation
+                    if verbose:
+                        print(f'add_line: {line.name}: {force_full_recalc=}, full recalculation')
+                    y = _calculate_spectrum(line_copy,None)
+                    ## new previous data
+                    _cache[line_copy_prev] = line_copy.copy()
+                elif (
                         ## all lines have changed
                         (nchanged == len(ichanged))
                         ## ykey has changed
@@ -788,8 +796,7 @@ class Model(Optimiser):
                     else:
                         y = y*scale
                     ## new previous data
-                    _cache['data'] = line_copy.copy()
-
+                    _cache[line_copy_prev] = line_copy.copy()
                 elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
                     ## recalculation
@@ -797,13 +804,13 @@ class Model(Optimiser):
                         print(f'add_line: {line.name}: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
                     ## new previous data
-                    _cache['data'] = line_copy.copy()
+                    _cache[line_copy_prev] = line_copy.copy()
                 elif nchanged > 0:
                     ## a few lines have changed, update these only
                     if verbose:
                         print(f'add_line: {line.name}: {nchanged} lines have changed, recalculate these')
                     ## temporary object to calculate old spectrum
-                    yold = _calculate_spectrum(line_copy_prev,None)
+                    yold = _calculate_spectrum(line_copy_prev,ichanged)
                     ## partial recalculation
                     ynew = _calculate_spectrum(line_copy,ichanged)
                     if kind == 'absorption':
@@ -811,7 +818,7 @@ class Model(Optimiser):
                     else:
                         y = y + ynew - yold
                     ## new previous data
-                    _cache['data'] = line_copy.copy()
+                    _cache[line_copy_prev] = line_copy.copy()
                 else:
                     ## nothing changed keep old spectrum
                     pass

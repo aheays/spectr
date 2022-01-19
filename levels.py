@@ -306,7 +306,9 @@ def _f0(self,Z,E,Eref,g,Tex):
     return α
 prototypes['α'] = dict(description="State population", kind='f', fmt='<11.4e', infer=[
     (('Z','E','Eref','g','Tex',), _f0), 
-    (('αvib','αrot'),lambda self,αvib,αrot: αvib*αrot),])
+    (('αvib','αrot'),lambda self,αvib,αrot: αvib*αrot),
+])
+
 def _f0(self,Zvib,Tv,Eref,Tvib):
     """Compute vibrational level population from vibrational
     temperature."""
@@ -314,6 +316,7 @@ def _f0(self,Zvib,Tv,Eref,Tvib):
     αvib = np.exp(-(Tv-Eref)/(kB*Tvib))/Zvib
     return αvib
 prototypes['αvib'] = dict(description="Vibrational state population", kind='f', fmt='<11.4e', infer=[(('Zvib','Tv','Eref','Tvib',), _f0),])
+
 def _f0(self,Zrot,Tv,E,g,Trot):
     """Compute rotational level population from rotational
     temperature."""
@@ -321,6 +324,7 @@ def _f0(self,Zrot,Tv,E,g,Trot):
     αrot = g*np.exp(-(E-Tv)/(kB*Trot))/Zrot
     return αrot
 prototypes['αrot'] = dict(description="Rotational state population", kind='f', fmt='<11.4e', infer=[(('Zrot','Tv','E','g','Trot',), _f0),])
+
 def _f0(self,species,E,Eref,g,Zsource):
     """Get level populations at 296K assuming a single excitation
     temperature. CURRENTLY ONLY IMPLEMENTED FOR ZSOURCE=HITRAN."""
