@@ -2897,7 +2897,7 @@ def collect_fit_absorption_results(parameters):
         if r:=re.match(r'^species_([^_]+)_pair',key):
             data.modify_key(key, rename=f'pair_{r.group(1)}',
                             description=f'Effective pressure for air broadening of {r.group(1)}',
-                            units='Pa', kind='f','0.3e')
+                            units='Pa', kind='f',fmt='0.3e')
         if key == 'instrument_sinc_fwhm':
             data.modify_key(key, rename=f'sinc_fwhm',
                             description=f'Instrument function sinc',
