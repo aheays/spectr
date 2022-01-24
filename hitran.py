@@ -241,10 +241,13 @@ def load_linelist(filename,modify=True):
         retval.unset('asterisk')
     return retval
 
-def load_spectrum(filename):
+def load_cross_section(filename,name='hitran_cross_section'):
+    """Load cross section in HITRAN .xsc format, and save into a Spectrum
+    dataset."""
     from .spectrum import Spectrum
-    retval = Spectrum('hitran_spectrum')
+    retval = Spectrum(name=name)
     retval.attributes['filename'] = filename
+    retval.description = f'Data in HITRAN cross section file {filename!r}'
     with open(tools.expand_path(filename),'r') as fid:
         ## read header
         line = fid.readline()
@@ -256,26 +259,26 @@ def load_spectrum(filename):
             return x
         for key,length,cast in (
                 ('species',20,strip),
-                ('xbeg',10,float),
-                ('xend',10,float),
+                ('νbeg',10,float),
+                ('νend',10,float),
                 ('npoints',7,int),
                 ('temperature',7,float),
                 ('pressure',6,float),
-                ('ymax',10,float),
+                ('σmax',10,float),
                 ('resolution',5,float),
                 ('name',15,strip),
                 ('unused',4,strip),
                 ('broadener',3,broadener),
-                ('reference',3,int),
+                ('hitran_reference_code',3,int),
         ):
             retval.attributes[key],line = cast(line[:length]),line[length:]
         ## read spectrum
         data = fid.readlines()
-        retval['y'] = np.concatenate([np.array(t.split(),dtype=float) for t in data])[:retval.attributes['npoints']]
-        retval['x'] = np.linspace(
-            retval.attributes['xbeg'],
-            retval.attributes['xend'],
-            retval.attributes['npoints'],)
+        retval['σ'] = np.concatenate([np.array(t.split(),dtype=float) for t in data])[:retval.attributes['npoints']]
+        retval['ν'] = np.linspace(retval.attributes['νbeg'], retval.attributes['νend'], retval.attributes['npoints'],)
+    ## accurate format input function
+    retval.pop_format_input_function()
+    retval.add_format_input_function(lambda: f'{retval.name} = hitran.load_cross_section({filename=},{name=}')
     return retval
 
 # @tools.cache
