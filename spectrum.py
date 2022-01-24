@@ -851,8 +851,9 @@ class Model(Optimiser):
         ## make a copy of the spectrum, so it is not altered by being used here
         if (self._clean_construct
             or spectrum._global_modify_time > self._last_construct_time):
-            _cache['spectrum_copy'] = spectrum.copy(
-                range_ν=(self.x.min(), self.x.max())) 
+            s = spectrum.copy()
+            s.index(tools.inrange(s['ν'],self.x[0],self.x[-1],include_adjacent=True))
+            _cache['spectrum_copy'] = s
         s = _cache['spectrum_copy']
         ## updated set_keys_vals in the copy
         for key,val in set_keys_vals.items():
@@ -2439,11 +2440,12 @@ class FitAbsorption():
 
     def __str__(self):
         """Summarise parameters."""
-        retval = tools.format_dict(
-            self.parameters,
-            newline_depth=3,
-            max_line_length=1000,
-        )
+        ## print full parameters dict
+        retval = f'== Summary of FitAbsorption object {self.name!r} =='
+        retval += '\n\nAll parameters:\n'
+        retval += tools.format_dict(self.parameters, newline_depth=3, max_line_length=1000,)
+        retval += '\n\nFitted species:\n'
+        retval += str(self.get_species_dataset())
         return retval
 
     def fit(
@@ -2608,21 +2610,22 @@ class FitAbsorption():
             ## subregion model
             pregion = self.parameters['region'][model.xbeg,model.xend]
             x = model.x
-            background_intensity = tools.spline(
-                [t[0] for t in pregion['intensity']['spline']],
-                [t[1] for t in pregion['intensity']['spline']],
-                x,
-                order=pregion['intensity']['spline_order'])
-            if 'shift' in pregion:
-                background_shift = tools.spline(
-                    [t[0] for t in pregion['shift']['spline']],
-                    [t[1] for t in pregion['shift']['spline']],
+            if model._intensity_type == 'spline':
+                background_intensity = tools.spline(
+                    [t[0] for t in pregion['intensity']['spline']],
+                    [t[1] for t in pregion['intensity']['spline']],
                     x,
-                    order=pregion['shift']['spline_order'])
-            else:
-                background_shift = np.full(len(x),0.0)
-            ax.plot(x,background_intensity+background_shift,color='black',zorder=-5,label='source intensity')
-            ax.plot(x,background_shift,color=plotting.newcolor(7),zorder=-5,label='intensity shift')
+                    order=pregion['intensity']['spline_order'])
+                if 'shift' in pregion:
+                    background_shift = tools.spline(
+                        [t[0] for t in pregion['shift']['spline']],
+                        [t[1] for t in pregion['shift']['spline']],
+                        x,
+                        order=pregion['shift']['spline_order'])
+                else:
+                    background_shift = np.full(len(x),0.0)
+                ax.plot(x,background_intensity+background_shift,color='black',zorder=-5,label='source intensity')
+                ax.plot(x,background_shift,color=plotting.newcolor(7),zorder=-5,label='intensity shift')
             ## plot reference line without fit_species absorption
             if hasattr(model,'_reference_model'):
                 ax.plot(
@@ -2646,7 +2649,7 @@ class FitAbsorption():
             other_species=(), # species to model but not fit, defaults to existing list, always includes 'species'
             region=None,       #  key to 'region' parameters if different from (xbeg,xend)
             fit_intensity=False,         # fit background intensity spline, True, False
-            intensity_spline_step=10,    # separation of points in the background intensity spline 
+            intensity_spline_step=100,    # separation of points in the background intensity spline 
             fit_shift=False,             # fit baseline shift
             fit_N=False,                 # fit species column densities
             fit_pair=False,              # fit species pressure broadening (air coefficients)
@@ -2714,8 +2717,16 @@ class FitAbsorption():
         self.parameters.setdefault('interpolate_model',0.001)
         if p['interpolate_model'] is not None:
             model.interpolate(p['interpolate_model'])
-        ## add unit intensity
-        model.add_constant(1)
+        ## add reference background spectrum if provided or default to
+        ## unity
+        if 'background' in p and 'filename' in p['background']:
+            model._intensity_type = 'file'
+            p['background'].setdefault('yscale',P(1,False,1e-4))
+            p['background']['yscale'].vary = fit_intensity
+            model.add_from_file(p['background']['filename'], yscale=p['background']['yscale'])
+        else:            
+            model._intensity_type = 'spline'
+            model.add_constant(1)
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(20,1000)))
         p['Teq'].vary = fit_temperature
@@ -2728,19 +2739,20 @@ class FitAbsorption():
             pspecies = p['species'][speciesi]
             ## load column desnity
             pspecies.setdefault('N',P(1e16, False,1e13 ,nan,(0,np.inf)))
+            pspecies['N'].vary = (speciesi in species_to_fit and fit_N)
             if 'filename' in pspecies:
-                ## load cross section file
-                pass
+                ## add absorption from a cross section file
+                hitran_cross_section = hitran.load_cross_section(pspecies['filename'])
+                model.add_spectrum(
+                    hitran_cross_section,
+                    kind='absorption',
+                    N = pspecies['N'])
             else:
-                ## load linelist
+                ## add absorption from a linelist.
+                ##
                 ## load effective air-broadening pressure
                 pspecies.setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1.2e5),))
-                if speciesi in species_to_fit:
-                    pspecies['N'].vary = fit_N
-                    pspecies['pair'].vary = fit_pair
-                else:
-                    pspecies['N'].vary = False
-                    pspecies['pair'].vary = False
+                pspecies['pair'].vary = (speciesi in species_to_fit and fit_pair)
                 ## add lines
                 model.add_hitran_line(
                     speciesi,
@@ -2751,7 +2763,7 @@ class FitAbsorption():
                     ncpus=1,
                     nfwhmL=p['nfwhmL'],
                     lineshape='voigt',)
-      ## fit column density and air-broadening coefficient to H2O in the spectrometer
+        ## fit column density and air-broadening coefficient to H2O in the spectrometer
         if fit_FTS_H2O:
             p.setdefault('FTS_H2O',{})
             p['FTS_H2O'].setdefault('N',P(1e16,False,1e15,bounds=(0,1e22)))
@@ -2774,28 +2786,29 @@ class FitAbsorption():
             model.uninterpolate(average=True)
         ## scale to correct background intensity — vary points in range and neighbouring
         ## fit background if needed
-        pregion.setdefault('intensity',{})
-        pregion['intensity'].setdefault('spline_step',intensity_spline_step)
-        pregion['intensity'].setdefault('spline_order',3)
-        if 'spline' not in pregion['intensity']:
-            i = tools.inrange(self.experiment.x,*region)
-            xspline,yspline,t = tools.fit_spline_to_extrema_or_median(
-                self.experiment.x[i],
-                self.experiment.y[i],
-                xi=pregion['intensity']['spline_step'])
-            pregion['intensity']['spline'] = [
-                [tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
-        optimise.set_contained_parameters(pregion['intensity']['spline'],vary=False)
-        pspline = pregion['intensity']['spline']
-        if fit_intensity:
-            xspline = [t[0] for t in pspline]
-            for i in tools.find(
-                    tools.inrange(
-                        xspline,xbeg,xend,
-                        include_adjacent=True)):
-                for parameter in pspline[i][1:]:
-                    parameter.vary = fit_intensity
-        model.multiply_spline(knots=pspline,order=pregion['intensity']['spline_order'])
+        if model._intensity_type == 'spline':
+            pregion.setdefault('intensity',{})
+            pregion['intensity'].setdefault('spline_step',intensity_spline_step)
+            pregion['intensity'].setdefault('spline_order',3)
+            if 'spline' not in pregion['intensity']:
+                i = tools.inrange(self.experiment.x,*region)
+                xspline,yspline,t = tools.fit_spline_to_extrema_or_median(
+                    self.experiment.x[i],
+                    self.experiment.y[i],
+                    xi=pregion['intensity']['spline_step'])
+                pregion['intensity']['spline'] = [
+                    [tx,P(ty,False,1e-5)] for tx,ty in zip(xspline,yspline)]
+            optimise.set_contained_parameters(pregion['intensity']['spline'],vary=False)
+            pspline = pregion['intensity']['spline']
+            if fit_intensity:
+                xspline = [t[0] for t in pspline]
+                for i in tools.find(
+                        tools.inrange(
+                            xspline,xbeg,xend,
+                            include_adjacent=True)):
+                    for parameter in pspline[i][1:]:
+                        parameter.vary = fit_intensity
+            model.multiply_spline(knots=pspline,order=pregion['intensity']['spline_order'])
         ## shift entires spectrum -- light leakage or inteferometry
         ## problem that adds signal and shifts zero baseline
         if fit_shift: 
