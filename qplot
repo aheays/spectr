@@ -131,7 +131,8 @@ for filename in args.filenames:
                 t.set_in_layout(False)
 
         ## load data into a dictionary of arrays
-        if args.xkey is not None or (len(filename)>3 and filename[-3:]=='.h5'):
+        root,extension = os.path.splitext(filename)
+        if args.xkey is not None or extension in ('h5','hdf5',):
             ## load as dictionary
             # data = tools.file_to_dict(filename,labels_commented=args.labels_commented,filetype=args.filetype)
             kwargs = {}
@@ -173,9 +174,7 @@ for filename in args.filenames:
             raise err
         continue
 
-
-
-    ## get a deafult xkey
+    ## get a default xkey
     if args.xkey is None:
         if len(data)==1:
             assert 'index' not in data
@@ -217,6 +216,9 @@ for filename in args.filenames:
             ax.plot(x,y,label=label_prefix+ykey,color=color,linestyle=linestyle,linewidth=args.linewidth,marker=args.marker)
         elif args.plot_library=='fastplot':
             plt.plot(x,y,label=label_prefix+ykey,color=color,)
+
+if plot_count == 0:
+    raise Exception('There is nothing to plot.')
 
 ## plot contaminants spectral lines if requested
 if args.contaminants_to_plot is not None:
