@@ -780,6 +780,12 @@ data = {
         'chemical_species'  : 'N₂O',
     },
 
+    'C₆H₆': {
+        'characteristic_infrared_bands': [[1413, 1588], [2933, 3225]],
+        'characteristic_infrared_lines': [[2933, 3225]],
+        
+        },
+
 
 }
 
