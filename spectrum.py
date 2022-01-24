@@ -770,7 +770,7 @@ class Model(Optimiser):
                         print(f'add_line: {line.name}: {force_full_recalc=}, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
                     ## new previous data
-                    _cache[line_copy_prev] = line_copy.copy()
+                    _cache['line_copy_prev'] = line_copy.copy()
                 elif (
                         ## all lines have changed
                         (nchanged == len(ichanged))
@@ -796,7 +796,7 @@ class Model(Optimiser):
                     else:
                         y = y*scale
                     ## new previous data
-                    _cache[line_copy_prev] = line_copy.copy()
+                    _cache['line_copy_prev'] = line_copy.copy()
                 elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
                     ## recalculation
@@ -804,7 +804,7 @@ class Model(Optimiser):
                         print(f'add_line: {line.name}: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
                     ## new previous data
-                    _cache[line_copy_prev] = line_copy.copy()
+                    _cache['line_copy_prev'] = line_copy.copy()
                 elif nchanged > 0:
                     ## a few lines have changed, update these only
                     if verbose:
@@ -818,7 +818,7 @@ class Model(Optimiser):
                     else:
                         y = y + ynew - yold
                     ## new previous data
-                    _cache[line_copy_prev] = line_copy.copy()
+                    _cache['line_copy_prev'] = line_copy.copy()
                 else:
                     ## nothing changed keep old spectrum
                     pass
