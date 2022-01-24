@@ -2,6 +2,7 @@ import re
 import warnings
 from copy import copy
 from functools import lru_cache
+from pprint import pprint
 
 import numpy as np
 from numpy import array,arange
@@ -322,7 +323,6 @@ class Mixture():
         self.density = Dataset()
         self.state = Dataset()
 
-
     def __getitem__(self,key):
         if (self.state.is_known(key)
             or key in self.state.prototypes):
@@ -595,14 +595,12 @@ def decode_reaction(reaction,encoding='ascii'):
                     species = r.group(2)
                 else:
                     multiplicity = 1
-                species = decode_species(species,encoding)
+                species = convert.species(species,encoding,'unicode')
                 for i in range(multiplicity):
                     r_or_p_list.append(species)
             r_or_p_list.sort()
-        
     else:
         raise Exception(f"Unknown reaction encoding: {repr(encoding)}")
-    
     return reactants,products
 
 def encode_reaction(reactants,products,encoding='ascii'):
@@ -697,13 +695,14 @@ class Reaction:
             products=None,
             formula='constant', # type of reaction, defined in get_rate_coefficient
             coefficients=None,     # used for computing rate coefficient according to formula
-            encoding='ascii', # of reaction name or species in products/reactants
+            encoding='unicode', # of reaction name or species in products/reactants
     ):
 
         ## get reactants and products from name or provided lists
+        self.encoding = encoding
         if name is None and reactants is not None and products is not None:
-            self.reactants = [convert.species(t,encoding,'ascii') for t in reactants]
-            self.products = [convert.species(t,encoding,'ascii') for t in products]
+            self.reactants = [convert.species(t,encoding,self.encoding) for t in reactants]
+            self.products = [convert.species(t,encoding,self.encoding) for t in products]
         elif name is not None and reactants is None and products is None:
             self.reactants,self.products = decode_reaction(name,encoding)
         else:
@@ -759,7 +758,8 @@ class ReactionNetwork:
         self.verbose = False
         self.density = Dataset()
         self.state = Dataset()
-
+        self.encoding = 'unicode' # encoding of species and reactions
+        
     def __getitem__(self,key):
         if key in self.state:
             return self.state[key]
@@ -868,12 +868,15 @@ class ReactionNetwork:
     def remove_unnecessary_reactions(self):
         """Remove all reactions containing species that have no
         density."""
+         ## species of interest
+        valid_species = list(self.density) + ['γ','e⁻']
         for r in copy(self.reactions):
-            if any([s not in ('γ','e-') and s not in self.density
-                     for s in list(r.reactants)+list(r.products)]):
-                if self.verbose:
-                    print(f'Removing reaction containing species not in model: {str(r)}')
-                self.reactions.remove(r)
+            for species in list(r.reactants)+list(r.products):
+                if species not in valid_species:
+                    if self.verbose:
+                        print(f'Removing reaction {str(r)} because {species!r} is not in the model species')
+                    self.reactions.remove(r)
+                    break
 
     def __iter__(self):
         for t in self.reactions: 
@@ -897,9 +900,9 @@ class ReactionNetwork:
         """Return a list of reactions with this reactant."""
         retval = []
         if reactants is not None:
-            reactants = sorted(reactants)
+            reactants = sorted(tools.ensure_iterable(reactants))
         if products is not None:
-            products = sorted(products)
+            products = sorted(tools.ensure_iterable(products))
         for reaction in self.reactions:
             if name is not None and reaction.name != name:
                 continue    
@@ -958,7 +961,7 @@ class ReactionNetwork:
         """Load encoded reactions and coefficients from a file."""
         with open(tools.expand_path(filename),'r') as fid:
             for line in fid:
-                self.append(**eval(f'dict({line[:-1]})'),encoding='ascii')
+                self.append(**eval(f'dict({line[:-1]})'),encoding=self.encoding)
 
     def check_reactions(self):
         """Sanity check on reaction list."""
@@ -981,19 +984,19 @@ class ReactionNetwork:
             ## decode
             retval = {'reactants':[],'products':[]}
             if (t:=line[0:8].strip()) != '':
-                retval['reactants'].append(convert.species(t,'stand','unicode'))
+                retval['reactants'].append(convert.species(t,'stand',self.encoding))
             if (t:=line[8:16].strip()) != '':
-                retval['reactants'].append(convert.species(t,'stand','unicode'))
+                retval['reactants'].append(convert.species(t,'stand',self.encoding))
             if (t:=line[16:24].strip()) != '':
-                retval['reactants'].append(convert.species(t,'stand','unicode'))
+                retval['reactants'].append(convert.species(t,'stand',self.encoding))
             if (t:=line[24:32].strip()) != '':
-                retval['products'].append(convert.species(t,'stand','unicode'))
+                retval['products'].append(convert.species(t,'stand',self.encoding))
             if (t:=line[32:40].strip()) != '':
-                retval['products'].append(convert.species(t,'stand','unicode'))
+                retval['products'].append(convert.species(t,'stand',self.encoding))
             if (t:=line[40:48].strip()) != '':
-                retval['products'].append(convert.species(t,'stand','unicode'))
+                retval['products'].append(convert.species(t,'stand',self.encoding))
             if (t:=line[48:54].strip()) != '':
-                retval['products'].append(convert.species(t,'stand','unicode'))
+                retval['products'].append(convert.species(t,'stand',self.encoding))
             retval['α'] = float(line[64:73])
             retval['β'] = float(line[73:82])
             retval['γ'] = float(line[82:91])

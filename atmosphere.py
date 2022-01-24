@@ -50,6 +50,14 @@ class AtmosphericChemistry():
         self.state = self.reaction_network.state = OneDimensionalAtmosphere()
         self.verbose = self.reaction_network.verbose = False
 
+    def __str__(self):
+        retval = f'''AtmosphericChemistry
+    number of vertical elements: {len(self.density)}
+    number of reactions: {len(self.reaction_network)}
+    number of species: {len(self.density.keys())}
+    state keys: {self.state.keys()!r}'''
+        return retval
+
     def calc_rates(self):
         return self.reaction_network.calc_rates()
 
@@ -59,7 +67,7 @@ class AtmosphericChemistry():
     def load_argo(
             self,
             model_directory,
-            load_reaction_network= True, # filename to load filename, True to guess filename
+            load_reaction_network= True, # filename to load filename, True to guess filename, False to not load
             load_rate_coefficients= True,
             load_rates=False,
             iteration=None,     # # to load an old-depth-#.dat file -- None for the final result
@@ -84,15 +92,14 @@ class AtmosphericChemistry():
             self.state[key_to] = data.pop(key_from)
         for key in data:
             self.set_density(
-                # kinetics.translate_species(key,'stand','ascii'),
-                convert.species(key,'stand','ascii'),
+                convert.species(key,'stand',self.reaction_network.encoding),
                 data[key]*self.state['nt'])
-
         if load_reaction_network is not False:
             if load_reaction_network is True:
+                glob_search = f'{model_directory}/Stand*'
                 if self.verbose:
-                    print('Searching for reaction network file: Stand*')
-                load_reaction_network = tools.glob_unique(f'{model_directory}/Stand*')
+                    print('Searching for reaction network filename uniquely matching: {glob_search!r}')
+                load_reaction_network = tools.glob_unique(glob_search)
                 if self.verbose:
                     print(f'found: {load_reaction_network}')
             ## load STAND reaction network
@@ -303,31 +310,40 @@ class AtmosphericChemistry():
 
     def plot_rates(
             self,
-            ykey='z',
-            ax=None,
-            plot_total=True,    # plot sum of all rates
-            plot_kwargs=None,
+            ykey='z',         # 
+            ax=None,          # 
+            plot_total=True,    # additionally plot the sum of all rates
+            plot_kwargs=None,   # modify the plot colors etc
             normalise_to_species=None, # normalise rates divided by the density of this species
-            **kwargs_get_rates         # for selecting rates to plot
+            **kwargs_get_rates         # passed to self.get_rates for selecting rates to plot
     ):
         """Plot rates matching kwargs_get_rates."""
+        ## get axis to plot on 
         if ax is None:
             ax = plt.gca()
             ax.cla()
+        ## initialise plotting kwargs
         if plot_kwargs is None:
             plot_kwargs = {}
+        ## get y data
         y = self[ykey]
+        ## get matching rates
         rates = self.get_rates(**kwargs_get_rates)
-        ## normalise perhaps
+        ## Normalise rates to the density of a particular species and compute a summary_value.  
         if normalise_to_species:
+            xlabel = f'Rate normalised to the density of {normalise_to_species} (s$^{{-1}}$)'
             for key in rates:
                 rates[key] /= self.density[normalise_to_species]
+            ## The summary value is a mean value weighted by to the
+            ## surface density of the reference species at each
+            ## vertical interval
             weight = self.density[normalise_to_species]*self['dz']
-            summary_value = {key:np.sum(val*weight)/np.sum(weight) for key,val in rates.items()} # mean value weighted by normalise_to_species density 
-            xlabel = f'Rate normalised to the density of {normalise_to_species} (s$^{{-1}}$)'
+            summary_value = {key:np.sum(val*weight)/np.sum(weight) for key,val in rates.items()}
         else:
-            summary_value = {key:tools.integrate(val,self['z']) for key,val in rates.items()} # integrated value
             xlabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
+            ## summary value is the rate integrated value vertically,
+            ## destructin rate per unit area
+            summary_value = {key:tools.integrate(self['z'],val) for key,val in rates.items()}
         ## sort species to plot by their descending summary value
         names = list(rates)
         j = np.argsort(list(summary_value.values()))[::-1]
@@ -350,20 +366,22 @@ class AtmosphericChemistry():
 
     def summarise_species(self,species,doprint=True):
         """MAY NOT COUNT MULTIPLE PRODUCTS OF THE SAME SPECIES CORRECTLY"""
-        column_mixing_ratio = tools.integrate(self.get_density(species),self['z']) / tools.integrate(self['nt'],self['z'])
+        column_mixing_ratio = tools.integrate(self['z'],self.get_density(species)) / tools.integrate(self['z'],self['nt'])
+        column_density = tools.integrate(self['z'],self.get_density(species))
         ## production summary
         production_reactions = self.reaction_network.get_reactions(with_products=(species,)) 
         production_rate = np.sum([t.rate for t in production_reactions],0)
-        production_column_rate = tools.integrate(production_rate,self['z'])
+        production_column_rate = tools.integrate(self['z'],production_rate)
         ## destruction summary
         destruction_reactions = self.reaction_network.get_reactions(with_reactants=(species,)) 
         destruction_rate = np.sum([t.rate for t in destruction_reactions],0)
-        destruction_column_rate = tools.integrate(destruction_rate,self['z'])
-        destruction_mean_loss_rate = destruction_column_rate/tools.integrate(self.get_density(species),self['z'])
+        destruction_column_rate = tools.integrate(self['z'],destruction_rate)
+        destruction_mean_loss_rate = destruction_column_rate/tools.integrate(self['z'],self.get_density(species))
         destruction_mean_lifetime = 1/destruction_mean_loss_rate
         lines = [
             f'species                                 : {species:>10s}',
-            f'column mixing ratio             (number): {column_mixing_ratio:10.3e}',
+            f'column density                    (cm-2): {column_mixing_ratio:10.3e}',
+            f'column mixing ratio             (number): {column_density:10.3e}',
             f'total column production rate  (s-1.cm-2): {production_column_rate:10.3e}',
             f'total column destruction rate (s-1.cm-2): {destruction_column_rate:10.3e}',
             f'mean destruction rate              (s-1): {destruction_mean_loss_rate:10.3e}',
@@ -376,13 +394,18 @@ class AtmosphericChemistry():
             species,
             ykey='z',
             ax=None,
-            normalise=False,    # divide rates by species abundance
-            nsort=3,            # include this many ranked rates at each altitude
+            normalise=False,    # divide rates by species abundance,
+                                # given destruction lifetimes, but a
+                                # meaningless absolute production rate
+            nsort=3,            # include this many of the most
+                                # important species at each altitude
     ):
-        """Plot destruction and production rates of on especies."""
+        """Plot destruction and production rates of one species."""
+        ## get figurek
         if ax is None:
             ax = plt.gca()
             ax.cla()
+        ## yaxis data
         y = self[ykey]
         ## production rates
         self.plot_rates(
@@ -401,7 +424,6 @@ class AtmosphericChemistry():
             nsort=nsort
         )
         legend(show_style=True,title=f'Production and destruction rates of {species}')
-        # ax.set_title(f'Production and destruction rates of {species}')
         return ax
 
         

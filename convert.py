@@ -93,7 +93,8 @@ groups = {
 
     'energy': {
         'J'         :1.                    ,
-        'K'         :1/constants.Boltzmann ,
+        'kJ'         :1e3                    ,
+        'K'         :constants.Boltzmann ,
         'cal'       :4.184               ,
         'eV'        :1.602176634e-19     ,
         'erg'       :1e-7                   ,
@@ -455,12 +456,12 @@ _d = bidict({
     'NH3':'H3N',
     'O2+_X2Πg':'O2+_P',
     'O2_a1Δg' :'O2_D',
-    'O+_3P':'O2P',       # error in stand O^+^(^3^P) should be O^+^(^2^P)?
-    'O+_2D':'O2D',
-    'O_1S':'O1S',
-    'O_1D':'O1D',
-    'C_1S':'C1S',
-    'C_1D':'C1D',
+    'O+_3P' : 'O_²P',       # error in stand O^+^(^3^P) should be O^+^(^2^P)?
+    'O+_2D' : 'O_²D',
+    'O_1S'  : 'O_¹S',
+    'O_1D'  : 'O_¹D',
+    'C_1S'  : 'C_¹S',
+    'C_1D'  : 'C_¹D',
     'NH3':'H3N',
     'OH':'HO',
 })
