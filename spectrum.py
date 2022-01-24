@@ -840,37 +840,43 @@ class Model(Optimiser):
 
     @optimise_method()
     def add_spectrum(self,spectrum,kind='absorption',_cache=None,**set_keys_vals):
-        """Add spectrum in a Spectrum object. kind='absorption' or 'emission'."""
+        """Add spectrum in a Spectrum object. kind='absorption' or
+        'emission'. set_keys_vals set data according to Spectrum
+        prototypes before adding to the model."""
         ## different kinds of spectrum
         if kind == 'absorption':
-            xkey = 'T'
+            xkey = 'T'          # transmittance
         elif kind == 'emission':
-            xkey = 'I'
+            xkey = 'I'          # intensity
         else:
             raise Exception(f'Unknown {kind=}')
-        ## make a copy of the spectrum, so it is not altered by being used here
-        if (self._clean_construct
-            or spectrum._global_modify_time > self._last_construct_time):
+        ## Make a copy of the spectrum if this is a clean construct of
+        ## spectrum has changed, so the orignal spectrum is not
+        ## altered by being used here -- COULD SIMPLIFY BY USING A
+        ## copy(optimise=True) call.
+        if (self._clean_construct or spectrum._global_modify_time > self._last_construct_time):
             s = spectrum.copy()
             s.index(tools.inrange(s['ν'],self.x[0],self.x[-1],include_adjacent=True))
             _cache['spectrum_copy'] = s
         s = _cache['spectrum_copy']
-        ## updated set_keys_vals in the copy
+        ## update set_keys_vals in the copy if they have changed
         for key,val in set_keys_vals.items():
             if (self._clean_construct or (
                     isinstance(val,Parameter)
                     and val._last_modify_value_time > self._last_construct_time)):
                 s[key] = val
-        ## spline cross section to model grid
-        if (self._clean_construct
-            or s._global_modify_time > self._last_construct_time):
+        ## spline cross section to model grid if the data has changed
+        if (self._clean_construct or s._global_modify_time > self._last_construct_time):
             _cache[xkey] = tools.spline(s['ν'],s[xkey],self.x,out_of_bounds='zero')
-        ## modify self.y
+        ## modify self.y according to the kind of spectrum this is
         if xkey == 'T':
+            ## scale by transmittance
             self.y *= _cache['T']
         elif xkey == 'I':
+            ## add intensity
             self.y += _cache['T']
         else:
+            ## should be impossible
             assert False
 
     @optimise_method()

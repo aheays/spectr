@@ -701,7 +701,7 @@ class Base(Dataset):
 
     def match(self,keys_vals=None,**kwargs):
         """Overload Dataset.match to handle 'encoded_qn' which is decoded
-before matching."""
+        before matching."""
         if keys_vals is None:
             keys_vals = {}
         keys_vals = keys_vals | kwargs 
