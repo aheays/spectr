@@ -35,7 +35,6 @@ from . import hitran
 from . import bruker
 from . import electronic_states
 from . import viblevel
-from . import cross_section
 from . import lineshapes
 from . import convert
 
