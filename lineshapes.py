@@ -9,7 +9,6 @@ from . import tools
 from . import convert
 from . import optimise
 from .optimise import Parameter,P
-# from . import fortran_tools
 
 try:
     from .fortran_tools import fortran_tools
@@ -194,7 +193,7 @@ _lorentzian_k = 2*constants.pi
 def lorentzian(x,x0=0,S=1,Γ=1,nfwhm=None,yin=None,method='fortran'): 
     """Lorentzian profile."""
     if method == 'fortran' and fortran_tools is None:
-        warnings.warn('Could not import fortran_tools, defaulting to python implementation of Lorentian profiles.')
+        ## warnings.warn('Could not import fortran_tools, defaulting to python implementation of Lorentian profiles.')
         method = 'python'
     if nfwhm is None:
         ## whole domain
