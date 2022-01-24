@@ -23,7 +23,7 @@ from . import bruker
 from . import lineshapes
 from . import lines
 from . import levels
-from . import exceptions
+from .exceptions import DatabaseException
 from . import dataset
 from . import database
 from .dataset import Dataset
@@ -622,7 +622,7 @@ class Model(Optimiser):
                 ## y[-1] = y[-1] / (self._interpolate_factor/2+1)
                 ## y[1:-1] = y[1:-1] / self._interpolate_factor
                 ## self.y = y
-                ## reduce to non-interpolated points -- using python
+                ## reduce to non-interpolated points -- using fortran code
                 y = np.empty(self.x.shape,dtype=float)
                 fortran_tools.uninterpolate_with_averaging(self.y,y,self._interpolate_factor)
                 self.y = y
@@ -839,7 +839,41 @@ class Model(Optimiser):
             print(f'add_line: {line.name}: time = {timestamp()-timer_start:0.3e}')
 
     @optimise_method()
-    def add_absorption_cross_section(self,x,y,column_density=1,_cache=None):
+    def add_spectrum(self,spectrum,kind='absorption',_cache=None,**set_keys_vals):
+        """Add spectrum in a Spectrum object. kind='absorption' or 'emission'."""
+        ## different kinds of spectrum
+        if kind == 'absorption':
+            xkey = 'T'
+        elif kind == 'emission':
+            xkey = 'I'
+        else:
+            raise Exception(f'Unknown {kind=}')
+        ## make a copy of the spectrum, so it is not altered by being used here
+        if (self._clean_construct
+            or spectrum._global_modify_time > self._last_construct_time):
+            _cache['spectrum_copy'] = spectrum.copy(
+                range_ν=(self.x.min(), self.x.max())) 
+        s = _cache['spectrum_copy']
+        ## updated set_keys_vals in the copy
+        for key,val in set_keys_vals.items():
+            if (self._clean_construct or (
+                    isinstance(val,Parameter)
+                    and val._last_modify_value_time > self._last_construct_time)):
+                s[key] = val
+        ## spline cross section to model grid
+        if (self._clean_construct
+            or s._global_modify_time > self._last_construct_time):
+            _cache[xkey] = tools.spline(s['ν'],s[xkey],self.x,out_of_bounds='zero')
+        ## modify self.y
+        if xkey == 'T':
+            self.y *= _cache['T']
+        elif xkey == 'I':
+            self.y += _cache['T']
+        else:
+            assert False
+
+    @optimise_method()
+    def add_absorption_cross_section_array(self,x,y,column_density=1,_cache=None):
         """Add absorption cross section in arrays x and y."""
         if self._clean_construct:
             _cache['ys'] = tools.spline(x,y,self.x,out_of_bounds='zero')
@@ -2285,10 +2319,14 @@ class Spectrum(Dataset):
     default_prototypes = {
         'x':{'description':'x-scale'          , 'kind':'f' , 'fmt':'0.8f' , 'infer':[]} , 
         'y':{'description':'y-scale'          , 'kind':'f' , 'fmt':'0.8f' , 'infer':[]} , 
-        'ν':{'description':'Wavenumber scale' , 'units':'cm-1' , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'ν':{'description':'Wavenumber'       , 'units':'cm-1' , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
         'λ':{'description':'Wavelength scale' , 'units':'nm'   , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
         'f':{'description':'Frequency scale'  , 'units':'MHz'  , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
         'σ':{'description':'Cross section'    , 'units':'cm2'  , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'τ':{'description':'Optical depth'    , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
+        'T':{'description':'Transmittance'    , 'kind':'a' , 'fmt':'0.8f' , 'infer':[
+            (('σ','N'),lambda self,σ,N: np.exp(-N*σ))
+        ]} , 
         'I':{'description':'Intensity'        ,  'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
     }
 
@@ -2376,8 +2414,19 @@ class FitAbsorption():
         return self.parameters[key]
 
     def __setitem__(self,key,value):
-        """Access parameters directly."""
-        self.parameters[key] = value
+        """Access parameters directly. If multiple keys, e.g.,
+        ('species','CO2','N') then add in the parameters dictionary
+        hierarchy, making subdictionarys as needed."""
+        if isinstance(key,str):
+            self.parameters[key] = value
+        elif isinstance(key,tuple) and len(key) > 0:
+            d = self.parameters
+            for tkey in key[:-1]:
+                d.setdefault(tkey,{})
+                d = d[tkey]
+            d[key[-1]] = value
+        else:
+            raise KeyError(f'Key must be string or tuple of strings.')
 
     def keys(self):
         """Parameters keys as list."""
@@ -2436,15 +2485,20 @@ class FitAbsorption():
         if region == 'lines':
             region = []
             for tspecies in species_to_fit:
-               region += database.get_species_property(tspecies,'characteristic_infrared_lines')
+                try:
+                    region += database.get_species_property(tspecies,'characteristic_infrared_lines')
+                except DatabaseException:
+                    raise Exception(f'No characteristic lines found for {tspecies}. You could add a \'characteristic_infrared_lines property\' to a {database.normalise_species(tspecies)!r} section in spectr/data/species_data.py')
         elif region == 'bands':
             region = []
             for tspecies in species_to_fit:
-               region += database.get_species_property(tspecies,'characteristic_infrared_bands')
+                try:
+                    region += database.get_species_property(tspecies,'characteristic_infrared_bands')
+                except DatabaseException:
+                    raise Exception(f'No characteristic bands found for {tspecies}. You could add a \'characteristic_infrared_bands property\' to a {database.normalise_species(tspecies)!r} section in spectr/data/species_data.py')
         elif region == 'full':
             self.make_model(0,0,verbose=False)
-            region = ((int(np.floor(p['xbeg'])),
-                       int(np.ceil(p['xend']))),)
+            region = ((int(np.floor(p['xbeg'])), int(np.ceil(p['xend']))),)
         elif isinstance(region[0],(float,int)):
             region = [region]
         main = Optimiser(name="_".join(list(species_to_fit)+["main"]))
@@ -2672,27 +2726,32 @@ class FitAbsorption():
         for speciesi in all_species:
             p['species'].setdefault(speciesi,{})
             pspecies = p['species'][speciesi]
-            ## load column desnity and effective air-broadening
-            ## pressure species-by-species and perhaps optimise them
+            ## load column desnity
             pspecies.setdefault('N',P(1e16, False,1e13 ,nan,(0,np.inf)))
-            pspecies.setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1.2e5),))
-            if speciesi in species_to_fit:
-                pspecies['N'].vary = fit_N
-                pspecies['pair'].vary = fit_pair
+            if 'filename' in pspecies:
+                ## load cross section file
+                pass
             else:
-                pspecies['N'].vary = False
-                pspecies['pair'].vary = False
-            ## add lines
-            model.add_hitran_line(
-                speciesi,
-                Teq=p['Teq'],
-                Nchemical_species=pspecies['N'],
-                pair=pspecies['pair'],
-                min_S296K=p['min_S296K'],
-                ncpus=1,
-                nfwhmL=p['nfwhmL'],
-                lineshape='voigt',)
-        ## fit column density and air-broadening coefficient to H2O in the spectrometer
+                ## load linelist
+                ## load effective air-broadening pressure
+                pspecies.setdefault('pair',P(1e3, False,1e0,nan,(1e-3,1.2e5),))
+                if speciesi in species_to_fit:
+                    pspecies['N'].vary = fit_N
+                    pspecies['pair'].vary = fit_pair
+                else:
+                    pspecies['N'].vary = False
+                    pspecies['pair'].vary = False
+                ## add lines
+                model.add_hitran_line(
+                    speciesi,
+                    Teq=p['Teq'],
+                    Nchemical_species=pspecies['N'],
+                    pair=pspecies['pair'],
+                    min_S296K=p['min_S296K'],
+                    ncpus=1,
+                    nfwhmL=p['nfwhmL'],
+                    lineshape='voigt',)
+      ## fit column density and air-broadening coefficient to H2O in the spectrometer
         if fit_FTS_H2O:
             p.setdefault('FTS_H2O',{})
             p['FTS_H2O'].setdefault('N',P(1e16,False,1e15,bounds=(0,1e22)))
