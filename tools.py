@@ -563,9 +563,9 @@ def safe_eval_literal(string,string_on_error=False):
         retval = ast.literal_eval(string)
     except Exception as err:
         if string_on_error:
-            retval = string
-        else:
             raise Exception(f'Could not evaluate string: {repr(string):0.50s}')
+        else:
+            retval = string
     return retval
 
 def regularise_symbol(x):
@@ -1241,7 +1241,7 @@ def directory_to_dict(
                 ## load as string
                 retval[filename] = file_to_string(full_filename)
                 if evaluate_strings:
-                    retval[filename] = safe_eval_literal(retval[filename],string_on_error=True)
+                    retval[filename] = safe_eval_literal(retval[filename],string_on_error=False)
     return retval 
 
 ########################
