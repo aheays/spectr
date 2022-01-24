@@ -1,39 +1,39 @@
-#####################
-## f90 compilation ##
-#####################
-
-## compiler command with flags
-FC := gfortran -fopenmp -lgomp -O3 -llapack -Wall -ffree-line-length-none # normal / optimised / parallel
-
-## make rule
-%.mod: %.f90 ; $(FC) -c $<
-
-
 ######################
 ## f2py compilation ##
 ######################
 
-## example f2py3 command:
-## cronic f2py3 --quiet --opt="-O3 -fcheck=bounds" -llapack -c -m spectra_fortran myf.f90 spectra_fortran.f90 
-
 ## Outputs a .so file with machine dependent suffix.
-# F2PY_SUFFIX := $(shell python3-config --extension-suffix)
 F2PY_SUFFIX := $(python <<< "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
 
 ## compiler command with flags built in
-F2PY := f2py3 -c --quiet -lgomp -llapack --f90flags="-Wall -fopenmp -ffree-line-length-none" --opt="-O3"
+F2PY := f2py3 -c --quiet -llapack --f90flags="-Wall -ffree-line-length-none" --opt="-O3"
 
 ## the generic make rule for a fortran file ending with the f2py
 ## suffix.  
 %$(F2PY_SUFFIX): %.f ; $(F2PY)  -m $* $< 
 %$(F2PY_SUFFIX): %.f90 ; $(F2PY)  -m $* $< 
 
-## alterantive flags for debug
+## alternative flags for debug
 # FC := gfortran -llapack -fbounds-check -g -ffree-line-length-none # debug
 # F2PY := f2py3  -c --quiet -lgomp -llapack --f90flags="-fbounds-check -g -ffree-line-length-none" --opt="-O3" # debug
 
+## alternative flags including omp
+# F2PY := f2py3 -c --quiet -lgomp -llapack --f90flags="-Wall -fopenmp -ffree-line-length-none" --opt="-O3"
+
 ## string used to identify something abtou f2py output shared objects
 # F2PY := f2py3 -c --fcompiler=gfortran -llapack  #debug
+
+# #####################
+# ## f90 compilation ##
+# #####################
+
+# ## compiler command with flags
+# # FC := gfortran -fopenmp -lgomp -O3 -llapack -Wall -ffree-line-length-none # normal / optimised / parallel
+# FC := gfortran -fopenmp -O3 -llapack -Wall -ffree-line-length-none # normal / optimised / parallel
+
+# ## make rule
+# %.mod: %.f90 ; $(FC) -c $<
+
 
 
 ###########
