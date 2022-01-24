@@ -155,7 +155,7 @@ class Dataset(optimise.Optimiser):
             # if len(self)*len(self.keys()) < 10000:
                 # self.save(f'{directory}/data.psv')
         self.add_save_to_directory_function(
-            lambda self,directory: self.save(f'{directory}/data',filetype='directory'))
+            lambda directory: self.save(f'{directory}/data',filetype='directory'))
         ## copy data from another dataset provided as argument
         if copy_from is not None:
             self.copy_from(copy_from)
@@ -1254,7 +1254,7 @@ class Dataset(optimise.Optimiser):
             not_key=...            -- not a match (also e.g., not_range_key is possible)
             min_key=value          -- at least this value
             max_key=value          -- at most this value
-            range_key=(min,max)    -- not in this range
+            range_key=(min,max)    -- in this range
             re_key=string          -- match to this regular expression
         If key is a (key,vector_subkey) pair then match these.
         """
