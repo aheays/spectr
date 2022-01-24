@@ -102,7 +102,7 @@ class Experiment(Optimiser):
             self.experimental_parameters['xend'] = xend
             ## spline to a new grid:
             if xspline == 'auto':
-                ## respline the data to the smallest trid step in its range
+                ## respline the data to the smallest grid step in its range
                 dx = np.min(np.diff(x))
                 xnew = linspace(x[0],x[-1],int((x[-1]-x[0])/dx)+1)
                 ynew = tools.spline(x,y,xnew)
