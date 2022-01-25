@@ -1123,22 +1123,25 @@ class Dataset(optimise.Optimiser):
         # memo[id(self)] = retval # add this in case of circular references to it below
         # return retval
 
-    def copy(
-            self,
-            name=None,
-            *args_copy_from,
-            # set_values=None,
-            **kwargs_copy_from,
-    ):
+    def copy(self,name=None,*args_copy_from,**kwargs_copy_from):
         """Get a copy of self with possible restriction to indices and
         keys."""
         if name is None:
             name = f'copy_of_{self.name}'
-        retval = self.__class__(name=name) # new version of self
+        retval = self.__class__(name=name, description=f'Copy of {self.name}.',)
+        # retval.pop_format_input_function()
         retval.copy_from(self,*args_copy_from,**kwargs_copy_from)
-        retval.pop_format_input_function()
+        # retval.pop_format_input_function()
+        # def f():
+            # retval = f'{retval.name} = {self.name}.copy('
+            # args = [f'name={name!r}']
+            # args += list(args_copy_from)
+            # args += [f'key={val!r}' for key,val in kwargs_copy_from.items()]
+            # retval += ','.join(args)
+            # retval += ')'
+            # return retval
+        # retval.add_format_input_function(f)
         return retval
-
     # def copy(self,keys=None,index=None):
         # """Return a copy of self with possible restriction to indices
         # and keys."""
@@ -1155,6 +1158,7 @@ class Dataset(optimise.Optimiser):
             # self.index(index)
         # return retval
 
+    @format_input_method(format_multi_line=3)
     def copy_from(
             self,
             source,
