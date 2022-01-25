@@ -1875,7 +1875,8 @@ class Dataset(optimise.Optimiser):
             self,
             filename,
             filetype=None,
-            return_classname_only=False,
+            _return_classname_and_data=False, # hack used internally
+            _data_dict_provided=None, # hack used internally
             **kwargs
     ):
         '''Load data from a file. Valid filetypes are ["hdf5",
@@ -1883,11 +1884,16 @@ class Dataset(optimise.Optimiser):
         ## kwargs are for load_from_dict or the load method.  Divide these up.
         import inspect
         all_load_from_dict_kwargs = inspect.getfullargspec(self.load_from_dict).args
-        load_from_dict_kwargs = {key:kwargs.pop(key)
-                                 for key in list(kwargs)
+        load_from_dict_kwargs = {key:kwargs.pop(key) for key in list(kwargs)
                                  if key in all_load_from_dict_kwargs}
         load_function_kwargs = kwargs
         load_function_kwargs['filename'] = filename
+        ## kind of a hack to bypass reloading file if initially loaded
+        ## by dataset.load to get the correct classname
+        if _data_dict_provided:
+            data_dict,more_kwargs = _data_dict_provided
+            self.load_from_dict(data_dict,**load_from_dict_kwargs,**more_kwargs)
+            return
         ## determine filetype if not given
         if filetype is None:
             ## if not provided as an input argument then get save
@@ -1950,12 +1956,11 @@ class Dataset(optimise.Optimiser):
             warnings.warn(f'Changing old classname {classname!r} into new {hack_changed_classnames[classname]!r}')
             classname = hack_changed_classnames[classname]
         ## return classname only
-        if return_classname_only:
-            return classname
-        else:
-            ## test loaded classname matches self
-            if classname is not None and classname != self.classname:
-                warnings.warn(f'The loaded classname {repr(data_dict["classname"])} does not match self {repr(self.classname)}')
+        if _return_classname_and_data:
+            return classname,(data_dict,more_kwargs)
+        ## test loaded classname matches self
+        if classname is not None and classname != self.classname:
+            warnings.warn(f'The loaded classname {repr(data_dict["classname"])} does not match self {repr(self.classname)}')
         ## load data into self
         self.load_from_dict(data_dict,**load_from_dict_kwargs,**more_kwargs)
 
@@ -3049,10 +3054,14 @@ def load(
     """Load a Dataset.  Attempts to automatically find the correct
     subclass if it is not provided as an argument, but this requires
     loading the file twice."""
-    ## get classname
+    ## get classname, and save data_dict so it doesn't have to be
+    ## loaded again below -- CONFUSING!
     if classname is None:
         d = Dataset()
-        classname = d.load(filename,return_classname_only=True,**load_kwargs)
+        classname,data = d.load(
+            filename,_return_classname_and_data=True,**load_kwargs)
+    else:
+        data = None
     ## make Dataset
     init_kwargs = {}
     if prototypes is not None:
@@ -3062,7 +3071,7 @@ def load(
     if name is not None:
         init_kwargs['name'] = name
     retval = make(classname,**init_kwargs)
-    retval.load(filename,**load_kwargs)
+    retval.load(filename,_data_dict_provided=data,**load_kwargs)
     return retval
 
 def copy_from(dataset,*args,**kwargs):
