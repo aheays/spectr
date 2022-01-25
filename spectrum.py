@@ -441,6 +441,7 @@ class Experiment(Optimiser):
         self.experimental_parameters['integrated_excess'] = tools.integrate(self.x,self.y-self.background,method=method)
         return self.experimental_parameters['integrated_excess']
 
+@format_input_constructor()
 class Model(Optimiser):
 
     def __init__(
@@ -489,6 +490,21 @@ class Model(Optimiser):
         self.add_save_to_directory_function(self.output_data_to_directory)
         self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
+
+        # ## make a format_input_function
+        # args = {}
+        # for key in ('name','experiment',
+                    # 'load_experiment_args',
+                    # 'residual_weighting',
+                    # 'verbose', 'xbeg','xend','x',):
+            # val = locals()[key]
+            # if val is not None:
+                # args[key] = val
+        # self.add_format_input_function(
+            # lambda: (f'{self.name} = spectrum.Model('
+                      # + ','.join([f'{key}={val!r}' for key,val in args.items()])
+                      # + ')'))
+
 
     @optimise_method(add_format_input_function=False)
     def _initialise(self,_cache=None):
@@ -654,7 +670,7 @@ class Model(Optimiser):
                 },
         )
 
-        line.include_in_save_to_directory = False
+        line.include_in_output = False
         line.clear_format_input_functions()
         self.add_line(line,*args,**kwargs)
         self.pop_format_input_function()
@@ -843,40 +859,43 @@ class Model(Optimiser):
         """Add spectrum in a Spectrum object. kind='absorption' or
         'emission'. set_keys_vals set data according to Spectrum
         prototypes before adding to the model."""
-        ## different kinds of spectrum
+        if self._first_construct:
+            ## Only runs on the initial construction of the model.
+            ## Make a copy of the input spectrum so it is not altered
+            ## by this method.
+            spectrum_copy = spectrum.copy(optimise=True)
+            spectrum_copy.include_in_output = False
+            ## Set set_keys_vals in the copied spectrum object.
+            for key,val in set_keys_vals.items():
+                spectrum_copy.set_value(key,val)
+            ## Add a construct_function to the copied spectrum objec
+            ## that computes the cross section splined to the
+            ## experimental grid
+            if kind == 'absorption':
+                xkey = 'T'          # transmittance
+            elif kind == 'emission':
+                xkey = 'I'          # intensity
+            else:
+                raise Exception(f'Unknown {kind=}')
+            ## limit spline to a meaningful frequency range
+            index = tools.inrange(spectrum['ν'],self.x[0],self.x[-1],include_adjacent=True,return_as='slice')
+            def compute_spline():
+                _cache['spline'] = tools.spline(
+                    spectrum_copy['ν',index],spectrum_copy[xkey,index],
+                    self.x,out_of_bounds='zero')
+            spectrum_copy.add_construct_function(compute_spline)
+            ## add the copied spectrum to self to ensure it is up to
+            ## date before adding the spline to the model
+            self.add_suboptimiser(spectrum_copy)
+            _cache['spectrum_copy'] = spectrum_copy
+        spectrum_copy = _cache['spectrum_copy']
+        ## modify self.y according to what kind of spectrum this is,
+        ## scale by transmittance or add intensity
         if kind == 'absorption':
-            xkey = 'T'          # transmittance
+            self.y *= _cache['spline']
         elif kind == 'emission':
-            xkey = 'I'          # intensity
+            self.y += _cache['spline']
         else:
-            raise Exception(f'Unknown {kind=}')
-        ## Make a copy of the spectrum if this is a clean construct of
-        ## spectrum has changed, so the orignal spectrum is not
-        ## altered by being used here -- COULD SIMPLIFY BY USING A
-        ## copy(optimise=True) call.
-        if (self._clean_construct or spectrum._global_modify_time > self._last_construct_time):
-            s = spectrum.copy()
-            s.index(tools.inrange(s['ν'],self.x[0],self.x[-1],include_adjacent=True))
-            _cache['spectrum_copy'] = s
-        s = _cache['spectrum_copy']
-        ## update set_keys_vals in the copy if they have changed
-        for key,val in set_keys_vals.items():
-            if (self._clean_construct or (
-                    isinstance(val,Parameter)
-                    and val._last_modify_value_time > self._last_construct_time)):
-                s[key] = val
-        ## spline cross section to model grid if the data has changed
-        if (self._clean_construct or s._global_modify_time > self._last_construct_time):
-            _cache[xkey] = tools.spline(s['ν'],s[xkey],self.x,out_of_bounds='zero')
-        ## modify self.y according to the kind of spectrum this is
-        if xkey == 'T':
-            ## scale by transmittance
-            self.y *= _cache['T']
-        elif xkey == 'I':
-            ## add intensity
-            self.y += _cache['T']
-        else:
-            ## should be impossible
             assert False
 
     @optimise_method()
