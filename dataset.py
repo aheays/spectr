@@ -1783,6 +1783,7 @@ class Dataset(optimise.Optimiser):
         print(f'length: {len(self)}')
         print(f'number of keys: {len(self.keys())}')
         print(f'total memory: {total_memory:0.1e}')
+        print(f'classname: {self.classname!r}')
         if len(self.description) > 0:
             print(f'description: {self.description!r}')
         for key,val in self.attributes.items():
@@ -2186,6 +2187,14 @@ class Dataset(optimise.Optimiser):
             if isinstance(val,np.ndarray) and val.ndim == 2:
                 for i,column in enumerate(data.pop(key).T):
                     data[f'{key}{i}'] = column
+        ## HACK: make compatible with old data format
+        if 'data' not in data:
+            data['data'] = {}
+            for key in copy(data):
+                if (isinstance(data[key],dict)
+                    and 'value' in data[key]):
+                    data['data'][key] = data.pop(key)
+        ## end of HACK
         return data,{'flat':flat}
 
     def _load_from_npz(self,filename):
