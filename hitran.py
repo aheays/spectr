@@ -278,7 +278,7 @@ def load_cross_section(filename,name='hitran_cross_section'):
         retval['ν'] = np.linspace(retval.attributes['νbeg'], retval.attributes['νend'], retval.attributes['npoints'],)
     ## accurate format input function
     retval.pop_format_input_function()
-    retval.add_format_input_function(lambda: f'{retval.name} = hitran.load_cross_section({filename=},{name=}')
+    retval.add_format_input_function(lambda: f'{retval.name} = hitran.load_cross_section({filename=},{name=})')
     return retval
 
 # @tools.cache
