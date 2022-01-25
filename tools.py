@@ -1919,9 +1919,15 @@ def find_blocks(b,error_on_empty_block=True):
 def full_range(x):
     return np.max(x)-np.min(x)
 
-def inrange(x, xbeg, xend, include_adjacent=False):
+def inrange(
+        x,
+        xbeg,xend,
+        include_adjacent=False,
+        return_as='bool',       # 'bool','slice','find'
+):
     """Return slice of sortd vector x between xbeg and xend. If
-    include_adjacent then neighbouring pionts included in slice."""
+    include_adjacent then neighbouring pionts included in slice. Array
+    x must be sorted."""
     i = np.searchsorted(x,xbeg,side='left')
     j = np.searchsorted(x,xend,side='right')
     if include_adjacent:
@@ -1929,8 +1935,15 @@ def inrange(x, xbeg, xend, include_adjacent=False):
             i -= 1
         if j<len(x):
             j += 1
-    retval = np.full(len(x),False)
-    retval[i:j] = True
+    if return_as == 'slice':
+        retval = slice(i,j)
+    elif return_as == 'bool':
+        retval = np.full(len(x),False)
+        retval[i:j] = True
+    elif return_as == 'find':
+        retval = np.arange(i,j)
+    else:
+        raise Exception("Invalid return_as, shoule be one of 'bool', 'slice', or 'find'.")
     return retval
 
 def limit_to_range(beg,end,x,*other_arrays):
