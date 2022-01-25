@@ -129,6 +129,32 @@ def set_contained_parameters(container,vary=None):
         if vary is not None:
             p.vary = vary
 
+
+
+def _combine_function_kwargs(function,args,kwargs):
+    """Substitutes all args and kwargs into kwargs using ## the
+    function signature."""
+    signature_keys = list(inspect.signature(function).parameters)
+    kwargs_from_args = {}
+    for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
+        if signature_key in kwargs:
+            raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function.__name__)}.')
+        kwargs_from_args[signature_key] = arg
+    kwargs = kwargs_from_args | kwargs
+    return kwargs
+
+def _format_kwargs(kwargs,format_multi_line):
+    """Turn a dictionary of kwargs into a string representation."""
+    ## filter unwanted
+    kwargs = {key:val for key,val in kwargs.items() if key[0] != '_' and val is not None}
+    ## make string
+    if len(kwargs) < format_multi_line:
+        retval = ','.join([f"{key}={repr(val)}" for key,val in kwargs.items()])
+    else:
+        retval = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs.items()])+',\n'
+    return retval
+
+
 def optimise_method(
         add_format_input_function=True, # whether to create an input function for this method
         format_multi_line=2,            # if the method has more arguments than this then format on separate lines
@@ -203,8 +229,7 @@ def optimise_method(
 
 def format_input_method(format_multi_line=2):
     """A decorator factory to add a optimiser format_input_function for
-    the decorated method. If more arguments than then
-    format_input_function then format on separate lines."""
+    the decorated method."""
     def actual_decorator(function):
         @functools.wraps(function)
         def new_function(self,*args,**kwargs):
@@ -218,16 +243,26 @@ def format_input_method(format_multi_line=2):
                 kwargs[signature_key] = arg
             ## make an formatted input function
             def f():
-                kwargs_to_format = {key:val for key,val in kwargs.items() if key[0] != '_' and val is not None}
-                if len(kwargs_to_format) < format_multi_line:
-                    formatted_kwargs = ','.join([f"{key}={repr(val)}" for key,val in kwargs_to_format.items()])
-                    return f'{self.name}.{function.__name__}({formatted_kwargs})'
-                else:
-                    formatted_kwargs = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs_to_format.items()])
-                    return f'{self.name}.{function.__name__}(\n    {formatted_kwargs}\n)'
+                return f'{self.name}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
             self.add_format_input_function(f)
             ## run the function
             function(self,**kwargs)
+        return new_function
+    return actual_decorator
+    
+def format_input_constructor(format_multi_line=3):
+    """A decorator factory to add a optimiser format_input_function for
+    the a class constructor __init__ method."""
+    def actual_decorator(function):
+        @functools.wraps(function)
+        def new_function(*args,**kwargs):
+            kwargs = _combine_function_kwargs(function,args,kwargs) 
+            new_object = function(**kwargs) # make the object
+            ## make a formatted input function
+            def f():
+                return f'{new_object.name} = {function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
+            new_object.add_format_input_function(f)
+            return new_object 
         return new_function
     return actual_decorator
 
@@ -261,7 +296,7 @@ class Optimiser:
         self._monitor_frequency_significant_rms_decrease_fraction = 1e-2
         self._monitor_parameters = False            # print out each on monitor
         self._save_to_directory_functions = [] # call these functions when calling save_to_directory (input argument is the directory)
-        self.include_in_save_to_directory = True # if False then to do not save to directory if a suboptimiser of something else
+        self.include_in_output = True # if False then to do not save to directory if a suboptimiser of something else
         self._format_input_functions = {}        # call these functions (return strings) to build a script recreating an optimisation
         self._suboptimisers = list(suboptimisers) # Optimiser objects optimised with this one, their construct functions are called first
         self.verbose = verbose                     # True to activate various informative outputs
@@ -332,15 +367,15 @@ class Optimiser:
             return retval
         self.add_format_input_function(f)
 
-    def add_suboptimiser(self,*suboptimisers,add_format_function=True):
+    def add_suboptimiser(self,*suboptimisers):
         """Add one or suboptimisers."""
         ## add only if not already there
         for t in suboptimisers:
             if t not in self._suboptimisers:
                 self._suboptimisers.append(t)
-        if add_format_function:
-            self.add_format_input_function(
-                lambda: f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)})')
+        # if add_format_function:
+            # self.add_format_input_function(
+                # lambda: f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)})')
 
     suboptimisers = property(lambda self: self._suboptimisers)
 
@@ -441,6 +476,9 @@ class Optimiser:
         ## collect all format_input_functions
         timestamps,functions,suboptimisers = [],[],[]
         for optimiser in self.get_all_suboptimisers():
+            if not optimiser.include_in_output:
+                continue
+            
             timestamps.extend(optimiser._format_input_functions.keys())
             functions.extend(optimiser._format_input_functions.values())
             suboptimisers.extend([optimiser for t in optimiser._format_input_functions])
@@ -488,7 +526,8 @@ class Optimiser:
         tools.mkdir(directory,trash_existing=True)
         ## output self and all suboptimisers into a flat subdirectory
         ## structure
-        optimisers = [t for t in self.get_all_suboptimisers() if t.include_in_save_to_directory]
+        optimisers = [t for t in self.get_all_suboptimisers()
+                      if t.include_in_output]
         names = []              # all names thus far
         for optimiser in optimisers:
             ## uniquify name -- COLLISION STILL POSSIBLE if name for
@@ -513,14 +552,14 @@ class Optimiser:
                 tools.array_to_file(f'{subdirectory}/residual' ,optimiser.residual,fmt='%+0.4e')
             ## save description
             if optimiser.description is not None:
-                tools.string_to_file(f'{subdirectory}/README' ,str(optimiser.description))
+                tools.string_to_file(f'{subdirectory}/description' ,str(optimiser.description))
             ## any other save_to_directory functions
             for f in optimiser._save_to_directory_functions:
                 f(subdirectory)
         ## symlink suboptimsers into subdirectories
         for optimiser in optimisers:
             for suboptimiser in optimiser._suboptimisers:
-                if suboptimiser.include_in_save_to_directory:
+                if suboptimiser.include_in_output:
                     tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/')
                     try:
                         os.symlink(
