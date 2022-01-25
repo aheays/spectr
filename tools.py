@@ -1112,7 +1112,7 @@ def dict_to_hdf5(fid,data,compress=False,verbose=True):
                     kwargs = {}
                 fid.create_dataset(key,data=numpy_to_hdf5(val),**kwargs)
             else:
-                ## add non-array data as attribute
+                ## add non-array data as attributes
                 try:
                     fid.attrs.create(key,val)
                 except TypeError as error:

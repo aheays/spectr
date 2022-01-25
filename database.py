@@ -112,7 +112,7 @@ def get_level(species,source='auto'):
                 pass
         else:
             raise DatabaseException(f'Could not find a source for levels of {species!r}')
-    if source == 'levels':
+    elif source == 'levels':
         ## my collected data
         try:
             retval =  _get_level_internal(species).copy()

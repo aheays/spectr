@@ -205,7 +205,7 @@ def _f2(Zsource):
     return retval
 prototypes['Zsource'] = dict(description=f'Source of partition function (valid: {_valid_Zsource})', cast=_f2,kind='U', fmt='8s',default='self',infer=[])
 
-def _f6(self,Tex,Zsource):
+def _f6(self,Zsource):
     """Get partition function set to unity."""
     if np.any(Zsource != 'unity'):
         raise InferException(f'Zsource not all "unity"')
@@ -244,7 +244,7 @@ prototypes['Z'] = dict(description="Partition function", kind='f', fmt='<11.3e',
     (('species','Tex','E','Eref','g','_qnhash','Zsource'),_f3),
     (('species','Tex','Eref','Zsource'),_f5),
     (('species','Tex','Eref','Zsource'),_f4),
-    (('Tex','Zsource'),_f6),
+    (('Zsource',),_f6),
 ])
 
 def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
@@ -262,7 +262,7 @@ def _f6(self,species,Tvib,Eref,Tv,v,_qnhash,Zsource):
         t,k = np.unique(v[i][j],return_index=True)
         Zvib[i] = np.sum(np.exp(-(Tv[i][j][k]-Eref[i][j][k])/(kB*Tvib[0])))
     return Zvib
-def _f7(self,Tvib,Zsource):
+def _f7(self,Zsource):
     """Get vibrational partition function set to unity."""
     if np.any(Zsource != 'unity'):
         raise InferException(f'Zsource not all "unity"')
@@ -270,7 +270,7 @@ def _f7(self,Tvib,Zsource):
     return Zvib
 prototypes['Zvib'] = dict(description="Vibrational partition function", kind='f', fmt='<11.3e', infer=[
     (('species','Tvib','Eref','Tv','v','_qnhash','Zsource'),_f6),
-    (('Tvib','Zsource'),_f7),
+    (('Zsource',),_f7),
 ])
 
 def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
@@ -287,7 +287,7 @@ def _f6(self,species,Trot,E,Tv,g,v,_qnhash,Zsource):
         t,j = np.unique(_qnhash[i],return_index=True)
         Zrot[i] = np.sum(np.exp(-(E[i][j]-Tv[i][j])/(kB*Trot[0])))
     return Zrot
-def _f7(self,Trot,Zsource):
+def _f7(self,Zsource):
     """Get vibrational partition function set to unity."""
     if np.any(Zsource != 'unity'):
         raise InferException(f'Zsource not all "unity"')
@@ -295,7 +295,7 @@ def _f7(self,Trot,Zsource):
     return Zrot
 prototypes['Zrot'] = dict(description="Vibrational partition function", kind='f', fmt='<11.3e', infer=[
     (('species','Trot','E','Tv','g','v','_qnhash','Zsource'),_f6),
-    (('Trot','Zsource'),_f7),
+    (('Zsource',),_f7),
 ])
 
 ## level populations

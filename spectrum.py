@@ -23,7 +23,7 @@ from . import bruker
 from . import lineshapes
 from . import lines
 from . import levels
-from .exceptions import DatabaseException
+from .exceptions import DatabaseException,InferException
 from . import dataset
 from . import database
 from .dataset import Dataset
@@ -1926,35 +1926,40 @@ class Model(Optimiser):
     @format_input_method()
     def plot(
             self,
+            ## control axes to plot on
             ax=None,            # axes object to use
             fig=None,           # figure object to use
+            ## plot curves
             plot_model= True,
             plot_experiment= True,
             plot_residual= True,
+            invert_model=False,
+            shift_residual=0,
+            scale_residual=1,
+            ## label transitions
             plot_labels=False,
-            plot_branch_heads=False,
-            qn_defining_branch=('speciesp','speciespp','labelp','labelpp','vp','vpp','Fp'),
             label_match=None,   # label only matching things
-            label_key=None,     # this key is used to label series
+            label_key='default',     # this key is used to label series, None for none
             label_zkeys=None,   # divide series by these keys
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
             minimum_Sij_to_label=None, # for emission lines
-            plot_title=False,
-            title=None,
-            plot_legend= True,
-            # contaminants_to_plot=('default',), # what contaminant to label
+            ## show reference line frequencies
             plot_contaminants=False,
             contaminants=None,
-            shift_residual=0,
-            scale_residual=1,
-            xlabel=None,ylabel=None,
-            invert_model=False,
-            plot_kwargs=None,
+            ## various things added to plot
+            plot_title=False,
+            title=None,
+            plot_legend=True,
+            xlabel=None,
+            ylabel=None,
             xticks=None,
             yticks=None,
+            xlim=None,
+            ylim=None,
+            plot_kwargs=None,
+            ## no text at all if False, much faster draw
             plot_text=True,
-            xlim=None, ylim=None,
     ):
         """Plot experimental and model spectra."""
         if not plot_text:
@@ -1991,7 +1996,6 @@ class Model(Optimiser):
                     ystr = f'{y:0.18f}'
                 return(f'x={xstr:<25s} y={ystr:<25s}')
             ax.format_coord = format_coord
-        # self.add_format_input_function(lambda: f'{self.name}.plot_spectrum(fig={repr(fig.number)},label_key={repr(label_key)},plot_labels={repr(plot_labels)},plot_experiment={repr(plot_experiment)},plot_model={repr(plot_model)},plot_residual={repr(plot_residual)})')
         ymin,ymax = np.inf,-np.inf
         xmin,xmax = np.inf,-np.inf
         ## if model has no data return immediately
@@ -2035,7 +2039,7 @@ class Model(Optimiser):
                     label_match = {}
                 try:
                     i = line.match(**label_match)
-                except exceptions.InferException:
+                except InferException:
                     # warnings.warn(f'Not labelling because InferException on {label_match=}')
                     continue
                 ## limit to ν-range and sufficiently strong line
@@ -2058,16 +2062,16 @@ class Model(Optimiser):
                     ystep,
                     zkeys=zkeys,  
                     length=-0.02, # fraction of axes coords
-                    # color_by=('branch' if 'branch' in zkeys else zkeys),
-                    # labelsize='xx-small',namesize='x-small', namepos='float',    
                     labelsize='small',namesize='medium', namepos='float',    
-                    label_key=(label_key if label_key is not None else line.default_xkey),
+                    label_key=(line.default_xkey if label_key == 'default' else label_key),
                 )
                 ymax += ystep*(len(branch_annotations)+1)
-        ## plot branch heads
-        if plot_branch_heads:
-            for transition in self.transitions:
-                annotate_branch_heads(transition,qn_defining_branch,match_branch_re=label_match_name_re)
+        # ## plot branch heads
+        # if plot_branch_heads:
+            # for line in self.suboptimisers:
+                # if not isinstance(line,lines.Generic):
+                    # continue
+                # annotate_branch_heads(line,qn_defining_branch,match_branch_re=label_match_name_re)
         ## plot contaminants
         if plot_contaminants:
             if contaminants is None:
