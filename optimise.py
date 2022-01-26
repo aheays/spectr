@@ -129,19 +129,31 @@ def set_contained_parameters(container,vary=None):
         if vary is not None:
             p.vary = vary
 
+# def _combine_function_kwargs(function,args,kwargs):
+    # """Substitutes all args and kwargs into kwargs using ## the
+    # function signature."""
+    # signature_keys = list(inspect.signature(function).parameters)
+    # kwargs_from_args = {}
+    # for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
+        # if signature_key in kwargs:
+            # raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function.__name__)}.')
+        # kwargs_from_args[signature_key] = arg
+    # kwargs = kwargs_from_args | kwargs
+    # return kwargs
 
 
 def _combine_function_kwargs(function,args,kwargs):
-    """Substitutes all args and kwargs into kwargs using ## the
-    function signature."""
+    """Get all args,kwargs as a dictinoary of kwargs using inspect. *args
+    will fail!!!"""
     signature_keys = list(inspect.signature(function).parameters)
-    kwargs_from_args = {}
-    for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
-        if signature_key in kwargs:
-            raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function.__name__)}.')
-        kwargs_from_args[signature_key] = arg
-    kwargs = kwargs_from_args | kwargs
-    return kwargs
+    ## get args into kwargs
+    retval = copy(kwargs)
+    for iarg,key in enumerate(signature_keys):
+        if key not in kwargs and iarg < len(args):
+            retval[key] = args[iarg]
+    ## sort kwargs by signature order, and then **kwargs at end
+    retval = {key:retval[key] for key in signature_keys if key in retval} | {key:retval[key] for key in retval if key not in signature_keys}
+    return retval
 
 def _format_kwargs(kwargs,format_multi_line):
     """Turn a dictionary of kwargs into a string representation."""
@@ -153,7 +165,6 @@ def _format_kwargs(kwargs,format_multi_line):
     else:
         retval = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs.items()])+',\n'
     return retval
-
 
 def optimise_method(
         add_format_input_function=True, # whether to create an input function for this method
@@ -193,7 +204,7 @@ def optimise_method(
                 self.add_parameter(t)
             for t in suboptimisers:
                 self.add_suboptimiser(t)
-                self.pop_format_input_function()
+                # self.pop_format_input_function()
             ## if '_cache' is a kwarg of the function then initialise
             ## as an empty dictionary
             if '_cache' in signature_keys:
@@ -227,44 +238,33 @@ def optimise_method(
         return new_function
     return actual_decorator
 
-def format_input_method(format_multi_line=2):
+def format_input_method(format_multi_line=3):
     """A decorator factory to add a optimiser format_input_function for
-    the decorated method."""
-    def actual_decorator(function):
-        @functools.wraps(function)
-        def new_function(self,*args,**kwargs):
-            ## this block subtitutes into kwargs with keys taken from
-            ## the function signature.  get signature arguments -- skip
-            ## first "self"
-            signature_keys = list(inspect.signature(function).parameters)[1:]
-            for iarg,(arg,signature_key) in enumerate(zip(args,signature_keys)):
-                if signature_key in kwargs:
-                    raise Exception(f'Positional argument also appears as keyword argument {repr(signature_key)} in function {repr(function.__name__)}.')
-                kwargs[signature_key] = arg
-            ## make an formatted input function
-            def f():
-                return f'{self.name}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
-            self.add_format_input_function(f)
-            ## run the function
-            function(self,**kwargs)
-        return new_function
-    return actual_decorator
-    
-def format_input_constructor(format_multi_line=3):
-    """A decorator factory to add a optimiser format_input_function for
-    the a class constructor __init__ method."""
+    the decorated method. Works on constructors or regular methods."""
     def actual_decorator(function):
         @functools.wraps(function)
         def new_function(*args,**kwargs):
-            kwargs = _combine_function_kwargs(function,args,kwargs) 
-            new_object = function(**kwargs) # make the object
-            ## make a formatted input function
-            def f():
-                return f'{new_object.name} = {function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
-            new_object.add_format_input_function(f)
-            return new_object 
+            ## get all args into kwargs
+            kwargs = _combine_function_kwargs(function,args,kwargs)
+            ## run the function
+            function_retval = function(**kwargs)
+            ## If isclass then this is a constructor and the object
+            ## reference is created by the function. Otherwise it is a
+            ## method and the object reference is the first argument.
+            ## These also require different format_input_functions.
+            if inspect.isclass(function):
+                self = function_retval
+                def format_input_function():
+                    return f'{self.name} = {function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
+            else:
+                self = kwargs.pop(list(kwargs)[0])
+                def format_input_function():
+                    return f'{self.name}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
+            self.add_format_input_function(format_input_function)
+            return function_retval
         return new_function
     return actual_decorator
+    
 
 class Optimiser:
     """Defines adjustable parameters and model-building functions which
@@ -386,7 +386,7 @@ class Optimiser:
             optimiser = parameter._in_store._parent
             if optimiser is not self and optimiser not in self.suboptimisers:
                 self.add_suboptimiser(optimiser)
-                self.pop_format_input_function()
+                # self.pop_format_input_function()
         if not isinstance(parameter,Parameter):
             parameter = Parameter(*tools.tools.ensure_iterable(parameter),*args,**kwargs)
         self.parameters.append(parameter)

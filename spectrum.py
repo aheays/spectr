@@ -441,7 +441,7 @@ class Experiment(Optimiser):
         self.experimental_parameters['integrated_excess'] = tools.integrate(self.x,self.y-self.background,method=method)
         return self.experimental_parameters['integrated_excess']
 
-@format_input_constructor()
+@format_input_method()
 class Model(Optimiser):
 
     def __init__(

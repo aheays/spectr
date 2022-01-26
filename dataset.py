@@ -1420,13 +1420,13 @@ class Dataset(optimise.Optimiser):
                 ## success — set values in self
                 self._set_value(key,value,inferred_from=(dependencies,function))
                 if self.verbose:
-                    print(f'{self.name}:',''.join(['    ' for t in range(depth)])+f'Sucessfully inferred: {repr(key)}')
+                    print(f'{self.name}:',''.join(['    ' for t in range(depth)])+f'Sucessfully inferred: {key!r} from {dependencies!r}')
                 if uncertainty is not None:
                     self._set_subdata(key,'unc',uncertainty)
                     if self.verbose:
                         print(f'{self.name}:',
                               ''.join(['    ' for t in range(depth)])
-                              +f'Sucessfully inferred uncertainty: {repr(key)}')
+                              +f'Sucessfully inferred uncertainty {key!r}')
                 break           
             ## some kind of InferException, try next set of dependencies
             except InferException as err:
