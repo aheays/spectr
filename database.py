@@ -178,7 +178,7 @@ def get_most_abundant_isotope_mass_number(element_name):
     return element.isotopes[i]
 
 @lru_cache
-def get_atomic_mass(element_name,mass_number):
+def get_atomic_mass(element_name,mass_number=None):
     """Return the atomic mass of a particular elemental isotope."""
     import periodictable
     if mass_number is None:
