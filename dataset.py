@@ -1754,6 +1754,9 @@ class Dataset(optimise.Optimiser):
 
     def describe(self):
         """Print a convenient description of this Dataset."""
+        print(self.get_description())
+
+    def get_description(self):
         data = Dataset(
             prototypes={
                 'key':{'kind':'U',},
@@ -1781,24 +1784,26 @@ class Dataset(optimise.Optimiser):
                     d['description'] = (self[key,'description'] if subkey == 'value'
                                         else self.vector_subkinds[subkey]['description'])
                     data.append(d)
-
-
-        print(f'name: {self.name!r}')
-        print(f'length: {len(self)}')
-        print(f'number of keys: {len(self.keys())}')
-        print(f'total memory: {total_memory:0.1e}')
-        print(f'classname: {self.classname!r}')
+        description = []
+        description.append(f'name: {self.name!r}')
+        description.append(f'length: {len(self)}')
+        description.append(f'number of keys: {len(self.keys())}')
+        description.append(f'total memory: {total_memory:0.1e}')
+        description.append(f'classname: {self.classname!r}')
         if len(self.description) > 0:
-            print(f'description: {self.description!r}')
+            description.append(f'description: {self.description!r}')
         for key,val in self.attributes.items():
-            print(f'attribute: {key}: {val!r}')
+            description.append(f'attribute: {key}: {val!r}')
         if len(data) > 0:
             if np.all(data['units']==''):
                 data.pop('units')
             if np.all(data['subkey']=='value'):
                 data.pop('subkey')
-            print(data)
+            description.append(str(data))
+        description = '\n'.join(description)
+        return description
 
+    
     def format_as_list(self):
         """Form as a valid python list of lists. OBSOLETE?"""
         retval = f'[ \n'
