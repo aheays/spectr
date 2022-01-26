@@ -33,8 +33,8 @@ def get_inchikey(name):
     return Species(name)['inchikey']
 
 @cache
-def get_species(name=None,inchikey=None):
-    return Species(name=name,inchikey=inchikey)
+def get_species(name):
+    return Species(name=name)
 
 @cache
 def get_species_property(name,prop):
@@ -49,6 +49,9 @@ def get_chemical_species(name):
     
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
+
+    all_properties = ('name', 'charge', 'elements', 'species',
+                      'isotopes', 'natoms', 'nelectrons', 'mass', 'reduced_mass',)
 
     def __init__(
             self,
@@ -66,102 +69,6 @@ class Species:
         self.encoding = encoding
         self._decode_name()
                 
-        # self._inchikey = convert.species(name,encoding,'inchikey')
-        # self._inchikey = convert.species(name,encoding,'inchikey')
-
-        # if inchikey is None and name is None:
-            
-        # if inchikey is not None:
-            # if name is None:
-                # name = _inchikey_to_name[inchikey]
-            # else:
-                # if name != _inchikey_to_name[inchikey]:
-                    # raise Exception(f'Inconsistent {name=} and {inchikey=}')
-        # try:
-            # self.decode_name(name)
-        # except Exception as err:
-            # raise DecodeSpeciesException(f'Cannot decode species: {name!r}. Error: {err}')
-        # self.encode_name(self._isotopes,self._charge)
-
-
-    # def _decode_name(self):
-    #     """Turn standard name string into ordered isotope list and charge.  If
-    #     any isotopic masses are given then they will be added to all
-    #     elements."""
-    #     isotopes = []                   # (element,mass_number,multiplicity)
-    #     ## e.g., CO2
-    #     if r:=re.match(r'^((?:[A-Z][a-z]?[0-9]*)+)([-+]*)$',name):
-    #         name_no_charge = r.group(1)
-    #         charge = r.group(2).count('+') - r.group(2).count('-')
-    #         for part in re.split(r'([A-Z][a-z]?[0-9]*)',name_no_charge):
-    #             if part=='':
-    #                 continue
-    #             elif r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
-    #                 isotopes.append((
-    #                     r.group(1), # element
-    #                     None,       # isotope mass number — make no assumptions
-    #                     int(r.group(2) if r.group(2) != '' else 1) # multiplicity
-    #                 ))
-    #             else:
-    #                 raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-    #     ## e.g., [12C][16O]2
-    #     elif r:=re.match(r'^((?:\[[0-9]+[A-Z][a-z]?\][0-9]*)+)([-+]*)$',name):
-    #         name_no_charge = r.group(1)
-    #         charge = r.group(2).count('+') - r.group(2).count('-')
-    #         for part in re.split(r'(\[[0-9]+[A-Z][a-z]?\][0-9]*)',name_no_charge):
-    #             if part=='':
-    #                 continue
-    #             elif r:= re.match(r'\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
-    #                 isotopes.append((
-    #                     r.group(2),
-    #                     int(r.group(1)),
-    #                     int(r.group(3) if r.group(3) != '' else 1)))
-    #             else:
-    #                 raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-    #     ## e.g., ¹²C¹⁶O₂²⁺
-    #     elif r:=re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name):
-    #         name_no_charge = r.group(1)
-    #         if r.group(2) == '':
-    #             charge = 0
-    #         elif r.group(2) == '⁺':
-    #             charge = +1
-    #         elif r.group(2) == '⁻':
-    #             charge = -1
-    #         elif '⁺' in r.group(2):
-    #             charge = int(tools.regularise_unicode(r.group(2)[:-1]))
-    #         else:
-    #             charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
-    #         for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
-    #             if part=='':
-    #                 continue
-    #             elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
-    #                 isotopes.append((
-    #                     r.group(2),
-    #                     (int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None),
-    #                     int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)))
-    #             else:
-    #                 raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-    #     ## neutral diatomic isotopologues e.g., 12C16O
-    #     elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)([0-9]*)([A-Z][a-z]?)$',name):
-    #         charge = 0
-    #         isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
-    #         isotopes.append((r.group(4),(None if r.group(3) == '' else int(r.group(3))),1))
-    #     ## atam isotopologues e.g., 12C
-    #     elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)$',name):
-    #         charge = 0
-    #         isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
-    #     else:
-    #         raise Exception(f'Could not decode species named: {repr(name)}')
-    #     ## if any masses given, then make sure all are specified
-    #     i = array([t[1] is None for t in isotopes])
-    #     if np.any(i) and not np.all(i):
-    #         for ii in tools.find(i):
-    #             isotopes[ii] = (isotopes[ii][0],
-    #                             database.get_most_abundant_isotope_mass_number(isotopes[ii][0]),
-    #                             isotopes[ii][2])
-    #     self._isotopes = tuple(isotopes)
-    #     self._charge = charge
-
     def _decode_name(self):
         """Turn standard name string into ordered isotope list and charge.  If
         any isotopic masses are given then they will be added to all
@@ -225,66 +132,10 @@ class Species:
         self._isotopes = isotopes
         self._charge = charge
 
-    # def encode_name(self,isotopes,charge):
-        # """Turn ordered isotope list and charge into a name string."""
-        # retval = []
-        # for element,mass_number,multiplicity in isotopes:
-            # if mass_number is not None:
-                # retval.append(tools.superscript_numerals(str(mass_number)))
-            # retval.append(element)
-            # if multiplicity > 1:
-                # retval.append(tools.subscript_numerals(str(int(multiplicity))))
-        # if charge == 1:
-            # retval.append('⁺')
-        # elif charge > 1:
-            # retval.append(tools.superscript_numerals(str(int(charge)))+'⁺')
-        # elif charge == -1:
-            # retval.append('⁻')
-        # elif charge < -1:
-            # retval.append(tools.superscript_numerals(str(int(-charge))+'⁻'))
-        # retval = ''.join(retval)
-        # self._name = retval
-
-    def _get_elements(self):
-        if self._elements is not None:
-            pass
-        else:
-            self._elements = []
-            for part in re.split(r'([A-Z][a-z]?[0-9]*)',self.species):
-                if r:= re.match('^([A-Z][a-z]?)([0-9]*)',part):
-                    element = r.group(1)
-                    multiplicity = (1 if r.group(2)=='' else int(r.group(2)))
-                    for i in range(multiplicity):
-                        self._elements.append(element)
-            self._elements.sort()
-        return self._elements
-
-    def _get_nelectrons(self):
-        import periodictable
-        if self.species in ('e-','photon'):
-            raise NotImplementedError()
-        self._nelectrons = 0
-        ## add electrons attributable to each nucleus
-        for element in self['elements']:
-            self._nelectrons += getattr(periodictable,element).number
-        ## account for ionisation
-        self._nelectrons -= self['charge']
-        return self._nelectrons
-
     def __str__(self):
-        retval = '\n'.join([f'{key:16} = {self[key]!r}' 
-                            for key in (
-                                    'name',
-                                    # 'inchikey',
-                                    'elements',
-                                    'isotopes',
-                                    'chemical_species',
-                                    'charge',
-                                    'species',
-                                    'mass',
-                                    # 'reduced_mass',
-                                    # 'point_group',
-                                    )])
+        retval = '\n'.join([
+            f'{key:16} = {getattr(self,key)!r}' 
+            for key in self.all_properties])
         return retval
 
     ## for sorting a list of Species objects
@@ -297,43 +148,8 @@ class Species:
     def __getitem__(self,key):
         """Access these properties by index rather than attributes in order
         for simple caching.  -- move other get_ methods to here someday"""
-        if key == 'name':
-            return self._name
-        elif key == 'inchikey':
-            if not hasattr(self,'_inchikey'):
-                self._inchikey = convert.species(self._name,self.encoding,'inchikey')
-            return self._inchikey
-        elif key == 'charge':
-            return self._charge
-        elif key == 'elements':
-            return self.elements
-        elif key == 'species':
-            return self.species
-        elif key == 'isotopes':
-            if not hasattr(self,'_isotopes'):
-                self._decode_name()
-            return self._isotopes
-        elif key == 'nelectrons':
-            if not hasattr(self,'_nelectrons'):
-                self._get_nelectrons()
-            return self._nelectrons
-        elif key == 'mass':
-            if not hasattr(self,'_mass'):
-                if self.isotopes is None:
-                    self._mass =  sum([database.get_atomic_mass(element)*multiplicity
-                                       for element,multiplicity in self.elements])
-                else:
-                    self._mass =  sum([database.get_atomic_mass(element,mass_number)*multiplicity
-                                       for mass_number,element,multiplicity in self.isotopes])
-            return self._mass
-        elif key == 'reduced_mass':
-            if not hasattr(self,'_reduced_mass'):
-                if len(self['isotopes']) != 2:
-                    raise Exception("Can only compute reduced mass for diatomic species.")
-                m1 = database.get_atomic_mass(*self['isotopes'][0])
-                m2 = database.get_atomic_mass(*self['isotopes'][1])
-                self._reduced_mass = m1*m2/(m1+m2)
-            return self._reduced_mass
+        if key in self.all_properties:
+            return getattr(self,key)
         elif key == 'chemical_species':
             return self.chemical_species
         elif key == 'point_group':
@@ -387,6 +203,19 @@ class Species:
         retval = tools.superscript_numerals(retval)
         return retval
     
+    def _get_nelectrons(self):
+        if not hasattr(self,'_nelectrons'):
+            import periodictable
+            if self.chemical_species in ('e-','photon'):
+                raise NotImplementedError()
+            self._nelectrons = 0
+            ## add electrons attributable to each nucleus
+            for element,multiplicity in self['elements']:
+                self._nelectrons += multiplicity*getattr(periodictable,element).number
+            ## account for ionisation
+            self._nelectrons -= self['charge']
+        return self._nelectrons
+
     def _get_species(self):
         if not hasattr(self,'_species'):
             if self._isotopes is None:
@@ -414,25 +243,48 @@ class Species:
         return self._chemical_species
                                     
     def _get_elements(self):
-        if hasattr(self,'_elements'):
-            pass
-        elif hasattr(self,'_isotopes'):
-            self._elements = [(t[1],t[2]) for t in self.isotopes]
-        else:
-            assert False
         return self._elements
         
+    def _get_mass(self):
+        if not hasattr(self,'_mass'):
+            if self.isotopes is None:
+                self._mass = sum([
+                    database.get_atomic_mass(element)*multiplicity
+                    for element,multiplicity in self.elements])
+            else:
+                self._mass =  sum([
+                    database.get_atomic_mass(element,mass_number)*multiplicity
+                    for mass_number,element,multiplicity in self.isotopes])
+        return self._mass
+
+    def _get_natoms(self):
+        if not hasattr(self,'_natoms'):
+            self._natoms = sum([mult for element,mult in self.elements])
+        return self._natoms
+            
+    def _get_reduced_mass(self):
+        if not hasattr(self,'_reduced_mass'):
+            if self.natoms != 2:
+                self._reduced_mass = None
+            if self.isotopes is not None:
+                m1 = database.get_atomic_mass(self.isotopes[0][1],self.isotopes[0][0])
+                m2 = database.get_atomic_mass(self.isotopes[1][1],self.isotopes[1][0])
+            else:
+                m1 = database.get_atomic_mass(self.elements[0][0])
+                m2 = database.get_atomic_mass(self.elements[1][0])
+            self._reduced_mass = m1*m2/(m1+m2)
+        return self._reduced_mass
 
     name = property(lambda self: self._name)
-    inchikey = property(lambda self: self['inchikey'])
-    elements = property(_get_elements)
-    isotopes = property(lambda self: self['isotopes'])
-    charge = property(lambda self: self['charge'])
+    elements = property(lambda self: self._elements)
+    isotopes = property(lambda self: self._isotopes)
+    charge = property(lambda self: self._charge)
     chemical_species = property(_get_chemical_species)
-    isotopologue = property(lambda self: self['isotopologue'])
     species = property(_get_species)
-    mass = property(lambda self: self['mass'])
-    reduced_mass = property(lambda self: self['reduced_mass'])
+    nelectrons = property(_get_nelectrons)
+    natoms = property(_get_natoms)
+    mass = property(_get_mass)
+    reduced_mass = property(_get_reduced_mass)
     point_group = property(lambda self: self['point_group'])
 
 
