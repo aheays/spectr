@@ -49,7 +49,6 @@ class Level(Optimiser):
         self.level = levels.Diatom(name=f'{self.name}.level')
         self.level.pop_format_input_function()
         self.level.add_suboptimiser(self)
-        # self.level.pop_format_input_function()
         self.vibrational_spin_level = levels.Diatom()
         self.interactions = {}
         self.verbose = False
@@ -655,8 +654,6 @@ class Line(Optimiser):
         self.line = lines.Diatom(name=f'{self.name}.line')
         self.line.pop_format_input_function()
         self.line.add_suboptimiser(self)
-        # self.line.pop_format_input_function()
-        # self.μ = None
         self._set_J_l_ΔJ(J_l,ΔJ)
         ## transitions
                 ## construct optimiser -- inheriting from states

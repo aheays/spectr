@@ -484,7 +484,6 @@ class Model(Optimiser):
         self.automatic_format_input_function()
         if self.experiment is not None:
             self.add_suboptimiser(self.experiment)
-            self.pop_format_input_function()
         self._initialise()
         self.add_post_construct_function(self.get_residual)
         self.add_save_to_directory_function(self.output_data_to_directory)

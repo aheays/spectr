@@ -204,7 +204,6 @@ def optimise_method(
                 self.add_parameter(t)
             for t in suboptimisers:
                 self.add_suboptimiser(t)
-                # self.pop_format_input_function()
             ## if '_cache' is a kwarg of the function then initialise
             ## as an empty dictionary
             if '_cache' in signature_keys:
@@ -373,9 +372,6 @@ class Optimiser:
         for t in suboptimisers:
             if t not in self._suboptimisers:
                 self._suboptimisers.append(t)
-        # if add_format_function:
-            # self.add_format_input_function(
-                # lambda: f'{self.name}.add_suboptimiser({",".join(t.name for t in suboptimisers)})')
 
     suboptimisers = property(lambda self: self._suboptimisers)
 
@@ -386,7 +382,6 @@ class Optimiser:
             optimiser = parameter._in_store._parent
             if optimiser is not self and optimiser not in self.suboptimisers:
                 self.add_suboptimiser(optimiser)
-                # self.pop_format_input_function()
         if not isinstance(parameter,Parameter):
             parameter = Parameter(*tools.tools.ensure_iterable(parameter),*args,**kwargs)
         self.parameters.append(parameter)
