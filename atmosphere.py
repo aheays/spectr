@@ -3,13 +3,14 @@ from copy import copy,deepcopy
 import re
 import time
 
-from scipy import constants,integrate
+from scipy import constants
 import numpy as np
 
 from .dataset import Dataset
 from . import convert
 from . import kinetics
 from . import tools
+from .tools import integrate
 from . import database
 from .exceptions import InferException
 from . import plotting
@@ -44,10 +45,14 @@ class OneDimensionalAtmosphere(Dataset):
 class AtmosphericChemistry():
     """1D model atmosphere"""
 
-    def __init__(self,*args,**kwargs):
-        self.reaction_network = kinetics.ReactionNetwork()
+    def __init__(
+            self,
+            encoding='unicode',
+    ):
+        self.encoding = encoding
+        self.reaction_network = kinetics.ReactionNetwork(encoding=encoding)
         self.density = self.reaction_network.density = Dataset()
-        self.state = self.reaction_network.state = OneDimensionalAtmosphere()
+        self.state = self.reaction_network.state = OneDimensionalAtmosphere(name='state')
         self.verbose = self.reaction_network.verbose = False
 
     def __str__(self):
@@ -55,7 +60,9 @@ class AtmosphericChemistry():
     number of vertical elements: {len(self.density)}
     number of reactions: {len(self.reaction_network)}
     number of species: {len(self.density.keys())}
-    state keys: {self.state.keys()!r}'''
+
+'''
+        retval += self.state.get_description()
         return retval
 
     def calc_rates(self):
@@ -72,7 +79,6 @@ class AtmosphericChemistry():
             load_rates=False,
             iteration=None,     # # to load an old-depth-#.dat file -- None for the final result
            ):
-
         ## load depth.dat physical parameters and species volume density
         if iteration is None:
             depth_filename = f'{model_directory}/out/depth.dat'
@@ -105,7 +111,6 @@ class AtmosphericChemistry():
             ## load STAND reaction network
             self.reaction_network.load_stand(load_reaction_network)
             self.reaction_network.remove_unnecessary_reactions()
-    
         if load_rate_coefficients:
             ## Load the rate coefficients from an ARGO
             ## Reactions/Kup.dat or
@@ -119,7 +124,6 @@ class AtmosphericChemistry():
             assert np.all(data.pop('h[cm]') == self['z']),'Mismatch between model z grid and reaction rate coefficient grid.'
             for r in self.reaction_network.reactions:
                 r.rate_coefficient = data['R'+str(r.coefficients['reaction_number'])]
-
         if load_rates:
             ## load rates from the last time step in verif files
             ## loop over height files
@@ -220,7 +224,7 @@ class AtmosphericChemistry():
     def plot_vertical(
             self,
             ykey,
-            *xkeys,
+            xkeys,
             ax=None,
             plot_legend=True,
             **plot_kwargs,
@@ -289,6 +293,8 @@ class AtmosphericChemistry():
         rates = []
         for reaction in self.reaction_network.get_reactions(**kwargs_get_reactions):
             rate = copy(reaction.rate)
+            if rate is None:
+                raise Exception(f'Rate for reaction {str(reaction).strip()!r} not known')
             reaction_names.append(reaction.name)
             rates.append(rate)
         ## add total
@@ -343,7 +349,7 @@ class AtmosphericChemistry():
             xlabel = 'Rate (cm$^{-3}$ s$^{-1}$)'
             ## summary value is the rate integrated value vertically,
             ## destructin rate per unit area
-            summary_value = {key:tools.integrate(self['z'],val) for key,val in rates.items()}
+            summary_value = {key:integrate(self['z'],val) for key,val in rates.items()}
         ## sort species to plot by their descending summary value
         names = list(rates)
         j = np.argsort(list(summary_value.values()))[::-1]
@@ -364,19 +370,19 @@ class AtmosphericChemistry():
         legend()
         return ax
 
-    def summarise_species(self,species,doprint=True):
+    def summarise_species(self,species):
         """MAY NOT COUNT MULTIPLE PRODUCTS OF THE SAME SPECIES CORRECTLY"""
-        column_mixing_ratio = tools.integrate(self['z'],self.get_density(species)) / tools.integrate(self['z'],self['nt'])
-        column_density = tools.integrate(self['z'],self.get_density(species))
+        column_mixing_ratio = integrate(self['z'], self.get_density(species))/integrate(self['z'],self['nt'])
+        column_density = integrate(self['z'],self.get_density(species))
         ## production summary
         production_reactions = self.reaction_network.get_reactions(with_products=(species,)) 
         production_rate = np.sum([t.rate for t in production_reactions],0)
-        production_column_rate = tools.integrate(self['z'],production_rate)
+        production_column_rate = integrate(self['z'],production_rate)
         ## destruction summary
         destruction_reactions = self.reaction_network.get_reactions(with_reactants=(species,)) 
         destruction_rate = np.sum([t.rate for t in destruction_reactions],0)
-        destruction_column_rate = tools.integrate(self['z'],destruction_rate)
-        destruction_mean_loss_rate = destruction_column_rate/tools.integrate(self['z'],self.get_density(species))
+        destruction_column_rate = integrate(self['z'],destruction_rate)
+        destruction_mean_loss_rate = destruction_column_rate/integrate(self['z'],self.get_density(species))
         destruction_mean_lifetime = 1/destruction_mean_loss_rate
         lines = [
             f'species                                 : {species:>10s}',
@@ -424,6 +430,7 @@ class AtmosphericChemistry():
             nsort=nsort
         )
         legend(show_style=True,title=f'Production and destruction rates of {species}')
+        ax.set_xlim(xmin=1e-20)
         return ax
 
         

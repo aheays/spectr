@@ -23,7 +23,7 @@ from . import plotting
 #############
 
 
-_chemical_name_hacks = {
+_chemical_species_hacks = {
     'HCO₂H':'HCOOH',
     'SCS': 'CS₂',
 }
@@ -43,123 +43,207 @@ def get_species_property(name,prop):
     return retval
 
 @cache
-def get_chemical_name(name):
+def get_chemical_species(name):
     species = get_species(name)
-    return species['chemical_name']
+    return species['chemical_species']
     
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
 
-    def __init__(self,name=None,inchikey=None):
-        if inchikey is not None:
-            if name is None:
-                name = _inchikey_to_name[inchikey]
-            else:
-                if name != _inchikey_to_name[inchikey]:
-                    raise Exception(f'Inconsistent {name=} and {inchikey=}')
-        try:
-            self.decode_name(name)
-        except Exception as err:
-            raise DecodeSpeciesException(f'Cannot decode species: {name!r}. Error: {err}')
-        self.encode_name(self._isotopes,self._charge)
+    def __init__(
+            self,
+            name,
+            name_encoding='ascii_or_unicode',
+            encoding='unicode',
+    ):
 
-    def decode_name(self,name):
+        if name_encoding == 'ascii_or_unicode':
+            if re.match(r'.*[0-9+-].*',name):
+                name_encoding = 'ascii'
+            else:
+                name_encoding = 'unicode'
+        self._name = convert.species(name,name_encoding,encoding)
+        self.encoding = encoding
+        self._decode_name()
+                
+        # self._inchikey = convert.species(name,encoding,'inchikey')
+        # self._inchikey = convert.species(name,encoding,'inchikey')
+
+        # if inchikey is None and name is None:
+            
+        # if inchikey is not None:
+            # if name is None:
+                # name = _inchikey_to_name[inchikey]
+            # else:
+                # if name != _inchikey_to_name[inchikey]:
+                    # raise Exception(f'Inconsistent {name=} and {inchikey=}')
+        # try:
+            # self.decode_name(name)
+        # except Exception as err:
+            # raise DecodeSpeciesException(f'Cannot decode species: {name!r}. Error: {err}')
+        # self.encode_name(self._isotopes,self._charge)
+
+
+    # def _decode_name(self):
+    #     """Turn standard name string into ordered isotope list and charge.  If
+    #     any isotopic masses are given then they will be added to all
+    #     elements."""
+    #     isotopes = []                   # (element,mass_number,multiplicity)
+    #     ## e.g., CO2
+    #     if r:=re.match(r'^((?:[A-Z][a-z]?[0-9]*)+)([-+]*)$',name):
+    #         name_no_charge = r.group(1)
+    #         charge = r.group(2).count('+') - r.group(2).count('-')
+    #         for part in re.split(r'([A-Z][a-z]?[0-9]*)',name_no_charge):
+    #             if part=='':
+    #                 continue
+    #             elif r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
+    #                 isotopes.append((
+    #                     r.group(1), # element
+    #                     None,       # isotope mass number — make no assumptions
+    #                     int(r.group(2) if r.group(2) != '' else 1) # multiplicity
+    #                 ))
+    #             else:
+    #                 raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+    #     ## e.g., [12C][16O]2
+    #     elif r:=re.match(r'^((?:\[[0-9]+[A-Z][a-z]?\][0-9]*)+)([-+]*)$',name):
+    #         name_no_charge = r.group(1)
+    #         charge = r.group(2).count('+') - r.group(2).count('-')
+    #         for part in re.split(r'(\[[0-9]+[A-Z][a-z]?\][0-9]*)',name_no_charge):
+    #             if part=='':
+    #                 continue
+    #             elif r:= re.match(r'\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
+    #                 isotopes.append((
+    #                     r.group(2),
+    #                     int(r.group(1)),
+    #                     int(r.group(3) if r.group(3) != '' else 1)))
+    #             else:
+    #                 raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+    #     ## e.g., ¹²C¹⁶O₂²⁺
+    #     elif r:=re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name):
+    #         name_no_charge = r.group(1)
+    #         if r.group(2) == '':
+    #             charge = 0
+    #         elif r.group(2) == '⁺':
+    #             charge = +1
+    #         elif r.group(2) == '⁻':
+    #             charge = -1
+    #         elif '⁺' in r.group(2):
+    #             charge = int(tools.regularise_unicode(r.group(2)[:-1]))
+    #         else:
+    #             charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
+    #         for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
+    #             if part=='':
+    #                 continue
+    #             elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
+    #                 isotopes.append((
+    #                     r.group(2),
+    #                     (int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None),
+    #                     int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)))
+    #             else:
+    #                 raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+    #     ## neutral diatomic isotopologues e.g., 12C16O
+    #     elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)([0-9]*)([A-Z][a-z]?)$',name):
+    #         charge = 0
+    #         isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
+    #         isotopes.append((r.group(4),(None if r.group(3) == '' else int(r.group(3))),1))
+    #     ## atam isotopologues e.g., 12C
+    #     elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)$',name):
+    #         charge = 0
+    #         isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
+    #     else:
+    #         raise Exception(f'Could not decode species named: {repr(name)}')
+    #     ## if any masses given, then make sure all are specified
+    #     i = array([t[1] is None for t in isotopes])
+    #     if np.any(i) and not np.all(i):
+    #         for ii in tools.find(i):
+    #             isotopes[ii] = (isotopes[ii][0],
+    #                             database.get_most_abundant_isotope_mass_number(isotopes[ii][0]),
+    #                             isotopes[ii][2])
+    #     self._isotopes = tuple(isotopes)
+    #     self._charge = charge
+
+    def _decode_name(self):
         """Turn standard name string into ordered isotope list and charge.  If
         any isotopic masses are given then they will be added to all
         elements."""
-        isotopes = []                   # (element,mass_number,multiplicity)
-        ## e.g., CO2
-        if r:=re.match(r'^((?:[A-Z][a-z]?[0-9]*)+)([-+]*)$',name):
-            name_no_charge = r.group(1)
-            charge = r.group(2).count('+') - r.group(2).count('-')
-            for part in re.split(r'([A-Z][a-z]?[0-9]*)',name_no_charge):
-                if part=='':
-                    continue
-                elif r:= re.match(r'^([A-Z][a-z]?)([0-9]*)',part):
-                    isotopes.append((
-                        r.group(1), # element
-                        None,       # isotope mass number — make no assumptions
-                        int(r.group(2) if r.group(2) != '' else 1) # multiplicity
-                    ))
-                else:
-                    raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-        ## e.g., [12C][16O]2
-        elif r:=re.match(r'^((?:\[[0-9]+[A-Z][a-z]?\][0-9]*)+)([-+]*)$',name):
-            name_no_charge = r.group(1)
-            charge = r.group(2).count('+') - r.group(2).count('-')
-            for part in re.split(r'(\[[0-9]+[A-Z][a-z]?\][0-9]*)',name_no_charge):
-                if part=='':
-                    continue
-                elif r:= re.match(r'\[([0-9]+)([A-Z][a-z]?)\]([0-9]*)',part):
-                    isotopes.append((
-                        r.group(2),
-                        int(r.group(1)),
-                        int(r.group(3) if r.group(3) != '' else 1)))
-                else:
-                    raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+        name = convert.species(self.name,self.encoding,'unicode') 
         ## e.g., ¹²C¹⁶O₂²⁺
-        elif r:=re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name):
-            name_no_charge = r.group(1)
-            if r.group(2) == '':
-                charge = 0
-            elif r.group(2) == '⁺':
-                charge = +1
-            elif r.group(2) == '⁻':
-                charge = -1
-            elif '⁺' in r.group(2):
-                charge = int(tools.regularise_unicode(r.group(2)[:-1]))
-            else:
-                charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
-            for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
-                if part=='':
-                    continue
-                elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
-                    isotopes.append((
-                        r.group(2),
-                        (int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None),
-                        int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)))
-                else:
-                    raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-        ## neutral diatomic isotopologues e.g., 12C16O
-        elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)([0-9]*)([A-Z][a-z]?)$',name):
+        r = re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name)
+        if not r:
+            raise Exception(f'Could not decode unicode encoded species name: {name!r}')
+        name_no_charge = r.group(1)
+        if r.group(2) == '':
             charge = 0
-            isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
-            isotopes.append((r.group(4),(None if r.group(3) == '' else int(r.group(3))),1))
-        ## atam isotopologues e.g., 12C
-        elif r:=re.match(r'^([0-9]*)([A-Z][a-z]?)$',name):
-            charge = 0
-            isotopes.append((r.group(2),(None if r.group(1) == '' else int(r.group(1))),1))
+        elif r.group(2) == '⁺':
+            charge = +1
+        elif r.group(2) == '⁻':
+            charge = -1
+        elif '⁺' in r.group(2):
+            charge = int(tools.regularise_unicode(r.group(2)[:-1]))
         else:
-            raise Exception(f'Could not decode species named: {repr(name)}')
+            charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
+        elements_isotopes = []                   # (element,mass_number,multiplicity)
+        isotope_found = False
+        element_found = False
+        for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
+            if part=='':
+                continue
+            elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
+                mass_number = ( int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None )
+                element = r.group(2)
+                multiplicity = int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)
+                if mass_number is None:
+                    element_found = True
+                    elements_isotopes.append([element,multiplicity])
+                else:
+                    isotope_found = True 
+                    elements_isotopes.append([mass_number,element,multiplicity])
+            else:
+                raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
         ## if any masses given, then make sure all are specified
-        i = array([t[1] is None for t in isotopes])
-        if np.any(i) and not np.all(i):
-            for ii in tools.find(i):
-                isotopes[ii] = (isotopes[ii][0],
-                                database.get_most_abundant_isotope_mass_number(isotopes[ii][0]),
-                                isotopes[ii][2])
-        self._isotopes = tuple(isotopes)
+        if isotope_found:
+            if element_found:
+                for i,t in enumerate(elements_isotopes):
+                    if len(t) == 2:
+                        elements_isotopes[i] = (database.get_most_abundant_isotope_mass_number(t[0]),t[0],t[1])
+            isotopes = elements_isotopes
+            elements = [t[1:] for t in isotopes]
+            ## combine similar elements
+            i = 0
+            while i < (len(elements)-1):
+                if elements[i][0] == elements[i+1][0]:
+                    elements[i][1] += elements[i+1][1]
+                    elements.pop(i+1)
+                else:
+                    i += 1
+        elif element_found:
+            isotopes = None
+            elements = elements_isotopes
+        else:
+            raise Exception(f'Could not decode element name: {repr(name)}')
+        self._elements = elements
+        self._isotopes = isotopes
         self._charge = charge
 
-    def encode_name(self,isotopes,charge):
-        """Turn ordered isotope list and charge into a name string."""
-        retval = []
-        for element,mass_number,multiplicity in isotopes:
-            if mass_number is not None:
-                retval.append(tools.superscript_numerals(str(mass_number)))
-            retval.append(element)
-            if multiplicity > 1:
-                retval.append(tools.subscript_numerals(str(int(multiplicity))))
-        if charge == 1:
-            retval.append('⁺')
-        elif charge > 1:
-            retval.append(tools.superscript_numerals(str(int(charge)))+'⁺')
-        elif charge == -1:
-            retval.append('⁻')
-        elif charge < -1:
-            retval.append(tools.superscript_numerals(str(int(-charge))+'⁻'))
-        retval = ''.join(retval)
-        self._name = retval
+    # def encode_name(self,isotopes,charge):
+        # """Turn ordered isotope list and charge into a name string."""
+        # retval = []
+        # for element,mass_number,multiplicity in isotopes:
+            # if mass_number is not None:
+                # retval.append(tools.superscript_numerals(str(mass_number)))
+            # retval.append(element)
+            # if multiplicity > 1:
+                # retval.append(tools.subscript_numerals(str(int(multiplicity))))
+        # if charge == 1:
+            # retval.append('⁺')
+        # elif charge > 1:
+            # retval.append(tools.superscript_numerals(str(int(charge)))+'⁺')
+        # elif charge == -1:
+            # retval.append('⁻')
+        # elif charge < -1:
+            # retval.append(tools.superscript_numerals(str(int(-charge))+'⁻'))
+        # retval = ''.join(retval)
+        # self._name = retval
 
     def _get_elements(self):
         if self._elements is not None:
@@ -188,7 +272,20 @@ class Species:
         return self._nelectrons
 
     def __str__(self):
-        return self.species
+        retval = '\n'.join([f'{key:16} = {self[key]!r}' 
+                            for key in (
+                                    'name',
+                                    # 'inchikey',
+                                    'elements',
+                                    'isotopes',
+                                    'chemical_species',
+                                    'charge',
+                                    'species',
+                                    'mass',
+                                    # 'reduced_mass',
+                                    # 'point_group',
+                                    )])
+        return retval
 
     ## for sorting a list of Species objects
     def __lt__(self,other):
@@ -204,20 +301,17 @@ class Species:
             return self._name
         elif key == 'inchikey':
             if not hasattr(self,'_inchikey'):
-                self._inchikey = _name_to_inchikey[self._name]
+                self._inchikey = convert.species(self._name,self.encoding,'inchikey')
             return self._inchikey
         elif key == 'charge':
             return self._charge
         elif key == 'elements':
-            """Sorted list of (element,mass number)."""
-            if not hasattr(self,'_elements'):
-                t = []
-                for element,mass_number,multiplicity in self._isotopes:
-                    for i in range(multiplicity):
-                        t.append(element)
-                self._elements = tuple(sorted(t))
-            return self._elements
+            return self.elements
+        elif key == 'species':
+            return self.species
         elif key == 'isotopes':
+            if not hasattr(self,'_isotopes'):
+                self._decode_name()
             return self._isotopes
         elif key == 'nelectrons':
             if not hasattr(self,'_nelectrons'):
@@ -225,8 +319,12 @@ class Species:
             return self._nelectrons
         elif key == 'mass':
             if not hasattr(self,'_mass'):
-                self._mass =  sum([database.get_atomic_mass(element,mass_number)*multiplicity
-                                   for element,mass_number,multiplicity in self['isotopes']])
+                if self.isotopes is None:
+                    self._mass =  sum([database.get_atomic_mass(element)*multiplicity
+                                       for element,multiplicity in self.elements])
+                else:
+                    self._mass =  sum([database.get_atomic_mass(element,mass_number)*multiplicity
+                                       for mass_number,element,multiplicity in self.isotopes])
             return self._mass
         elif key == 'reduced_mass':
             if not hasattr(self,'_reduced_mass'):
@@ -236,36 +334,8 @@ class Species:
                 m2 = database.get_atomic_mass(*self['isotopes'][1])
                 self._reduced_mass = m1*m2/(m1+m2)
             return self._reduced_mass
-        elif key == 'chemical_name':
-            ## Get a name that is common to all isotopologues
-            if not hasattr(self,'_chemical_name'):
-                ## loop throush isotopes, combine common isotopes into
-                ## a common element, e.g, ¹⁴N¹⁵N becomes N₂
-                tokens = []     # individual element multiples e.g., X₄
-                element,multiplicity = None,0
-                for elementi,mass_numberi,multiplicityi in self._isotopes:
-                    if element is None:
-                        element,multiplicity = elementi,multiplicityi
-                    elif element == elementi:
-                        ## increase multiplicity of this element
-                        multiplicity += multiplicityi
-                    else:
-                        ## new token
-                        tokens.append(element)
-                        if multiplicity > 1:
-                            tokens.append(tools.subscript_numerals(str(multiplicity)))
-                        element,multiplicity = elementi,multiplicityi
-                ## final token
-                tokens.append(elementi)
-                if multiplicity > 1:
-                    tokens.append(tools.subscript_numerals(str(multiplicity)))
-                self._chemical_name = ''.join(tokens)
-                ## the above algorithm is imperfect, and might never
-                ## be perfect, this is a translation dictionary to
-                ## correct some errors that arise
-                if self._chemical_name in _chemical_name_hacks:
-                    self._chemical_name =  _chemical_name_hacks[self._chemical_name]
-            return self._chemical_name
+        elif key == 'chemical_species':
+            return self.chemical_species
         elif key == 'point_group':
             ## deduce point group
             if len(self.elements) == 1:
@@ -285,6 +355,7 @@ class Species:
             raise DecodeSpeciesException(f"Unknown species property: {key}")
 
     def translate_name(self,encoding):
+        
         if encoding == 'matplotlib':
             name = self['name']
             while r:=re.match(r'(^[^⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁺⁻]*)([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁺⁻]+)(.*)$',name):
@@ -295,21 +366,71 @@ class Species:
             raise Exception
         return name
 
-
     def is_isotopologue(self):
         """Is this species a particular isotopologue."""
-        if self['chemical_name'] == self['name']:
+        if self['chemical_species'] == self['name']:
             return False
         else:
             return True
+
+    def _get_unicode_encoded_charge(self):
+        if self.charge == 0:
+            retval = ''
+        if self.charge < -1:
+            retval = str(-self.charge)+'-'
+        elif self.charge < 0:
+            retval = '-'
+        elif self.charge > 1:
+            retval = str(self.charge)+'+'
+        else:
+            retval = '+'
+        retval = tools.superscript_numerals(retval)
+        return retval
     
-    name = property(lambda self: self['name'])
+    def _get_species(self):
+        if not hasattr(self,'_species'):
+            if self._isotopes is None:
+                self._species = None
+            else:
+                parts = []
+                for mass,element,mult in self.isotopes:
+                    parts.append(tools.superscript_numerals(str(mass)))
+                    parts.append(element)
+                    if mult > 1:
+                        parts.append(tools.superscript_numerals(tools.subscript_numerals(str(mult))))
+                parts.append(self._get_unicode_encoded_charge())
+                self._species = ''.join(parts)
+        return self._species
+    
+    def _get_chemical_species(self):
+        if not hasattr(self,'_chemical_species'):
+            parts = []
+            for element,mult in self.elements:
+                parts.append(element)
+                if mult > 1:
+                    parts.append(tools.superscript_numerals(tools.subscript_numerals(str(mult))))
+            parts.append(self._get_unicode_encoded_charge())
+            self._chemical_species = ''.join(parts)
+        return self._chemical_species
+                                    
+    def _get_elements(self):
+        if hasattr(self,'_elements'):
+            pass
+        elif hasattr(self,'_isotopes'):
+            self._elements = [(t[1],t[2]) for t in self.isotopes]
+        else:
+            assert False
+        return self._elements
+        
+
+    name = property(lambda self: self._name)
     inchikey = property(lambda self: self['inchikey'])
-    elements = property(lambda self: self['elements'])
+    elements = property(_get_elements)
     isotopes = property(lambda self: self['isotopes'])
-    chemical_name = property(lambda self: self['chemical_name'])
+    charge = property(lambda self: self['charge'])
+    chemical_species = property(_get_chemical_species)
     isotopologue = property(lambda self: self['isotopologue'])
-    species = property(lambda self: self.name)
+    species = property(_get_species)
     mass = property(lambda self: self['mass'])
     reduced_mass = property(lambda self: self['reduced_mass'])
     point_group = property(lambda self: self['point_group'])
@@ -605,9 +726,13 @@ def decode_reaction(reaction,encoding='ascii'):
 
 def encode_reaction(reactants,products,encoding='ascii'):
     """Only just started"""
-    if encoding!='ascii':
-        raise ImplementationError()
-    return ' + '.join(reactants)+' → '+' + '.join(products)
+    if encoding == 'ascii':
+        retval = ' + '.join(reactants)+' -> '+' + '.join(products)
+    elif encoding == 'unicode':
+        retval = ' + '.join(reactants)+' → '+' + '.join(products)
+    else:
+        raise NotImplementedError(f'Unimplemented reation encoding: {encoding!r}')
+    return retval
 
 ############################################################################
 ## formulae for computing rate coefficients from reaction constants c and ##
@@ -710,13 +835,17 @@ class Reaction:
         self.reactants,self.products = tuple(self.reactants),tuple(self.products) # make immutable
         self._hash = hash((self.reactants,self.products))
         ## tidy name
-        self.name = encode_reaction(self.reactants,self.products)
+        self.name = encode_reaction(self.reactants,self.products,encoding=self.encoding)
         self.formula = formula  # name of formula
         self._formula = _reaction_coefficient_formulae[formula] # function
         self.coefficients = ({} if coefficients is None else coefficients)
         self.rate_coefficient = None     
         self.rate = None     
 
+    def set_encoding(self,encoding):
+        if encoding == self.encoding:
+            return
+        raise NotImplementedError()
 
     def __getitem__(self,key):
         return(self.coefficients[key])
@@ -752,13 +881,16 @@ class Reaction:
 
 class ReactionNetwork:
 
-    def __init__(self):
+    def __init__(
+            self,
+            encoding='unicode',
+    ):
         self.reactions = []
         self.species = set()
         self.verbose = False
         self.density = Dataset()
         self.state = Dataset()
-        self.encoding = 'unicode' # encoding of species and reactions
+        self.encoding = encoding # encoding of species and reactions
         
     def __getitem__(self,key):
         if key in self.state:
@@ -854,16 +986,15 @@ class ReactionNetwork:
         plotting.legend()
         return ax
 
-    def append(self,*args,**kwargs):
+    def append(self,reaction=None,**new_reaction_kwargs):
         """Append a Reaction, or arguments to define one."""
-        if len(args)==1 and len(kwargs)==0 and  isinstance(args[0],Reaction):
-            r = args[0]
-        else:
-            r = Reaction(*args,**kwargs)
-        self.reactions.append(r)
-        for species in r.reactants + r.products:
+        if reaction is None:
+            reaction = Reaction(*args,**kwargs)
+        reaction.set_encoding = self.encoding
+        self.reactions.append(reaction)
+        for species in reaction.reactants + reaction.products:
             self.species.add(species)
-        return r
+        return reaction
 
     def remove_unnecessary_reactions(self):
         """Remove all reactions containing species that have no
