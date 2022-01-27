@@ -59,77 +59,88 @@ class Species:
             name_encoding='ascii_or_unicode',
             encoding='unicode',
     ):
-
-        if name_encoding == 'ascii_or_unicode':
-            if re.match(r'.*[0-9+-].*',name):
-                name_encoding = 'ascii'
-            else:
-                name_encoding = 'unicode'
         self._name = convert.species(name,name_encoding,encoding)
         self.encoding = encoding
         self._decode_name()
                 
+    # def _decode_name(self):
+    #     """Turn standard name string into ordered isotope list and charge.  If
+    #     any isotopic masses are given then they will be added to all
+    #     elements."""
+    #     name = convert.species(self.name,self.encoding,'unicode') 
+    #     ## e.g., ¹²C¹⁶O₂²⁺
+    #     r = re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name)
+    #     if not r:
+    #         raise Exception(f'Could not decode unicode encoded species name: {name!r}')
+    #     name_no_charge = r.group(1)
+    #     if r.group(2) == '':
+    #         charge = 0
+    #     elif r.group(2) == '⁺':
+    #         charge = +1
+    #     elif r.group(2) == '⁻':
+    #         charge = -1
+    #     elif '⁺' in r.group(2):
+    #         charge = int(tools.regularise_unicode(r.group(2)[:-1]))
+    #     else:
+    #         charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
+    #     elements_isotopes = []                   # (element,mass_number,multiplicity)
+    #     isotope_found = False
+    #     element_found = False
+    #     parts = []
+    #     for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
+    #         if part=='':
+    #             continue
+    #         elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
+    #             mass_number = ( int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None )
+    #             element = r.group(2)
+    #             multiplicity = int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)
+    #             if mass_number is None:
+    #                 element_found = True
+    #                 elements_isotopes.append([element,multiplicity])
+    #             else:
+    #                 isotope_found = True 
+    #                 # elements_isotopes.append([mass_number,element,multiplicity:
+    #             parts.append([part,mass_number,element,multiplicity])
+    #             raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+    #     ## if any masses given, then make sure all are specified
+    #     if isotope_found:
+    #         if element_found:
+    #             for i,t in enumerate(elements_isotopes):
+    #                 if len(t) == 2:
+    #                     elements_isotopes[i] = (database.get_most_abundant_isotope_mass_number(t[0]),t[0],t[1])
+    #         isotopes = elements_isotopes
+    #         elements = [t[1:] for t in isotopes]
+    #         ## combine similar elements
+    #         i = 0
+    #         while i < (len(elements)-1):
+    #             if elements[i][0] == elements[i+1][0]:
+    #                 elements[i][1] += elements[i+1][1]
+    #                 elements.pop(i+1)
+    #             else:
+    #                 i += 1
+    #     elif element_found:
+    #         isotopes = None
+    #         elements = elements_isotopes
+    #     else:
+    #         raise Exception(f'Could not decode element name: {repr(name)}')
+    #     self._elements = elements
+    #     self._isotopes = isotopes
+    #     self._charge  = charge
+
     def _decode_name(self):
         """Turn standard name string into ordered isotope list and charge.  If
         any isotopic masses are given then they will be added to all
         elements."""
-        name = convert.species(self.name,self.encoding,'unicode') 
-        ## e.g., ¹²C¹⁶O₂²⁺
-        r = re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name)
-        if not r:
-            raise Exception(f'Could not decode unicode encoded species name: {name!r}')
-        name_no_charge = r.group(1)
-        if r.group(2) == '':
-            charge = 0
-        elif r.group(2) == '⁺':
-            charge = +1
-        elif r.group(2) == '⁻':
-            charge = -1
-        elif '⁺' in r.group(2):
-            charge = int(tools.regularise_unicode(r.group(2)[:-1]))
+        linear_isotopes_or_elements = convert.species(self.name,self.encoding,'linear_isotopes_or_elements')
+        kind,elements_or_isotopes,charge = linear_isotopes_or_elements
+        self._kind = kind
+        if kind == 'elements':
+            self._elements = elements_or_isotopes
+            self._isotopes = None
         else:
-            charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
-        elements_isotopes = []                   # (element,mass_number,multiplicity)
-        isotope_found = False
-        element_found = False
-        for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
-            if part=='':
-                continue
-            elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
-                mass_number = ( int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None )
-                element = r.group(2)
-                multiplicity = int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)
-                if mass_number is None:
-                    element_found = True
-                    elements_isotopes.append([element,multiplicity])
-                else:
-                    isotope_found = True 
-                    elements_isotopes.append([mass_number,element,multiplicity])
-            else:
-                raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-        ## if any masses given, then make sure all are specified
-        if isotope_found:
-            if element_found:
-                for i,t in enumerate(elements_isotopes):
-                    if len(t) == 2:
-                        elements_isotopes[i] = (database.get_most_abundant_isotope_mass_number(t[0]),t[0],t[1])
-            isotopes = elements_isotopes
-            elements = [t[1:] for t in isotopes]
-            ## combine similar elements
-            i = 0
-            while i < (len(elements)-1):
-                if elements[i][0] == elements[i+1][0]:
-                    elements[i][1] += elements[i+1][1]
-                    elements.pop(i+1)
-                else:
-                    i += 1
-        elif element_found:
-            isotopes = None
-            elements = elements_isotopes
-        else:
-            raise Exception(f'Could not decode element name: {repr(name)}')
-        self._elements = elements
-        self._isotopes = isotopes
+            self._isotopes = elements_or_isotopes
+            self._elements = convert.species(((elements_or_isotopes,charge)),'linear_isotopes','linear_elements')
+        self._species = convert.species(linear_isotopes_or_elements,'linear_isotopes_or_elements',self.encoding)
         self._charge = charge
 
     def __str__(self):
@@ -218,6 +229,7 @@ class Species:
 
     def _get_species(self):
         if not hasattr(self,'_species'):
+            assert False
             if self._isotopes is None:
                 self._species = None
             else:
@@ -274,6 +286,11 @@ class Species:
                 m2 = database.get_atomic_mass(self.elements[1][0])
             self._reduced_mass = m1*m2/(m1+m2)
         return self._reduced_mass
+
+    def _get_elements(self):
+        if not hasattr(self,'_elements'):
+            self._elements,charge = convert.species((self._isotopes,0))
+        
 
     name = property(lambda self: self._name)
     elements = property(lambda self: self._elements)

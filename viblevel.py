@@ -662,7 +662,7 @@ class Line(Optimiser):
         self.automatic_format_input_function(
             multiline=False,
             limit_to_args=('name', 'level_u', 'level_l', 'J_l', 'ΔJ','Zsource','Eref'))
-        self.add_suboptimiser(self.level_u,self.level_l,add_format_function=False)
+        self.add_suboptimiser(self.level_u,self.level_l)
         def f(directory): 
             self.line.save(directory+'/line.h5')
         self.add_save_to_directory_function(f)
