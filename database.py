@@ -30,7 +30,7 @@ def normalise_species(species):
 @tools.vectorise(cache=True)
 def normalise_chemical_species(species):
     """Normalise species without masses."""
-    retval = kinetics.get_species(species).chemical_name
+    retval = kinetics.get_species(species).chemical_species
     return retval
     
 def normalise_electronic_state_label(label):

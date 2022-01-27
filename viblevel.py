@@ -662,7 +662,7 @@ class Line(Optimiser):
         self.automatic_format_input_function(
             multiline=False,
             limit_to_args=('name', 'level_u', 'level_l', 'J_l', 'ΔJ','Zsource','Eref'))
-        self.add_suboptimiser(self.level_u,self.level_l,add_format_function=False)
+        self.add_suboptimiser(self.level_u,self.level_l)
         def f(directory): 
             self.line.save(directory+'/line.h5')
         self.add_save_to_directory_function(f)
@@ -786,8 +786,14 @@ class Line(Optimiser):
             for iΔJ,ΔJ in enumerate(self.ΔJ):
                 self.μ0[:,iΔJ,i+kwu['ibeg'],j+kwl['ibeg']] += fμ[i,j](self.J_l,ΔJ)*float(μv)
 
-    def plot(self,Teq=300,match=None,**kwargs):
-        kwargs.setdefault('xkey','ν')
+    def plot(
+            self,
+            Teq=300,            # equilibrium temperature
+            match=None,         # plot some lines only
+            **kwargs,           # passed to plot_stick_spectrum
+    ):
+        """Plot line intensities with a stick spectrum."""
+        kwargs.setdefault('xkey','ν') # 
         kwargs.setdefault('zkeys',None)
         if Teq is None:
             kwargs.setdefault('ykey','Sij')

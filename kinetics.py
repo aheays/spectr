@@ -192,7 +192,7 @@ class Species:
     def _get_unicode_encoded_charge(self):
         if self.charge == 0:
             retval = ''
-        if self.charge < -1:
+        elif self.charge < -1:
             retval = str(-self.charge)+'-'
         elif self.charge < 0:
             retval = '-'

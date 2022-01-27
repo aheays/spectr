@@ -887,9 +887,12 @@ class Model(Optimiser):
             ## date before adding the spline to the model
             self.add_suboptimiser(spectrum_copy)
             _cache['spectrum_copy'] = spectrum_copy
+            _cache['compute_spline'] = compute_spline #  DEBUG
+            
         spectrum_copy = _cache['spectrum_copy']
         ## modify self.y according to what kind of spectrum this is,
         ## scale by transmittance or add intensity
+        _cache['compute_spline']()        #  DEBUG
         if kind == 'absorption':
             self.y *= _cache['spline']
         elif kind == 'emission':
