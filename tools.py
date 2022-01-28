@@ -49,10 +49,13 @@ def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
             scalar_kwargs = {}
             length = None
             for i,(key,val) in enumerate(kwargs.items()):
-                if (isiterable(val)
-                     and ((vkeys is not None and key in vkeys)
-                          or (vargs is not None and i in vargs)
-                          or (vkeys is None and vargs is None))):
+                if (
+                        ## isiterable(val)
+                        isinstance(val,(list,np.ndarray))
+                        and ((vkeys is not None and key in vkeys)
+                             or (vargs is not None and i in vargs)
+                             or (vkeys is None and vargs is None))
+                ):
                     ## vector data
                     if length is None:
                         length = len(val)

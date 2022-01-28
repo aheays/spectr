@@ -24,7 +24,8 @@ data_directory = spectr.__path__[0]+'/data'
 @tools.vectorise(cache=True,dtype='U30')
 def normalise_species(species):
     """Try to normalise a species name."""
-    retval = kinetics.get_species(species).name
+    # retval = kinetics.get_species(species).name
+    retval = convert.species(species,'ascii_or_unicode','unicode')
     return retval
 
 @tools.vectorise(cache=True)
@@ -187,6 +188,12 @@ def get_atomic_mass(element_name,mass_number=None):
     else:
         ## mass of isotope
         return getattr(periodictable,element_name)[mass_number].mass
+
+@lru_cache
+def get_atomic_number(element):
+    """Return the atomic mass of a particular elemental isotope."""
+    import periodictable
+    return getattr(periodictable,element).number
 
 def get_lines(species):
     """Load spectral lines from reference data."""

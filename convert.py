@@ -204,34 +204,59 @@ def difference(difference,value,unit_in,unit_out,group=None):
 ##############################
 
 
-@tools.vectorise(cache=True)
-def species(value,inp='ascii_or_unicode',out='unicode'):
-    retval = _species_internal(value,inp,out,error_on_fail=True)
+# @tools.vectorise(cache=True)
+def species(value,inp='ascii_or_unicode',out='unicode',verbose=False):
+    """Translate species name between different formats."""
+    retval = _species_internal(value,inp,out,error_on_fail=True,verbose=verbose,attempted=[])
     return retval
 
 def _species_internal(
-        value,
-        inp='ascii',
-        out='unicode',
+        value,inp,out,
         error_on_fail=True,
+        verbose=False,
+        attempted=(),
+        depth = 0,
 ):
-    """Translate species name between different formats."""
+    attempted.append((inp,out))
+    depth += 1
+    if verbose:
+        indent = ''.join(['    ' for i in range(depth)])
+        print(f'{indent}Attempting to convert {value!r} from {inp!r} to {out!r}')
     if inp == out:
         ## trivial case
+        if verbose:
+            print(f'{indent}Succeeded to convert {value!r} from {inp!r} to {out!r}: {value!r}')
         return value
     elif inp in _convert_species_functions:
         if out in _convert_species_functions[inp]:
+            retval = _convert_species_functions[inp][out](value)
             ## conversion function exists
-            return _convert_species_functions[inp][out](value)
+            if verbose:
+                print(f'{indent}Succeeded to convert {value!r} from {inp!r} to {out!r}: {retval!r}')
+            return retval
         else:
             ## try any possible intermediate format
+            test = None
             for intermediate in _convert_species_functions[inp]:
+                if intermediate == 'description':
+                    continue
+                if (intermediate,out) in attempted:
+                    continue
                 test = _species_internal(
                     _species_internal(
-                        value, inp, intermediate, error_on_fail=False,),
-                    intermediate,out, error_on_fail=False)
+                        value, inp, intermediate,
+                        error_on_fail=False, verbose=verbose,
+                        depth=depth, attempted=attempted,),
+                    intermediate,out, error_on_fail=False,verbose=verbose,depth=depth,attempted=attempted,)
                 if test is not None:
-                    return test
+                    break
+            else:
+                if verbose:
+                    print(f'{indent}Failed to convert {value!r} from {inp!r} to {out!r}')
+            if test is not None:
+                if verbose: 
+                    print(f'{indent}Succeeded to convert {value!r} from {inp!r} to {out!r}: {test!r}')
+            return test
     ## fail
     if error_on_fail:
         raise Exception(f"Could not convert species {value!r} from {inp!r} to {out!r} encoding.")
@@ -243,36 +268,43 @@ def _species_internal(
 ## translation_function) for direct and/or formulaic translation. The
 ## dictionary is tried first.
 _convert_species_functions = {
-    'ascii':{},
-    'unicode':{},
-    'ascii_or_unicode':{},
-    'linear':{},
-    'linear_isotopes':{},
-    'linear_elements':{},
-    'linear_isotopes_or_elements':{},
-    'matplotlib':{},
-    'stand':{},
-    'kida':{},
-    'meudon':{},
-    'cantera':{},
-    'leiden':{},
-    'inchikey':{},
-    'inchi':{},
-    'latex':{},
-    'CASint':{},
+    'ascii'                           : {'description' : 'E.g., H2O+, 12C16O, or [12C][16O]2',},
+    'unicode'                         : {'description' : 'E.g., H₂O⁺, ¹²C¹⁶O  or ¹²C¹⁶O₂',},
+    'ascii_or_unicode'                : {'description' : 'Guess which',},
+    'linear'                          : {'description' : 'E.g., for H₂¹⁶O⁺ this is (((None,"H",2),(16,"O",1)),1)',},
+    'linear_isotopes'                 : {'description' : 'E.g., for H₂¹⁶O⁺ this is (((1,"H",2),(16,"O",1)),1)',},
+    'linear_elements'                 : {'description' : 'E.g., for H₂¹⁶O⁺ this is (((None,"H",2),(None,"O",1)),1)',},
+    'matplotlib'                      : {'description' : 'Looks good in a matplotlib string',},
+    'stand'                           : {'description' : 'As it appears in the STAND chemical network',},
+    'kida'                            : {'description' : 'As it appears in the KIDA chemical network',},
+    'meudon'                          : {'description' : '',},
+    'cantera'                         : {'description' : '',},
+    'leiden'                          : {'description' : '',},
+    'inchikey'                        : {'description' : '',},
+    'inchi'                           : {'description' : '',},
+    'latex'                           : {'description' : '',},
+    'CASint'                          : {'description' : ''},
 }
 
-## ascii or unicode
-def _f(name):
+def describe_species():
+    """Summarise species encodings."""
+    retval = ['The species encoding codes are:']
+    for key,val in _convert_species_functions.items():
+        retval.append(f'{key!r}')
+        retval.append(f'    description: {val["description"]}')
+        retval.append(f'    conversion functions: '+' '.join([repr(t) for t in val if t!='description']))
+    retval = '\n'.join(retval)
+    print(retval )
+
+def _convert_ascii_or_unicode_to_unicode(name):
     if re.match(r'.*[0-9+-].*',name):
         name = species(name,'ascii','unicode')
     else:
         name = name
     return name
-_convert_species_functions['ascii_or_unicode']['unicode'] = _f
+_convert_species_functions['ascii_or_unicode']['unicode'] = _convert_ascii_or_unicode_to_unicode
 
-## unicode to set of atoms
-def _f(name):
+def _convert_unicode_to_linear(name):
     """Turn standard name string into ordered isotope list and charge.  If
     any isotopic masses are given then they will be added to all
     elements."""
@@ -305,78 +337,75 @@ def _f(name):
                 element_found = True
             else:
                 isotope_found = True
-            retval.append((element,mass_number,multiplicity))
+            retval.append((mass_number,element,multiplicity))
                 # # elements_isotopes.append([mass_number,element,multiplicity:
             # parts.append([part,mass_number,element,multiplicity])
             # raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
     retval = (tuple(retval),charge)
     return retval
-_convert_species_functions['unicode']['linear'] = _f
+_convert_species_functions['unicode']['linear'] = _convert_unicode_to_linear
 
-## convert linear into linear_all_isotopes_or_none:
-##   (((element0,mass_number0,multiplicity0),(element1,mass_number1,multiplicity1),...,),charge)
-def _f(linear):
-    from . import database
-    for element,mass_number,multiplicity in linear[0]:
+def _convert_linear_into_unicode(linear):
+    retval = []
+    parts,charge = linear
+    ## get most of the formula
+    for mass_number,element,multiplicity in parts:
         if mass_number is not None:
-            kind = 'isotopes'
-            break
+            retval.append(tools.superscript_numerals(str(mass_number)))
+        retval.append(element)
+        if multiplicity > 1:
+            retval.append(tools.subscript_numerals(str(multiplicity)))
+    ## and the charge
+    if charge == 0:
+        pass
+    elif charge < -1:
+        retval.append(str(-charge)+'⁻')
+    elif charge == -1:
+        retval.append('⁻')
+    elif charge == 1:
+        retval.append(str(charge)+'⁺')
     else:
-        kind = 'elements'
-    if kind == 'isotopes':
-        retval = _convert_linear_into_isotopes(linear)
-    else:
-        retval = _convert_linear_into_elements(linear)
-    retval = tuple([kind,*retval])
-    return retval 
-_convert_species_functions['linear']['linear_isotopes_or_elements'] = _f
+        retval = '⁺'
+    retval = ''.join(retval)
+    return retval
+_convert_species_functions['linear']['unicode'] = _convert_linear_into_unicode
+_convert_species_functions['linear_isotopes']['unicode_isotopes'] = _convert_linear_into_unicode
 
-def _convert_linear_isotopes_or_elements_into_unicode(linear):
-    kind,linear,charge = linear
-    if kind = 'elements':
-        retval = ''.join([
-            element+my.subscript_numerals(multiplicity)
-            for element,multiplicity in 
-    
-    if kind == 'isotopes':
-        retval = _convert_linear_into_isotopes(linear)
-    else:
-        retval = _convert_linear_into_elements(linear)
-    retval = tuple([kind,*retval])
-    return retval 
-_convert_species_functions['linear']['linear_isotopes_or_elements'] = _f
+def _convert_linear_into_unicode_elements(linear):
+    linear = (tuple([(None,t[1],t[2]) for t in linear[0]]),linear[1])
+    return _convert_linear_into_unicode(linear)
+_convert_species_functions['linear']['unicode_elements'] = _convert_linear_into_unicode_elements
 
-## convert linear into linear_isotopes:
-##   (((element0,mass_number0,multiplicity0),(element1,mass_number1,multiplicity1),...,),charge)
 def _convert_linear_into_isotopes(linear):
     from . import database
     isotopes = []
-    for element,mass_number,multiplicity in linear[0]:
+    for mass_number,element,multiplicity in linear[0]:
         if mass_number is None:
             mass_number = database.get_most_abundant_isotope_mass_number(element)
-        isotopes.append((element,mass_number,multiplicity))
+        isotopes.append((mass_number,element,multiplicity))
     charge = linear[1]
     retval = (tuple(isotopes),charge)
     return retval
-_convert_species_functions['linear']['linear_isotopes'] = _f
+_convert_species_functions['linear']['linear_isotopes'] = _convert_linear_into_isotopes
+_convert_species_functions['linear_isotopes']['linear'] = lambda x:x
 
-## convert linear into linear_elements:
-##   (((element0,multiplicity0),(element1,multiplicity1),...,),charge)
 def _convert_linear_into_elements(linear):
     """Discard mass-number information in linear format.
     Combined common elements by increasing their multiplicity."""
     from . import database
     retval = []
-    for element,mass_number,multiplicity in linear[0]:
+    for mass_number,element,multiplicity in linear[0]:
         if len(retval) > 0 and retval[-1][0] == element:
             retval[-1] = (retval[-1][0],retval[-1][1]+1)
         else:
-            retval.append((element,multiplicity))
+            retval.append((None,element,multiplicity))
     charge = linear[1]
     retval = (tuple(retval),charge)
     return retval
-_convert_species_functions['linear']['linear_elements'] = _f
-_convert_species_functions['linear_isotopes']['linear_elements'] = _f
+_convert_species_functions['linear']['linear_elements'] = _convert_linear_into_elements
+_convert_species_functions['linear_isotopes']['linear_elements'] = _convert_linear_into_elements
+_convert_species_functions['linear_elements']['linear'] = lambda x:x
+
 
 ## stored on disk table of translations
 _species_dataset = {}
@@ -433,7 +462,6 @@ def _species_database_translate(species,inp,out):
     # return retval
 # _convert_species_functions['unicode']['hash'] = _f
 
-## ascii
 def _f(name):
     """Translate ASCII name into unicode unicode name. E.g., echo
     NH3→NH₃, 14N16O→¹⁴N¹⁶O, AlBr3.6H2O→AlBr₃•6H₂O   
@@ -462,6 +490,7 @@ def _f(name):
         raise Exception(f'Cannot translate: {name}')
     return retval
 _convert_species_functions['ascii']['unicode'] = _f
+
 
 ## matplotlib
 _ascii_matplotlib_translation_dict = bidict({
@@ -561,7 +590,7 @@ def _f(name):
         for t in (('[18O]','O*'),('[13C]','C*'),('[15N]','N*'),): # isotopes
             name = name.replace(*t)
     return name.lower()
-_convert_species_functions['ascii','meudon old isotope labelling'] = _f
+_convert_species_functions['ascii']['meudon old isotope labelling'] = _f
 
 def _f(name):
     """Standard to Meudon PDR."""

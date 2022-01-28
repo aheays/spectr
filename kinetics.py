@@ -33,8 +33,8 @@ def get_inchikey(name):
     return Species(name)['inchikey']
 
 @cache
-def get_species(name):
-    return Species(name=name)
+def get_species(name,encoding='unicode'):
+    return Species(name=name,encoding=encoding)
 
 @cache
 def get_species_property(name,prop):
@@ -46,102 +46,89 @@ def get_species_property(name,prop):
 def get_chemical_species(name):
     species = get_species(name)
     return species['chemical_species']
-    
+
+
+
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
 
-    all_properties = ('name', 'charge', 'elements', 'species',
-                      'isotopes', 'natoms', 'nelectrons', 'mass', 'reduced_mass',)
+    def _linear_all_isotopes_if_any(self):
+        linear = convert.species(self['name'],self['encoding'],'linear')
+        kind = 'linear_elements'
+        for mass_number,element,multiplicity in linear[0]:
+            if mass_number is not None:
+                kind = 'linear_isotopes'
+                break
+        retval = convert.species(linear,'linear',kind)
+        return retval 
 
-    def __init__(
-            self,
-            name,
-            name_encoding='ascii_or_unicode',
-            encoding='unicode',
-    ):
-        self._name = convert.species(name,name_encoding,encoding)
-        self.encoding = encoding
-        self._decode_name()
-                
-    # def _decode_name(self):
-    #     """Turn standard name string into ordered isotope list and charge.  If
-    #     any isotopic masses are given then they will be added to all
-    #     elements."""
-    #     name = convert.species(self.name,self.encoding,'unicode') 
-    #     ## e.g., ¹²C¹⁶O₂²⁺
-    #     r = re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name)
-    #     if not r:
-    #         raise Exception(f'Could not decode unicode encoded species name: {name!r}')
-    #     name_no_charge = r.group(1)
-    #     if r.group(2) == '':
-    #         charge = 0
-    #     elif r.group(2) == '⁺':
-    #         charge = +1
-    #     elif r.group(2) == '⁻':
-    #         charge = -1
-    #     elif '⁺' in r.group(2):
-    #         charge = int(tools.regularise_unicode(r.group(2)[:-1]))
-    #     else:
-    #         charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
-    #     elements_isotopes = []                   # (element,mass_number,multiplicity)
-    #     isotope_found = False
-    #     element_found = False
-    #     parts = []
-    #     for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
-    #         if part=='':
-    #             continue
-    #         elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
-    #             mass_number = ( int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None )
-    #             element = r.group(2)
-    #             multiplicity = int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)
-    #             if mass_number is None:
-    #                 element_found = True
-    #                 elements_isotopes.append([element,multiplicity])
-    #             else:
-    #                 isotope_found = True 
-    #                 # elements_isotopes.append([mass_number,element,multiplicity:
-    #             parts.append([part,mass_number,element,multiplicity])
-    #             raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-    #     ## if any masses given, then make sure all are specified
-    #     if isotope_found:
-    #         if element_found:
-    #             for i,t in enumerate(elements_isotopes):
-    #                 if len(t) == 2:
-    #                     elements_isotopes[i] = (database.get_most_abundant_isotope_mass_number(t[0]),t[0],t[1])
-    #         isotopes = elements_isotopes
-    #         elements = [t[1:] for t in isotopes]
-    #         ## combine similar elements
-    #         i = 0
-    #         while i < (len(elements)-1):
-    #             if elements[i][0] == elements[i+1][0]:
-    #                 elements[i][1] += elements[i+1][1]
-    #                 elements.pop(i+1)
-    #             else:
-    #                 i += 1
-    #     elif element_found:
-    #         isotopes = None
-    #         elements = elements_isotopes
-    #     else:
-    #         raise Exception(f'Could not decode element name: {repr(name)}')
-    #     self._elements = elements
-    #     self._isotopes = isotopes
-    #     self._charge  = charge
+    def _get_nuclei(self):
+        nuclei = []
+        for mass_number,element,multiplicity in self['linear'][0]:
+            nuclei.extend([(mass_number,element) for t in range(multiplicity)])
+        return tuple(sorted(nuclei))
 
-    def _decode_name(self):
-        """Turn standard name string into ordered isotope list and charge.  If
-        any isotopic masses are given then they will be added to all
-        elements."""
-        linear_isotopes_or_elements = convert.species(self.name,self.encoding,'linear_isotopes_or_elements')
-        kind,elements_or_isotopes,charge = linear_isotopes_or_elements
-        self._kind = kind
-        if kind == 'elements':
-            self._elements = elements_or_isotopes
-            self._isotopes = None
+    def _get_point_group(self):
+        if self['nnuclei'] == 1:
+            ## nuclei
+            retval = "K"
+        elif self['nnuclei'] == 2:
+            ## Homonumclear or heteronuclear diatomic
+            if self['nuclei'][0] == self['nuclei'][1]:
+                retval = 'D∞h'
+            else:
+                retval = 'C∞v'
         else:
-            self._isotopes = elements_or_isotopes
-            self._elements = convert.species(((elements_or_isotopes,charge)),'linear_isotopes','linear_elements')
-        self._species = convert.species(linear_isotopes_or_elements,'linear_isotopes_or_elements',self.encoding)
-        self._charge = charge
+            raise InferException("Can only compute reduced mass for nuclei and diatomic species.")
+        return retval
+
+    def _get_reduced_mass(self):
+        if self['nnuclei'] != 2:
+            raise InferException()
+        m1 = database.get_atomic_mass(self['nuclei'][0][1],self['nuclei'][0][0])
+        m2 = database.get_atomic_mass(self['nuclei'][1][1],self['nuclei'][1][0])
+        retval = m1*m2/(m1+m2)
+        return retval
+
+    _prototypes =  {
+        'name'             : {'description' : 'Identifier of this species, with respect to encoding.',},
+        'encoding'         : {'description' : 'Encoding of species name.',},
+        'linear'           : {'description' : 'Linear structure and charge.','infer' : _linear_all_isotopes_if_any,},
+        'is_isotopologue'  : {'description' : 'Whether nuclei masses are specified, otherwise assumes natural-abundance properties.','infer' : lambda self : self['linear'][0][0][0] is not None} ,
+        'nuclei'           : {'description' : 'List of nuclei.','infer' : _get_nuclei},
+        'nnuclei'          : {'description' : 'Number of nuclei.','infer' : lambda self : len(self['nuclei'])} ,
+        'point_group'      : {'description' : 'Point group.','infer' : _get_point_group} ,
+        'charge'           : {'description' : 'Total charge.','infer' : lambda self : self['linear'][1]} ,
+        'nelectrons'       : {'description' : 'Number of electrons.','infer' : lambda self : sum([database.get_atomic_number(nuclei[1]) for nuclei in self['nuclei']]) - self['charge']},
+        'mass'             : {'description' : 'Mass (amu)','infer' : lambda self : np.sum([database.get_atomic_mass(element,mass_number)*multiplicity for mass_number,element,multiplicity in self['linear'][0]])} ,
+        'reduced_mass'     : {'description' : 'Reduced mass','infer' : _get_reduced_mass} ,
+        'isotopologue'     : {'description' : 'Unicode isotopologue name','infer' : lambda self : convert.species(self['linear'],'linear','unicode')} ,
+        'chemical_species' : {'description' : 'Unicode chemical species.','infer' : lambda self : convert.species(self['linear'],'linear','unicode_elements')} ,
+    }
+        
+
+    def __init__(self,name,encoding='unicode'):
+        self._data = {}
+        self._data['name'] = name
+        self._data['encoding'] = encoding
+        self.describe()
+        print( self.name)
+
+    def __getitem__(self,key):
+        if key not in self._data:
+            self._data[key] = self._prototypes[key]['infer'](self)
+        return self._data[key]
+
+    def describe(self):
+        retval = []
+        for key in self._prototypes:
+            try:
+                val = self[key]
+            except InferException:
+                val = None
+            retval.append(f'{key:20}: {val!r}')
+        retval = '\n'.join(retval)
+        print( retval)
 
     def __str__(self):
         retval = '\n'.join([
@@ -156,153 +143,10 @@ class Species:
     def __gt__(self,other):
         return self.name > other
 
-    def __getitem__(self,key):
-        """Access these properties by index rather than attributes in order
-        for simple caching.  -- move other get_ methods to here someday"""
-        if key in self.all_properties:
-            return getattr(self,key)
-        elif key == 'chemical_species':
-            return self.chemical_species
-        elif key == 'point_group':
-            ## deduce point group
-            if len(self.elements) == 1:
-                ## atoms
-                return "K"
-            elif len(self.elements) == 2:
-                ## Homonumclear or heteronuclear diatomic
-                if self.elements[0] == self.elements[1]:
-                    return 'D∞h'
-                else:
-                    return 'C∞v'
-            else:
-                raise ImplementationError("Can only compute reduced mass for atoms and diatomic species.")
-        elif key == 'matplotlib_name':
-            return self.translate_name('matplotlib')
-        else:
-            raise DecodeSpeciesException(f"Unknown species property: {key}")
+## add all prototypes as property attributes
+for key in Species._prototypes:
+    setattr(Species,key,property(lambda self: self[key]))
 
-    def translate_name(self,encoding):
-        
-        if encoding == 'matplotlib':
-            name = self['name']
-            while r:=re.match(r'(^[^⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁺⁻]*)([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁺⁻]+)(.*)$',name):
-                name = r.group(1)+r'$^{'+tools.regularise_unicode(r.group(2))+r'}$'+r.group(3)
-            while r:=re.match(r'^([^₀₁₂₃₄₅₆₇₈₉]*)([₀₁₂₃₄₅₆₇₈₉]+)(.*)$',name):
-                name = r.group(1)+r'$_{'+tools.regularise_unicode(r.group(2))+'}$'+r.group(3)
-        else:
-            raise Exception
-        return name
-
-    def is_isotopologue(self):
-        """Is this species a particular isotopologue."""
-        if self['chemical_species'] == self['name']:
-            return False
-        else:
-            return True
-
-    def _get_unicode_encoded_charge(self):
-        if self.charge == 0:
-            retval = ''
-        elif self.charge < -1:
-            retval = str(-self.charge)+'-'
-        elif self.charge < 0:
-            retval = '-'
-        elif self.charge > 1:
-            retval = str(self.charge)+'+'
-        else:
-            retval = '+'
-        retval = tools.superscript_numerals(retval)
-        return retval
-    
-    def _get_nelectrons(self):
-        if not hasattr(self,'_nelectrons'):
-            import periodictable
-            if self.chemical_species in ('e-','photon'):
-                raise NotImplementedError()
-            self._nelectrons = 0
-            ## add electrons attributable to each nucleus
-            for element,multiplicity in self['elements']:
-                self._nelectrons += multiplicity*getattr(periodictable,element).number
-            ## account for ionisation
-            self._nelectrons -= self['charge']
-        return self._nelectrons
-
-    def _get_species(self):
-        if not hasattr(self,'_species'):
-            assert False
-            if self._isotopes is None:
-                self._species = None
-            else:
-                parts = []
-                for mass,element,mult in self.isotopes:
-                    parts.append(tools.superscript_numerals(str(mass)))
-                    parts.append(element)
-                    if mult > 1:
-                        parts.append(tools.superscript_numerals(tools.subscript_numerals(str(mult))))
-                parts.append(self._get_unicode_encoded_charge())
-                self._species = ''.join(parts)
-        return self._species
-    
-    def _get_chemical_species(self):
-        if not hasattr(self,'_chemical_species'):
-            parts = []
-            for element,mult in self.elements:
-                parts.append(element)
-                if mult > 1:
-                    parts.append(tools.superscript_numerals(tools.subscript_numerals(str(mult))))
-            parts.append(self._get_unicode_encoded_charge())
-            self._chemical_species = ''.join(parts)
-        return self._chemical_species
-                                    
-    def _get_elements(self):
-        return self._elements
-        
-    def _get_mass(self):
-        if not hasattr(self,'_mass'):
-            if self.isotopes is None:
-                self._mass = sum([
-                    database.get_atomic_mass(element)*multiplicity
-                    for element,multiplicity in self.elements])
-            else:
-                self._mass =  sum([
-                    database.get_atomic_mass(element,mass_number)*multiplicity
-                    for mass_number,element,multiplicity in self.isotopes])
-        return self._mass
-
-    def _get_natoms(self):
-        if not hasattr(self,'_natoms'):
-            self._natoms = sum([mult for element,mult in self.elements])
-        return self._natoms
-            
-    def _get_reduced_mass(self):
-        if not hasattr(self,'_reduced_mass'):
-            if self.natoms != 2:
-                self._reduced_mass = None
-            if self.isotopes is not None:
-                m1 = database.get_atomic_mass(self.isotopes[0][1],self.isotopes[0][0])
-                m2 = database.get_atomic_mass(self.isotopes[1][1],self.isotopes[1][0])
-            else:
-                m1 = database.get_atomic_mass(self.elements[0][0])
-                m2 = database.get_atomic_mass(self.elements[1][0])
-            self._reduced_mass = m1*m2/(m1+m2)
-        return self._reduced_mass
-
-    def _get_elements(self):
-        if not hasattr(self,'_elements'):
-            self._elements,charge = convert.species((self._isotopes,0))
-        
-
-    name = property(lambda self: self._name)
-    elements = property(lambda self: self._elements)
-    isotopes = property(lambda self: self._isotopes)
-    charge = property(lambda self: self._charge)
-    chemical_species = property(_get_chemical_species)
-    species = property(_get_species)
-    nelectrons = property(_get_nelectrons)
-    natoms = property(_get_natoms)
-    mass = property(_get_mass)
-    reduced_mass = property(_get_reduced_mass)
-    point_group = property(lambda self: self['point_group'])
 
 
 class Mixture():
@@ -1207,3 +1051,4 @@ def integrate_network(reaction_network,initial_density,state,time):
         **{t0:t1 for t0,t1 in zip(species,density)},
         **save_state)
     return retval
+
