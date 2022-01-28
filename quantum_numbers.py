@@ -16,7 +16,7 @@ from .tools import vectorise
 from .exceptions import DatabaseException,InvalidEncodingException
 
 def vectorise_decode(function):
-    """Input function takes a single string argurment and returns a
+    """Input function takes a single string argument and returns a
     dictionary. If a list is given then convert function to return a dict
     of lists."""
     @functools.wraps(function)

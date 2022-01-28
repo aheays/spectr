@@ -203,8 +203,13 @@ def difference(difference,value,unit_in,unit_out,group=None):
 ## translate chemical names ##
 ##############################
 
+
 @tools.vectorise(cache=True)
-def species(
+def species(value,inp='ascii_or_unicode',out='unicode'):
+    retval = _species_internal(value,inp,out,error_on_fail=True)
+    return retval
+
+def _species_internal(
         value,
         inp='ascii',
         out='unicode',
@@ -214,42 +219,37 @@ def species(
     if inp == out:
         ## trivial case
         return value
-    if inp in _species_translation:
-        translation = _species_translation[inp]
-        if out in translation:
-            d,f = translation[out]
-            if d is not None and value in d:
-                ## translation dictionary exists
-                return d[value]
-            elif f is not None:
-                ## translation function exists
-                return f(value)
-        ## try any possible intermediate format
-        for intermediate in translation:
-            test = species(
-                species(
-                    value,
-                    inp,
-                    intermediate,
-                    error_on_fail=False,
-                ),
-                intermediate,out,
-                error_on_fail=False
-            )
-            if test is not None:
-                return test
+    elif inp in _convert_species_functions:
+        if out in _convert_species_functions[inp]:
+            ## conversion function exists
+            return _convert_species_functions[inp][out](value)
+        else:
+            ## try any possible intermediate format
+            for intermediate in _convert_species_functions[inp]:
+                test = _species_internal(
+                    _species_internal(
+                        value, inp, intermediate, error_on_fail=False,),
+                    intermediate,out, error_on_fail=False)
+                if test is not None:
+                    return test
     ## fail
     if error_on_fail:
-        raise Exception(f"Could not convert species from {inp!r} to {out!r}: {value!r}")
-    return None
+        raise Exception(f"Could not convert species {value!r} from {inp!r} to {out!r} encoding.")
+    else:
+        return None
 
 ## dictionary and functions for converting a species, their keys are
 ## (inp,out) format strings. Each value is pair (translation_dict,
 ## translation_function) for direct and/or formulaic translation. The
 ## dictionary is tried first.
-_species_translation = {
+_convert_species_functions = {
     'ascii':{},
     'unicode':{},
+    'ascii_or_unicode':{},
+    'linear':{},
+    'linear_isotopes':{},
+    'linear_elements':{},
+    'linear_isotopes_or_elements':{},
     'matplotlib':{},
     'stand':{},
     'kida':{},
@@ -261,6 +261,122 @@ _species_translation = {
     'latex':{},
     'CASint':{},
 }
+
+## ascii or unicode
+def _f(name):
+    if re.match(r'.*[0-9+-].*',name):
+        name = species(name,'ascii','unicode')
+    else:
+        name = name
+    return name
+_convert_species_functions['ascii_or_unicode']['unicode'] = _f
+
+## unicode to set of atoms
+def _f(name):
+    """Turn standard name string into ordered isotope list and charge.  If
+    any isotopic masses are given then they will be added to all
+    elements."""
+    ## e.g., ¹²C¹⁶O₂²⁺
+    r = re.match(r'^((?:[⁰¹²³⁴⁵⁶⁷⁸⁹]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)+)([⁰¹²³⁴⁵⁶⁷⁸⁹]*[⁺⁻]?)$',name)
+    if not r:
+        raise Exception(f'Could not decode unicode encoded species name: {name!r}')
+    name_no_charge = r.group(1)
+    if r.group(2) == '':
+        charge = 0
+    elif r.group(2) == '⁺':
+        charge = +1
+    elif r.group(2) == '⁻':
+        charge = -1
+    elif '⁺' in r.group(2):
+        charge = int(tools.regularise_unicode(r.group(2)[:-1]))
+    else:
+        charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
+    retval = []                   # (element,mass_number,multiplicity)
+    isotope_found = False
+    element_found = False
+    for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
+        if part=='':
+            continue
+        elif r:= re.match(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*)([A-Z][a-z]?)([₀₁₂₃₄₅₆₇₈₉]*)',part):
+            mass_number = ( int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None )
+            element = r.group(2)
+            multiplicity = int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)
+            if mass_number is None:
+                element_found = True
+            else:
+                isotope_found = True
+            retval.append((element,mass_number,multiplicity))
+                # # elements_isotopes.append([mass_number,element,multiplicity:
+            # parts.append([part,mass_number,element,multiplicity])
+            # raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
+    retval = (tuple(retval),charge)
+    return retval
+_convert_species_functions['unicode']['linear'] = _f
+
+## convert linear into linear_all_isotopes_or_none:
+##   (((element0,mass_number0,multiplicity0),(element1,mass_number1,multiplicity1),...,),charge)
+def _f(linear):
+    from . import database
+    for element,mass_number,multiplicity in linear[0]:
+        if mass_number is not None:
+            kind = 'isotopes'
+            break
+    else:
+        kind = 'elements'
+    if kind == 'isotopes':
+        retval = _convert_linear_into_isotopes(linear)
+    else:
+        retval = _convert_linear_into_elements(linear)
+    retval = tuple([kind,*retval])
+    return retval 
+_convert_species_functions['linear']['linear_isotopes_or_elements'] = _f
+
+def _convert_linear_isotopes_or_elements_into_unicode(linear):
+    kind,linear,charge = linear
+    if kind = 'elements':
+        retval = ''.join([
+            element+my.subscript_numerals(multiplicity)
+            for element,multiplicity in 
+    
+    if kind == 'isotopes':
+        retval = _convert_linear_into_isotopes(linear)
+    else:
+        retval = _convert_linear_into_elements(linear)
+    retval = tuple([kind,*retval])
+    return retval 
+_convert_species_functions['linear']['linear_isotopes_or_elements'] = _f
+
+## convert linear into linear_isotopes:
+##   (((element0,mass_number0,multiplicity0),(element1,mass_number1,multiplicity1),...,),charge)
+def _convert_linear_into_isotopes(linear):
+    from . import database
+    isotopes = []
+    for element,mass_number,multiplicity in linear[0]:
+        if mass_number is None:
+            mass_number = database.get_most_abundant_isotope_mass_number(element)
+        isotopes.append((element,mass_number,multiplicity))
+    charge = linear[1]
+    retval = (tuple(isotopes),charge)
+    return retval
+_convert_species_functions['linear']['linear_isotopes'] = _f
+
+## convert linear into linear_elements:
+##   (((element0,multiplicity0),(element1,multiplicity1),...,),charge)
+def _convert_linear_into_elements(linear):
+    """Discard mass-number information in linear format.
+    Combined common elements by increasing their multiplicity."""
+    from . import database
+    retval = []
+    for element,mass_number,multiplicity in linear[0]:
+        if len(retval) > 0 and retval[-1][0] == element:
+            retval[-1] = (retval[-1][0],retval[-1][1]+1)
+        else:
+            retval.append((element,multiplicity))
+    charge = linear[1]
+    retval = (tuple(retval),charge)
+    return retval
+_convert_species_functions['linear']['linear_elements'] = _f
+_convert_species_functions['linear_isotopes']['linear_elements'] = _f
 
 ## stored on disk table of translations
 _species_dataset = {}
@@ -288,34 +404,34 @@ def _species_database_translate(species,inp,out):
         raise Exception(f'Could not translate {species!r} using from {inp!r} to {out!r}')
     return retval
 
-## various translations possible using _species_dataset
-for inp,out in (
-        ('CASint'  , 'unicode') , 
-        # ('CASint'  , 'ascii')   , 
-        ('unicode' , 'CASint')  , 
-        # ('ascii'   , 'CASint')  , 
-):
-    _f = lambda species,inp=inp,out=out:_species_database_translate(species,inp,out)
-    _species_translation[inp][out] = (None,_f)
+# ## various translations possible using _species_dataset
+# for inp,out in (
+        # ('CASint'  , 'unicode') , 
+        # # ('CASint'  , 'ascii')   , 
+        # ('unicode' , 'CASint')  , 
+        # # ('ascii'   , 'CASint')  , 
+# ):
+    # _f = lambda species,inp=inp,out=out:_species_database_translate(species,inp,out)
+    # _convert_species_functions[inp][out] = _f
 
-## experimental hash including isotopologues
-def _f(species):
-    from . import database
-    ## if isotopologue compute isotope hash, else retrun CAS as integer
-    if re.match(r'[₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹]',species):
-        ## hash is CAS of chemical species * 100000000000 plus a 32bit
-        ## sha1 hash of the isotopologue unicode name. This is
-        ## sensitive to atom order, better to hash the inchi or inchi
-        ## key perhaps
-        import hashlib
-        isohash = int(hashlib.sha1(species.encode("utf-8")).hexdigest(), 16) % (10 ** 8)
-        chemical_species = database.normalise_chemical_species(species)
-        chemical_species_CASint = _species_database_translate(chemical_species,'unicode','CASint')
-        retval = chemical_species_CASint*100000000000 + isohash
-    else:
-        retval = _species_database_translate(species,'unicode','CASint')
-    return retval
-_species_translation['unicode']['hash'] = (None,_f)
+# ## experimental hash including isotopologues
+# def _f(species):
+    # from . import database
+    # ## if isotopologue compute isotope hash, else retrun CAS as integer
+    # if re.match(r'[₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹]',species):
+        # ## hash is CAS of chemical species * 100000000000 plus a 32bit
+        # ## sha1 hash of the isotopologue unicode name. This is
+        # ## sensitive to atom order, better to hash the inchi or inchi
+        # ## key perhaps
+        # import hashlib
+        # isohash = int(hashlib.sha1(species.encode("utf-8")).hexdigest(), 16) % (10 ** 8)
+        # chemical_species = database.normalise_chemical_species(species)
+        # chemical_species_CASint = _species_database_translate(chemical_species,'unicode','CASint')
+        # retval = chemical_species_CASint*100000000000 + isohash
+    # else:
+        # retval = _species_database_translate(species,'unicode','CASint')
+    # return retval
+# _convert_species_functions['unicode']['hash'] = _f
 
 ## ascii
 def _f(name):
@@ -345,10 +461,10 @@ def _f(name):
     else:
         raise Exception(f'Cannot translate: {name}')
     return retval
-_species_translation['ascii']['unicode'] = (None,_f)
+_convert_species_functions['ascii']['unicode'] = _f
 
 ## matplotlib
-_d = bidict({
+_ascii_matplotlib_translation_dict = bidict({
     '14N2':'${}^{14}$N$_2$',
     '12C18O':r'${}^{12}$C${}^{18}$O',
     '32S16O':r'${}^{32}$S${}^{16}$O',
@@ -364,19 +480,22 @@ _d = bidict({
 def _f(name):
     """Translate from my normal species names into something that
     looks nice in matplotlib."""
-    name = re.sub(r'([0-9]+)',r'$_{\1}$',name) # subscript multiplicity 
-    name = re.sub(r'([+-])',r'$^{\1}$',name) # superscript charge
-    return(name)
-_species_translation['ascii']['matplotlib'] = (_d,_f)
+    if name in _ascii_matplotlib_translation_dict:
+        name = _ascii_matplotlib_translation_dict[name]
+    else:
+        name = re.sub(r'([0-9]+)',r'$_{\1}$',name) # subscript multiplicity 
+        name = re.sub(r'([+-])',r'$^{\1}$',name) # superscript charge
+    return name
+_convert_species_functions['ascii']['matplotlib'] = _f
 
 ## cantera
 def _f(name):
     """From cantera species name to standard. No translation actually"""
     return name
-_species_translation['cantera']['ascii'] = (None,_f)
+_convert_species_functions['cantera']['ascii'] = _f
 
 ## leiden
-_d = bidict({
+_leiden_ascii_translation_dict = bidict({
     'Ca':'ca', 'He':'he',
     'Cl':'cl', 'Cr':'cr', 'Mg':'mg', 'Mn':'mn',
     'Na':'na', 'Ni':'ni', 'Rb':'rb', 'Ti':'ti',
@@ -388,33 +507,36 @@ _d = bidict({
 
 def _f(leiden_name):
     """Translate from Leidne data base to standard."""
-    ## default to uper casing
-    name = leiden_name.upper()
-    name = name.replace('C-','c-')
-    name = name.replace('L-','l-')
-    ## look for two-letter element names
-    name = name.replace('CL','Cl')
-    name = name.replace('SI','Si')
-    name = name.replace('CA','Ca')
-    ## look for isotopologues
-    name = name.replace('C*','13C')
-    name = name.replace('O*','18O')
-    name = name.replace('N*','15N')
-    ## assume final p implies +
-    if name[-1]=='P' and name!='P':
-        name = name[:-1]+'+'
+    if name in _leiden_ascii_translation_dict:
+        name = _leiden_ascii_translation_dict[name]
+    else:
+        ## default to uper casing
+        name = leiden_name.upper()
+        name = name.replace('C-','c-')
+        name = name.replace('L-','l-')
+        ## look for two-letter element names
+        name = name.replace('CL','Cl')
+        name = name.replace('SI','Si')
+        name = name.replace('CA','Ca')
+        ## look for isotopologues
+        name = name.replace('C*','13C')
+        name = name.replace('O*','18O')
+        name = name.replace('N*','15N')
+        ## assume final p implies +
+        if name[-1]=='P' and name!='P':
+            name = name[:-1]+'+'
     return name
-_species_translation['leiden']['ascii'] = (_d,_f)
+_convert_species_functions['leiden']['ascii'] = _f
 
 def _f(standard_name):
     """Translate form my normal species names into the Leiden database
     equivalent."""
     standard_name  = standard_name.replace('+','p')
     return standard_name.lower()
-_species_translation['ascii']['leiden'] = (None,_f)
+_convert_species_functions['ascii']['leiden'] = _f
 
 ## meudon_pdr
-_d = bidict({
+_ascii_meudon_old_translation_dict = bidict({
     'Ca':'ca', 'Ca+':'ca+', 'He':'he', 'He+':'he+',
     'Cl':'cl', 'Cr':'cr', 'Mg':'mg', 'Mn':'mn', 'Na':'na', 'Ni':'ni',
     'Rb':'rb', 'Ti':'ti', 'Zn':'zn', 'Si':'si', 'Si+':'si+',
@@ -432,11 +554,14 @@ _d = bidict({
 
 def _f(name):
     """Standard to Meudon PDR with old isotope labellgin."""
-    name = re.sub(r'\([0-9][SPDF][0-9]?\)','',name) # remove atomic terms e.g., O(3P1) ⟶ O
-    for t in (('[18O]','O*'),('[13C]','C*'),('[15N]','N*'),): # isotopes
-        name = name.replace(*t)
-    return(name.lower())
-_species_translation['ascii','meudon old isotope labelling'] = (_d,_f)
+    if name in _ascii_meudon_old_translation_dict:
+        name = _ascii_meudon_old_translation_dict[name]
+    else:
+        name = re.sub(r'\([0-9][SPDF][0-9]?\)','',name) # remove atomic terms e.g., O(3P1) ⟶ O
+        for t in (('[18O]','O*'),('[13C]','C*'),('[15N]','N*'),): # isotopes
+            name = name.replace(*t)
+    return name.lower()
+_convert_species_functions['ascii','meudon old isotope labelling'] = _f
 
 def _f(name):
     """Standard to Meudon PDR."""
@@ -449,10 +574,10 @@ def _f(name):
     name = re.sub(r'_$', r'' ,name)
     name = re.sub(r'_\+',r'+',name)
     return(name.lower())
-_species_translation['ascii']['meudon'] = (None,_f)
+_convert_species_functions['ascii']['meudon'] = _f
 
 ## STAND reaction network used in ARGO model
-_d = bidict({
+_stand_ascii_translation_dict = bidict({
     'NH3':'H3N',
     'O2+_X2Πg':'O2+_P',
     'O2_a1Δg' :'O2_D',
@@ -466,13 +591,17 @@ _d = bidict({
     'OH':'HO',
 })
 def _f(name):
-    return(name)
-_species_translation['stand']['ascii'] = (_d,_f)
+    if name in _stand_ascii_translation_dict:
+        name = _stand_ascii_translation_dict[name]
+    else:
+        name = name
+    return name
+_convert_species_functions['stand']['ascii'] = _f
 
 ## kida
 def _f(name):
     return(name)
-_species_translation['kida']['ascii'] = (None,_f)
+_convert_species_functions['kida']['ascii'] = _f
 
 ## latex
 def _f(name):
@@ -481,14 +610,14 @@ def _f(name):
         return(database.get_species_property(name,'latex'))
     except:
         return(r'\ce{'+name.strip()+r'}')
-_species_translation['ascii']['latex'] = (None,_f)
+_convert_species_functions['ascii']['latex'] = _f
 
-## inchikey to unicode
-_d = bidict({
-    'NH₃':  'QGZKDVFQNNGYKY-UHFFFAOYSA-N',
-})
-_species_translation['inchikey']['unicode'] = (_d,None)
-_species_translation['unicode']['inchikey'] = (_d,None)
+# ## inchikey to unicode
+# _unicode_inchikey_translation_dict = bidict({
+    # 'NH₃':  'QGZKDVFQNNGYKY-UHFFFAOYSA-N',
+# })
+# _convert_species_functions['inchikey']['unicode'] = (_d,None)
+# _convert_species_functions['unicode']['inchikey'] = (_d,None)
 
 
 
