@@ -288,7 +288,7 @@ class Level(Optimiser):
             if name is not None:
                 kw |= quantum_numbers.decode_linear_level(name) 
             kw |= kwargs
-            kw['species'] = self.species.name
+            kw['species'] = self.species.isotopologue
             for key in ('S','s','Λ'):
                 if key not in kw:
                     if 'species' in kw and 'label' in kw:

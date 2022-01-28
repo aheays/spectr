@@ -86,11 +86,16 @@ def get_species_property(species,prop):
     species = normalise_species(species)
     if species in species_data and prop in species_data[species]:
         retval = species_data[species][prop]
-    else:
+    elif prop in kinetics.Species._prototypes:
         try: 
             retval = kinetics.get_species_property(species,prop)
         except DecodeSpeciesException:
-            raise DatabaseException(f"Species property is unknown: {species=}, {prop=}")
+            retval = None
+    else:
+        retval = None
+    if retval is None:
+        raise DatabaseException(f"Could not determine property {prop!r} for species {species!r}")
+
     return retval
 
 @tools.cache

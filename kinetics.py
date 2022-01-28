@@ -28,17 +28,17 @@ _chemical_species_hacks = {
     'SCS': 'CS₂',
 }
 
-@cache
-def get_inchikey(name):
-    return Species(name)['inchikey']
+# @cache
+# def get_inchikey(name):
+    # return Species(name)['inchikey']
 
 @cache
 def get_species(name,encoding='unicode'):
     return Species(name=name,encoding=encoding)
 
 @cache
-def get_species_property(name,prop):
-    species = Species(name=name)
+def get_species_property(name,prop,encoding='unicode'):
+    species = Species(name=name,encoding=encoding)
     retval = species[prop]
     return retval
 
@@ -46,8 +46,6 @@ def get_species_property(name,prop):
 def get_chemical_species(name):
     species = get_species(name)
     return species['chemical_species']
-
-
 
 class Species:
     """Info about a species. Currently assumed to be immutable data only."""
@@ -62,19 +60,35 @@ class Species:
         retval = convert.species(linear,'linear',kind)
         return retval 
 
-    def _get_nuclei(self):
-        nuclei = []
-        for mass_number,element,multiplicity in self['linear'][0]:
-            nuclei.extend([(mass_number,element) for t in range(multiplicity)])
-        return tuple(sorted(nuclei))
+    def _get_isotopes(self):
+        retval = []
+        isotope_found = False
+        for element,mass_number in self['_tuple'][1:-1]:
+            if mass_number is None:
+                mass_number = database.get_most_abundant_isotope_mass_number(element)
+            else:
+                isotope_found = True
+            retval.append((element,mass_number))
+        if isotope_found:
+            return tuple(retval)
+        else:
+            return None
+
+    def _get_elements(self):
+        retval = []
+        for element,mass_number in self['_tuple'][1:-1]:
+            retval.append(element)
+        return tuple(retval)
 
     def _get_point_group(self):
+        if self['isotopes'] is None:
+            raise InferException(f'Cannot infer point group without isotope information ({self["name"]!r})')
         if self['nnuclei'] == 1:
             ## nuclei
             retval = "K"
         elif self['nnuclei'] == 2:
             ## Homonumclear or heteronuclear diatomic
-            if self['nuclei'][0] == self['nuclei'][1]:
+            if self['isotopes'][0] == self['isotopes'][1]:
                 retval = 'D∞h'
             else:
                 retval = 'C∞v'
@@ -82,28 +96,44 @@ class Species:
             raise InferException("Can only compute reduced mass for nuclei and diatomic species.")
         return retval
 
+    def _get_mass(self):
+        if self['isotopes'] is not None:
+            retval =  np.sum([database.get_atomic_mass(*t) for t in self['isotopes']])
+        else:
+            retval =  np.sum([database.get_atomic_mass(*t) for t in self['elements']])
+        return retval
+
     def _get_reduced_mass(self):
+        if self['isotopes'] is None:
+            raise InferException()
         if self['nnuclei'] != 2:
             raise InferException()
-        m1 = database.get_atomic_mass(self['nuclei'][0][1],self['nuclei'][0][0])
-        m2 = database.get_atomic_mass(self['nuclei'][1][1],self['nuclei'][1][0])
+        m1 = database.get_atomic_mass(*self['isotopes'][0])
+        m2 = database.get_atomic_mass(*self['isotopes'][1])
         retval = m1*m2/(m1+m2)
         return retval
+
+    def _get_isotopologue(self):
+        if self['isotopes'] is None:
+            return None
+        else:
+            return convert.species([self['prefix'],*self['isotopes'],self['charge']],'tuple','unicode')
 
     _prototypes =  {
         'name'             : {'description' : 'Identifier of this species, with respect to encoding.',},
         'encoding'         : {'description' : 'Encoding of species name.',},
-        'linear'           : {'description' : 'Linear structure and charge.','infer' : _linear_all_isotopes_if_any,},
-        'is_isotopologue'  : {'description' : 'Whether nuclei masses are specified, otherwise assumes natural-abundance properties.','infer' : lambda self : self['linear'][0][0][0] is not None} ,
-        'nuclei'           : {'description' : 'List of nuclei.','infer' : _get_nuclei},
-        'nnuclei'          : {'description' : 'Number of nuclei.','infer' : lambda self : len(self['nuclei'])} ,
+        'isotopes'           : {'description' : 'List of nuclei.','infer' : _get_isotopes},
+        'elements'           : {'description' : 'List of nuclei.','infer' : _get_elements},
+        '_tuple'           : {'description' : 'List of nuclei.','infer' : lambda self: convert.species(self['name'],self['encoding'],'tuple')},
+        'nnuclei'          : {'description' : 'Number of nuclei.','infer' : lambda self : len(self['elements'])} ,
         'point_group'      : {'description' : 'Point group.','infer' : _get_point_group} ,
-        'charge'           : {'description' : 'Total charge.','infer' : lambda self : self['linear'][1]} ,
-        'nelectrons'       : {'description' : 'Number of electrons.','infer' : lambda self : sum([database.get_atomic_number(nuclei[1]) for nuclei in self['nuclei']]) - self['charge']},
-        'mass'             : {'description' : 'Mass (amu)','infer' : lambda self : np.sum([database.get_atomic_mass(element,mass_number)*multiplicity for mass_number,element,multiplicity in self['linear'][0]])} ,
+        'prefix'           : {'description' : 'Total charge.','infer' : lambda self : self['_tuple'][0]} ,
+        'charge'           : {'description' : 'Total charge.','infer' : lambda self : self['_tuple'][-1]} ,
+        'nelectrons'       : {'description' : 'Number of electrons.','infer' : lambda self : sum([database.get_atomic_number(t) for t in self['elements']]) - self['charge']},
+        'mass'             : {'description' : 'Mass (amu)','infer' : _get_mass},
         'reduced_mass'     : {'description' : 'Reduced mass','infer' : _get_reduced_mass} ,
-        'isotopologue'     : {'description' : 'Unicode isotopologue name','infer' : lambda self : convert.species(self['linear'],'linear','unicode')} ,
-        'chemical_species' : {'description' : 'Unicode chemical species.','infer' : lambda self : convert.species(self['linear'],'linear','unicode_elements')} ,
+        'isotopologue'     : {'description' : 'Unicode isotopologue name','infer' : _get_isotopologue} ,
+        'chemical_species' : {'description' : 'Unicode chemical species.','infer' : lambda self : convert.species([self['prefix'],*[(t,None) for t in self['elements']],self['charge']],'tuple','unicode')} ,
     }
         
 
@@ -111,30 +141,25 @@ class Species:
         self._data = {}
         self._data['name'] = name
         self._data['encoding'] = encoding
-        self.describe()
-        print( self.name)
 
     def __getitem__(self,key):
         if key not in self._data:
             self._data[key] = self._prototypes[key]['infer'](self)
         return self._data[key]
 
-    def describe(self):
+    def __str__(self):
         retval = []
         for key in self._prototypes:
+            if key[0] == '_':
+                continue
             try:
                 val = self[key]
             except InferException:
                 val = None
             retval.append(f'{key:20}: {val!r}')
         retval = '\n'.join(retval)
-        print( retval)
-
-    def __str__(self):
-        retval = '\n'.join([
-            f'{key:16} = {getattr(self,key)!r}' 
-            for key in self.all_properties])
         return retval
+
 
     ## for sorting a list of Species objects
     def __lt__(self,other):
@@ -145,7 +170,7 @@ class Species:
 
 ## add all prototypes as property attributes
 for key in Species._prototypes:
-    setattr(Species,key,property(lambda self: self[key]))
+    setattr(Species,key,property(lambda self,key=key: self[key]))
 
 
 

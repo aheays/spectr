@@ -271,9 +271,7 @@ _convert_species_functions = {
     'ascii'                           : {'description' : 'E.g., H2O+, 12C16O, or [12C][16O]2',},
     'unicode'                         : {'description' : 'E.g., H₂O⁺, ¹²C¹⁶O  or ¹²C¹⁶O₂',},
     'ascii_or_unicode'                : {'description' : 'Guess which',},
-    'linear'                          : {'description' : 'E.g., for H₂¹⁶O⁺ this is (((None,"H",2),(16,"O",1)),1)',},
-    'linear_isotopes'                 : {'description' : 'E.g., for H₂¹⁶O⁺ this is (((1,"H",2),(16,"O",1)),1)',},
-    'linear_elements'                 : {'description' : 'E.g., for H₂¹⁶O⁺ this is (((None,"H",2),(None,"O",1)),1)',},
+    'tuple'                          : {'description' : '(structure-prefix,(element0,mass0|None),(element1,mass1|None),...,charge). E.g., for H₂¹⁶O⁺ this is ('',("H",None),("H",None),("O",16),1)',},
     'matplotlib'                      : {'description' : 'Looks good in a matplotlib string',},
     'stand'                           : {'description' : 'As it appears in the STAND chemical network',},
     'kida'                            : {'description' : 'As it appears in the KIDA chemical network',},
@@ -304,7 +302,7 @@ def _convert_ascii_or_unicode_to_unicode(name):
     return name
 _convert_species_functions['ascii_or_unicode']['unicode'] = _convert_ascii_or_unicode_to_unicode
 
-def _convert_unicode_to_linear(name):
+def _convert_unicode_to_tuple(name):
     """Turn standard name string into ordered isotope list and charge.  If
     any isotopic masses are given then they will be added to all
     elements."""
@@ -323,9 +321,7 @@ def _convert_unicode_to_linear(name):
         charge = int(tools.regularise_unicode(r.group(2)[:-1]))
     else:
         charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
-    retval = []                   # (element,mass_number,multiplicity)
-    isotope_found = False
-    element_found = False
+    retval = ['']               # prefix
     for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
         if part=='':
             continue
@@ -333,78 +329,59 @@ def _convert_unicode_to_linear(name):
             mass_number = ( int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None )
             element = r.group(2)
             multiplicity = int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)
-            if mass_number is None:
-                element_found = True
-            else:
-                isotope_found = True
-            retval.append((mass_number,element,multiplicity))
-                # # elements_isotopes.append([mass_number,element,multiplicity:
-            # parts.append([part,mass_number,element,multiplicity])
-            # raise Exception(f'Could not decode element name {repr(part)} in  {repr(name)}')
-    retval = (tuple(retval),charge)
+            for i in range(multiplicity):
+                retval.append((element,mass_number))
+    retval.append(charge)
+    retval = tuple(retval)
     return retval
-_convert_species_functions['unicode']['linear'] = _convert_unicode_to_linear
+_convert_species_functions['unicode']['tuple'] = _convert_unicode_to_tuple
 
-def _convert_linear_into_unicode(linear):
+def _encode_mass_number_element_multiplicity(element,mass_number,multiplicity):
+    retval = ''
+    if mass_number is not None:
+        retval += tools.superscript_numerals(str(mass_number))
+    retval += element
+    if multiplicity > 1:
+        retval += tools.subscript_numerals(str(multiplicity))
+    return retval
+
+def _convert_tuple_to_unicode(data):
+    prefix,data,charge = data[0],data[1:-1],data[-1]
     retval = []
-    parts,charge = linear
-    ## get most of the formula
-    for mass_number,element,multiplicity in parts:
-        if mass_number is not None:
-            retval.append(tools.superscript_numerals(str(mass_number)))
-        retval.append(element)
-        if multiplicity > 1:
-            retval.append(tools.subscript_numerals(str(multiplicity)))
+    ## prefix
+    if len(prefix)>0:
+        retval.append(prefix+'-')
+    ## elements
+    mult = 0
+    prev_element_mass = None
+    for element_mass in data:
+        if prev_element_mass is None:
+            mult = 1
+        elif element_mass == prev_element_mass:
+            mult += 1
+        else:
+            retval.append(
+                _encode_mass_number_element_multiplicity(
+                    prev_element_mass[0],prev_element_mass[1],mult))
+            mult = 1
+        prev_element_mass = element_mass
+    retval.append(
+        _encode_mass_number_element_multiplicity(
+            prev_element_mass[0],prev_element_mass[1],mult))
     ## and the charge
     if charge == 0:
         pass
     elif charge < -1:
-        retval.append(str(-charge)+'⁻')
+        retval.append(tools.superscript_numerals(str(-charge)+'-'))
     elif charge == -1:
         retval.append('⁻')
     elif charge == 1:
-        retval.append(str(charge)+'⁺')
+        retval.append('⁺')
     else:
-        retval = '⁺'
+        retval.append(tools.superscript_numerals(str(charge)+'+'))
     retval = ''.join(retval)
     return retval
-_convert_species_functions['linear']['unicode'] = _convert_linear_into_unicode
-_convert_species_functions['linear_isotopes']['unicode_isotopes'] = _convert_linear_into_unicode
-
-def _convert_linear_into_unicode_elements(linear):
-    linear = (tuple([(None,t[1],t[2]) for t in linear[0]]),linear[1])
-    return _convert_linear_into_unicode(linear)
-_convert_species_functions['linear']['unicode_elements'] = _convert_linear_into_unicode_elements
-
-def _convert_linear_into_isotopes(linear):
-    from . import database
-    isotopes = []
-    for mass_number,element,multiplicity in linear[0]:
-        if mass_number is None:
-            mass_number = database.get_most_abundant_isotope_mass_number(element)
-        isotopes.append((mass_number,element,multiplicity))
-    charge = linear[1]
-    retval = (tuple(isotopes),charge)
-    return retval
-_convert_species_functions['linear']['linear_isotopes'] = _convert_linear_into_isotopes
-_convert_species_functions['linear_isotopes']['linear'] = lambda x:x
-
-def _convert_linear_into_elements(linear):
-    """Discard mass-number information in linear format.
-    Combined common elements by increasing their multiplicity."""
-    from . import database
-    retval = []
-    for mass_number,element,multiplicity in linear[0]:
-        if len(retval) > 0 and retval[-1][0] == element:
-            retval[-1] = (retval[-1][0],retval[-1][1]+1)
-        else:
-            retval.append((None,element,multiplicity))
-    charge = linear[1]
-    retval = (tuple(retval),charge)
-    return retval
-_convert_species_functions['linear']['linear_elements'] = _convert_linear_into_elements
-_convert_species_functions['linear_isotopes']['linear_elements'] = _convert_linear_into_elements
-_convert_species_functions['linear_elements']['linear'] = lambda x:x
+_convert_species_functions['tuple']['unicode'] = _convert_tuple_to_unicode
 
 
 ## stored on disk table of translations
