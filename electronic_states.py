@@ -6,21 +6,11 @@ import warnings
 
 import numpy as np
 from numpy import nan,array
-# import sympy
-# from scipy import linalg
 
 try:
     from .fortran_tools import fortran_tools
 except ModuleNotFoundError:
     warnings.warn("Could not import fortran_tools.  Is it compiled?")
-
-
-# from . import levels,lines
-# from . import quantum_numbers
-# from . import tools
-# from .optimise import Optimiser,P,auto_construct_method
-# from .kinetics import get_species,Species
-
 
 def calc_unbound_wavefunction(R,Rstep,V,μ,E,method='fortran'):
     """Multi-channel unbound wavefunction at energy E."""

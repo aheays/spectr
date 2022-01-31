@@ -11,167 +11,18 @@ import scipy
 
 from . import tools
 from . import convert
-from .tools import cache
+from .tools import cache,vectorise
 from .dataset import Dataset
 from .exceptions import DecodeSpeciesException,InferException
 from . import database
 from . import plotting
 
 
-#############
-## species ##
-#############
 
 
-_chemical_species_hacks = {
-    'HCO₂H':'HCOOH',
-    'SCS': 'CS₂',
-}
-
-# @cache
-# def get_inchikey(name):
-    # return Species(name)['inchikey']
-
-@cache
-def get_species(name,encoding='unicode'):
-    return Species(name=name,encoding=encoding)
-
-@cache
-def get_species_property(name,prop,encoding='unicode'):
-    species = Species(name=name,encoding=encoding)
-    retval = species[prop]
-    return retval
-
-@cache
-def get_chemical_species(name):
-    species = get_species(name)
-    return species['chemical_species']
-
-class Species:
-    """Info about a species. Currently assumed to be immutable data only."""
-
-    def _linear_all_isotopes_if_any(self):
-        linear = convert.species(self['name'],self['encoding'],'linear')
-        kind = 'linear_elements'
-        for mass_number,element,multiplicity in linear[0]:
-            if mass_number is not None:
-                kind = 'linear_isotopes'
-                break
-        retval = convert.species(linear,'linear',kind)
-        return retval 
-
-    def _get_isotopes(self):
-        retval = []
-        isotope_found = False
-        for element,mass_number in self['_tuple'][1:-1]:
-            if mass_number is None:
-                mass_number = database.get_most_abundant_isotope_mass_number(element)
-            else:
-                isotope_found = True
-            retval.append((element,mass_number))
-        if isotope_found:
-            return tuple(retval)
-        else:
-            return None
-
-    def _get_elements(self):
-        retval = []
-        for element,mass_number in self['_tuple'][1:-1]:
-            retval.append(element)
-        return tuple(retval)
-
-    def _get_point_group(self):
-        if self['isotopes'] is None:
-            raise InferException(f'Cannot infer point group without isotope information ({self["name"]!r})')
-        if self['nnuclei'] == 1:
-            ## nuclei
-            retval = "K"
-        elif self['nnuclei'] == 2:
-            ## Homonumclear or heteronuclear diatomic
-            if self['isotopes'][0] == self['isotopes'][1]:
-                retval = 'D∞h'
-            else:
-                retval = 'C∞v'
-        else:
-            raise InferException("Can only compute reduced mass for nuclei and diatomic species.")
-        return retval
-
-    def _get_mass(self):
-        if self['isotopes'] is not None:
-            retval =  np.sum([database.get_atomic_mass(*t) for t in self['isotopes']])
-        else:
-            retval =  np.sum([database.get_atomic_mass(*t) for t in self['elements']])
-        return retval
-
-    def _get_reduced_mass(self):
-        if self['isotopes'] is None:
-            raise InferException()
-        if self['nnuclei'] != 2:
-            raise InferException()
-        m1 = database.get_atomic_mass(*self['isotopes'][0])
-        m2 = database.get_atomic_mass(*self['isotopes'][1])
-        retval = m1*m2/(m1+m2)
-        return retval
-
-    def _get_isotopologue(self):
-        if self['isotopes'] is None:
-            return None
-        else:
-            return convert.species([self['prefix'],*self['isotopes'],self['charge']],'tuple','unicode')
-
-    _prototypes =  {
-        'name'             : {'description' : 'Identifier of this species, with respect to encoding.',},
-        'encoding'         : {'description' : 'Encoding of species name.',},
-        'isotopes'           : {'description' : 'List of nuclei.','infer' : _get_isotopes},
-        'elements'           : {'description' : 'List of nuclei.','infer' : _get_elements},
-        '_tuple'           : {'description' : 'List of nuclei.','infer' : lambda self: convert.species(self['name'],self['encoding'],'tuple')},
-        'nnuclei'          : {'description' : 'Number of nuclei.','infer' : lambda self : len(self['elements'])} ,
-        'point_group'      : {'description' : 'Point group.','infer' : _get_point_group} ,
-        'prefix'           : {'description' : 'Total charge.','infer' : lambda self : self['_tuple'][0]} ,
-        'charge'           : {'description' : 'Total charge.','infer' : lambda self : self['_tuple'][-1]} ,
-        'nelectrons'       : {'description' : 'Number of electrons.','infer' : lambda self : sum([database.get_atomic_number(t) for t in self['elements']]) - self['charge']},
-        'mass'             : {'description' : 'Mass (amu)','infer' : _get_mass},
-        'reduced_mass'     : {'description' : 'Reduced mass','infer' : _get_reduced_mass} ,
-        'isotopologue'     : {'description' : 'Unicode isotopologue name','infer' : _get_isotopologue} ,
-        'chemical_species' : {'description' : 'Unicode chemical species.','infer' : lambda self : convert.species([self['prefix'],*[(t,None) for t in self['elements']],self['charge']],'tuple','unicode')} ,
-    }
-        
-
-    def __init__(self,name,encoding='unicode'):
-        self._data = {}
-        self._data['name'] = name
-        self._data['encoding'] = encoding
-
-    def __getitem__(self,key):
-        if key not in self._data:
-            self._data[key] = self._prototypes[key]['infer'](self)
-        return self._data[key]
-
-    def __str__(self):
-        retval = []
-        for key in self._prototypes:
-            if key[0] == '_':
-                continue
-            try:
-                val = self[key]
-            except InferException:
-                val = None
-            retval.append(f'{key:20}: {val!r}')
-        retval = '\n'.join(retval)
-        return retval
-
-
-    ## for sorting a list of Species objects
-    def __lt__(self,other):
-        return self.name < other
-
-    def __gt__(self,other):
-        return self.name > other
-
-## add all prototypes as property attributes
-for key in Species._prototypes:
-    setattr(Species,key,property(lambda self,key=key: self[key]))
-
+"""_Species object are a convenient introspective data store.  But
+they should be immutable and only exist one.  This is achieved by
+creating and accessing them through get_species and its cache."""
 
 
 class Mixture():

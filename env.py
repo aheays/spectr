@@ -66,6 +66,7 @@ from . import convert
 
 ## import contents of submodules
 from .tools import *
+from .database import get_species_property
 from .dataset import Dataset
 from .convert import units
 from .optimise import Optimiser,Parameter,P,Fixed

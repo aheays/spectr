@@ -334,7 +334,7 @@ def get_line(
                 ## make new line object from HITRAN data
                 print(f'Making linelist for {species!r}')
                 try:
-                    classname = database.get_species_property(chemical_species,'classname')
+                    classname = get_species_property(chemical_species,'classname')
                 except DatabaseException:
                     classname = 'Generic'
                 line = dataset.make(

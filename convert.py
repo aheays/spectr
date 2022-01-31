@@ -204,7 +204,7 @@ def difference(difference,value,unit_in,unit_out,group=None):
 ##############################
 
 
-# @tools.vectorise(cache=True)
+@tools.vectorise(cache=True)
 def species(value,inp='ascii_or_unicode',out='unicode',verbose=False):
     """Translate species name between different formats."""
     retval = _species_internal(value,inp,out,error_on_fail=True,verbose=verbose,attempted=[])
@@ -268,20 +268,22 @@ def _species_internal(
 ## translation_function) for direct and/or formulaic translation. The
 ## dictionary is tried first.
 _convert_species_functions = {
-    'ascii'                           : {'description' : 'E.g., H2O+, 12C16O, or [12C][16O]2',},
-    'unicode'                         : {'description' : 'E.g., H₂O⁺, ¹²C¹⁶O  or ¹²C¹⁶O₂',},
-    'ascii_or_unicode'                : {'description' : 'Guess which',},
-    'tuple'                          : {'description' : '(structure-prefix,(element0,mass0|None),(element1,mass1|None),...,charge). E.g., for H₂¹⁶O⁺ this is ('',("H",None),("H",None),("O",16),1)',},
-    'matplotlib'                      : {'description' : 'Looks good in a matplotlib string',},
-    'stand'                           : {'description' : 'As it appears in the STAND chemical network',},
-    'kida'                            : {'description' : 'As it appears in the KIDA chemical network',},
-    'meudon'                          : {'description' : '',},
-    'cantera'                         : {'description' : '',},
-    'leiden'                          : {'description' : '',},
-    'inchikey'                        : {'description' : '',},
-    'inchi'                           : {'description' : '',},
-    'latex'                           : {'description' : '',},
-    'CASint'                          : {'description' : ''},
+    'ascii'              : {'description' : 'E.g., H2O+, 12C16O, or [12C][16O]2',},
+    'unicode'            : {'description' : 'E.g., H₂O⁺, ¹²C¹⁶O  or ¹²C¹⁶O₂',},
+    'ascii_or_unicode'   : {'description' : 'Guess which',},
+    'tuple'              : {'description' : '(structure-prefix,(element0,mass0|None),(element1,mass1|None),...,charge). E.g., for H₂¹⁶O⁺ this is ('',("H",None),("H",None),("O",16),1)',},
+    # 'tuple_all_isotopes' : {'description' : 'Same as tuple but all mass numbers are given, if None intially then assume isotope with the greatest natural abundance.',},
+    # 'tuple_all_elements' : {'description' : 'Same as tuple but all mass numbers are removed.',},
+    'matplotlib'         : {'description' : 'Looks good in a matplotlib string',},
+    'stand'              : {'description' : 'As it appears in the STAND chemical network',},
+    'kida'               : {'description' : 'As it appears in the KIDA chemical network',},
+    'meudon'             : {'description' : '',},
+    'cantera'            : {'description' : '',},
+    'leiden'             : {'description' : '',},
+    'inchikey'           : {'description' : '',},
+    'inchi'              : {'description' : '',},
+    'latex'              : {'description' : '',},
+    'CASint'             : {'description' : ''},
 }
 
 def describe_species():
@@ -321,7 +323,8 @@ def _convert_unicode_to_tuple(name):
         charge = int(tools.regularise_unicode(r.group(2)[:-1]))
     else:
         charge = -int(tools.regularise_unicode(r.group(2)[:-1]))
-    retval = ['']               # prefix
+    prefix = ''               # prefix
+    nuclei = []
     for part in re.split(r'([⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ]*[A-Z][a-z]?[₀₁₂₃₄₅₆₇₈₉]*)',name_no_charge):
         if part=='':
             continue
@@ -329,45 +332,23 @@ def _convert_unicode_to_tuple(name):
             mass_number = ( int(tools.regularise_unicode(r.group(1))) if r.group(1) != '' else None )
             element = r.group(2)
             multiplicity = int(tools.regularise_unicode(r.group(3)) if r.group(3) != '' else 1)
-            for i in range(multiplicity):
-                retval.append((element,mass_number))
-    retval.append(charge)
-    retval = tuple(retval)
+            nuclei.append((mass_number,element,multiplicity))
+    retval = tuple([prefix]+nuclei+[charge])
     return retval
 _convert_species_functions['unicode']['tuple'] = _convert_unicode_to_tuple
 
-def _encode_mass_number_element_multiplicity(element,mass_number,multiplicity):
-    retval = ''
-    if mass_number is not None:
-        retval += tools.superscript_numerals(str(mass_number))
-    retval += element
-    if multiplicity > 1:
-        retval += tools.subscript_numerals(str(multiplicity))
-    return retval
-
 def _convert_tuple_to_unicode(data):
-    prefix,data,charge = data[0],data[1:-1],data[-1]
+    prefix,nuclei,charge = data[0],data[1:-1],data[-1]
     retval = []
     ## prefix
     if len(prefix)>0:
         retval.append(prefix+'-')
     ## elements
-    mult = 0
-    prev_element_mass = None
-    for element_mass in data:
-        if prev_element_mass is None:
-            mult = 1
-        elif element_mass == prev_element_mass:
-            mult += 1
-        else:
-            retval.append(
-                _encode_mass_number_element_multiplicity(
-                    prev_element_mass[0],prev_element_mass[1],mult))
-            mult = 1
-        prev_element_mass = element_mass
-    retval.append(
-        _encode_mass_number_element_multiplicity(
-            prev_element_mass[0],prev_element_mass[1],mult))
+    for mass_number,element,multiplicity in nuclei:
+        retval.append(
+            ('' if mass_number is None else tools.superscript_numerals(str(mass_number)))
+            + element
+            + ('' if multiplicity == 1 else tools.subscript_numerals(str(multiplicity))))
     ## and the charge
     if charge == 0:
         pass
@@ -613,7 +594,7 @@ _convert_species_functions['kida']['ascii'] = _f
 def _f(name):
     """Makes a nice latex version of species. THIS COULD BE EXTENDED"""
     try:
-        return(database.get_species_property(name,'latex'))
+        return(get_species_property(name,'latex'))
     except:
         return(r'\ce{'+name.strip()+r'}')
 _convert_species_functions['ascii']['latex'] = _f

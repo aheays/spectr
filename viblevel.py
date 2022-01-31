@@ -19,9 +19,7 @@ from . import plotting
 from .dataset import Dataset
 from .tools import find,cache,timestamp
 from .optimise import Optimiser,P,Parameter,optimise_method
-from .kinetics import get_species,Species
-
-
+from .database import get_species_property
 
 class Level(Optimiser):
     """A vibronic interaction matrix."""
@@ -41,7 +39,7 @@ class Level(Optimiser):
             sort_match_experiment=False,
     ):
         self.name = name          # a nice name
-        self.species = get_species(species)
+        self.species = get_species_property(species,'isotopologue_formula')
         self.Zsource = Zsource
         self.Eref = Eref
         self._manifolds = {}
@@ -151,7 +149,7 @@ class Level(Optimiser):
 
     def _set_J(self,J):
         """Set a J value some checks"""
-        J_is_half_integer = self.species['nelectrons']%2==1
+        J_is_half_integer = get_species_property(self.species,'nelectrons')%2==1
         if J is None:
             if J_is_half_integer:
                 J = np.arange(0.5,30.5,1)
@@ -159,9 +157,9 @@ class Level(Optimiser):
                 J = np.arange(31)
         J = np.asarray(J)
         if J_is_half_integer:
-            assert np.all(np.mod(J,1)==0.5),f'Half-integer J required for {repr(self.species.name)}'
+            assert np.all(np.mod(J,1)==0.5),f'Half-integer J required for {repr(self.species)}'
         else:
-            assert np.all(np.mod(J,1)==0),f'Integer J required for {repr(self.species.name)}'
+            assert np.all(np.mod(J,1)==0),f'Integer J required for {repr(self.species)}'
         self._J = J
         self._clean_construct = True
         self.construct()
@@ -288,7 +286,7 @@ class Level(Optimiser):
             if name is not None:
                 kw |= quantum_numbers.decode_linear_level(name) 
             kw |= kwargs
-            kw['species'] = self.species.isotopologue
+            kw['species'] = self.species
             for key in ('S','s','Λ'):
                 if key not in kw:
                     if 'species' in kw and 'label' in kw:

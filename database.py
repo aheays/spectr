@@ -10,6 +10,7 @@ import numpy as np
 
 ## submodules of this module
 from . import tools
+from .tools import vectorise
 from . import dataset
 from . import kinetics
 from . import convert
@@ -24,16 +25,9 @@ data_directory = spectr.__path__[0]+'/data'
 @tools.vectorise(cache=True,dtype='U30')
 def normalise_species(species):
     """Try to normalise a species name."""
-    # retval = kinetics.get_species(species).name
     retval = convert.species(species,'ascii_or_unicode','unicode')
     return retval
 
-@tools.vectorise(cache=True)
-def normalise_chemical_species(species):
-    """Normalise species without masses."""
-    retval = kinetics.get_species(species).chemical_species
-    return retval
-    
 def normalise_electronic_state_label(label):
     """Try to normalise."""
     if len(label) == 2 and label[1] in ('p',"'"):
@@ -62,40 +56,117 @@ def get_electronic_state_property(species,label,prop):
         raise DatabaseException(f"Cannot find property {prop=} for electronic state with {species=} {label=}")
     return data[prop]
 
-@functools.lru_cache(maxsize=1024)
-def get_species_data(species):
-    """Get a dictionary of data for this species. Data stored in data/species_data.py."""
-    from .data.species_data import data as species_data
-    retval = species_data[species]
-    return retval
+_all_species_properties = {     # ADD DOCS
+    'formula':'Chemical formula including any isotope.',
+    'chemical_formula':'Chemical species without isotope information.',
+    'is_isotopologue':'True if species contains any mass information, else False.',
+    'isotopologue_formula':'Chemical species with isotope information, assuming most abundand isotope where this information is missing.',
+    'prefix':'Structure information prefixing species formula.',
+    'nuclei':'List of (mass_number,element,multiplicity) matching the species formula.',
+    'charge':'Total charge of species.',
+    'mass':'Mass (amu)',
+    'isotopes':'Sorted tuple of isotopes (mass_number,element)',
+    'elements':'Sorted tuple of element',
+    'nnuclei':'Number of nuclei',
+    'nelectrons':'Number of electrons',
+    'reduced_mass':'Reduced mass (amu)',
+    'point_group':'Point group',
+}
 
-# @tools.vectorise()
-# def get_species_property(species,prop):
-#     """Get a database property of this species. Data stored in data/species_data.py."""
-#     from .data.species_data import data as species_data
-#     species = normalise_species(species)
-#     if species not in species_data or prop not in species_data[species]:
-#         raise DatabaseException(f"Species property is unknown: {species=}, {prop=}")
-#     retval = species_data[species][prop]
-#     return retval
+def describe_species_properties():
+    pprint(_all_species_properties)
 
-@tools.vectorise()
-def get_species_property(species,prop):
-    """Get a database property of this species. Data stored in data/species_data.py."""
-    from .data.species_data import data as species_data
-    species = normalise_species(species)
-    if species in species_data and prop in species_data[species]:
-        retval = species_data[species][prop]
-    elif prop in kinetics.Species._prototypes:
-        try: 
-            retval = kinetics.get_species_property(species,prop)
-        except DecodeSpeciesException:
-            retval = None
+@vectorise(cache=True)
+def get_species_property(species,prop,encoding='ascii_or_unicode'):
+    """Get property of a chemical or isotopologue species. describe_species_properties() to list information."""
+    if prop not in _all_species_properties:
+        raise DatabaseException(f'Unknown species property: {prop!r}. Allowed properties: {list(_all_species_properties)}')
+    ## try load property from stored database
+    species_unicode = convert.species(species,encoding,'unicode')
+    from .data.species_data import data as _species_data
+    if (species_unicode in _species_data
+        and prop in _species_data[species_unicode]):
+        retval = _species_data[species_unicode][prop]
+    ## otherwise try to compute
     else:
-        retval = None
-    if retval is None:
-        raise DatabaseException(f"Could not determine property {prop!r} for species {species!r}")
-
+        species_tuple = convert.species(species,encoding,'tuple')
+        prefix,nuclei,charge = species_tuple[0],species_tuple[1:-1],species_tuple[-1]
+        if prop == 'prefix':
+            retval =  prefix
+        elif prop == 'nuclei':
+            retval =  nuclei
+        elif prop == 'charge':
+            retval =  charge
+        elif prop == 'formula':
+            retval =  species_unicode
+        elif prop == 'mass':
+            retval =  np.sum([mult*get_atomic_mass(elem,mass) for mass,elem,mult in nuclei])
+        elif prop == 'is_isotopologue':
+            retval = False
+            for mass,elem,mult in nuclei:
+                if mass is not None:
+                    retval = True
+                    break
+            retval = retval
+        elif prop == 'isotopes':
+            retval = []
+            for mass,elem,mult in nuclei:
+                if mass is None:
+                    mass = get_most_abundant_isotope_mass_number(elem)
+                for i in range(mult):
+                    retval.append((mass,elem))
+            retval = tuple(retval)
+        elif prop == 'elements':
+            retval = []
+            for mass,elem,mult in nuclei:
+                for i in range(mult):
+                    retval.extend(elem)
+            retval = tuple(retval)
+        elif prop == 'nnuclei':
+            retval = len(get_species_property(species,'elements',encoding))
+        elif prop == 'nelectrons':
+            retval = sum([get_atomic_number(elem)*mult for mass,elem,mult in nuclei]) - charge
+        elif prop == 'reduced_mass':
+            isotopes = get_species_property(species,'isotopes',encoding)
+            if len(isotopes) != 2:
+                raise Exception(f'Can only compute reduced mass for nnuclei==2, not for {species!r}')
+            m0 = get_atomic_mass(isotopes[0][1],isotopes[0][0])
+            m1 = get_atomic_mass(isotopes[1][1],isotopes[1][0])
+            retval = m0*m1/(m0+m1)
+        elif prop == 'point_group':
+            isotopes = get_species_property(species,'isotopes',encoding)
+            if len(isotopes) == 1:
+                ## nuclei
+                retval = "K"
+            elif len(isotopes) == 2:
+                ## Homonumclear or heteronuclear diatomic
+                if isotopes[0] == isotopes[1]:
+                    retval = 'D∞h'
+                else:
+                    retval = 'C∞v'
+            else:
+                raise InferException("Can only compute reduced mass for nuclei and diatomic species.")
+        elif prop == 'chemical_formula':
+            ## if adjacent nuclei have different mass number how to know
+            ## if they should be joined into a single tuple term? Raise an
+            ## errork.
+            chemical_nuclei = list(nuclei)
+            for i in range(len(chemical_nuclei)):
+                if (i>0
+                    and nuclei[i][1] == nuclei[i-1][1]
+                    and nuclei[i][0] != nuclei[i-1][0]):
+                    raise Exception(f'Ambiguous isotopologue to chemical species conversion: {species!r}')
+                if chemical_nuclei[i][0] is not None:
+                    chemical_nuclei[i] = (None, chemical_nuclei[i][1], chemical_nuclei[i][2])
+            retval = convert.species(
+                (prefix,*chemical_nuclei,charge),'tuple','unicode')
+        elif prop == 'isotopologue_formula':
+            retval = convert.species(
+                (prefix,
+                 *[((get_most_abundant_isotope_mass_number(elem) if mass is None else mass),
+                    elem,mul) for mass,elem,mul in nuclei] ,charge) ,'tuple','unicode')
+        else:
+            raise Exception(f'Unknown species property: {prop!r}')
     return retval
 
 @tools.cache

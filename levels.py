@@ -23,6 +23,7 @@ from . import kinetics
 from . import quantum_numbers
 from .exceptions import InferException,DatabaseException
 from .optimise import optimise_method,Parameter
+from .database import get_species_property
 
 prototypes = {}
 
@@ -37,7 +38,7 @@ def _f0(species):
     much (it is slow)."""
     if np.isscalar(species):
         ## a scalara species -- normalise it 
-        return kinetics.get_species(species).name
+        return database.normalise_species(species)
     elif len(species) < 10000:
         ## a short list of species -- normalise them
         return database.normalise_species(species)
@@ -49,24 +50,17 @@ prototypes['species'] = dict(description="Chemical species with isotope specific
                              cast=_f0,)
 prototypes['_species_hash'] = dict(description="Hash of species", kind='i',infer=[('species',lambda self,species:[hash(t) for t in species]),])
 
-@vectorise(cache=True,vargs=(1,))
-def _f0(self,species):
-    species_object = kinetics.get_species(species)
-    return species_object['chemical_name']
-prototypes['chemical_species'] = dict(description="Chemical species without isotope specification" ,kind='U' ,infer=[('species',_f0)])
-prototypes['point_group']  = dict(description="Symmetry point group of species", kind='U',fmt='s', infer=[(('species',),lambda self,species:database.get_species_property(species,'point_group'))])
+prototypes['chemical_species'] = dict(description="Chemical species without isotope specification" ,kind='U' ,infer=[('species',lambda self,species: get_species_property(species,'chemical_species'))])
+prototypes['point_group']  = dict(description="Symmetry point group of species", kind='U',fmt='s', infer=[(('species',),lambda self,species:get_species_property(species,'point_group'))])
 
-@vectorise(vargs=(1,),dtype=float)
-def _f0(self,species):
-    return kinetics.get_species(species)['mass']
 def _f1(self,species,_species_hash):
     mass = np.empty(len(species),dtype=float)
     for t,i in zip(*np.unique(_species_hash,return_index=True)):
         j = _species_hash == t
-        mass[j] = kinetics.get_species(species[i])['mass']
+        mass[j] = get_species_property(species[i],'mass')
     return mass
-prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species','_species_hash',), _f1), (('species',), _f0),])
-prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species','database',), lambda self,species: _get_species_property(species,'reduced_mass'))])
+prototypes['mass'] = dict(description="Mass",units="amu",kind='f', fmt='<11.4f', infer=[(('species','_species_hash',), _f1), (('species',), lambda self,species:get_species_property(species,'mass')),])
+prototypes['reduced_mass'] = dict(description="Reduced mass",units="amu", kind='f', fmt='<11.4f', infer=[(('species',), lambda self,species: get_species_property(species,'reduced_mass'))])
 
 ## level energies
 prototypes['E'] = dict(description="Level energy referenced to Eref",units='cm-1',kind='f' ,fmt='<14.7f',default_step=1e-3 ,infer=[(('Ee','E0','Eref'),lambda self,Ee,E0,Eref: Ee-E0-Eref), (('species','_qnhash','Eref'),lambda self,species,_qnhash,Eref: database.get_level_energy(species,Eref,_qnhash=_qnhash)),]) 
@@ -74,7 +68,7 @@ prototypes['Ee'] = dict(description="Level energy relative to equilibrium geomet
 prototypes['Eref'] = dict(description="Reference energy referenced to the lowest physical energy level" ,units='cm-1',kind='f' ,fmt='<14.7f',default=0,infer=[])
 prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eres'),lambda self,E,Eres: E+Eres)])
 prototypes['Eres'] = dict(description="Residual difference between level energy and experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eexp'),lambda self,E,Eexp: Eexp-E)])
-prototypes['E0'] = dict(description="Energy of the lowest physical energy level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: database.get_species_property(species,'E0')),],default_step=1e-3)
+prototypes['E0'] = dict(description="Energy of the lowest physical energy level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: get_species_property(species,'E0')),],default_step=1e-3)
 
 
 prototypes['term'] = dict(description="Spectroscopic term symbol",kind='U',cast=lambda term: np.array(quantum_numbers.normalise_term_symbol(term),dtype=str),infer=[])
@@ -158,7 +152,7 @@ def _f1(self,point_group,Inuclear,sa):
     else:
         raise InferException()
 prototypes['gnuclear'] = dict(description="Nuclear spin level degeneracy (relative only)" , kind='i' , infer=[(('point_group',),_f0),( ('point_group','Inuclear','sa'),_f1),])
-prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei", kind='f',infer=[(('species',), lambda self,species: database.get_species_property(species,'Inuclear'))])
+prototypes['Inuclear'] = dict(description="Nuclear spin of individual nuclei", kind='f',infer=[(('species',), lambda self,species: get_species_property(species,'Inuclear'))])
 prototypes['g'] = dict(description="Level degeneracy including nuclear spin statistics" , kind='i' , infer=[(('J','gnuclear'),lambda self,J,gnuclear: (2*J+1)*gnuclear,)])
 # prototypes['pm'] = dict(description="Total inversion symmetry" ,kind='i' ,infer=[])
 prototypes['Γ'] = dict(description="Total natural linewidth of level or transition" ,units="cm-1 FWHM",kind='f',cast=cast_abs_float_array,fmt='<10.5g', infer=[('At',lambda self,At: 5.309e-12*At,)])
@@ -341,10 +335,7 @@ prototypes['α296K'] = dict(description="Equilibrium level population at 296K",u
 ## should these columns even be in levels?
 prototypes['Nchemical_species'] = dict(description="Combined column density of all isotopolouges of this chemical species",units="cm-2",kind='a',fmt='<11.3e', infer=[])
 prototypes['Nspecies'] = dict(description="Column density of this species",units="cm-2",kind='a',fmt='<11.3e', infer=[(('Nchemical_species','isotopologue_ratio'),lambda self,Nchemical_species,isotopologue_ratio: Nchemical_species*isotopologue_ratio),])
-prototypes['isotopologue_ratio'] = dict(description="Ratio of this isotopologue to the all isotopologues combined",units="cm-2",kind='a',fmt='<11.3e', infer=[
-    # (('species'),lambda self,species: database.get_species_property(species,'isotopologue_ratio')),
-    (('Nspecies','Nchemical_species'),lambda self,Nspecies,Nchemical_species: Nspecies/Nchemical_species),
-])
+prototypes['isotopologue_ratio'] = dict(description="Ratio of this isotopologue to the all isotopologues combined",units="cm-2",kind='a',fmt='<11.3e', infer=[(('Nspecies','Nchemical_species'),lambda self,Nspecies,Nchemical_species: Nspecies/Nchemical_species),])
 prototypes['label'] = dict(description="Label of electronic state", kind='U',infer=[])
 prototypes['v'] = dict(description="Vibrational quantum number", kind='i',infer=[])
 prototypes['vv'] = dict(description="(v+1/2)", kind='i',infer=[('v',lambda self,v:v+1/2)])

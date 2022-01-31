@@ -1,4 +1,4 @@
-
+ 
 import inspect,re
 from copy import copy,deepcopy
 from pprint import pprint
@@ -2519,14 +2519,14 @@ class FitAbsorption():
             region = []
             for tspecies in species_to_fit:
                 try:
-                    region += database.get_species_property(tspecies,'characteristic_infrared_lines')
+                    region += get_species_property(tspecies,'characteristic_infrared_lines')
                 except DatabaseException:
                     raise Exception(f'No characteristic lines found for {tspecies}. You could add a \'characteristic_infrared_lines property\' to a {database.normalise_species(tspecies)!r} section in spectr/data/species_data.py')
         elif region == 'bands':
             region = []
             for tspecies in species_to_fit:
                 try:
-                    region += database.get_species_property(tspecies,'characteristic_infrared_bands')
+                    region += get_species_property(tspecies,'characteristic_infrared_bands')
                 except DatabaseException:
                     raise Exception(f'No characteristic bands found for {tspecies}. You could add a \'characteristic_infrared_bands property\' to a {database.normalise_species(tspecies)!r} section in spectr/data/species_data.py')
         elif region == 'full':

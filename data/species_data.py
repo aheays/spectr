@@ -1,5 +1,5 @@
 metadata = {
-    'chemical_species'              :  { 'description' : 'common to all isotopologues'                                               ,         }        , 
+    'chemical_formula'              :  { 'description' : 'common to all isotopologues'                                               ,         }        , 
     'characteristic_infrared_bands' :  { 'description' : 'Wavenumber bands of the main infrared bands of this species'               , 'units' : 'cm-1' ,  }  , 
     'characteristic_infrared_lines'  :  { 'description' : 'Wavenumber bands of a few of the strongest infrared lines of this species' , 'units' : 'cm-1' ,  }  , 
     'E0'                            :  { 'description' : ''                                                                          ,         }        , 
@@ -15,7 +15,7 @@ metadata = {
 data = {
 
     'CS₂'     :     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'mass'              : 76,
         'characteristic_infrared_bands': [[1500,1560],],
         'characteristic_infrared_lines': [[1530,1550],],
@@ -23,147 +23,147 @@ data = {
     },
 
     '¹²C³²S₂' :     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'D∞h',
     },
 
     '¹²C³³S₂' :     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'D∞h',
     },
 
     '¹²C³⁴S₂' :     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'D∞h',
     },
 
     '¹³C³²S₂' :     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'D∞h',
     },
 
     '¹³C³³S₂' :     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'D∞h',
     },
 
     '¹³C³⁴S₂' :     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'D∞h',
     },
 
     '³²S¹²C³⁴S':     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'C∞v',
     },
 
     '³²S¹²C³³S':     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'C∞v',
     },
 
     '³³S¹²C³⁴S':     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'C∞v',
     },
 
     '³²S¹³C³⁴S':     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'C∞v',
     },
 
     '³²S¹³C³³S':     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'C∞v',
     },
 
     '³³S¹³C³⁴S':     {
-        'chemical_species'  : 'CS₂',
+        'chemical_formula'  : 'CS₂',
         'point_group'       : 'C∞v',
     },
 
     '¹²C'     :     {
-        'chemical_species'  : 'C',
+        'chemical_formula'  : 'C',
         'mass'              : 12.0107,
         'point_group'       : 'K',
     },
 
     '¹⁶O'     :     {
-        'chemical_species'  : 'O',
+        'chemical_formula'  : 'O',
         'mass'              : 15.994915,
         'point_group'       : 'K',
         'classname': 'Atom',
     },
 
     '¹⁷O'     :     {
-        'chemical_species'  : 'O',
+        'chemical_formula'  : 'O',
         'mass'              : 16.999131,
         'point_group'       : 'K',
     },
 
     '¹⁸O'     :     {
-        'chemical_species'  : 'O',
+        'chemical_formula'  : 'O',
         'mass'              : 17.999159,
         'point_group'       : 'K',
     },
 
     '³²S'     :     {
-        'chemical_species'  : 'S',
+        'chemical_formula'  : 'S',
         'mass'              : 31.9720707,
         'point_group'       : 'K',
     },
 
     '³³S'     :     {
-        'chemical_species'  : 'S',
+        'chemical_formula'  : 'S',
         'mass'              : 32.97145843,
         'point_group'       : 'K',
     },
 
     '³⁴S'     :     {
-        'chemical_species'  : 'S',
+        'chemical_formula'  : 'S',
         'mass'              : 33.96786665,
         'point_group'       : 'K',
     },
 
     '³⁶S'     :     {
-        'chemical_species'  : 'S',
+        'chemical_formula'  : 'S',
         'mass'              : 35.96708062,
         'point_group'       : 'K',
     },
 
     '¹⁴N'     :     {
-        'chemical_species'  : 'N',
+        'chemical_formula'  : 'N',
         'mass'              : 14.003074,
         'point_group'       : 'K',
     },
 
     '¹⁵N'     :     {
-        'chemical_species'  : 'N',
+        'chemical_formula'  : 'N',
         'mass'              : 15.0001088982,
         'point_group'       : 'K',
     },
 
     'Na'      :     {
-        'chemical_species'  : 'Na',
+        'chemical_formula'  : 'Na',
         'mass'              : 22.9898,
         'point_group'       : 'K',
     },
 
     'Ar'      :     {
-        'chemical_species'  : 'Ar',
+        'chemical_formula'  : 'Ar',
         'mass'              : 39.948,
         'point_group'       : 'K',
     },
 
     'CO'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'characteristic_infrared_bands': [[1980,2280], [4150,4350],],
         'characteristic_infrared_lines': [[2160,2180],],
         'classname': 'Diatom',
     },
 
     '¹²C¹⁶O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 28.0,
         'isotopologue_ratio': 0.986544,
         'isotopologue_ratio:ref': 'NIST',
@@ -175,7 +175,7 @@ data = {
     },
 
     '¹²C¹⁷O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 29.0,
         'isotopologue_ratio': 0.000367867,
         'isotopologue_ratio:ref': 'NIST',
@@ -187,7 +187,7 @@ data = {
     },
 
     '¹²C¹⁸O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 30.0,
         'isotopologue_ratio': 0.00197822,
         'isotopologue_ratio:ref': 'NIST',
@@ -199,7 +199,7 @@ data = {
     },
 
     '¹³C¹⁶O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 29.0,
         'isotopologue_ratio': 0.0110836,
         'isotopologue_ratio:ref': 'NIST',
@@ -211,7 +211,7 @@ data = {
     },
 
     '¹³C¹⁷O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 30.0,
         'isotopologue_ratio': 4.13292e-06,
         'isotopologue_ratio:ref': 'NIST',
@@ -223,7 +223,7 @@ data = {
     },
 
     '¹³C¹⁸O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 31.0,
         'isotopologue_ratio': 2.2225e-05,
         'isotopologue_ratio:ref': 'NIST',
@@ -235,7 +235,7 @@ data = {
     },
 
     '¹⁴C¹⁶O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 29.998,
         'isotopologue_ratio': 0,
         'reduced_mass'      : 7.46648,
@@ -246,7 +246,7 @@ data = {
     },
 
     '¹⁴C¹⁷O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 31.002,
         'isotopologue_ratio': 0,
         'reduced_mass'      : 7.6782,
@@ -257,7 +257,7 @@ data = {
     },
 
     '¹⁴C¹⁸O'  :     {
-        'chemical_species'  : 'CO',
+        'chemical_formula'  : 'CO',
         'mass'              : 32.002,
         'isotopologue_ratio': 0,
         'reduced_mass'      : 7.8758,
@@ -268,7 +268,7 @@ data = {
     },
 
     '¹H₂'     :     {
-        'chemical_species'  : 'H2',
+        'chemical_formula'  : 'H2',
         'mass'              : 2.01588,
         'reduced_mass'      : 0.50397,
         'point_group'       : 'D∞h',
@@ -276,7 +276,7 @@ data = {
     },
 
     '²H₂'     :     {
-        'chemical_species'  : 'H2',
+        'chemical_formula'  : 'H2',
         'mass'              : 4.028,
         'reduced_mass'      : 1.007,
         'point_group'       : 'D∞h',
@@ -284,7 +284,7 @@ data = {
     },
 
     'D₂'      :     {
-        'chemical_species'  : 'H2',
+        'chemical_formula'  : 'H2',
         'mass'              : 4.028,
         'reduced_mass'      : 1.007,
         'point_group'       : 'D∞h',
@@ -292,21 +292,21 @@ data = {
     },
 
     'HD'      :     {
-        'chemical_species'  : 'H2',
+        'chemical_formula'  : 'H2',
         'mass'              : 3.02194,
         'reduced_mass'      : 0.671751,
         'point_group'       : 'C∞v',
     },
 
     '¹H²H'    :     {
-        'chemical_species'  : 'H2',
+        'chemical_formula'  : 'H2',
         'mass'              : 3.02194,
         'reduced_mass'      : 0.671751,
         'point_group'       : 'C∞v',
     },
 
     '¹⁴N₂'    :     {
-        'chemical_species'  : 'N2',
+        'chemical_formula'  : 'N2',
         'mass'              : 28.006147,
         'reduced_mass'      : 7.0015372,
         'point_group'       : 'D∞h',
@@ -315,7 +315,7 @@ data = {
     },
 
     '¹⁴N¹⁵N'  :     {
-        'chemical_species'  : 'N2',
+        'chemical_formula'  : 'N2',
         'mass'              : 29.0032,
         'reduced_mass'      : 7.242227222,
         'point_group'       : 'C∞v',
@@ -323,7 +323,7 @@ data = {
     },
 
     '¹⁵N₂'    :     {
-        'chemical_species'  : 'N2',
+        'chemical_formula'  : 'N2',
         'mass'              : 30.0002,
         'reduced_mass'      : 7.50005465,
         'point_group'       : 'D∞h',
@@ -332,7 +332,7 @@ data = {
     },
 
     'OH'      :     {
-        'chemical_species'  : 'OH',
+        'chemical_formula'  : 'OH',
         'mass'              : 17.0073,
         'reduced_mass'      : 0.948169,
         'point_group'       : 'C∞v',
@@ -340,21 +340,21 @@ data = {
     },
 
     'OD'      :     {
-        'chemical_species'  : 'OH',
+        'chemical_formula'  : 'OH',
         'mass'              : 18.0135,
         'reduced_mass'      : 1.7889,
         'point_group'       : 'C∞v',
     },
 
     'OH+'     :     {
-        'chemical_species'  : 'OH+',
+        'chemical_formula'  : 'OH+',
         'mass'              : 17.003288,
         'reduced_mass'      : 0.95,
         'point_group'       : 'C∞v',
     },
 
     'CS'      :     {
-        'chemical_species'  : 'CS',
+        'chemical_formula'  : 'CS',
         'mass'              : 44.0767,
         'reduced_mass'      : 8.73784,
         'point_group'       : 'C∞v',
@@ -362,34 +362,34 @@ data = {
     },
 
     'NO'  :     {
-        'chemical_species'  : 'NO',
+        'chemical_formula'  : 'NO',
         'characteristic_infrared_bands': [[1750,2000],],
         'characteristic_infrared_lines': [[1830,1850],],
         'classname': 'Diatom',
     },
 
     'H₂S'  :     {
-        'chemical_species'  : 'H₂S',
+        'chemical_formula'  : 'H₂S',
         'characteristic_infrared_bands': [[1000,1600],[3500,4100]],
         'characteristic_infrared_lines': [[1275,1300],],
     },
 
     '¹⁴N¹⁶O'  :     {
-        'chemical_species'  : 'NO',
+        'chemical_formula'  : 'NO',
         'mass'              : 29.99799,
         'reduced_mass'      : 7.4664331,
         'point_group'       : 'C∞v',
     },
 
     '¹²C¹⁴N'  :     {
-        'chemical_species'  : 'CN',
+        'chemical_formula'  : 'CN',
         'mass'              : 26.018,
         'reduced_mass'      : 6.4661,
         'point_group'       : 'C∞v',
     },
 
     '³²S¹⁶O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 47.966984,
         'reduced_mass'      : 10.6613,
         'point_group'       : 'C∞v',
@@ -398,7 +398,7 @@ data = {
     },
 
     '³³S¹⁶O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 48.9664,
         'reduced_mass'      : 10.7702,
         'point_group'       : 'C∞v',
@@ -407,7 +407,7 @@ data = {
     },
 
     '³⁴S¹⁶O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 49.9628,
         'reduced_mass'      : 10.8744,
         'point_group'       : 'C∞v',
@@ -416,7 +416,7 @@ data = {
     },
 
     '³⁶S¹⁶O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 51.962,
         'reduced_mass'      : 11.0714,
         'point_group'       : 'C∞v',
@@ -425,7 +425,7 @@ data = {
     },
 
     '³²S¹⁷O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 48.9712,
         'reduced_mass'      : 11.0983,
         'point_group'       : 'C∞v',
@@ -433,7 +433,7 @@ data = {
     },
 
     '³³S¹⁷O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 49.9706,
         'reduced_mass'      : 11.2163,
         'point_group'       : 'C∞v',
@@ -441,7 +441,7 @@ data = {
     },
 
     '³⁴S¹⁷O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 50.967,
         'reduced_mass'      : 11.3294,
         'point_group'       : 'C∞v',
@@ -449,7 +449,7 @@ data = {
     },
 
     '³⁶S¹⁷O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 52.9662,
         'reduced_mass'      : 11.5434,
         'point_group'       : 'C∞v',
@@ -457,7 +457,7 @@ data = {
     },
 
     '³²S¹⁸O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 49.9712,
         'reduced_mass'      : 11.516,
         'point_group'       : 'C∞v',
@@ -465,7 +465,7 @@ data = {
     },
 
     '³³S¹⁸O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 50.9706,
         'reduced_mass'      : 11.6431,
         'point_group'       : 'C∞v',
@@ -473,7 +473,7 @@ data = {
     },
 
     '³⁴S¹⁸O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 51.967,
         'reduced_mass'      : 11.765,
         'point_group'       : 'C∞v',
@@ -481,7 +481,7 @@ data = {
     },
 
     '³⁶S¹⁸O'  :     {
-        'chemical_species'  : 'SO',
+        'chemical_formula'  : 'SO',
         'mass'              : 53.9662,
         'reduced_mass'      : 11.996,
         'point_group'       : 'C∞v',
@@ -489,46 +489,46 @@ data = {
     },
 
     '¹H³⁵Cl'  :     {
-        'chemical_species'  : 'HCl',
+        'chemical_formula'  : 'HCl',
         'mass'              : 35.9768,
         'reduced_mass'      : 0.979701,
         'point_group'       : 'C∞v',
     },
 
     '¹H³⁷Cl'  :     {
-        'chemical_species'  : 'HCl',
+        'chemical_formula'  : 'HCl',
         'mass'              : 38,
         'point_group'       : 'C∞v',
     },
 
     '²H³⁵Cl'  :     {
-        'chemical_species'  : 'HCl',
+        'chemical_formula'  : 'HCl',
         'mass'              : 37,
         'point_group'       : 'C∞v',
     },
 
     '²H³⁷Cl'  :     {
-        'chemical_species'  : 'HCl',
+        'chemical_formula'  : 'HCl',
         'mass'              : 39,
         'point_group'       : 'C∞v',
     },
 
     'HI'      :     {
-        'chemical_species'  : 'HI',
+        'chemical_formula'  : 'HI',
         'mass'              : 127.912,
         'reduced_mass'      : 0.999998,
         'point_group'       : 'C∞v',
     },
 
     'HBr'     :     {
-        'chemical_species'  : 'HBr',
+        'chemical_formula'  : 'HBr',
         'mass'              : 80.9119,
         'reduced_mass'      : 0.995384,
         'point_group'       : 'C∞v',
     },
 
     '¹⁶O₂'    :     {
-        'chemical_species'  : 'O₂',
+        'chemical_formula'  : 'O₂',
         'mass'              : 31.9988,
         'reduced_mass'      : 7.9997,
         'point_group'       : 'D∞h',
@@ -536,7 +536,7 @@ data = {
     },
 
     '³²S₂'    :     {
-        'chemical_species'  : 'S₂',
+        'chemical_formula'  : 'S₂',
         'mass'              : 63.944141,
         'reduced_mass'      : 15.9860364,
         'point_group'       : 'D∞h',
@@ -544,240 +544,240 @@ data = {
     },
 
     'NO₂'     :     {
-        'chemical_species'  : 'NO₂',
+        'chemical_formula'  : 'NO₂',
         'mass'              : 46.0,
         'characteristic_infrared_bands': [[1540,1660],],
         'characteristic_infrared_lines': [[1590,1610],],
     },
 
     'CO₂'     :     {
-        'chemical_species'  : 'CO₂',
+        'chemical_formula'  : 'CO₂',
         'mass'              : 44.0,
         'characteristic_infrared_bands': [[2200,2400], [3550,3750], [4800,5150],] ,
         'characteristic_infrared_lines': [[2315,2320],],
     },
 
     '¹²C¹⁶O₂' :     {
-        'chemical_species'  : 'CO₂',
+        'chemical_formula'  : 'CO₂',
         'mass'              : 44.0,
     },
 
     '¹³C¹⁶O₂' :     {
-        'chemical_species'  : 'CO₂',
+        'chemical_formula'  : 'CO₂',
         'mass'              : 45.0,
     },
 
     '¹²C¹⁸O₂' :     {
-        'chemical_species'  : 'CO₂',
+        'chemical_formula'  : 'CO₂',
         'mass'              : 48.0,
     },
 
     'H₂O'  :     {
-        'chemical_species'  : 'H₂O',
+        'chemical_formula'  : 'H₂O',
         'mass'              : 18.0,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
         'characteristic_infrared_lines': [[1552,1580],],
     },
 
     'CH₄'     :     {
-        'chemical_species'  : 'CH₄',
+        'chemical_formula'  : 'CH₄',
         'mass'              : 16.0,
         'characteristic_infrared_bands': [[1200,1400],[2800,3200],],
         'characteristic_infrared_lines': [[3010,3020],],
     },
 
     '¹²CH₄'   :     {
-        'chemical_species'  : 'CH₄',
+        'chemical_formula'  : 'CH₄',
         'mass'              : 16.0,
     },
 
     '¹²C¹H₄'  :     {
-        'chemical_species'  : 'CH₄',
+        'chemical_formula'  : 'CH₄',
         'mass'              : 16.0,
     },
 
     '¹³C¹H₄'  :     {
-        'chemical_species'  : 'CH₄',
+        'chemical_formula'  : 'CH₄',
         'mass'              : 17.0,
     },
 
     'SO₂'     :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 63.9619,
         'characteristic_infrared_bands': [[1050,1400], [2450,2550],],
         'characteristic_infrared_lines': [[1350,1370],],
     },
 
     'S¹⁷O₂'   :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 65.9703,
     },
 
     'S¹⁸O₂'   :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 67.9704,
     },
 
     '³³SO₂'   :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 64.9613,
     },
 
     '³⁴SO₂'   :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 65.9577,
     },
 
     '³⁶SO₂'   :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 67.9569,
     },
 
     '³²S¹⁶O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 63.9619,
     },
 
     '³²S¹⁷O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 65.9703,
     },
 
     '³²S¹⁸O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 67.9704,
     },
 
     '³³S¹⁶O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 64.9613,
     },
 
     '³³S¹⁷O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 66.9697,
     },
 
     '³³S¹⁸O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 68.9698,
     },
 
     '³⁴S¹⁶O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 65.9577,
     },
 
     '³⁴S¹⁷O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 67.9661,
     },
 
     '³⁴S¹⁸O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 69.9662,
     },
 
     '³⁶S¹⁶O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 67.9569,
     },
 
     '³⁶S¹⁷O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 69.9653,
     },
 
     '³⁶S¹⁸O₂' :     {
-        'chemical_species'  : 'SO₂',
+        'chemical_formula'  : 'SO₂',
         'mass'              : 71.9654,
     },
 
 
     'CH₃Cl'   :     {
-        'chemical_species'  : 'CH₃Cl',
+        'chemical_formula'  : 'CH₃Cl',
         'mass'              : 49.992329,
     },
 
     '¹²C¹H³⁵Cl':     {
-        'chemical_species'  : 'CH₃Cl',
+        'chemical_formula'  : 'CH₃Cl',
         'mass'              : 49.992329,
     },
 
     '¹²C¹H³⁷Cl':     {
-        'chemical_species'  : 'CH₃Cl',
+        'chemical_formula'  : 'CH₃Cl',
         'mass'              : 52,
     },
 
     'C₂H₂'    :     {
-        'chemical_species'  : 'C₂H₂',
+        'chemical_formula'  : 'C₂H₂',
         'characteristic_infrared_bands': [[600,850], [3200,3400],],
         'characteristic_infrared_lines': [[3255,3260],],
     },
 
     'C₂H₄'    :     {
-        'chemical_species'  : 'C₂H₄',
+        'chemical_formula'  : 'C₂H₄',
         'mass'              : 28.0313,
     },
 
     'C₂H₆'    :     {
-        'chemical_species'  : 'C₂H₆',
+        'chemical_formula'  : 'C₂H₆',
         'mass'              : 30,
         'characteristic_infrared_bands': [[2850,3100]],
         'characteristic_infrared_lines': [[2975,2995]],
     },
 
     'HCOOH'    :     {
-        'chemical_species'  : 'HCOOH',
+        'chemical_formula'  : 'HCOOH',
         'characteristic_infrared_bands': [[1000,1200],[1690,1850]],
         'characteristic_infrared_lines': [[1770,1780]],
     },
 
     'HCN'     :     {
-        'chemical_species'  : 'HCN',
+        'chemical_formula'  : 'HCN',
         'mass'              : 27.010899,
         'characteristic_infrared_bands': [[3200,3400],],
         'characteristic_infrared_lines': [[3325,3350],],
     },
 
     'NH₃'     :     {
-        'chemical_species'  : 'NH₃',
+        'chemical_formula'  : 'NH₃',
         'characteristic_infrared_bands': [[800,1200],],
         'characteristic_infrared_lines': [[950,970],],
     },
 
     'OCS'     :     {
-        'chemical_species'  : 'OCS',
+        'chemical_formula'  : 'OCS',
         'mass'              : 60,
         'characteristic_infrared_bands': [[2000,2100],],
         'characteristic_infrared_lines': [[2070,2080],],
     },
 
     '¹⁶O¹²C³²S':     {
-        'chemical_species'  : 'OCS',
+        'chemical_formula'  : 'OCS',
         'mass'              : 60,
     },
 
     '¹⁶O¹²C³⁴S':     {
-        'chemical_species'  : 'OCS',
+        'chemical_formula'  : 'OCS',
         'mass'              : 62,
     },
 
     'N₂O'     :     {
         'point_group': 'C∞v',
         'classname': 'Linear',
-        'chemical_species'  : 'N₂O',
+        'chemical_formula'  : 'N₂O',
         'mass'              : 48.0323,
         'characteristic_infrared_bands': [[2175,2270],],
         'characteristic_infrared_lines': [[2199,2210],],
     },
 
     '¹⁴N₂¹⁶O'     :     {
-        'chemical_species'  : 'N₂O',
+        'chemical_formula'  : 'N₂O',
     },
 
     '¹⁵N₂¹⁶O'     :     {
-        'chemical_species'  : 'N₂O',
+        'chemical_formula'  : 'N₂O',
     },
 
     'C₆H₆': {
@@ -786,6 +786,13 @@ data = {
         
         },
 
+    'CH₃¹⁸OOH'     :     {
+        'chemical_formula'  : 'CH₃OOH',
+    },
+
+    'CH₃¹⁷OOH'     :     {
+        'chemical_formula'  : 'CH₃OOH',
+    },
 
 }
 
