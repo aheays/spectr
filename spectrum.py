@@ -25,10 +25,12 @@ from . import lines
 from . import levels
 from .exceptions import DatabaseException,InferException
 from . import dataset
-from . import database
 from .dataset import Dataset
+from . import database
+from .database import get_species_property
 
 
+@format_input_class()
 class Experiment(Optimiser):
     
     def __init__(
@@ -45,9 +47,8 @@ class Experiment(Optimiser):
         ## initalise optimiser variables
         # optimise.Optimiser.__init__(self,name,store=store)
         optimise.Optimiser.__init__(self,name)
-        self.pop_format_input_function() 
         # store = self.store
-        self.automatic_format_input_function()
+        # self.automatic_format_input_function()
         ## initialise data arrays
         self.x = None
         self.y = None
@@ -156,7 +157,6 @@ class Experiment(Optimiser):
             xkey=None,ykey=None,
             xcol=None,ycol=None,
             xbeg=None,xend=None,
-            # **load_function_kwargs
             _cache=None,
     ):
         """Load a spectrum to fit from an x,y file."""
@@ -166,7 +166,7 @@ class Experiment(Optimiser):
         _cache['has_run'] = True
         # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(load_function_kwargs)})')
         # x,y = tools.file_to_array_unpack(filename,**load_function_kwargs)
-        x,y = tools.loadxy(filename, xcol=xcol,ycol=ycol, xkey=xkey,ykey=ykey,)
+        x,y = tools.Loadxy(filename, xcol=xcol,ycol=ycol, xkey=xkey,ykey=ykey,)
         self.experimental_parameters['filename'] = filename
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function()
@@ -441,7 +441,7 @@ class Experiment(Optimiser):
         self.experimental_parameters['integrated_excess'] = tools.integrate(self.x,self.y-self.background,method=method)
         return self.experimental_parameters['integrated_excess']
 
-@format_input_method()
+@format_input_class()
 class Model(Optimiser):
 
     def __init__(
@@ -451,8 +451,10 @@ class Model(Optimiser):
             load_experiment_args=None,
             residual_weighting=None,
             verbose=None,
-            xbeg=None,xend=None,
-            x=None
+            xbeg=None,
+            xend=None,
+            x=None,
+            interpolate_to_grid=None,
     ):
         ## set experimental data if provided
         if load_experiment_args is not None:
@@ -478,10 +480,10 @@ class Model(Optimiser):
         self.xend = xend
         self.residual = None                      # array of residual fit
         self.residual_weighting = residual_weighting            # weighting pointwise in xexp
+        self.interpolate_to_grid = interpolate_to_grid
         self._interpolate_factor = None
         optimise.Optimiser.__init__(self,name)
-        self.pop_format_input_function()
-        self.automatic_format_input_function()
+        # self.automatic_format_input_function()
         if self.experiment is not None:
             self.add_suboptimiser(self.experiment)
         self._initialise()
@@ -490,68 +492,55 @@ class Model(Optimiser):
         self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
 
-        # ## make a format_input_function
-        # args = {}
-        # for key in ('name','experiment',
-                    # 'load_experiment_args',
-                    # 'residual_weighting',
-                    # 'verbose', 'xbeg','xend','x',):
-            # val = locals()[key]
-            # if val is not None:
-                # args[key] = val
-        # self.add_format_input_function(
-            # lambda: (f'{self.name} = spectrum.Model('
-                      # + ','.join([f'{key}={val!r}' for key,val in args.items()])
-                      # + ')'))
-
-
     @optimise_method(add_format_input_function=False)
     def _initialise(self,_cache=None):
         """Function run before everything else to set x and y model grid and
         residual_scale_factor if experimental noise_rms is known."""
-        ## clean construct if the experimental domain has changed
-        if ('xexp' in _cache
-            and (len(self.experiment.x) != len(_cache['xexp'])
-                 or np.any(self.experiment.x != _cache['xexp']))):
-            self._clean_construct = True
-        if self._clean_construct:
-            ## get new x grid
-            self.residual_scale_factor = 1
-            if self._xin is not None:
-                ## x is from a call to get_spectrum
-                self.x = self._xin
-                self._xin = None
-                self._compute_residual =False
-            elif self.experiment is not None:
-                if 'iexp' not in _cache:
-                    if self.xbeg is None:
-                        ibeg = 0
-                    else:
-                        ibeg = np.searchsorted(self.experiment.x,self.xbeg)
-                    if self.xend is None:
-                        iend = len(self.experiment.x)
-                    else:
-                        iend = np.searchsorted(self.experiment.x,self.xend)
-                    iexp = slice(int(ibeg),int(iend))
-                    _cache['iexp'] = iexp
-                iexp = _cache['iexp']
-                self.x = self.xexp = self.experiment.x[iexp]
-                _cache['xexp'] = self.experiment.x
-                self.yexp = self.experiment.y[iexp]
-                ## if known use experimental noise RMS to normalise
-                ## residuals
-                if 'noise_rms' in self.experiment.experimental_parameters:
-                    self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
-                self._compute_residual = True
-            elif self.xbeg is not None and self.xend is not None:
-                ## xbeg to xend
-                self.x = linspace(self.xbeg,self.xend,1000,dtype=float)
-                self._compute_residual =False
+        self.residual_scale_factor = 1
+        self._interpolate_factor = 1
+        ## get new x grid
+        if self._xin is not None:
+            ## x grid given as an input argument
+            self.x = self._xin
+            self._xin = None
+            self._compute_residual = False
+        elif self.experiment is not None:
+            ## x-grid from experiment
+            if 'iexp' not in _cache:
+                if self.xbeg is None:
+                    ibeg = 0
+                else:
+                    ibeg = np.searchsorted(self.experiment.x,self.xbeg)
+                if self.xend is None:
+                    iend = len(self.experiment.x)
+                else:
+                    iend = np.searchsorted(self.experiment.x,self.xend)
+                iexp = slice(int(ibeg),int(iend))
+                _cache['iexp'] = iexp
+            iexp = _cache['iexp']
+            self.xexp = self.experiment.x[iexp]
+            self.yexp = self.experiment.y[iexp]
+            ## get model x grid, perhaps interpolate to a finer grid
+            if self.interpolate_to_grid is None:
+                self.x = self.xexp
+                self._interpolate_factor = 1
             else:
-                ## default
-                self.x = linspace(100,1000,1000,dtype=float)
-                self._compute_residual =False
-        ## new grid
+                xstep = (self.xexp[-1]-self.xexp[0])/(len(self.xexp)-1)
+                self._interpolate_factor = int(np.ceil(xstep/self.interpolate_to_grid))
+                if self._interpolate_factor%2 == 0:
+                    self._interpolate_factor += 1
+                self.x = np.linspace(
+                    self.xexp[0],
+                    self.xexp[-1],
+                    1+(len(self.xexp)-1)*self._interpolate_factor)
+            ## if known use experimental noise RMS to normalise
+            ## residuals
+            if 'noise_rms' in self.experiment.experimental_parameters:
+                self.residual_scale_factor = 1./self.experiment.experimental_parameters['noise_rms']
+            self._compute_residual = True
+        else:
+            raise Exception('One of initialisation arguments "experiment" or "x" required to define the x-grid.')
+        ## make zero y
         self.y = np.zeros(self.x.shape,dtype=float)
 
     def __len__(self):
@@ -600,20 +589,15 @@ class Model(Optimiser):
         with experimental points. Always an odd number of intervals /
         even number of interstitial points. Call before anything else,
         self.y is deleted and replaced with zeros on the new grid."""
-        if self._clean_construct:
-            xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
-            interpolate_factor = int(np.ceil(xstep/dx))
-            if interpolate_factor%2 == 0:
-                interpolate_factor += 1
-            _cache['x'] = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*interpolate_factor)
-            if not np.all(self.y==0):
-                raise Exception('interpolate will erase nonzero, y, it is intended to be the first Model method called')
-            _cache['y'] = np.zeros(_cache['x'].shape,dtype=float)
-            _cache['interpolate_factor'] = interpolate_factor
-        self._interpolate_factor = _cache['interpolate_factor']
-        if self._interpolate_factor != 1:
-            self.x = _cache['x']
-            self.y = _cache['y'].copy() # delete current y!!
+        xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
+        interpolate_factor = int(np.ceil(xstep/dx))
+        if interpolate_factor%2 == 0:
+            interpolate_factor += 1
+        if interpolate_factor != 1:
+            new_x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*interpolate_factor)
+            self.y = tools.spline(self.x,self.y,new_x)
+            self.x = new_x
+            self._interpolate_factor *= interpolate_factor # add ths interpolatin on top of possible others
 
     @optimise_method()
     def uninterpolate(self,average=None):
@@ -867,32 +851,26 @@ class Model(Optimiser):
             ## Set set_keys_vals in the copied spectrum object.
             for key,val in set_keys_vals.items():
                 spectrum_copy.set_value(key,val)
-            ## Add a construct_function to the copied spectrum objec
-            ## that computes the cross section splined to the
-            ## experimental grid
-            if kind == 'absorption':
-                xkey = 'T'          # transmittance
-            elif kind == 'emission':
-                xkey = 'I'          # intensity
-            else:
-                raise Exception(f'Unknown {kind=}')
-            ## limit spline to a meaningful frequency range
-            index = tools.inrange(spectrum['ν'],self.x[0],self.x[-1],include_adjacent=True,return_as='slice')
-            def compute_spline():
-                _cache['spline'] = tools.spline(
-                    spectrum_copy['ν',index],spectrum_copy[xkey,index],
-                    self.x,out_of_bounds='zero')
-            spectrum_copy.add_construct_function(compute_spline)
-            ## add the copied spectrum to self to ensure it is up to
-            ## date before adding the spline to the model
             self.add_suboptimiser(spectrum_copy)
             _cache['spectrum_copy'] = spectrum_copy
-            _cache['compute_spline'] = compute_spline #  DEBUG
-            
         spectrum_copy = _cache['spectrum_copy']
-        ## modify self.y according to what kind of spectrum this is,
-        ## scale by transmittance or add intensity
-        _cache['compute_spline']()        #  DEBUG
+        ## limit spline to a meaningful frequency range
+        index = tools.inrange(spectrum['ν'],self.x[0],self.x[-1],include_adjacent=True,return_as='slice')
+        if kind == 'absorption':
+            ykey = 'T'          # transmittance
+        elif kind == 'emission':
+            ykey = 'I'          # intensity
+        else:
+            raise Exception(f'Unknown {kind=}')
+        if (
+                self._clean_construct
+                or
+                spectrum_copy._global_modify_time > self._last_construct_time
+            ):
+            _cache['spline'] = tools.spline(
+                spectrum_copy['ν',index],
+                spectrum_copy[ykey,index],
+                self.x,out_of_bounds='zero')
         if kind == 'absorption':
             self.y *= _cache['spline']
         elif kind == 'emission':
@@ -2285,6 +2263,7 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
     return (x,y,header)
 
+@format_input_class()
 class Spline(Optimiser):
     """A spline curve with optimisable knots.  Internally stores last
     calculated x and y."""
@@ -2299,7 +2278,7 @@ class Spline(Optimiser):
     ):
         optimise.Optimiser.__init__(self,name)
         self.clear_format_input_functions()
-        self.automatic_format_input_function()
+        # self.automatic_format_input_function()
         self.order = order
         ## spline domain and value
         self.x = None
@@ -2659,9 +2638,9 @@ class FitAbsorption():
                 ax.plot(x,background_shift,color=plotting.newcolor(7),zorder=-5,label='intensity shift')
             ## plot reference line without fit_species absorption
             if hasattr(model,'_reference_model'):
+                x,y = model._reference_model.get_residual(return_x=True)
                 ax.plot(
-                    model._reference_model.x,
-                    model._reference_model.get_residual()*scale_residual,
+                    x,y,
                     color='orange',zorder=-2,
                     label='residual neglecting fitted species',
                 )
@@ -2731,10 +2710,13 @@ class FitAbsorption():
         xend = min(xend,region[1])
         ## whether to adjust experiment frequency scale
         p['scalex'].vary = fit_scalex
+        ## interplation model grid to at least this resolution
+        p.setdefault('interpolate_model',0.001)
         ## start model
         model = Model(
             name='_'.join(['model']+list(species_to_fit)+[str(t) for t in region]),
-            experiment=self.experiment,xbeg=xbeg,xend=xend
+            experiment=self.experiment,xbeg=xbeg,xend=xend,
+            interpolate_to_grid=p['interpolate_model'],
         )
         if verbose:
             if (xbeg,xend) == region:
@@ -2744,10 +2726,6 @@ class FitAbsorption():
         ## if no experimental data for this region then immediately
         if len(model.x) == 0:
             return None
-        ## set interpolated model grid
-        self.parameters.setdefault('interpolate_model',0.001)
-        if p['interpolate_model'] is not None:
-            model.interpolate(p['interpolate_model'])
         ## add reference background spectrum if provided or default to
         ## unity
         if 'background' in p and 'filename' in p['background']:
@@ -2758,6 +2736,9 @@ class FitAbsorption():
         else:            
             model._intensity_type = 'spline'
             model.add_constant(1)
+        ## set interpolated model grid
+        ## # if p['interpolate_model'] is not None:
+        ##     # model.interpolate(p['interpolate_model'])
         ## add absorption lines
         p.setdefault('Teq',P(296,False,1,nan,(20,1000)))
         p['Teq'].vary = fit_temperature

@@ -18,9 +18,10 @@ from .exceptions import DatabaseException
 from . import plotting
 from .dataset import Dataset
 from .tools import find,cache,timestamp
-from .optimise import Optimiser,P,Parameter,optimise_method
+from .optimise import Optimiser,P,Parameter,optimise_method,format_input_method,format_input_class
 from .database import get_species_property
 
+@format_input_class()
 class Level(Optimiser):
     """A vibronic interaction matrix."""
 
@@ -44,9 +45,9 @@ class Level(Optimiser):
         self.Eref = Eref
         self._manifolds = {}
         self._shifts = []       # used to shift individual levels after diagonalisation
-        self.level = levels.Diatom(name=f'{self.name}.level')
-        self.level.pop_format_input_function()
-        self.level.add_suboptimiser(self)
+        self._level = levels.Diatom(name=f'{self.name}.level')
+        self._level.pop_format_input_function()
+        self._level.add_suboptimiser(self)
         self.vibrational_spin_level = levels.Diatom()
         self.interactions = {}
         self.verbose = False
@@ -61,12 +62,12 @@ class Level(Optimiser):
         ## a Level object containing data, better access through level property
         ## the optimiser
         Optimiser.__init__(self,name=self.name)
-        self.pop_format_input_function()
-        self.automatic_format_input_function(
-            multiline=False,
-            limit_to_args=('name', 'species', 'J', 'Eref','Zsource'))
+        # self.pop_format_input_function()
+        # self.automatic_format_input_function(
+            # multiline=False,
+            # limit_to_args=('name', 'species', 'J', 'Eref','Zsource'))
         self.add_save_to_directory_function(
-            lambda directory: self.level.save(f'{directory}/level.h5'))
+            lambda directory: self._level.save(f'{directory}/level.h5'))
         ## set J
         self.J = J
         ## compute residual error if a experimental level is provided
@@ -77,6 +78,12 @@ class Level(Optimiser):
         ## finalise construction
         self._initialise_construct()
         self.add_post_construct_function(self._finalise_construct)
+
+    ## make sure constructed before accessing level object
+    def _get_level(self):
+        self.construct()
+        return self._level
+    level = property(_get_level)
 
     def get_electronic_vibrational_level(self):
         retval = levels.Diatom()
@@ -190,26 +197,26 @@ class Level(Optimiser):
         if self._clean_construct:
             ## create a rotational level with all quantum numbers
             ## inserted and limit to allowed levels
-            self.level.clear()
-            self.level['Eref'] = self.Eref
-            self.level['Zsource'] =self.Zsource
-            self.level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
+            self._level.clear()
+            self._level['Eref'] = self.Eref
+            self._level['Zsource'] =self.Zsource
+            self._level['J'] = np.repeat(self.J,len(self.vibrational_spin_level))
             for key in self.vibrational_spin_level:
-                self.level[key] = np.tile(self.vibrational_spin_level[key],len(self.J))
+                self._level[key] = np.tile(self.vibrational_spin_level[key],len(self.J))
             ## limit to allowed levels
-            self._iallowed = self.level['J'] >= self.level['Ω']
-            self.level.index(self._iallowed)
+            self._iallowed = self._level['J'] >= self._level['Ω']
+            self._level.index(self._iallowed)
             if self.experimental_level is not None:
                 ## get all experimental_levels for defined
                 ## levels, nan for missing
-                self.level['Eexp'] = nan
-                self.level['Γexp'] = nan
-                iexp,imod = dataset.find_common(self.experimental_level,self.level,keys=self.level.defining_qn)
-                self.level['Eexp'][imod] = self.experimental_level['E'][iexp]
-                self.level['Eexp','unc'][imod] = self.experimental_level['E','unc'][iexp]
+                self._level['Eexp'] = nan
+                self._level['Γexp'] = nan
+                iexp,imod = dataset.find_common(self.experimental_level,self._level,keys=self._level.defining_qn)
+                self._level['Eexp'][imod] = self.experimental_level['E'][iexp]
+                self._level['Eexp','unc'][imod] = self.experimental_level['E','unc'][iexp]
                 if self.experimental_level.is_known('Γ'):
-                    self.level['Γexp'][imod] = self.experimental_level['Γ'][iexp]
-                    self.level['Γexp','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
+                    self._level['Γexp'][imod] = self.experimental_level['Γ'][iexp]
+                    self._level['Γexp','unc'][imod] = self.experimental_level['Γ','unc'][iexp]
                 self._finalise_construct_cache = dict(iexp=iexp,imod=imod)
         else:
             if self.experimental_level is not None:
@@ -257,8 +264,8 @@ class Level(Optimiser):
             if self.sort_match_experiment and self.experimental_level is not None:
                 for ef in (+1,-1):
                     i = self.vibrational_spin_level.match(ef=ef,Ω_max=J)
-                    j = self.level.match(J=J,ef=ef,Ω_max=J)
-                    k = _permute_to_minimise_difference(eigvals[i],self.level['Eexp',j])
+                    j = self._level.match(J=J,ef=ef,Ω_max=J)
+                    k = _permute_to_minimise_difference(eigvals[i],self._level['Eexp',j])
                     eigvals[i] = eigvals[i][k]
                     eigvects[np.ix_(i,i)] = eigvects[np.ix_(i,i)][np.ix_(k,k)]
             ## save eigenvalues
@@ -267,11 +274,11 @@ class Level(Optimiser):
         ## insert energies into allowed levels
         t = np.concatenate(list(self.eigvals.values()))
         t = t[self._iallowed]
-        self.level['E'] = t.real
-        self.level['Γ'] = t.imag
+        self._level['E'] = t.real
+        self._level['Γ'] = t.imag
         ## compute residual if possible
         if self.experimental_level is not None:
-            residual = np.concatenate((self.level['Eres'],self.level['Γres']),dtype=float)
+            residual = np.concatenate((self._level['Eres'],self._level['Γres']),dtype=float)
             residual = residual[~np.isnan(residual)]
             return residual
 
@@ -556,6 +563,7 @@ class Level(Optimiser):
             nbins_histogram=None,
             **plot_kwargs,):
         """Plot data and residual error."""
+        self.construct()
         if fig is None:
             fig = plotting.gcf()
         fig.clf()
@@ -635,64 +643,40 @@ class Level(Optimiser):
         plotting.legend(*legend_data,show_style=True,ax=axE)
 
         
+@format_input_class()
 class Line(Optimiser):
     
     """Calculate and optimally fit the line strengths of a band between
     two states defined by LocalDeperturbation objects. Currently only
     for single-photon transitions. """
 
-    def __init__(self,name,level_u,level_l,J_l=None,ΔJ=None,Eref=0,Zsource='self'):
+    def __init__(self,name,level,ΔJ=(-1,0,+1),Eref=0,Zsource='self'):
         ## add upper and lower levels
         self.name = name
-        self.level_u = level_u
-        self.level_l = level_l
+        self.level = self.level_u = self.level_l = level
         self.species = self.level_l.species
         self.Zsource = Zsource
         self.level_u.Eref = self.level_l.Eref = self.Eref = Eref
-        self.line = lines.Diatom(name=f'{self.name}.line')
-        self.line.pop_format_input_function()
-        self.line.add_suboptimiser(self)
-        self._set_J_l_ΔJ(J_l,ΔJ)
-        ## transitions
-                ## construct optimiser -- inheriting from states
+        self.ΔJ = ΔJ
+        self.J_l = level.J
+        ## construct optimiser -- inheriting from states
         Optimiser.__init__(self,name=self.name)
-        self.pop_format_input_function()
-        self.automatic_format_input_function(
-            multiline=False,
-            limit_to_args=('name', 'level_u', 'level_l', 'J_l', 'ΔJ','Zsource','Eref'))
-        self.add_suboptimiser(self.level_u,self.level_l)
+        ## internal line.Diatom object containing compute transitions
+        self._line = lines.Diatom(name=f'{self.name}.line')
+        self._line.pop_format_input_function()
+        self._line.add_suboptimiser(self)
+        self.add_suboptimiser(self.level)
         def f(directory): 
-            self.line.save(directory+'/line.h5')
+            self._line.save(directory+'/line.h5')
         self.add_save_to_directory_function(f)
         self.add_post_construct_function(self._finalise_construct)
         self._initialise_construct()
 
-    def _set_J_l_ΔJ(self,J_l,ΔJ):
-        """Set J_l and ΔJ in self and upper and lower levels."""
-        ## get needed upper and lower J levels
-        if J_l is not None: 
-            self._J_l = np.array(J_l,ndmin=1)
-        else:
-            self._J_l = self.level_l.J
-        J_l = self._J_l
-        if ΔJ is None:  
-            self._ΔJ = (-1,0,+1)
-        else:
-            self._ΔJ = np.array(ΔJ,ndmin=1)
-        J_u = np.unique(
-            np.concatenate([J_l+ΔJ for ΔJ in self._ΔJ]))
-        J_u = J_u[J_u>0]
-        ## set in levels
-        if self.level_u == self.level_l:
-            ## if upper and lower are the same object then set all J
-            self.level_u.J = np.unique(np.concatenate((J_l,J_u)))
-        else:
-            ## else set upper and lower J separately
-            self.level_l.J = J_l
-            self.level_u.J = J_u
-
-    J_l = property(lambda self:self._J_l,lambda self,J_l:self._set_J_l_ΔJ(J_l,self._ΔJ))
-    ΔJ = property(lambda self:self._ΔJ,lambda self,ΔJ:self._set_J_l_ΔJ(self._J_l,ΔJ))
+    ## make sure constructed before accessing line object
+    def _get_line(self):
+        self.construct()
+        return self._line
+    line = property(lambda self:self._get_line())
 
     @optimise_method(add_format_input_function=False)
     def _initialise_construct(self,_cache=None):
@@ -705,14 +689,14 @@ class Line(Optimiser):
                  len(self.level_l.vibrational_spin_level),),
                 0.)
             ## add quantum numbers to line
-            self.line.clear()
+            self._line.clear()
             for iJ_l,J_l in enumerate(self.J_l):
                 for iΔJ,ΔJ in enumerate(self.ΔJ):
                     J_u = J_l + ΔJ
                     if J_u not in self.level_u.J:
                         continue
                     ## add levels
-                    self.line.extend(
+                    self._line.extend(
                         J_u=J_u,
                         J_l=J_l,
                         **{key+'_u':np.repeat(val,len(self.level_l.vibrational_spin_level))
@@ -722,14 +706,14 @@ class Line(Optimiser):
             ## limit to levels that exist
             self._iallowed = (
                 ## levels exist
-                ((self.line['J_l'] >= self.line['Ω_l']) & (self.line['J_u'] >= self.line['Ω_u']))
+                ((self._line['J_l'] >= self._line['Ω_l']) & (self._line['J_u'] >= self._line['Ω_u']))
                 ## ef/ΔJ transition selection rules
-                & ((       ((self.line['J_u']-self.line['J_l']) == 0) & (self.line['ef_u'] != self.line['ef_l']))
-                   |((np.abs(self.line['J_u']-self.line['J_l']) == 1) & (self.line['ef_u'] == self.line['ef_l']))))
-            self.line.index(self._iallowed)
+                & ((       ((self._line['J_u']-self._line['J_l']) == 0) & (self._line['ef_u'] != self._line['ef_l']))
+                   |((np.abs(self._line['J_u']-self._line['J_l']) == 1) & (self._line['ef_u'] == self._line['ef_l']))))
+            self._line.index(self._iallowed)
             ## set some more things
-            self.line['Zsource'] = self.Zsource
-            self.line['Eref'] = self.Eref
+            self._line['Zsource'] = self.Zsource
+            self._line['Eref'] = self.Eref
         else:
             self.μ0 *= 0.
 
@@ -754,11 +738,11 @@ class Line(Optimiser):
                 Γ_us.append(np.repeat(self.level_u.eigvals[J_u].imag,len(c_l)))
                 Γ_ls.append(  np.tile(self.level_l.eigvals[J_l].imag,len(c_u)))
         ## add all new data to rotational line
-        self.line['μ']   = np.ravel(μs)[self._iallowed]
-        self.line['E_u'] = np.ravel(E_us)[self._iallowed]
-        self.line['E_l'] = np.ravel(E_ls)[self._iallowed]
-        self.line['Γ_u'] = np.ravel(Γ_us)[self._iallowed]
-        self.line['Γ_l'] = np.ravel(Γ_ls)[self._iallowed]
+        self._line['μ']   = np.ravel(μs)[self._iallowed]
+        self._line['E_u'] = np.ravel(E_us)[self._iallowed]
+        self._line['E_l'] = np.ravel(E_ls)[self._iallowed]
+        self._line['Γ_u'] = np.ravel(Γ_us)[self._iallowed]
+        self._line['Γ_l'] = np.ravel(Γ_ls)[self._iallowed]
         
     @optimise_method(format_multi_line=99)
     def add_transition_moment(self,name_u,name_l,μv=1,_cache=None):

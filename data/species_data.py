@@ -1,14 +1,23 @@
 metadata = {
-    'chemical_formula'              :  { 'description' : 'common to all isotopologues'                                               ,         }        , 
-    'characteristic_infrared_bands' :  { 'description' : 'Wavenumber bands of the main infrared bands of this species'               , 'units' : 'cm-1' ,  }  , 
-    'characteristic_infrared_lines'  :  { 'description' : 'Wavenumber bands of a few of the strongest infrared lines of this species' , 'units' : 'cm-1' ,  }  , 
-    'E0'                            :  { 'description' : ''                                                                          ,         }        , 
-    'Eref'                          :  { 'description' : ''                                                                          ,         }        , 
-    'Inuclear'                      :  { 'description' : 'Nuclear spin angulat momentum for homonuclear diatomic species'            ,         }        , 
-    'isotopologue_ratio'            :  { 'description' : 'Natural abundance of this isotopologue'                                    ,         }        , 
-    'mass'                          :  { 'description' : 'Total mass'                                                                , 'units' : 'amu'  ,  }  , 
-    'point_group'                   :  { 'description' : ''                                                                          ,         }        , 
-    'reduced_mass'                  :  { 'description' : 'Reduced mass'                                                              , 'units' : 'amu'  ,  }  , 
+    'E0'                            : { 'description' : 'Energy of the lowest physical energy level relative the equilibrium energy.','units':'cm-1',},
+    'Inuclear'                      : { 'description' : 'Nuclear spin angulat momentum for homonuclear diatomic species'            ,         }        ,
+    'characteristic_infrared_bands' : { 'description' : 'Wavenumber bands of the main infrared bands of this species'               , 'units' : 'cm-1' ,  }  ,
+    'characteristic_infrared_lines' : { 'description' : 'Wavenumber bands of a few of the strongest infrared lines of this species' , 'units' : 'cm-1' ,  }  ,
+    'charge'                        : {'description'  : 'Total charge of species.'},
+    'chemical_formula'              : { 'description' : 'common to all isotopologues'                                               ,         }        ,
+    'elements'                      : {'description'  : 'Sorted tuple of element'},
+    'formula'                       : {'description'  : 'Chemical formula including any isotope.'},
+    'is_isotopologue'               : {'description'  : 'True if species contains any mass information, else False.'},
+    'isotopes'                      : {'description'  : 'Sorted tuple of isotopes (mass_number,element)'},
+    'isotopologue_formula'          : {'description'  : 'Chemical species with isotope information, assuming most abundand isotope where this information is missing.'},
+    'isotopologue_ratio'            : { 'description' : 'Natural abundance of this isotopologue'                                    ,         }        ,
+    'mass'                          : { 'description' : 'Total mass'                                                                , 'units' : 'amu'  ,  }  ,
+    'nelectrons'                    : {'description'  : 'Number of electrons'},
+    'nnuclei'                       : {'description'  : 'Number of nuclei'},
+    'nuclei'                        : {'description'  : 'List of (mass_number,element,multiplicity) matching the species formula.'},
+    'point_group'                   : { 'description' : ''                                                                          ,         }        ,
+    'prefix'                        : {'description'  : 'Structure information prefixing species formula.'},
+    'reduced_mass'                  : { 'description' : 'Reduced mass'                                                              , 'units' : 'amu'  ,  }  ,
 }
 
 
@@ -169,8 +178,8 @@ data = {
         'isotopologue_ratio:ref': 'NIST',
         'reduced_mass'      : 6.8562,
         'point_group'       : 'C∞v',
-        'Eref'              : 1081.7756,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1081.7756,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1081.775631,
     },
 
@@ -181,8 +190,8 @@ data = {
         'isotopologue_ratio:ref': 'NIST',
         'reduced_mass'      : 7.0343,
         'point_group'       : 'C∞v',
-        'Eref'              : 1068.031,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1068.031,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1068.031015,
     },
 
@@ -193,8 +202,8 @@ data = {
         'isotopologue_ratio:ref': 'NIST',
         'reduced_mass'      : 7.1998,
         'point_group'       : 'C∞v',
-        'Eref'              : 1055.7172,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1055.7172,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1055.717274,
     },
 
@@ -205,8 +214,8 @@ data = {
         'isotopologue_ratio:ref': 'NIST',
         'reduced_mass'      : 7.1724,
         'point_group'       : 'C∞v',
-        'Eref'              : 1057.7268,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1057.7268,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1057.726807,
     },
 
@@ -217,8 +226,8 @@ data = {
         'isotopologue_ratio:ref': 'NIST',
         'reduced_mass'      : 7.3675,
         'point_group'       : 'C∞v',
-        'Eref'              : 1043.6628,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1043.6628,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1043.662809,
     },
 
@@ -229,8 +238,8 @@ data = {
         'isotopologue_ratio:ref': 'NIST',
         'reduced_mass'      : 7.5493,
         'point_group'       : 'C∞v',
-        'Eref'              : 1031.0556,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1031.0556,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1031.055619,
     },
 
@@ -240,8 +249,8 @@ data = {
         'isotopologue_ratio': 0,
         'reduced_mass'      : 7.46648,
         'point_group'       : 'C∞v',
-        'Eref'              : 1036.7443,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1036.7443,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1036.744345,
     },
 
@@ -251,8 +260,8 @@ data = {
         'isotopologue_ratio': 0,
         'reduced_mass'      : 7.6782,
         'point_group'       : 'C∞v',
-        'Eref'              : 1022.3893,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1022.3893,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1022.389332,
     },
 
@@ -262,13 +271,13 @@ data = {
         'isotopologue_ratio': 0,
         'reduced_mass'      : 7.8758,
         'point_group'       : 'C∞v',
-        'Eref'              : 1009.5143,
-        'Eref:ref'          : 'coxon2004',
+        'E0'              : 1009.5143,
+        'E0:ref'          : 'coxon2004',
         'E0'                : 1009.514309,
     },
 
     '¹H₂'     :     {
-        'chemical_formula'  : 'H2',
+        'chemical_formula'  : 'H₂',
         'mass'              : 2.01588,
         'reduced_mass'      : 0.50397,
         'point_group'       : 'D∞h',
@@ -276,7 +285,7 @@ data = {
     },
 
     '²H₂'     :     {
-        'chemical_formula'  : 'H2',
+        'chemical_formula'  : 'H₂',
         'mass'              : 4.028,
         'reduced_mass'      : 1.007,
         'point_group'       : 'D∞h',
@@ -284,7 +293,7 @@ data = {
     },
 
     'D₂'      :     {
-        'chemical_formula'  : 'H2',
+        'chemical_formula'  : 'H₂',
         'mass'              : 4.028,
         'reduced_mass'      : 1.007,
         'point_group'       : 'D∞h',
@@ -292,43 +301,43 @@ data = {
     },
 
     'HD'      :     {
-        'chemical_formula'  : 'H2',
+        'chemical_formula'  : 'H₂',
         'mass'              : 3.02194,
         'reduced_mass'      : 0.671751,
         'point_group'       : 'C∞v',
     },
 
     '¹H²H'    :     {
-        'chemical_formula'  : 'H2',
+        'chemical_formula'  : 'H₂',
         'mass'              : 3.02194,
         'reduced_mass'      : 0.671751,
         'point_group'       : 'C∞v',
     },
 
     '¹⁴N₂'    :     {
-        'chemical_formula'  : 'N2',
+        'chemical_formula'  : 'N₂',
         'mass'              : 28.006147,
         'reduced_mass'      : 7.0015372,
         'point_group'       : 'D∞h',
         'Inuclear'          : 1,
-        'Eref'              : 1175.7,
+        'E0'              : 1175.7,
     },
 
     '¹⁴N¹⁵N'  :     {
-        'chemical_formula'  : 'N2',
+        'chemical_formula'  : 'N₂',
         'mass'              : 29.0032,
         'reduced_mass'      : 7.242227222,
         'point_group'       : 'C∞v',
-        'Eref'              : 1156.091,
+        'E0'              : 1156.091,
     },
 
     '¹⁵N₂'    :     {
-        'chemical_formula'  : 'N2',
+        'chemical_formula'  : 'N₂',
         'mass'              : 30.0002,
         'reduced_mass'      : 7.50005465,
         'point_group'       : 'D∞h',
         'Inuclear'          : 0.5,
-        'Eref'              : 1135.103,
+        'E0'              : 1135.103,
     },
 
     'OH'      :     {
@@ -394,7 +403,7 @@ data = {
         'reduced_mass'      : 10.6613,
         'point_group'       : 'C∞v',
         'Inuclear'          : 0,
-        'Eref'              : 573.79105,
+        'E0'              : 573.79105,
     },
 
     '³³S¹⁶O'  :     {
@@ -403,7 +412,7 @@ data = {
         'reduced_mass'      : 10.7702,
         'point_group'       : 'C∞v',
         'Inuclear'          : 0,
-        'Eref'              : 570.89075,
+        'E0'              : 570.89075,
     },
 
     '³⁴S¹⁶O'  :     {
@@ -412,7 +421,7 @@ data = {
         'reduced_mass'      : 10.8744,
         'point_group'       : 'C∞v',
         'Inuclear'          : 0,
-        'Eref'              : 568.15644,
+        'E0'              : 568.15644,
     },
 
     '³⁶S¹⁶O'  :     {
@@ -421,7 +430,7 @@ data = {
         'reduced_mass'      : 11.0714,
         'point_group'       : 'C∞v',
         'Inuclear'          : 0,
-        'Eref'              : 563.09265,
+        'E0'              : 563.09265,
     },
 
     '³²S¹⁷O'  :     {

@@ -69,8 +69,6 @@ prototypes['Eref'] = dict(description="Reference energy referenced to the lowest
 prototypes['Eexp'] = dict(description="Experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eres'),lambda self,E,Eres: E+Eres)])
 prototypes['Eres'] = dict(description="Residual difference between level energy and experimental level energy" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[(('E','Eexp'),lambda self,E,Eexp: Eexp-E)])
 prototypes['E0'] = dict(description="Energy of the lowest physical energy level relative to Ee" ,units='cm-1',kind='f' ,fmt='<14.7f' ,infer=[('species',lambda self,species: get_species_property(species,'E0')),],default_step=1e-3)
-
-
 prototypes['term'] = dict(description="Spectroscopic term symbol",kind='U',cast=lambda term: np.array(quantum_numbers.normalise_term_symbol(term),dtype=str),infer=[])
 prototypes['lande_g'] = dict(description="Lande g factor",units='dimensionless',kind='f' ,fmt='6.5f',infer=[]) 
 

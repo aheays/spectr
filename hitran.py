@@ -14,6 +14,7 @@ from .tools import *
 from . import kinetics
 from . import dataset
 from . import database
+from .database import get_species_property
 from . import quantum_numbers
 from .dataset import Dataset
 from. exceptions import DatabaseException
@@ -301,7 +302,7 @@ def get_line(
     of the natural abundance mixture.  Adds some extra quantum numbers
     from additional_electronic_quantum_numbers_to_add."""
     species = database.normalise_species(species)
-    chemical_species = database.normalise_chemical_species(species)
+    chemical_species = get_species_property(species,'chemical_formula')
     directory = f'{database.data_directory}/hitran/cache/{species}'
     ## delete data directory to force download if requested
     hitran_filename = f'{directory}/hitran_linelist.data'

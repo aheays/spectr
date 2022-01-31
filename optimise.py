@@ -163,7 +163,7 @@ def _format_kwargs(kwargs,format_multi_line):
     if len(kwargs) < format_multi_line:
         retval = ','.join([f"{key}={repr(val)}" for key,val in kwargs.items()])
     else:
-        retval = ',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs.items()])+',\n'
+        retval = '\n    '+',\n    '.join([f"{key:10} = {repr(val)}" for key,val in kwargs.items()])+',\n'
     return retval
 
 def optimise_method(
@@ -243,28 +243,31 @@ def format_input_method(format_multi_line=3):
     def actual_decorator(function):
         @functools.wraps(function)
         def new_function(*args,**kwargs):
-            ## get all args into kwargs
             kwargs = _combine_function_kwargs(function,args,kwargs)
-            ## run the function
             function_retval = function(**kwargs)
-            ## If isclass then this is a constructor and the object
-            ## reference is created by the function. Otherwise it is a
-            ## method and the object reference is the first argument.
-            ## These also require different format_input_functions.
-            if inspect.isclass(function):
-                self = function_retval
-                def format_input_function():
-                    return f'{self.name} = {function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
-            else:
-                self = kwargs.pop(list(kwargs)[0])
-                def format_input_function():
-                    return f'{self.name}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
+            self = kwargs.pop(list(kwargs)[0])
+            def format_input_function():
+                return f'{self.name}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
             self.add_format_input_function(format_input_function)
             return function_retval
         return new_function
     return actual_decorator
-    
 
+def format_input_class(format_multi_line=3):
+    """A decorator factory to add a optimiser format_input_function for
+    classes. Add before class definition."""
+    def actual_decorator(function):
+        @functools.wraps(function)
+        def new_function(*args,**kwargs):
+            kwargs = _combine_function_kwargs(function,args,kwargs)
+            self = function(**kwargs)
+            def format_input_function():
+                return f'{self.name} = {self.__module__}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
+            self.add_format_input_function(format_input_function)
+            return self
+        return new_function
+    return actual_decorator
+    
 class Optimiser:
     """Defines adjustable parameters and model-building functions which
     may return a residual error. Then optimise the parameters with
@@ -306,19 +309,19 @@ class Optimiser:
         self.description = description
         self._last_construct_time = timestamp() # when last constructed
         ## make an input line
-        def f():
-            retval = f'{self.name} = Optimiser(name={repr(self.name)},'
-            if len(suboptimisers)>0:
-                retval += ','.join([repr(t) for t in suboptimisers])+','
-            if self.verbose:
-                retval += f'verbose={repr(self.verbose)},'
-            if self.description is not None:
-                retval += f'description={repr(self.description)},'
-            if len(self.store)>0:
-                retval += f'store={repr(self.store)},'
-            retval += ')'
-            return retval
-        self.add_format_input_function(f)
+        # def f():
+            # retval = f'{self.name} = Optimiser(name={repr(self.name)},'
+            # if len(suboptimisers)>0:
+                # retval += ','.join([repr(t) for t in suboptimisers])+','
+            # if self.verbose:
+                # retval += f'verbose={repr(self.verbose)},'
+            # if self.description is not None:
+                # retval += f'description={repr(self.description)},'
+            # if len(self.store)>0:
+                # retval += f'store={repr(self.store)},'
+            # retval += ')'
+            # return retval
+        # self.add_format_input_function(f)
         ## add data to internal store
         self.store = _Store(self)
         if store is not None:
@@ -344,27 +347,27 @@ class Optimiser:
         """Delete last format input function added."""
         self._format_input_functions.clear()
 
-    def automatic_format_input_function(self,limit_to_args=None,multiline=False):
-        """Try to figure one out from any non None variables. Could
-            easily fail."""
-        caller_locals = inspect.currentframe().f_back.f_locals
-        ## get e.g., spectrum.Model, keeping only last submodule name
-        class_name =  caller_locals['self'].__class__.__name__
-        submodule_name = re.sub('.*[.]','', caller_locals['self'].__class__.__module__)
-        def f():
-            args = []
-            for key,val in caller_locals.items():
-                if ((key == 'self')
-                    or (val is None)
-                    or (limit_to_args is not None and key not in limit_to_args)):
-                    continue
-                args.append(f'{key}={repr(val)}')
-            if multiline:
-                retval = f'{caller_locals["name"]} = {submodule_name}.{class_name}(\n    '+'\n    '.join(args)+'\n)'
-            else:
-                retval = f'{caller_locals["name"]} = {submodule_name}.{class_name}('+','.join(args)+')'
-            return retval
-        self.add_format_input_function(f)
+    # def automatic_format_input_function(self,limit_to_args=None,multiline=False):
+        # """Try to figure one out from any non None variables. Could
+            # easily fail."""
+        # caller_locals = inspect.currentframe().f_back.f_locals
+        # ## get e.g., spectrum.Model, keeping only last submodule name
+        # class_name =  caller_locals['self'].__class__.__name__
+        # submodule_name = re.sub('.*[.]','', caller_locals['self'].__class__.__module__)
+        # def f():
+            # args = []
+            # for key,val in caller_locals.items():
+                # if ((key == 'self')
+                    # or (val is None)
+                    # or (limit_to_args is not None and key not in limit_to_args)):
+                    # continue
+                # args.append(f'{key}={repr(val)}')
+            # if multiline:
+                # retval = f'{caller_locals["name"]} = {submodule_name}.{class_name}(\n    '+'\n    '.join(args)+'\n)'
+            # else:
+                # retval = f'{caller_locals["name"]} = {submodule_name}.{class_name}('+','.join(args)+')'
+            # return retval
+        # self.add_format_input_function(f)
 
     def add_suboptimiser(self,*suboptimisers):
         """Add one or suboptimisers."""

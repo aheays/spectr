@@ -96,7 +96,6 @@ class Dataset(optimise.Optimiser):
         ## init as optimiser, make a custom form_input_function, save
         ## some extra stuff if output to directory
         optimise.Optimiser.__init__(self)
-        self.pop_format_input_function()
         ## basic internal variables
         self._data = {} # table data and its properties stored here
         self._length = 0    # length of data

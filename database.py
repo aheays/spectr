@@ -39,15 +39,15 @@ def normalise_electronic_state_label(label):
     return label
 
 @tools.vectorise(cache=True)
-def get_electronic_state_property(species,label,prop):
+def get_electronic_state_property(species,label,prop,encoding='ascii_or_unicode'):
     """Get a quantum number defining a particular electronic state by label."""
     from .data.electronic_states import electronic_states
     ## normalise names
-    species = normalise_chemical_species(species)
+    chemical_formula = get_species_property(species,'chemical_formula',encoding)
     label = normalise_electronic_state_label(label)
     ## look for data
-    if (species,label) in electronic_states:
-        data = electronic_states[(species,label)]
+    if (chemical_formula,label) in electronic_states:
+        data = electronic_states[(chemical_formula,label)]
     else:
         raise DatabaseException(f'Cannot find electronic state: {repr((species,label))}')    
     if len(data) == 0:
@@ -56,31 +56,16 @@ def get_electronic_state_property(species,label,prop):
         raise DatabaseException(f"Cannot find property {prop=} for electronic state with {species=} {label=}")
     return data[prop]
 
-_all_species_properties = {     # ADD DOCS
-    'formula':'Chemical formula including any isotope.',
-    'chemical_formula':'Chemical species without isotope information.',
-    'is_isotopologue':'True if species contains any mass information, else False.',
-    'isotopologue_formula':'Chemical species with isotope information, assuming most abundand isotope where this information is missing.',
-    'prefix':'Structure information prefixing species formula.',
-    'nuclei':'List of (mass_number,element,multiplicity) matching the species formula.',
-    'charge':'Total charge of species.',
-    'mass':'Mass (amu)',
-    'isotopes':'Sorted tuple of isotopes (mass_number,element)',
-    'elements':'Sorted tuple of element',
-    'nnuclei':'Number of nuclei',
-    'nelectrons':'Number of electrons',
-    'reduced_mass':'Reduced mass (amu)',
-    'point_group':'Point group',
+_translate_deprecated_species_propery = {
+    'chemical_species':'chemical_formula',
 }
-
-def describe_species_properties():
-    pprint(_all_species_properties)
 
 @vectorise(cache=True)
 def get_species_property(species,prop,encoding='ascii_or_unicode'):
-    """Get property of a chemical or isotopologue species. describe_species_properties() to list information."""
-    if prop not in _all_species_properties:
-        raise DatabaseException(f'Unknown species property: {prop!r}. Allowed properties: {list(_all_species_properties)}')
+    """Get property of a chemical or isotopologue species. See data.species_data.py for property information."""
+    ## translate some deprecated species properties -- delete some data (2022-01-31)
+    if prop in _translate_deprecated_species_propery:
+        prop = _translate_deprecated_species_propery[prop]
     ## try load property from stored database
     species_unicode = convert.species(species,encoding,'unicode')
     from .data.species_data import data as _species_data
@@ -166,7 +151,7 @@ def get_species_property(species,prop,encoding='ascii_or_unicode'):
                  *[((get_most_abundant_isotope_mass_number(elem) if mass is None else mass),
                     elem,mul) for mass,elem,mul in nuclei] ,charge) ,'tuple','unicode')
         else:
-            raise Exception(f'Unknown species property: {prop!r}')
+            raise Exception(f'Unknown (species,property) combination: ({species!r},{prop!r})')
     return retval
 
 @tools.cache
