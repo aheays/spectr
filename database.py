@@ -151,7 +151,7 @@ def get_species_property(species,prop,encoding='ascii_or_unicode'):
                  *[((get_most_abundant_isotope_mass_number(elem) if mass is None else mass),
                     elem,mul) for mass,elem,mul in nuclei] ,charge) ,'tuple','unicode')
         else:
-            raise Exception(f'Unknown (species,property) combination: ({species!r},{prop!r})')
+            raise DatabaseException(f'Unknown (species,property) combination: ({species!r},{prop!r})')
     return retval
 
 @tools.cache
