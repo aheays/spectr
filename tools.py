@@ -1496,24 +1496,29 @@ def ensure_iterable(x):
 
 def spline(
         xs,ys,x,s=0,order=3,
-        sort_data=True,
-        ignore_nan_data=False,
+        sort_data= True,
+        remove_nan_data= True,
         out_of_bounds='extrapolate', # 'extrapolate','zero','error', 'constant'
 ):
     """Evaluate spline interpolation of (xs,ys) at x. Optional argument s
     is spline tension. Order is degree of spline. Silently defaults to 2 or 1
     if only 3 or 2 data points given.
     """
-    from scipy import interpolate
-    order = min(order,len(xs)-1)
+    ## prepare data
     xs,ys,x = np.array(xs,ndmin=1),np.array(ys,ndmin=1),np.array(x,ndmin=1)
-    if ignore_nan_data:
-        i = np.isnan(xs)|np.isnan(ys)
-        if any(i):
+    i = np.isnan(xs)|np.isnan(ys)
+    if any(i):
+        if remove_nan_data:
             xs,ys = xs[~i],ys[~i]
+        else:
+            raise Exception('NaN data present')
     if sort_data:
-        i = np.argsort(xs)
-        xs,ys = xs[i],ys[i]
+        xs,i = np.unique(xs,return_index=True)
+        ys = ys[i]
+    elif np.any(np.diff(xs)<=0):
+        raise Exception('xspline is not monotonically increasing')
+    ## interpolate
+    order = min(order,len(xs)-1)
     if order == 0:
         ## piecewise constant interpolation
         y = np.empty(len(x),dtype=float)
@@ -1523,6 +1528,7 @@ def spline(
             y[ia:ib] = yi
     else:
         ## actual spline
+        from scipy import interpolate
         y = interpolate.UnivariateSpline(xs, ys, k=order, s=s)(x)
     ## out of bounds logic
     iout = (x<xs[0])|(x>xs[-1])

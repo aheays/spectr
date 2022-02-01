@@ -1745,6 +1745,28 @@ class Diatom(Linear):
                     new_data.append(row|{f'{key}_l':val for key,val in row_l.items()})
         self.concatenate(new_data)
 
+    @optimise_method()
+    def set_herman_wallis(
+            self,
+            θ=0,
+            γ=1,
+            _cache=None,
+            **get_combined_index_kwargs # only set matching lines
+    ):
+        """Modify μ according to the Herman-Wallis effect. E.g., brooke2014c"""
+        if self._clean_construct:
+            imatch = self.get_combined_index(**get_combined_index_kwargs,return_bool=True)
+            _cache['iP'] = imatch & self.match(ΔJ=-1)
+            _cache['iR'] = imatch & self.match(ΔJ=+1)
+        iP = _cache['iP'] 
+        iR = _cache['iR']
+        print('DEBUG:', )
+        print('DEBUG:', np.nanmax(self['μ',iP]))
+        self['μ',iP] = self['μ',iP]*(1+4*γ*θ*self['J_l',iP])
+        print('DEBUG:', np.nanmax(self['μ',iP]))
+        self['μ',iR] = self['μ',iR]*(1-4*γ*θ*(self['J_l',iR]+1))
+
+
 class LinearTriatom(Linear):
     """E.g., CO2, CS2."""
 

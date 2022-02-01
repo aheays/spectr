@@ -130,11 +130,11 @@ for filename in args.filenames:
                 t = ax.set_title(filename)
                 t.set_in_layout(False)
 
-        ## load data into a dictionary of arrays
+        ## load data into a dictionary of arrays -- REPLACE ONE DAY
+        ## WITH DATASET.LOAD
         root,extension = os.path.splitext(filename)
         if args.xkey is not None or extension in ('h5','hdf5',):
             ## load as dictionary
-            # data = tools.file_to_dict(filename,labels_commented=args.labels_commented,filetype=args.filetype)
             kwargs = {}
             if args.labels_commented is not None:
                 kwargs['labels_commented'] = args.labels_commented

@@ -102,21 +102,20 @@ class Experiment(Optimiser):
             self.experimental_parameters['xbeg'] = xbeg 
             self.experimental_parameters['xend'] = xend
             ## spline to a new grid:
-            if xspline == 'auto':
-                ## respline the data to the smallest grid step in its range
-                dx = np.min(np.diff(x))
-                xnew = linspace(x[0],x[-1],int((x[-1]-x[0])/dx)+1)
+            if xspline is not None:
+                if xspline == 'auto':
+                    ## respline the data to the smallest grid step in its range
+                    dx = np.min(np.diff(x))
+                    xnew = linspace(x[0],x[-1],int((x[-1]-x[0])/dx)+1)
+                elif tools.isnumeric(xspline):
+                    ## respline to given grid step
+                    dx = np.min(np.diff(x))
+                    xnew = arange(x[0],x[-1],xspline)
+                elif tools.isnumeric(xspline):
+                    ## respline to given grid
+                    xnew = xspline
                 ynew = tools.spline(x,y,xnew)
                 x,y = xnew,ynew
-            elif tools.isnumeric(xspline):
-                ## respline to given grid step
-                dx = np.min(np.diff(x))
-                xnew = arange(x[0],x[-1],xspline)
-                ynew = tools.spline(x,y,xnew)
-                x,y = xnew,ynew
-            elif tools.isnumeric(xspline):
-                ## respline to given grid
-                x,y = xspline,tools.spline(x,y,xspline)
             ## check for regular x grid
             t0,t1 = np.diff(x).min(),np.diff(x).max()
             assert (t1-t0)/t1<1e-3, 'Experimental data must be on an uniform grid.' # within a factor of 1e3
@@ -154,7 +153,7 @@ class Experiment(Optimiser):
             self,
             filename,           # a filename, loaded with dataset.load
             xkey=None,ykey=None, # keys for data to load
-            verbose= True,        # set True for more information about loaded data
+            verbose=False,        # setFalse for more information about loaded data
             _cache=None,
             **set_spectrum_kwargs # passed to self.set_spectrum
     ):

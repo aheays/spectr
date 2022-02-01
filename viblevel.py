@@ -85,8 +85,9 @@ class Level(Optimiser):
         self._initialise_construct()
         self.add_post_construct_function(self._finalise_construct)
 
-    ## make sure constructed before accessing level object
     def _get_level(self):
+        """make sure constructed before accessing level object"""
+        self._level.construct()
         return self._level
     level = property(_get_level)
 
@@ -546,7 +547,6 @@ class Level(Optimiser):
             nbins_histogram=None,
             **plot_kwargs,):
         """Plot data and residual error."""
-        self.construct()
         if fig is None:
             fig = plotting.gcf()
         fig.clf()
@@ -633,13 +633,11 @@ class Line(Optimiser):
     two states defined by LocalDeperturbation objects. Currently only
     for single-photon transitions. """
 
-    def __init__(self,name,level,ΔJ=(-1,0,+1),Eref=0,Zsource='self'):
+    def __init__(self,name,level,ΔJ=(-1,0,+1)):
         ## add upper and lower levels
         self.name = name
         self.level = self.level_u = self.level_l = level
-        self.species = self.level_l.species
-        self.Zsource = Zsource
-        self.level_u.Eref = self.level_l.Eref = self.Eref = Eref
+        self.species = self.level.species
         self.ΔJ = ΔJ
         self.J_l = level.J
         ## construct optimiser -- inheriting from states
@@ -694,9 +692,8 @@ class Line(Optimiser):
                 & ((       ((self._line['J_u']-self._line['J_l']) == 0) & (self._line['ef_u'] != self._line['ef_l']))
                    |((np.abs(self._line['J_u']-self._line['J_l']) == 1) & (self._line['ef_u'] == self._line['ef_l']))))
             self._line.index(self._iallowed)
-            ## set some more things
-            self._line['Zsource'] = self.Zsource
-            self._line['Eref'] = self.Eref
+            self._line['Zsource'] = self.level.Zsource
+            self._line['Eref'] = self.level.Eref
         else:
             self.μ0 *= 0.
 
