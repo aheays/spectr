@@ -47,9 +47,7 @@ class Level(Optimiser):
         self._shifts = []       # used to shift individual levels after diagonalisation
         self._level = levels.Diatom(name=f'{self.name}.level')
         self._level.pop_format_input_function()
-        self._level.add_suboptimiser(self,
-                                     # construct_now=False,
-                                             )
+        self._level.add_suboptimiser(self)
         self.vibrational_spin_level = levels.Diatom()
         self.interactions = {}
         self.verbose = False

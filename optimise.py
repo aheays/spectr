@@ -260,7 +260,7 @@ def format_input_class(format_multi_line=3):
         @functools.wraps(function)
         def new_function(*args,**kwargs):
             kwargs = _combine_function_kwargs(function,args,kwargs)
-                self = function(**kwargs)
+            self = function(**kwargs)
             def format_input_function():
                 return f'{self.name} = {self.__module__}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
             self.add_format_input_function(format_input_function)

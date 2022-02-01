@@ -843,31 +843,30 @@ class Model(Optimiser):
         'emission'. set_keys_vals set data according to Spectrum
         prototypes before adding to the model."""
         ## Make a copy of the input spectrum so it is not altered by
-        ## this method.
+        ## this method and set set_keys_vals in the copy
         if self._clean_construct:
             spectrum_copy = spectrum.copy(optimise=True)
             spectrum_copy.include_in_output = False
-            ## Set set_keys_vals in the copied spectrum object.
             for key,val in set_keys_vals.items():
                 spectrum_copy.set_value(key,val)
             self.add_suboptimiser(spectrum_copy)
             _cache['spectrum_copy'] = spectrum_copy
         spectrum_copy = _cache['spectrum_copy']
-        ## limit spline to a meaningful frequency range
-        index = tools.inrange(spectrum['ν'],self.x[0],self.x[-1],include_adjacent=True,return_as='slice')
-        if kind == 'absorption':
-            ykey = 'T'          # transmittance
-        elif kind == 'emission':
-            ykey = 'I'          # intensity
-        else:
-            raise Exception(f'Unknown {kind=}')
-        ## calc spline if necessary
-        if (self._clean_construct
-            or spectrum_copy._global_modify_time > self._last_construct_time):
+        ## calculate or recalculate spline if necessary, limiting to a
+        ## meaningful frequency range
+        if spectrum_copy._last_construct_time > self._last_construct_time:
+            index = tools.inrange(spectrum['ν'],self.x[0],self.x[-1],include_adjacent=True,return_as='slice')
+            if kind == 'absorption':
+                ykey = 'T'          # transmittance
+            elif kind == 'emission':
+                ykey = 'I'          # intensity
+            else:
+                raise Exception(f'Unknown {kind=}')
             _cache['spline'] = tools.spline(
                 spectrum_copy['ν',index],
                 spectrum_copy[ykey,index],
                 self.x,out_of_bounds='zero')
+        ## add spectrum to self
         if kind == 'absorption':
             self.y *= _cache['spline']
         elif kind == 'emission':
