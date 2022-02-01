@@ -842,10 +842,9 @@ class Model(Optimiser):
         """Add spectrum in a Spectrum object. kind='absorption' or
         'emission'. set_keys_vals set data according to Spectrum
         prototypes before adding to the model."""
-        if self._first_construct:
-            ## Only runs on the initial construction of the model.
-            ## Make a copy of the input spectrum so it is not altered
-            ## by this method.
+        ## Make a copy of the input spectrum so it is not altered by
+        ## this method.
+        if self._clean_construct:
             spectrum_copy = spectrum.copy(optimise=True)
             spectrum_copy.include_in_output = False
             ## Set set_keys_vals in the copied spectrum object.
@@ -862,11 +861,9 @@ class Model(Optimiser):
             ykey = 'I'          # intensity
         else:
             raise Exception(f'Unknown {kind=}')
-        if (
-                self._clean_construct
-                or
-                spectrum_copy._global_modify_time > self._last_construct_time
-            ):
+        ## calc spline if necessary
+        if (self._clean_construct
+            or spectrum_copy._global_modify_time > self._last_construct_time):
             _cache['spline'] = tools.spline(
                 spectrum_copy['ν',index],
                 spectrum_copy[ykey,index],
@@ -2509,7 +2506,8 @@ class FitAbsorption():
                 except DatabaseException:
                     raise Exception(f'No characteristic bands found for {tspecies}. You could add a \'characteristic_infrared_bands property\' to a {database.normalise_species(tspecies)!r} section in spectr/data/species_data.py')
         elif region == 'full':
-            self.make_model(0,0,verbose=False)
+            ## find experimental data limits
+            self.make_model(-np.inf,np.inf,verbose=False,region='full')
             region = ((int(np.floor(p['xbeg'])), int(np.ceil(p['xend']))),)
         elif isinstance(region[0],(float,int)):
             region = [region]
@@ -2679,12 +2677,13 @@ class FitAbsorption():
         p = self.parameters
         ## load experiment
         if self.experiment is None:
-            ## load exp data
+            ## load experimental data
             self.experiment = Experiment('experiment')
             ## use provided x range or entire spectrum
             p.setdefault('xbeg',None)
             p.setdefault('xend',None)
             self.experiment.set_spectrum_from_opus_file(p['filename'],xbeg=p['xbeg'],xend=p['xend'])
+            ## limits of experimental data
             p['xbeg'] = self.experiment.x[0]
             p['xend'] = self.experiment.x[-1]
             ## scale x coordinate
@@ -2704,6 +2703,8 @@ class FitAbsorption():
         p.setdefault('region',{})
         if region is None:
             region = (xbeg,xend)
+        if region == 'full':
+            region = (self.experiment.x[0],self.experiment.x[-1])
         p['region'].setdefault(region,{})
         pregion = p['region'][region]
         xbeg = max(xbeg,region[0])

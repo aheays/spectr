@@ -39,7 +39,7 @@ class Level(Optimiser):
             sort_manifolds=True,
             sort_match_experiment=False,
     ):
-        self.name = name          # a nice name
+        Optimiser.__init__(self,name=name)
         self.species = get_species_property(species,'isotopologue_formula')
         self.Zsource = Zsource
         self.Eref = Eref
@@ -47,7 +47,9 @@ class Level(Optimiser):
         self._shifts = []       # used to shift individual levels after diagonalisation
         self._level = levels.Diatom(name=f'{self.name}.level')
         self._level.pop_format_input_function()
-        self._level.add_suboptimiser(self)
+        self._level.add_suboptimiser(self,
+                                     # construct_now=False,
+                                             )
         self.vibrational_spin_level = levels.Diatom()
         self.interactions = {}
         self.verbose = False
@@ -59,16 +61,22 @@ class Level(Optimiser):
         ## inputs / outputs of diagonalisation
         self.eigvals = None
         self.eigvects = None
-        ## a Level object containing data, better access through level property
-        ## the optimiser
-        Optimiser.__init__(self,name=self.name)
-        # self.pop_format_input_function()
-        # self.automatic_format_input_function(
-            # multiline=False,
-            # limit_to_args=('name', 'species', 'J', 'Eref','Zsource'))
         self.add_save_to_directory_function(
             lambda directory: self._level.save(f'{directory}/level.h5'))
         ## set J
+        J_is_half_integer = get_species_property(self.species,'nelectrons')%2==1
+        if J is None:
+            if J_is_half_integer:
+                J = np.arange(0.5,30.5,1)
+            else:
+                J = np.arange(31)
+        J = np.asarray(J)
+        if J_is_half_integer:
+            if not  np.all(np.mod(J,1)==0.5):
+                raise Exception(f'Half-integer J required for {self.species!r}')
+        else:
+            if not np.all(np.mod(J,1)==0):
+                raise Exception(f'Integer J required for {self.species!r}')
         self.J = J
         ## compute residual error if a experimental level is provided
         self.experimental_level = experimental_level
@@ -81,7 +89,6 @@ class Level(Optimiser):
 
     ## make sure constructed before accessing level object
     def _get_level(self):
-        self.construct()
         return self._level
     level = property(_get_level)
 
@@ -150,28 +157,6 @@ class Level(Optimiser):
         return retval
 
     
-
-    def _get_J(self):
-        return self._J
-
-    def _set_J(self,J):
-        """Set a J value some checks"""
-        J_is_half_integer = get_species_property(self.species,'nelectrons')%2==1
-        if J is None:
-            if J_is_half_integer:
-                J = np.arange(0.5,30.5,1)
-            else:
-                J = np.arange(31)
-        J = np.asarray(J)
-        if J_is_half_integer:
-            assert np.all(np.mod(J,1)==0.5),f'Half-integer J required for {repr(self.species)}'
-        else:
-            assert np.all(np.mod(J,1)==0),f'Integer J required for {repr(self.species)}'
-        self._J = J
-        self._clean_construct = True
-        self.construct()
-
-    J = property(_get_J,_set_J)
 
     @optimise_method(add_format_input_function=False)
     def _initialise_construct(self,_cache=None):
