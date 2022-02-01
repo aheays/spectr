@@ -377,7 +377,7 @@ def get_line(
     def f():
         retval = f'{line.name} = hitran.get_line({repr(species)}'
         if line.name is not None:
-            retval += f',name={repr(name)}'
+            retval += f',name={repr(line.name)}'
         if match is not None:
             retval += f',match={repr(match)}'
         retval += ')'

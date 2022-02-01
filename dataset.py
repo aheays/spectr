@@ -1128,34 +1128,8 @@ class Dataset(optimise.Optimiser):
         if name is None:
             name = f'copy_of_{self.name}'
         retval = self.__class__(name=name, description=f'Copy of {self.name}.',)
-        # retval.pop_format_input_function()
         retval.copy_from(self,*args_copy_from,**kwargs_copy_from)
-        # retval.pop_format_input_function()
-        # def f():
-            # retval = f'{retval.name} = {self.name}.copy('
-            # args = [f'name={name!r}']
-            # args += list(args_copy_from)
-            # args += [f'key={val!r}' for key,val in kwargs_copy_from.items()]
-            # retval += ','.join(args)
-            # retval += ')'
-            # return retval
-        # retval.add_format_input_function(f)
         return retval
-    # def copy(self,keys=None,index=None):
-        # """Return a copy of self with possible restriction to indices
-        # and keys."""
-        # retval = self.__class__(name='copy_of_self.name') # new version of self
-        # retval.pop_format_input_function()
-        # retval.prototypes = deepcopy(self.prototypes)
-        # retval.attributes = deepcopy(self.attributes)
-        # retval.permit_indexing = self.permit_indexing 
-        # retval._length = self._length
-        # retval._data = deepcopy(self._data)
-        # if keys is not None:
-            # self.limit_to_keys(keys)
-        # if index is not None:
-            # self.index(index)
-        # return retval
 
     @format_input_method(format_multi_line=3)
     def copy_from(

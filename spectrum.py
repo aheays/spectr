@@ -446,7 +446,7 @@ class Model(Optimiser):
 
     def __init__(
             self,
-            name=None,
+            name='model',
             experiment=None,
             load_experiment_args=None,
             residual_weighting=None,
@@ -466,7 +466,7 @@ class Model(Optimiser):
             ## load experiment='filename'
             experiment = Experiment(filename=experiment)
         self.experiment = experiment
-        ## set na,e
+        ## set name
         if name is None:
             if self.experiment is None:
                 name = 'model'
@@ -689,7 +689,8 @@ class Model(Optimiser):
             imatch = line.match(**tmatch)
             nmatch = np.sum(imatch)
             keys = [key for key in line.explicitly_set_keys() if key not in set_keys_vals]
-            line_copy = line.copy(index=imatch,keys=keys)
+            line_copy = line.copy(index=imatch,keys=keys,optimise=True)
+            line_copy.include_in_output = False
             if verbose is not None:
                 line_copy.verbose = verbose
             if verbose:
@@ -697,10 +698,8 @@ class Model(Optimiser):
             ## set parameter/constant data. If a vector of data is
             ## given then its length matches the input dataset
             for key,val in set_keys_vals.items():
-                if tools.isiterable(val):
-                    line_copy[key] = val[imatch]
-                else:
-                    line_copy[key] = val
+                line_copy.set_value(key,val)
+            self.add_suboptimiser(line_copy)
             ## get ykey
             if kind == 'absorption':
                 ykey = 'τ'
@@ -719,57 +718,39 @@ class Model(Optimiser):
                 if kind == 'absorption':
                     y = np.exp(-y)
                 return y
-            y = _calculate_spectrum(line_copy,None)
             ## cache
             _cache['line_copy_prev'] = line_copy.copy()
-            _cache['y'] = y
-            _cache['imatch'] = imatch
-            _cache['nmatch'] = nmatch
             _cache['line_copy'] = line_copy
             _cache['ykey'] = ykey
             _cache['_calculate_spectrum'] = _calculate_spectrum
-        else:
-            ## subsequent runs -- maybe only recompute a few line
-            ##
-            ## load cache
+        ## calculate spectrum and add to self
+        line_copy = _cache['line_copy']
+        ykey = _cache['ykey']
+        ## nothing to be done
+        if len(line_copy) == 0:
+            return
+        ## update spectrum if line_copy has changed
+        if line_copy._last_construct_time > self._last_construct_time:
             line_copy_prev = _cache['line_copy_prev']
-            y = _cache['y']
-            imatch = _cache['imatch']
-            nmatch = _cache['nmatch']
-            line_copy = _cache['line_copy']
-            ykey = _cache['ykey']
             _calculate_spectrum = _cache['_calculate_spectrum']
-            ## nothing to be done
-            if nmatch == 0:
-                return
-            ## set modified data in set_keys_vals if they have changed
-            ## from cached values.  Only update Parameters that have changed
-            for key,val in set_keys_vals.items():
-                if isinstance(val,Parameter):
-                    if self._last_construct_time < val._last_modify_value_time:
-                        line_copy[key] = val
-                elif tools.isiterable(val):
-                    line_copy.set(key,'value',val[imatch],set_changed_only=True)
-                else:
-                    line_copy.set(key,'value',val,set_changed_only=True)
-            ## if the source lines data has changed then update
-            ## changed rows and keys in the local copy
-            if line.global_modify_time > self._last_construct_time:
-                for key in line.explicitly_set_keys():
-                    if line[key,'_modify_time'] > self._last_construct_time:
-                        line_copy.set(key,'value',line[key,imatch],set_changed_only=True)
-            ## update spectrum for any changed lines in the local copy
-            if line_copy.global_modify_time > self._last_construct_time:
+            if self._clean_construct or force_full_recalc:
+                ##  full calculation
+                if verbose:
+                    print(f'add_line: {line.name}: {self._clean_construct=} {force_full_recalc=}, full recalculation')
+                y = _calculate_spectrum(line_copy,None)
+                ## new previous data
+                _cache['line_copy_prev'] = line_copy.copy()
+            else:
                 ## get indices of local lines that has been changed
+                ## and update what is necessary
                 ichanged = line_copy.row_modify_time > self._last_construct_time
                 nchanged = np.sum(ichanged)
-                if force_full_recalc:
-                    ##  full ## recalculation
+                y_previous = _cache['y_previous']
+                if nchanged == 0:
+                    ## nothing changed keep old spectrum
                     if verbose:
-                        print(f'add_line: {line.name}: {force_full_recalc=}, full recalculation')
-                    y = _calculate_spectrum(line_copy,None)
-                    ## new previous data
-                    _cache['line_copy_prev'] = line_copy.copy()
+                        print(f'add_line: {line.name}: nothing changed, keep old spectrum')
+                    y = y_previous
                 elif (
                         ## all lines have changed
                         (nchanged == len(ichanged))
@@ -778,34 +759,30 @@ class Model(Optimiser):
                         ## no key other than ykey has changed
                         and (np.all([line_copy[key,'_modify_time'] < self._last_construct_time for key in line_copy_prev if key != ykey]))
                         ## ykey has changed by a near-constant factor -- RISKY!!!!
-                        and _similar_within_fraction(line_copy_prev[ykey],line_copy[ykey])
+                        and _similar_within_fraction(line_copy_prev[ykey],line_copy[ykey],maxfrac=1e14)
                         ## if ymin is set then scaling is dangerous -- lines can fail to appear when scaled up
-                        and (ymin is None or ymin == 0)
+                        and ymin in (None,0)
                 ):
                     ## constant factor ykey -- scale saved spectrum
-                    if ymin is not None and ymin != 0:
-                        warnings.warn(f'Scaling spectrum uniformly but ymin is set to a nonzero value, {repr(ymin)}.  This could lead to lines appearing in subsequent model constructions.')
                     if verbose:
                         print(f'add_line: {line.name}: constant factor scaling all lines')
                     ## ignore zero values
                     i = (line_copy[ykey]!=0)&(line_copy_prev[ykey]!=0)
                     scale = np.mean(line_copy[ykey,i]/line_copy_prev[ykey][i])
                     if kind == 'absorption':
-                        y = y**scale
+                        ## absorption depth is exponentiated
+                        y = y_previous**scale
                     else:
-                        y = y*scale
-                    ## new previous data
-                    _cache['line_copy_prev'] = line_copy.copy()
+                        ## any other ykey is scaled
+                        y = y_previous*scale
                 elif nchanged/len(ichanged) > 0.5:
                     ## more than half lines have changed -- full
                     ## recalculation
                     if verbose:
                         print(f'add_line: {line.name}: more than half the lines ({nchanged}/{len(ichanged)}) have changed, full recalculation')
                     y = _calculate_spectrum(line_copy,None)
-                    ## new previous data
-                    _cache['line_copy_prev'] = line_copy.copy()
                 elif nchanged > 0:
-                    ## a few lines have changed, update these only
+                    ## some lines have changed, update these only
                     if verbose:
                         print(f'add_line: {line.name}: {nchanged} lines have changed, recalculate these')
                     ## temporary object to calculate old spectrum
@@ -813,27 +790,26 @@ class Model(Optimiser):
                     ## partial recalculation
                     ynew = _calculate_spectrum(line_copy,ichanged)
                     if kind == 'absorption':
-                        y = y * ynew / yold
+                        ## transmission spectrum scaled
+                        y = y_previous * ynew / yold
                     else:
-                        y = y + ynew - yold
-                    ## new previous data
-                    _cache['line_copy_prev'] = line_copy.copy()
+                        ## all other ykeys added
+                        y = y_previous + ynew - yold
                 else:
-                    ## nothing changed keep old spectrum
-                    pass
-            else:
-                ## nothing changed keep old spectrum
-                pass
-        ## nothing to be done
-        if nmatch == 0:
-            return
+                    assert False,'Should not be here'
+        else:
+            ## nothing changed keep old spectrum
+            if verbose:
+                print(f'add_line: {line.name}: line_copy unchanged, keep old spectrum')
+            y = _cache['y_previous']
         ## apply to model
         if kind == 'absorption':
             self.y *= y
         else:
             self.y += y
-        _cache['y'] = y
-        _cache['set_keys_vals'] = {key:(val.value if isinstance(val,Parameter) else val) for key,val in set_keys_vals.items()}
+        if not force_full_recalc:
+            _cache['y_previous'] = y
+            _cache['line_copy_prev'] = line_copy.copy()
         if verbose:
             print(f'add_line: {line.name}: time = {timestamp()-timer_start:0.3e}')
 
@@ -2943,14 +2919,13 @@ def fit_species_absorption(
         'fig':1,
         'fit_N': True,
         'fit_pair': True,
-        'fit_intensity': True
+        'fit_intensity': True,
+        'intensity_spline_step':20,
+        'fit_FTS_H2O': ('H2O' in species or 'H₂O' in species),
     }
     kwargs |= fit_kwargs
     ## load and fit spectrum
-    o = FitAbsorption(
-        filename=filename,
-        min_S296K=0,
-    )
+    o = FitAbsorption(filename=filename,min_S296K=1e-25)
     o.fit(**kwargs)
     ## print results
     d = o.get_species_dataset()

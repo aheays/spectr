@@ -346,22 +346,10 @@ class Optimiser:
         """Delete last format input function added."""
         self._format_input_functions.clear()
 
-    def add_suboptimiser(
-            self,
-            *suboptimisers,
-            # construct_now=True,
-            # include_in_output=True,
-    ):
-        """Add one or suboptimisers. Will finalise their construction in doing
-        so."""
+    def add_suboptimiser(self,*suboptimisers):
+        """Add one or suboptimisers if not already present."""
         for suboptimiser in suboptimisers:
-            ## add only if not already there
             if suboptimiser not in self._suboptimisers:
-                # suboptimiser.include_in_output = include_in_output
-                # if construct_now:
-                    # ## finalise construction now, cannot add more
-                    # ## construct_function – avoids bugs
-                    # suboptimiser.construct()
                 self._suboptimisers.append(suboptimiser)
 
     suboptimisers = property(lambda self: self._suboptimisers)
@@ -379,20 +367,6 @@ class Optimiser:
         return parameter
     
     
-    def __getitem__(self,key):
-        return self.store[key]
-
-    def __setitem__(self,key,val):
-        """Add data to store."""
-        self.store[key] = val
-
-    def __iter__(self):
-        for key in self.keys():
-            yield key
-
-    def keys(self):
-        return list(self.store)
-
     def add_construct_function(self,*functions):
         """Add one or more functions that are called each iteration when the
         model is optimised. Optionally these may return an array that is added
@@ -424,6 +398,20 @@ class Optimiser:
     def add_plot_function(self,*functions):
         """Add a new format input function."""
         self._plot_functions.extend(functions)
+
+    def __getitem__(self,key):
+        return self.store[key]
+
+    def __setitem__(self,key,val):
+        """Add data to store."""
+        self.store[key] = val
+
+    def __iter__(self):
+        for key in self.keys():
+            yield key
+
+    def keys(self):
+        return list(self.store)
 
     def get_all_suboptimisers(self,_already_recursed=None,include_self=True):
         """Return a list of all suboptimisers including self and without double
