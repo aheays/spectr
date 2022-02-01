@@ -149,26 +149,28 @@ class Experiment(Optimiser):
                 experimental_parameters=self.experimental_parameters,
                 header=f'## experimental parameters of {self.name}\n')
 
-
-    @optimise_method()
+    @format_input_method()
     def set_spectrum_from_file(
             self,
-            filename,
-            xkey=None,ykey=None,
-            xcol=None,ycol=None,
-            xbeg=None,xend=None,
+            filename,           # a filename, loaded with dataset.load
+            xkey=None,ykey=None, # keys for data to load
+            verbose= True,        # set True for more information about loaded data
             _cache=None,
+            **set_spectrum_kwargs # passed to self.set_spectrum
     ):
         """Load a spectrum to fit from an x,y file."""
-        ## only runs once
-        if 'has_run' in _cache:
-            return
-        _cache['has_run'] = True
-        # self.add_format_input_function(lambda:self.name+f'.set_spectrum_from_file({repr(filename)},xbeg={repr(xbeg)},xend={repr(xend)},{tools.dict_to_kwargs(load_function_kwargs)})')
-        # x,y = tools.file_to_array_unpack(filename,**load_function_kwargs)
-        x,y = tools.Loadxy(filename, xcol=xcol,ycol=ycol, xkey=xkey,ykey=ykey,)
+        data = dataset.load(filename)
+        if verbose:
+            print(f'loading {filename=} with data')
+            data.describe()
+        if xkey is None:
+            xkey  = data.keys()[0]
+        if ykey is None:
+            ykey  = data.keys()[1]
+        if verbose:
+            print(f'Using data: {xkey=} {ykey=}')
         self.experimental_parameters['filename'] = filename
-        self.set_spectrum(x,y,xbeg,xend)
+        self.set_spectrum(data[xkey],data[ykey],**set_spectrum_kwargs)
         self.pop_format_input_function()
 
     @optimise_method()
