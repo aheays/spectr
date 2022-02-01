@@ -753,13 +753,20 @@ class Line(Optimiser):
 
     def plot(
             self,
+            simple=False,
             Teq=300,            # equilibrium temperature
             match=None,         # plot some lines only
             **kwargs,           # passed to plot_stick_spectrum
     ):
         """Plot line intensities with a stick spectrum."""
-        kwargs.setdefault('xkey','ν') # 
-        kwargs.setdefault('zkeys',None)
+        kwargs.setdefault('xkey','ν') #
+        if simple:
+            kwargs.setdefault('zkeys',())
+            kwargs.setdefault('plot_labels',False)
+            kwargs.setdefault('plot_legend',False)
+        else:
+            kwargs.setdefault('zkeys',None)
+        
         if Teq is None:
             kwargs.setdefault('ykey','Sij')
         else:
