@@ -571,14 +571,19 @@ def safe_eval_literal(string,string_on_error=False):
             retval = string
     return retval
 
-def regularise_symbol(x):
+def regularise_symbol(
+        x,
+        permit_attr=False,       # permit attributes referenes, e.g., do not convert x.y to x_y
+):
     """Turn an arbitrary string into a valid python symbol. INCOMPLETE
 Check out
 https://github.com/Ghostkeeper/Luna/blob/d69624cd0dd5648aec2139054fae4d45b634da7e/plugins/data/enumerated/enumerated_type.py#L91"""
     x = regularise_unicode(x)
-    x = re.sub(r'[-<>(){}\[\]!^.+|&/%]','_',x)
-    if x[0] in '0123456789':
-        x = '_'+x
+    x = re.sub(r'[-<>(){}\[\]!^+|&/%]','_',x)
+    if not permit_attr:
+        x = re.sub(r'\.','_',x)
+    if x[0] in '0123456789.':
+        x = 'x'+x
     return x
 
 def regularise_unicode(s):
@@ -1505,7 +1510,7 @@ def spline(
     if only 3 or 2 data points given.
     """
     ## prepare data
-    xs,ys,x = np.array(xs,ndmin=1),np.array(ys,ndmin=1),np.array(x,ndmin=1)
+    xs,ys,x = np.array(xs,ndmin=1,dtype=float),np.array(ys,ndmin=1,dtype=float),np.array(x,ndmin=1,dtype=float)
     i = np.isnan(xs)|np.isnan(ys)
     if any(i):
         if remove_nan_data:

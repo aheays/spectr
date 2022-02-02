@@ -787,8 +787,8 @@ class Generic(levels.Base):
     def get_level(
             self,
             upper_or_lower='both',
+            keys='set', # list of level keys to get 'set', 'known', or a list
             subkeys=('value','unc'),
-            required_keys=(),
             reduce_to='first',
             reduce_qn=None,   # to get unique levels, defaults to all self.defining_qn that are known
             match_line=None,
@@ -805,9 +805,7 @@ class Generic(levels.Base):
                 ## objects)
                 raise NotImplementedError('Optimisation not implemented for upper_or_lower="both"')
             level = self._level_class()
-            kwargs = {'subkeys':subkeys,
-                      'required_keys':required_keys,
-                      'match_line':match_line,}
+            kwargs = {'keys':keys, 'subkeys':subkeys, 'match_line':match_line,}
             level.concatenate(self.get_level('lower',**kwargs))
             level.concatenate(self.get_level('upper',**kwargs))
         else:
@@ -818,27 +816,33 @@ class Generic(levels.Base):
                 suffix = '_l'
             else:
                 raise Exception("invalid {u_or_l=} should be one of ('u','l','upper','lower','both')")
+            ## get matching index in line (self)
+            index_line = self.match(match_line)
             ## new level
             level = self._level_class()
+            if optimise:
+                level.add_suboptimiser(self)
             ## try and compute some upper/lower level dependent things,
             ## otherwise knowing J_l and ΔJ wont lead to a J_u being
             ## included in get_upper_level
-            for key in ('species','label','v','J','E','Ω','Λ'):
-                self.is_known(key+suffix)
+            # for key in ('species','label','v','J','E','Ω','Λ'):
+                # self.is_known(key+suffix)
             ## ensure all required keys available
-            for key in required_keys:
+            if keys == 'known':
+                keys = [key for key in self._level_class.default_prototypes
+                                     if self.is_known(key+suffix)]
+            elif keys == 'set':
+                keys = [key for key in self._level_class.default_prototypes
+                                 if self.is_set(key+suffix)]
+            for key in keys:
                 self.assert_known(key+suffix)
-            ## get matching index in line (self)
-            index_line = self.match(match_line)
             ## list of (level_key,line_key,subkey) that are added to
             ## level, used in optimisation
             set_keys = []     
-            for key in self.keys():
-                if len(key)>len(suffix) and key[-len(suffix):] == suffix:
-                    for subkey in subkeys:
-                        if self.is_set(key,subkey):
-                            set_keys.append((key[:-2],key,subkey))
-                            level[key[:-2],subkey] = self[key,subkey,index_line]
+            for key in keys:
+                for subkey in subkeys:
+                    if self.is_set(key+suffix,subkey):
+                        level[key,subkey] = self[key+suffix,subkey,index_line]
         ## reduce if requested
         if reduce_to == None:
             pass
@@ -866,18 +870,11 @@ class Generic(levels.Base):
         ## Set up level to be optimised if self changes
         if optimise:
             def construct_function():
-                if self._global_modify_time > level._global_modify_time:
-                    ## if line data has changed then update level data
-                    for level_key,line_key,subkey in set_keys:
-                        if self[line_key,'_modify_time'] > level[level_key,'_modify_time']:
-                            level.set(level_key,subkey,self[line_key,subkey,index_line],set_changed_only=True)
-                elif level._global_modify_time > level._last_construct_time:
-                    ## if level data has changed since last construct
-                    ## then update from line data (even if line data
-                    ## has not changed)
-                    for level_key,line_key,subkey in set_keys:
-                        if level[level_key,'_modify_time'] > level._last_construct_time:
-                            level.set(level_key,subkey,self[line_key,subkey,index_line],set_changed_only=True)
+                for key in keys:
+                    if self[key+suffix,'_modify_time'] > level[key,'_modify_time']:
+                        for subkey in ('value','unc'):
+                            if self.is_set(key+suffix,subkey):
+                                level.set(key,subkey,self[key+suffix,subkey,index_line],set_changed_only=True)
             level.add_suboptimiser(self)
             level.add_construct_function(construct_function)
             ## make sure no optimised data is deleted from arrays or
@@ -1760,12 +1757,8 @@ class Diatom(Linear):
             _cache['iR'] = imatch & self.match(ΔJ=+1)
         iP = _cache['iP'] 
         iR = _cache['iR']
-        print('DEBUG:', )
-        print('DEBUG:', np.nanmax(self['μ',iP]))
         self['μ',iP] = self['μ',iP]*(1+4*γ*θ*self['J_l',iP])
-        print('DEBUG:', np.nanmax(self['μ',iP]))
         self['μ',iR] = self['μ',iR]*(1-4*γ*θ*(self['J_l',iR]+1))
-
 
 class LinearTriatom(Linear):
     """E.g., CO2, CS2."""

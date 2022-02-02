@@ -479,7 +479,6 @@ class Model(Optimiser):
         self._xcache = None
         self.xbeg = xbeg
         self.xend = xend
-        self.residual = None                      # array of residual fit
         self.residual_weighting = residual_weighting            # weighting pointwise in xexp
         self.interpolate_to_grid = interpolate_to_grid
         self._interpolate_factor = None
@@ -670,12 +669,14 @@ class Model(Optimiser):
             lineshape=None,     # as in lineshapes.py, or will be automatically selected
             ncpus=1,            # for multiprocessing
             verbose=None,       # print info
-            force_full_recalc=None,
+            use_cache=None,     # defaults to using the cache
             match=None,         # only include lines matching keys:vals in this dictionary
             xedge=1, # include lines within this much of the domain edges
             _cache=None,
             **set_keys_vals
     ):
+        if use_cache is None:
+            use_cache = True
         if verbose:
             timer_start = timestamp()
         if len(self.x) == 0 or len(line) == 0:
@@ -734,10 +735,10 @@ class Model(Optimiser):
         if line_copy._last_construct_time > self._last_construct_time:
             line_copy_prev = _cache['line_copy_prev']
             _calculate_spectrum = _cache['_calculate_spectrum']
-            if self._clean_construct or force_full_recalc:
+            if self._clean_construct or not use_cache:
                 ##  full calculation
                 if verbose:
-                    print(f'add_line: {line.name}: {self._clean_construct=} {force_full_recalc=}, full recalculation')
+                    print(f'add_line: {line.name}: {self._clean_construct=} {use_cache=}, full recalculation')
                 y = _calculate_spectrum(line_copy,None)
                 ## new previous data
                 _cache['line_copy_prev'] = line_copy.copy()
@@ -808,7 +809,7 @@ class Model(Optimiser):
             self.y *= y
         else:
             self.y += y
-        if not force_full_recalc:
+        if use_cache:
             _cache['y_previous'] = y
             _cache['line_copy_prev'] = line_copy.copy()
         if verbose:
@@ -1024,9 +1025,10 @@ class Model(Optimiser):
         ## get something to find lines in
         if filename is None:
             x = copy(self.xexp)
-            if self.residual is not None:
+            if len(self.residual) > 0:
                 y = copy(self.residual) # get from residual
-            else:    y = copy(self.yexp-self.yexp.mean()) # get from data after removing mean / background
+            else:
+                y = copy(self.yexp-self.yexp.mean()) # get from data after removing mean / background
         else:
             x,y = tools.file_to_array_unpack(filename) # else get from a specified data file
         y = np.abs(y)      # to fit both emission and absorption lines

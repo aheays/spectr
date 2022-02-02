@@ -165,8 +165,8 @@ prototypes['At'] = dict(description="Total decay rate",units="s-1", kind='f', fm
 ],)
 prototypes['Ae'] = dict(description="Total emissive decay rate",units="s-1", kind='f', fmt='0.5e',cast=cast_abs_float_array,infer=[('Γe',lambda self,Γ: Γ/5.309e-12),(('At','Ad'),lambda self,At,Ad: At-Ad)])
 prototypes['Ad'] = dict(description="Total dissociative decay rate",units="s-1", kind='f', fmt='0.5e',cast=cast_abs_float_array,infer=[('Γd',lambda self,Γ: Γ/5.309e-12),(('At','Ae'),lambda self,At,Ae: At-Ae)])
-prototypes['ηd'] = dict(description="Fractional probability dissociative decay",units=None, kind='f',  fmt='<10.5g', infer=[(('At','Ad'),lambda self,At,Ad:Ad/At,)])
-prototypes['ηe'] = dict(description="Fractional probability emissive decay",units=None, kind='f',  fmt='<10.5g', infer=[(('At','Ae'),lambda self,At,Ae:Ae/At,)])
+prototypes['ηd'] = dict(description="Fractional probability dissociative decay", kind='f',  fmt='<10.5g', infer=[(('At','Ad'),lambda self,At,Ad:Ad/At,)])
+prototypes['ηe'] = dict(description="Fractional probability emissive decay", kind='f',  fmt='<10.5g', infer=[(('At','Ae'),lambda self,At,Ae:Ae/At,)])
 
 prototypes['J'] = dict(description="Total angular momentum quantum number excluding nuclear spin" , kind='f',fmt='g',infer=[])
 prototypes['JJ'] = dict(description="J(J+1)" , kind='f',fmt='g',infer=[('J',lambda self,J:J*(J+1))])
@@ -526,8 +526,8 @@ prototypes['τv'] = dict(description="Total electronic-vibrational decay lifetim
 prototypes['Atv'] = dict(description="Total electronic-vibrational decay rate",units="s-1", kind='f',  fmt='<10.5g', infer=[(('τv',), lambda self,τv: 1/τv), (('Adv','Ave'), lambda self,Adv,Aev: Adv+Aev,), (('Aev',), lambda self,Aev: Aev),( ('Adv',), lambda self,Adv: Adv,)])# Test for Ad and Ae, if failed then one or the other is undefined/zero
 prototypes['Adv'] = dict(description="Nonradiative electronic-vibrational decay rate",units="s-1", kind='f',  fmt='<10.5g', infer=[(('At','Ae'), lambda self,At,Ae: At-Ae,)])
 prototypes['Aev'] = dict(description="Radiative electronic-vibrational decay rate",units="s-1", kind='f',  fmt='<10.5g', infer=[(('At','Ad'), lambda self,At,Ad: At-Ad,)])
-prototypes['ηdv'] = dict(description="Fractional probability of electronic-vibrational level decaying nonradiatively",units=None, kind='f',  fmt='<10.5g', infer=[(('At','Ad'),lambda self,At,Ad:Ad/A,)])
-prototypes['ηev'] = dict(description="Fractional probability of electronic-vibrational level decaying radiatively",units=None, kind='f',  fmt='<10.5g', infer=[(('At','Ae'),lambda self,At,Ae:Ae/A,)])
+prototypes['ηdv'] = dict(description="Fractional probability of electronic-vibrational level decaying nonradiatively", kind='f',  fmt='<10.5g', infer=[(('At','Ad'),lambda self,At,Ad:Ad/At,)])
+prototypes['ηev'] = dict(description="Fractional probability of electronic-vibrational level decaying radiatively", kind='f',  fmt='<10.5g', infer=[(('At','Ae'),lambda self,At,Ae:Ae/At,)])
 
 ## v+1 reduced versions of these
 def _vibrationally_reduce(
@@ -577,8 +577,8 @@ def _calc_reduced(self,x,y,*z):
     """Compute reduced y in terms of y. Separate reductions for unique
     combinations of z arrays.  Note that if multiple (x,y,z) points
     exist only the first is used to compute a polynomial fit.."""
-    self.global_attributes.setdefault('reduced_order',3)
-    order = self.global_attributes['reduced_order']
+    self.attributes.setdefault('reduced_order',3)
+    order = self.attributes['reduced_order']
     yreduced = np.full(y.shape,0.0)
     ## loop through unique z combinations, fitting (x,y) polynomial to
     ## each subset

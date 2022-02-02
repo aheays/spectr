@@ -93,9 +93,14 @@ class Dataset(optimise.Optimiser):
             attributes=None,  # keys and values of this dictionary are stored as attributes
             **data_kwargs,           # data to add from keyword arguments
     ):
+        ## generate an encoded classname to identify type of Dataset,
+        ## default name from this
+        self.classname = re.sub(r"<class 'spectr.(.+)'>", r'\1', str(self.__class__))
+        if name is None:
+            # name = self.classname.lower()
+            name = self.classname
         ## init as optimiser, make a custom form_input_function, save
-        ## some extra stuff if output to directory
-        optimise.Optimiser.__init__(self)
+        optimise.Optimiser.__init__(self,name=name)
         ## basic internal variables
         self._data = {} # table data and its properties stored here
         self._length = 0    # length of data
@@ -129,11 +134,6 @@ class Dataset(optimise.Optimiser):
         self.prototypes = copy(self.default_prototypes)
         if prototypes is not None:
             self.prototypes |= prototypes
-        ## generate an encoded classname to identify type of Dataset
-        self.classname = re.sub(r"<class 'spectr.(.+)'>", r'\1', str(self.__class__))
-        ## name of this object, it will be converted to a valid symbol
-        ## and stored in the _name property
-        self.name = name
         ## new format input function -- INCOMPLETE
         def format_input_function():
             retval = f'{self.name} = {self.classname}({repr(self.name)},'
@@ -190,13 +190,6 @@ class Dataset(optimise.Optimiser):
         if attributes is not None:
             self.attributes |= attributes
 
-    def _set_name(self,name):
-        """Name is adjusted to be proper python symbol when set"""
-        if name is None:
-            name = self.classname.lower()
-        self._name = tools.regularise_symbol(name)
-
-    name = property(lambda self:self._name,_set_name)
 
     def __len__(self):
         return self._length
@@ -757,12 +750,12 @@ class Dataset(optimise.Optimiser):
                 retval = retval[tools.find(imatch[retval])]
         ## convert to a boolean array
         if return_bool:
-            if retval is None:
-                bool_retval = np.full(len(self),True)
+            index = retval
+            if index is None:
+                retval = np.full(len(self),True)
             else:
-                bool_retval = np.full(len(self),False)
-                bool_retval[index] = True
-            retval = bool_retval
+                retval = np.full(len(self),False)
+                retval[index] = True
         return retval
             
     def get_combined_index_bool(self,*get_combined_index_args,**get_combined_index_kwargs):
@@ -1147,6 +1140,9 @@ class Dataset(optimise.Optimiser):
     ):
         """Copy all values and uncertainties from source
         Dataset. Clear all existing data."""
+        ## adding suboptimiser causes construct of source
+        if optimise:
+            self.add_suboptimiser(source)
         ## total data reset
         self.clear()
         ## collect keys to copy
@@ -1179,7 +1175,6 @@ class Dataset(optimise.Optimiser):
         else:
             index = slice(0,len(source_index))
         ## copy data
-        set_keys = []           # used in optimisation
         for key in keys:
             ## value first
             self.set(key,'value',source[key,'value',source_index])
@@ -1188,7 +1183,6 @@ class Dataset(optimise.Optimiser):
                     ## already done
                     continue
                 if source.is_set(key,subkey):
-                    set_keys.append((key,subkey))
                     if subkey in self.vector_subkinds:
                         self.set(key,subkey,source[key,subkey,source_index])
                     else:
@@ -1196,19 +1190,15 @@ class Dataset(optimise.Optimiser):
         ## set up recopy on optimisation
         if optimise:
             def construct_function():
-                if (source._global_modify_time > self._global_modify_time
-                    or self._global_modify_time > self._last_construct_time):
-                    ## need to update copied data in self
-                    for key,subkey in set_keys:
-                        if (source[key,'_modify_time'] > self[key,'_modify_time']
-                            or self[key,'_modify_time'] > self._last_construct_time):
-                            ## this key needs updating
-                            if subkey in self.vector_subkinds:
+                ## need to update copied data in self
+                for key in keys:
+                    if (source[key,'_modify_time'] > self[key,'_modify_time']
+                        or self[key,'_modify_time'] > self._last_construct_time):
+                        ## this key needs updating
+                        for subkey in ('value','unc'):
+                            if source.is_set(key,subkey):
                                 self.set(key, subkey, source[key,subkey,source_index],index,set_changed_only=True)
-                            else:
-                                self.set(key,subkey,source[key,subkey])
             self.add_construct_function(construct_function)
-            self.add_suboptimiser(source)
             ## prevent optimisation-breaking changes
             source.permit_indexing = False
             self.permit_indexing = False
@@ -1454,7 +1444,7 @@ class Dataset(optimise.Optimiser):
             ## result of calculating keys, after that paris of
             ## dependencies and their uncertainties, if they
             ## have no uncertainty then None is substituted.
-            args = [self,self[key]]
+            args = [self,value]
             for dependency in dependencies:
                 if self.is_set(dependency,'unc'):
                     t_uncertainty = self.get(dependency,'unc')
@@ -1734,6 +1724,7 @@ class Dataset(optimise.Optimiser):
             prototypes={
                 'key':{'kind':'U',},
                 'subkey':{'kind':'U',},
+                'inferred':{'kind':'b'},
                 'kind':{'kind':'U'},
                 'dtype':{'kind':'U'},
                 'memory':{'kind':'f','fmt':"0.1e"},
@@ -1749,6 +1740,7 @@ class Dataset(optimise.Optimiser):
                     d = {}
                     d['key'] = key
                     d['subkey'] = subkey
+                    d['inferred'] = self.is_inferred(key)
                     # d['kind'] = (self[key,'kind'] if subkey == 'value' else '')
                     d['dtype'] = str(self[key,subkey].dtype)
                     d['memory'] = sys.getsizeof(self._data[key][subkey])
@@ -1911,11 +1903,11 @@ class Dataset(optimise.Optimiser):
         data_dict,more_kwargs = load_function(**load_function_kwargs)
         ## deduce classname
         if 'classname' in data_dict:
-            classname = data_dict.pop('classname')
+            classname = str(data_dict.pop('classname'))
         elif ('format' in data_dict
               and isinstance(data_dict['format'],dict)
               and 'classname' in data_dict['format']):
-            classname = data_dict['format']['classname']
+            classname = str(data_dict['format']['classname'])
         else:
             classname = None
         ## hack -- sometimes classname is quoted, so remove them
