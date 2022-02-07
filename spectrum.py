@@ -30,9 +30,9 @@ from . import database
 from .database import get_species_property
 
 
-@format_input_class()
 class Experiment(Optimiser):
     
+    @format_input_method()
     def __init__(
             self,
             name='experiment',
@@ -442,9 +442,9 @@ class Experiment(Optimiser):
         self.experimental_parameters['integrated_excess'] = tools.integrate(self.x,self.y-self.background,method=method)
         return self.experimental_parameters['integrated_excess']
 
-@format_input_class()
 class Model(Optimiser):
 
+    @format_input_method()
     def __init__(
             self,
             name='model',
@@ -700,7 +700,10 @@ class Model(Optimiser):
             ## set parameter/constant data. If a vector of data is
             ## given then its length matches the input dataset
             for key,val in set_keys_vals.items():
-                line_copy.set_value(key,val)
+                if tools.isiterable(val):
+                    line_copy.set_value(key,np.asarray(val)[imatch])
+                else:
+                    line_copy.set_value(key,val)
             self.add_suboptimiser(line_copy)
             ## get ykey
             if kind == 'absorption':
@@ -2238,11 +2241,11 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
     return (x,y,header)
 
-@format_input_class()
 class Spline(Optimiser):
     """A spline curve with optimisable knots.  Internally stores last
     calculated x and y."""
 
+    @format_input_method()
     def __init__(
             self,
             name='spline',

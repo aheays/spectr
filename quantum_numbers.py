@@ -12,6 +12,7 @@ import sympy
 from .dataset import Dataset
 from . import tools
 from . import kinetics
+from . import convert
 from .tools import vectorise
 from .exceptions import DatabaseException,InvalidEncodingException
 
@@ -306,9 +307,9 @@ def encode_linear_level(qn=None,**more_qn):
         retval = retval + '('+','.join(t)+')'
     return retval
     
-# def decode_species(species):
-    # """Try to normalise a species name."""
-    # return kinetics.get_species(species).name
+def decode_species(species):
+    """Try to normalise a species name."""
+    return convert.species(species,'ascii_or_unicode','unicode')
 
 @vectorise_decode
 def decode_linear_line(encoded):

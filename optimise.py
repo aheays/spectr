@@ -246,28 +246,18 @@ def format_input_method(format_multi_line=3):
             kwargs = _combine_function_kwargs(function,args,kwargs)
             function_retval = function(**kwargs)
             self = kwargs.pop(list(kwargs)[0])
-            def format_input_function():
-                return f'{self.name}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
+            if function.__name__ == '__init__':
+                def format_input_function():
+                    classname = function.__qualname__.replace('.__init__','')
+                    return f'{self.name} = {self.__module__}.{classname}('+_format_kwargs(kwargs,format_multi_line)+')'
+            else:
+                def format_input_function():
+                    return f'{self.name}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
             self.add_format_input_function(format_input_function)
             return function_retval
         return new_function
     return actual_decorator
 
-def format_input_class(format_multi_line=3):
-    """A decorator factory to add a optimiser format_input_function for
-    classes. Add before class definition."""
-    def actual_decorator(function):
-        @functools.wraps(function)
-        def new_function(*args,**kwargs):
-            kwargs = _combine_function_kwargs(function,args,kwargs)
-            self = function(**kwargs)
-            def format_input_function():
-                return f'{self.name} = {self.__module__}.{function.__name__}('+_format_kwargs(kwargs,format_multi_line)+')'
-            self.add_format_input_function(format_input_function)
-            return self
-        return new_function
-    return actual_decorator
-    
 class Optimiser:
     """Defines adjustable parameters and model-building functions which
     may return a residual error. Then optimise the parameters with

@@ -657,6 +657,14 @@ class Dataset(optimise.Optimiser):
     def get_kind(self,key):
         return self._data[key]['kind']
 
+    def get_default(self,key,subkey='value'):
+        if subkey == 'value' and self.is_set(key,'default'):
+            return self[key,'default']
+        elif 'default' in self.all_subkinds[subkey]:
+            return self.all_subkinds[subkey]['default']
+        else:
+            raise Exception(f'Could not determine default value for {key=} {subkey=}')
+        
     def modify_key(self,key,rename=None,**new_metadata):
         """Modify metadata of a key, change its units, or rename it."""
         if not self.permit_dereferencing:
@@ -715,7 +723,7 @@ class Dataset(optimise.Optimiser):
             self,
             index=None,
             match=None,
-            return_bool=False,
+            return_as='int or None', # 'int or None', 'bool', 'int'
             **match_kwargs):
         """Combined specified index with match arguments as integer
         array. If no data given the return None"""
@@ -749,19 +757,28 @@ class Dataset(optimise.Optimiser):
                 imatch = self.match(match)
                 retval = retval[tools.find(imatch[retval])]
         ## convert to a boolean array
-        if return_bool:
+        if return_as == 'int or None':
+            ## return as None if no input restrictions or an array of
+            ## integers of matching data
+            pass
+        elif return_as == 'bool':
+            ## return as an array of boolean values
             index = retval
             if index is None:
                 retval = np.full(len(self),True)
             else:
                 retval = np.full(len(self),False)
                 retval[index] = True
+        elif return_as == 'int':
+            ## return as an array of integers
+            if retval is None:
+                retval = np.arange(len(self))
         return retval
             
     def get_combined_index_bool(self,*get_combined_index_args,**get_combined_index_kwargs):
         """Combined specified index with match arguments as integer array. If
         no data given the return None"""
-        raise DeprecationWarning('use get_combined_index(return_bool=True) instead')
+        raise DeprecationWarning('use get_combined_index(return_as="bool") instead')
         index = self.get_combined_index(*get_combined_index_args,**get_combined_index_kwargs)
         if index is None:
             raise Exception('Cannot return bool array combined index if None.')
@@ -975,6 +992,12 @@ class Dataset(optimise.Optimiser):
         self.unset(key,subkey)
         return retval
 
+    def is_explicit(self,key):
+        """True if key is explicitly set. False if inferred data or
+        not set."""
+        retval = self.is_set(key) and not self.is_inferred(key)
+        return retval
+    
     def is_inferred(self,key):
         """Test whether this key is inferred."""
         if '_inferred_from' in self._data[key]:
@@ -2369,10 +2392,17 @@ class Dataset(optimise.Optimiser):
         self.add_format_input_function(format_input_function)
 
     @format_input_method()
-    def concatenate(self,new_dataset,keys=None,defaults=None,optimise=False,match=None):
+    def concatenate(
+            self,
+            new_dataset,        # a Datset to concatenate
+            keys=None,          # keys to include in concatenation, defaults to explicitly set
+            default=None,      # use these keys_vals data if missing in self or in new_dataset
+            optimise=False,     # include an optimisation function that updates concatenated data
+            match=None,         # only concatenate matching keys_vals
+    ):
         """Extend self by new_dataset. If keys=None then existing and
         new_dataset must have a complete of explicity set keys, or a
-        default value set in the input dictionary 'defaults' """
+        default value set in the input dictionary 'default' """
         ## determine index of new_data to concatenate
         if match is None:
             ## all of it
@@ -2381,24 +2411,21 @@ class Dataset(optimise.Optimiser):
         else:
             new_data_index = new_data.match(match)
             new_data_length = np.sum(new_data_index)
-        ## process defaults, keys that are missing a subkey are
-        ## converted to (key,'value'). Add defaults in self to list of
-        ## defaults.  Set defaults in self now so they are available
+        ## process default, keys that are missing a subkey are
+        ## converted to (key,'value'). Add default in self to list of
+        ## default.  Set default in self now so they are available
         ## when concatenating.
-        if defaults is None:
-            defaults = {}
-        for key in list(defaults):
+        if default is None:
+            default = {}
+        for key in list(default):
             if isinstance(key,str):
-                defaults[key,'value'] = defaults.pop(key)
-        for key in self:
-            if self.is_set(key,'default'):
-                defaults[key,'value'] = self[key,'default']
-        for key,subkey in defaults:
+                default[key,'value'] = default.pop(key)
+        for key,subkey in default:
             if not self.is_set(key,subkey):
-                self[key,subkey] = defaults[key,subkey]
+                self[key,subkey] = default[key,subkey]
         ## if keys to concatenate not specified as an input argument
         ## then use all explicitly set keys in self or new_data
-        if keys is None:
+        if keys ==  None:
             keys = copy(self.explicitly_set_keys())
             for key in new_dataset.explicitly_set_keys():
                 if key not in keys:
@@ -2411,7 +2438,7 @@ class Dataset(optimise.Optimiser):
                 if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
                     keys_subkeys.append((key,subkey))
         ## test if self is totally empty or has zero length and all
-        ## keys have defaults set. If so then permit concatenation of
+        ## keys have default set. If so then permit concatenation of
         ## unset keys by initialising them here to empty arrays
         if ( len(self.keys()) == 0
             or ( len(self) == 0
@@ -2448,40 +2475,36 @@ class Dataset(optimise.Optimiser):
             if new_dataset.is_known(key,subkey):
                 ## from new_data
                 new_val = new_dataset[key,subkey,new_data_index]
-            elif (key,subkey) in defaults:
-                ## from input defaults
-                new_val = defaults[key,subkey]
-            elif self._has_subkey_attribute_property(key,subkey,'default'):
-                ## from vector_subkind defaults
-                new_val = self._get_subkey_attribute_property(key,subkey,'default')
-            elif self.is_set(key,'default'):
-                ## from default value in self
-                new_val = self[key,'default']
+            elif (key,subkey) in default:
+                ## from input default
+                new_val = default[key,subkey]
             else:
-                raise Exception(f'Concatenated (key,subkey) not known to new data or defaults: {(key,subkey)!r}')
+                ## from default in self
+                new_val = self.get_default(key,subkey)
             return new_val
+        ## set data now
+        for key,subkey in keys_subkeys:
+            self.set(key,subkey,_get_new_data(key,subkey),index)
+        ## if optimised then add as a construct function
         if optimise:
-            ## if optimised then add as a construct function
             def construct_function():
                 ## test if anything has changed and needs updating,
                 ## either new_dataset has changed or self has change
                 ## and needs to be reverted
-                if (new_dataset._global_modify_time > self._global_modify_time
+                if ( new_dataset._global_modify_time > self._global_modify_time
                     or self._global_modify_time > self._last_construct_time):
                     ## only modify (key,subkey) pairs that have
                     ## changed
                     for key,subkey in keys_subkeys:
-                        if (( new_dataset.is_known(key,subkey) and (new_dataset[key,'_modify_time'] > self[key,'_modify_time']))
-                            or (self[key,'_modify_time'] > self._last_construct_time)):
+                        if (
+                                (new_dataset.is_known(key,subkey) and (new_dataset[key,'_modify_time'] > self[key,'_modify_time']))
+                                or (self[key,'_modify_time'] > self._last_construct_time)
+                        ):
                             self.set(key,subkey,_get_new_data(key,subkey),index,set_changed_only=True)
             self.add_construct_function(construct_function)
             self.add_suboptimiser(new_dataset)
             new_dataset.permit_indexing = False
             self.permit_indexing = False
-        else:
-            ## if not optimised then insert data once now
-            for key,subkey in keys_subkeys:
-                self.set(key,subkey,_get_new_data(key,subkey),index)
 
     def append(self,keys_vals=None,**keys_vals_as_kwargs):
         """Append a single row of data from kwarg scalar values."""

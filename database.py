@@ -114,7 +114,7 @@ def get_species_property(species,prop,encoding='ascii_or_unicode'):
         elif prop == 'reduced_mass':
             isotopes = get_species_property(species,'isotopes',encoding)
             if len(isotopes) != 2:
-                raise Exception(f'Can only compute reduced mass for nnuclei==2, not for {species!r}')
+                raise DatabaseException(f'Can only compute reduced mass for nnuclei==2, not for {species!r}')
             m0 = get_atomic_mass(isotopes[0][1],isotopes[0][0])
             m1 = get_atomic_mass(isotopes[1][1],isotopes[1][0])
             retval = m0*m1/(m0+m1)

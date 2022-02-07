@@ -783,105 +783,124 @@ class Generic(levels.Base):
 
     def get_lower_level(self,*get_level_args,**get_level_kwargs):
         return self.get_level('lower',*get_level_args,**get_level_kwargs)
-
+    
+    @format_input_method()
     def get_level(
             self,
-            upper_or_lower='both',
-            keys='set', # list of level keys to get 'set', 'known', or a list
-            subkeys=('value','unc'),
-            reduce_to='first',
+            include='upper and lower', # 'upper','lower', or 'upper and lower'
+            qn_keys='defining',      # which level quantum numbers to include if known
+            keys='set', # a list of other level keys to get 'explicit','set', 'known', or a list
+            subkeys=('value','unc'), # copy these subkeys
+            reduce_to='first',       # 
+            name=None,               # name the new level
             reduce_qn=None,   # to get unique levels, defaults to all self.defining_qn that are known
-            match_line=None,
-            match_level=None,
             optimise=False,
+            **get_combined_index_kwargs
     ):
-        """Get all data corresponding to 'upper' or 'lower' level in
-        self."""
-        ## return upper or lower level, or both combined
-        if upper_or_lower == 'both':
-            if optimise:
-                ## to implement use complex indexing (mabye bugs) or
-                ## concatenate(optimse=True) (extra memory and
-                ## objects)
-                raise NotImplementedError('Optimisation not implemented for upper_or_lower="both"')
-            level = self._level_class()
-            kwargs = {'keys':keys, 'subkeys':subkeys, 'match_line':match_line,}
-            level.concatenate(self.get_level('lower',**kwargs))
-            level.concatenate(self.get_level('upper',**kwargs))
+        """Get level data in line list.  Returns levels to input argument
+        include, default value ('upper','lower'.  By default all
+        expliclty set level-data keys are set."""
+        ## initialise level object
+        if name is None:
+            name = f'upper_level_of_{self.name}'
+        level = self._level_class(name=name)
+        all_level_keys = level.default_prototypes.keys()
+        defining_level_qn = level.defining_qn
+        if optimise:
+            level.add_suboptimiser(self)
+        ## get matching line indices
+        index = self.get_combined_index(
+            return_as='int',**get_combined_index_kwargs)
+        if include == 'upper and lower':
+            upper_lower = [['_u',index], ['_l',copy(index)]]
+        elif include == 'upper':
+            upper_lower = [['_u',index]]
+        elif include == 'lower':
+            upper_lower = [['_l',index]]
         else:
-            ## determine upper of lower key suffix
-            if upper_or_lower in ('u','upper'):
-                suffix = '_u'
-            elif upper_or_lower in ('l','lower'):
-                suffix = '_l'
+            raise Exception(f'Invalid argument {include=}, valid values: "upper", "lower", "upper and lower"')
+        ## get level keys – decode if necessary
+        all_qn_keys = set()     # qn keys to copy
+        all_other_keys = set()        # other keys to copy, might also include qn
+        for suffix,index in upper_lower:
+            ## add quantum number keys for this upper/lower
+            if qn_keys is None:
+                pass
+            elif qn_keys == 'defining':
+                all_qn_keys |= {key for key in defining_level_qn if self.is_known(key+suffix)}
             else:
-                raise Exception("invalid {u_or_l=} should be one of ('u','l','upper','lower','both')")
-            ## get matching index in line (self)
-            index_line = self.match(match_line)
-            ## new level
-            level = self._level_class()
-            if optimise:
-                level.add_suboptimiser(self)
-            ## try and compute some upper/lower level dependent things,
-            ## otherwise knowing J_l and ΔJ wont lead to a J_u being
-            ## included in get_upper_level
-            # for key in ('species','label','v','J','E','Ω','Λ'):
-                # self.is_known(key+suffix)
-            ## ensure all required keys available
-            if keys == 'known':
-                keys = [key for key in self._level_class.default_prototypes
-                                     if self.is_known(key+suffix)]
+                all_qn_keys |= set(qn_keys)
+            ## add other keys for this upper/lower
+            if keys is None:
+                pass
+            elif keys == 'known':
+                ## Include all prototypes keys that are set or
+                ## can be inferred.
+                all_other_keys |= {key for key in all_level_keys if self.is_known(key+suffix)}
             elif keys == 'set':
-                keys = [key for key in self._level_class.default_prototypes
-                                 if self.is_set(key+suffix)]
+                ## Include all set keys.
+                all_other_keys |= {key for key in all_level_keys if self.is_set(key+suffix)}
+            elif keys == 'explicit':
+                ## Include all explicitly set keys. 
+                all_other_keys |= {key for key in all_level_keys if self.is_explicit(key+suffix)}
+            else:
+                ## a list of keys
+                all_other_keys |= set(keys)
+        all_other_keys -= all_qn_keys
+        keys = all_qn_keys | all_other_keys
+        ## ensure all required keys available
+        for suffix,index in upper_lower:
             for key in keys:
                 self.assert_known(key+suffix)
-            ## list of (level_key,line_key,subkey) that are added to
-            ## level, used in optimisation
-            set_keys = []     
-            for key in keys:
-                for subkey in subkeys:
-                    if self.is_set(key+suffix,subkey):
-                        level[key,subkey] = self[key+suffix,subkey,index_line]
-        ## reduce if requested
+        ## add data to line
+        for key in keys:
+            for subkey in subkeys:
+                if all([self.is_set(key+suffix,subkey) for suffix,index in upper_lower]):
+                    ## (key,subkey) set in at upper or lower levels, require in all
+                    value = []
+                    for suffix,index in upper_lower:
+                        value.append(self[key+suffix,subkey,index])
+                    level[key,subkey] = np.concatenate(value)
+        ## reduce line list if requested and modifed indices
         if reduce_to == None:
             pass
-        else:
-            keys = [key for key in level.defining_qn if level.is_known(key)]
-            if reduce_to == 'first':
-                ## find first indices of unique key combinations and reduce
-                ## to those
-                if reduce_qn is None:
-                    reduce_qn = [key for key in level.defining_qn if level.is_known(key)]
-                t,i = tools.unique_combinations_first_index(*[level[key] for key in reduce_qn])
-                j = np.full(len(level),False)
-                j[i] = True
-                level.index(j)    # reduce level
-                if optimise:
-                    index_line[index_line] &= j
-            else:
-                raise NotImplementedError()
-        ## limit to match_level
-        if match_level is not None:
-            i = level.match(match_level)
+        elif reduce_to == 'first':
+            ## reduce to first indices of unique key combinations                ## to those
+            if reduce_qn is None:
+                reduce_qn = [key for key in qn_keys]
+            t,i = tools.unique_combinations_first_index(*[level[key] for key in all_qn_keys])
+            i = np.sort(i)
+            ## Record which level rows are used to compute upper
+            ## and/or lower level data
+            ibeg = 0 # >0 for subsequent of upper/lower
+            for k,(suffix,index) in enumerate(upper_lower):
+                iend = ibeg + len(index)
+                j = i[(i>=ibeg)&(i<iend)] - ibeg
+                upper_lower[k][1] = index[j]
+                ibeg = iend
             level.index(i)
-            if optimise:
-                index_line[index_line] &= i
-        ## Set up level to be optimised if self changes
+        else:
+            raise Exception(f'Invalid value {reduce=}, valid values are "first" and None.')
+        ## if optimised then add a construct_function to re-add line
+        ## data into level
         if optimise:
             def construct_function():
                 for key in keys:
-                    if self[key+suffix,'_modify_time'] > level[key,'_modify_time']:
-                        for subkey in ('value','unc'):
-                            if self.is_set(key+suffix,subkey):
-                                level.set(key,subkey,self[key+suffix,subkey,index_line],set_changed_only=True)
-            level.add_suboptimiser(self)
+                    for suffix,index in upper_lower:
+                        if (
+                                ## line has changed since the last time the level was constucted
+                                self[key+suffix,'_modify_time'] > level._last_construct_time
+                                ## level has changed since the last time line was constructed
+                                or level[key,'_modify_time'] > self[key+suffix,'_modify_time']
+                        ):
+                            for subkey in subkeys:
+                                if self.is_set(key+suffix,subkey):
+                                    level.set(key,subkey,self[key+suffix,subkey,index],set_changed_only=True)
             level.add_construct_function(construct_function)
-            ## make sure no optimised data is deleted from arrays or
-            ## moved
-            self.permit_indexing = False
-            level.permit_indexing = False
+            ## make sure no rows are deleted or moved
+            self.permit_indexing = level.permit_indexing = False
         return level
+
 
     def load_from_hitran(self,filename):
         """Load HITRAN .data."""
@@ -1752,7 +1771,7 @@ class Diatom(Linear):
     ):
         """Modify μ according to the Herman-Wallis effect. E.g., brooke2014c"""
         if self._clean_construct:
-            imatch = self.get_combined_index(**get_combined_index_kwargs,return_bool=True)
+            imatch = self.get_combined_index(**get_combined_index_kwargs,return_as='bool')
             _cache['iP'] = imatch & self.match(ΔJ=-1)
             _cache['iR'] = imatch & self.match(ΔJ=+1)
         iP = _cache['iP'] 
@@ -1807,6 +1826,9 @@ class LinearTriatom(Linear):
             data['J_l'][i] = float(Q[6:])
         ## not used
         data.unset('Q_u')
+        ## some species-dependent hacks
+        if np.all(data['chemical_species'] == 'CS₂'):
+            data['label_u'] = data['label_l'] = 'X'
         ## add to self
         self.concatenate(data)
             

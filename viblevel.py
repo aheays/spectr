@@ -18,13 +18,13 @@ from .exceptions import DatabaseException
 from . import plotting
 from .dataset import Dataset
 from .tools import find,cache,timestamp
-from .optimise import Optimiser,P,Parameter,optimise_method,format_input_method,format_input_class
+from .optimise import Optimiser,P,Parameter,optimise_method,format_input_method
 from .database import get_species_property
 
-@format_input_class()
 class Level(Optimiser):
     """A vibronic interaction matrix."""
 
+    @format_input_method()
     def __init__(
             self,
             name='viblevel',
@@ -624,13 +624,13 @@ class Level(Optimiser):
         plotting.legend(*legend_data,show_style=True,ax=axE)
 
         
-@format_input_class()
 class Line(Optimiser):
     
     """Calculate and optimally fit the line strengths of a band between
     two states defined by LocalDeperturbation objects. Currently only
     for single-photon transitions. """
 
+    @format_input_method()
     def __init__(self,name,level,ΔJ=(-1,0,+1)):
         ## add upper and lower levels
         Optimiser.__init__(self,name=name)

@@ -392,11 +392,12 @@ def get_level(
         name=None,
         match=None,
         force_download=False,
+        force_convert=False,
         **match_kwargs):
     """Get upper level from HITRAN data."""
     species = database.normalise_species(species)
     filename = f'{database.data_directory}/hitran/cache/{species}/level'
-    if not force_download and os.path.exists(filename):
+    if not force_download and not force_convert and os.path.exists(filename):
         ## load existing data
         if cache:
             if filename in _get_level_cache:
@@ -406,10 +407,12 @@ def get_level(
                 _get_level_cache[filename] = level.copy()
         else:
             level = dataset.load(filename)
-        # level = _load_and_cache(filename).copy()
     else:
         ## compute from line
-        line = get_line(species,force_download=force_download)
+        line = get_line(
+            species,
+            force_download=force_download,
+            force_convert=force_convert,)
         level = line.get_level(reduce_to='first')
         level.sort('E')
         level.name =f'hitran_level_{species}'
