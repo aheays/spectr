@@ -10,7 +10,6 @@ class OpusData:
         import brukeropusreader
         self.filename = filename
         self.data = brukeropusreader.read_file(expand_path(filename))
-        ##pprint(self.data)       #  DEBUG
 
     x = property(lambda self: self.get_spectrum()[0])
     y = property(lambda self: self.get_spectrum()[1])

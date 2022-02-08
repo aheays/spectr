@@ -1339,6 +1339,7 @@ class Dataset(optimise.Optimiser):
         retval = self.__class__()
         for data in self.unique_dicts(*keys):
             retval.append(**data)
+        retval.sort(keys)
         return retval
 
     def unique_dicts(self,*keys):
