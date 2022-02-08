@@ -584,20 +584,32 @@ class Model(Optimiser):
             return residual
 
     @optimise_method()
-    def interpolate(self,dx,_cache=None):
+    def interpolate(self,dx=None,factor=None,_cache=None,verbose=None):
+        # """When calculating model set to dx grid (or less to achieve overlap
+        # with experimental points. Always an odd number of intervals /
+        # even number of interstitial points. Call before anything else,
+        # self.y is deleted and replaced with zeros on the new grid."""
         """When calculating model set to dx grid (or less to achieve overlap
-        with experimental points. Always an odd number of intervals /
-        even number of interstitial points. Call before anything else,
-        self.y is deleted and replaced with zeros on the new grid."""
+        with experimental points. Setting interpolate_to_grid on Model
+        initialisation might be faster because it does not do any
+        splining, but adds more zeros to the initial zero model
+        spectrum."""
         xstep = (self.x[-1]-self.x[0])/(len(self.x)-1)
-        interpolate_factor = int(np.ceil(xstep/dx))
-        if interpolate_factor%2 == 0:
-            interpolate_factor += 1
+        if dx is not None and factor is None:
+            interpolate_factor = int(np.ceil(xstep/dx))
+        elif dx is None and factor is not None:
+            interpolate_factor = max(1,int(factor))
+        else:
+            raise Exception(f'One and ony one of {dx=} and {factor=} must be not None')
+        # if interpolate_factor%2 == 0:
+            # interpolate_factor += 1
         if interpolate_factor != 1:
             new_x = np.linspace(self.x[0],self.x[-1],1+(len(self.x)-1)*interpolate_factor)
             self.y = tools.spline(self.x,self.y,new_x)
             self.x = new_x
-            self._interpolate_factor *= interpolate_factor # add ths interpolatin on top of possible others
+            self._interpolate_factor *= interpolate_factor # add ths interpolatiin on top of possible others
+        if self.verbose or verbose is True:
+            self.verbose_print(f'interpolate: target dx: {dx}, original xstep: {xstep}, interpolate factor: {self._interpolate_factor}, new xstep: {(self.x[-1]-self.x[0])/(len(self.x)-1)}')
 
     @optimise_method()
     def uninterpolate(self,average=None):
