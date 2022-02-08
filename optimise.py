@@ -320,6 +320,10 @@ class Optimiser:
         of it."""
         return self.name
 
+    def verbose_print(self,message):
+        """Formatted print for verbose output."""
+        print(f'verbose: {self.__module__}.{self.__class__.__name__}: {self.name}: '+message)
+
     def add_format_input_function(self,*functions):
         """Add a new format input function."""
         for function in functions:
@@ -941,13 +945,13 @@ class Optimiser:
                     print('    number of iterations: ',result['nfev'])
                     print('    termination reason:   ',result['message'])
             except KeyboardInterrupt:
-                pass
+                print('optimisation interrupted')
             ## calculate uncertainties -- KeyboardInterrupt possible
             if calculate_uncertainty:
                 try:
                     self.calculate_uncertainty(verbose=verbose)
                 except KeyboardInterrupt:
-                    pass
+                    print('uncertainty calculation interrupted')
         ## recalculate final solution
         residual = self.construct()
         ## monitor
@@ -955,19 +959,24 @@ class Optimiser:
             self.monitor() 
         ## describe result
         if (verbose or self.verbose):
-            print('    suboptimiser   RMS         sum-squares params')
+            max_name_length = str(min(40, max([len(t.name) for t in self.get_all_suboptimisers()])))
+            def _print(name,residual,npar):
+                name = format(name,max_name_length)
+                if len(residual) > 0:
+                    RMS = format(tools.rms(residual),'<10.4e')
+                    sum_of_squares = format(np.sum(residual**2),'<10.2e')
+                else:
+                    RMS = format('None','<10')
+                    sum_of_squares = format('None','<10')
+                npar = format(npar,'>4d')
+                print(f'    {name} {RMS} {sum_of_squares} {npar}')
+            t = format("suboptimiser",max_name_length)
+            print(f'    {t} {"RMS":<10} {"L²":<10} {"npar":>4}')
             for suboptimiser in self.get_all_suboptimisers():
                 if suboptimiser.include_in_output:
-                    tresidual = suboptimiser.residual
-                    if len(tresidual) > 0:
-                        RMS = format(tools.rms(tresidual),'0.4e')
-                        sum_of_squares = format(np.sum(tresidual**2),'0.4e')
-                    else:
-                        RMS = 'None'
-                        sum_of_squares = 'None'
-                    nparameters = format(len(suboptimiser._get_parameters()[2]),'d')
-                    print(f'    {suboptimiser.name:13}  {RMS:10}  {sum_of_squares:10}  {nparameters:4}')
-            print(f'    {"total":13}  {tools.rms(residual):10.4e}  {np.sum(residual**2):10.4e}  {len(self._get_parameters()[2]):<4}')
+                    _print(suboptimiser.name, suboptimiser.residual,
+                           len(suboptimiser._get_parameters()[2]))
+            _print("total",residual,len(self._get_parameters()[2]))
         return residual
 
     def __deepcopy__(self,memo):
