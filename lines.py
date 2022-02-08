@@ -33,7 +33,6 @@ from .optimise import Parameter,P,optimise_method,format_input_method
 
 prototypes = {}
 
-
 ## import all levels prototypes with _u/_l suffices added
 for key,val in levels.prototypes.items():
     tval = deepcopy(val)
@@ -58,6 +57,22 @@ for key in (
         '_species_hash',
 ):
     prototypes[key] = copy(levels.prototypes[key])
+
+## Difference Δ of all numeric upper and lower quantum numbers
+for key,val in levels.prototypes.items():
+    if val['kind'] in ('f','i'):
+        prototypes[f'Δ{key}'] = dict(description=f"{key}upper - {key}lower", kind=val['kind'], infer=[((f'{key}_u',f'{key}_l'),lambda self,u,l: u-l,)],)
+        for tkey in ('fmt','cast'):
+            if tkey in val:
+                prototypes[f'Δ{key}'][tkey] = val[tkey]
+        prototypes[f'{key}_u']['infer'].append(((f'{key}_l',f'Δ{key}'),lambda self,l,Δ: l+Δ))
+        prototypes[f'{key}_l']['infer'].append(((f'{key}_u',f'Δ{key}'),lambda self,l,Δ: l-Δ))
+
+## Product Π of upper and lower quantum numbers -- could do all as in difference
+for key in ('i','gu','σv','sa','ef',):
+    prototypes[f'Π{key}'] = dict(description=f"{key}upper × {key}lower", kind='i', fmt='<+4g', infer=[((f'{key}_u',f'{key}_l'),lambda self,u,l: u*l,)],)
+    prototypes[f'{key}_u']['infer'].append(((f'{key}_l',f'Π{key}'),lambda self,l,Π: Π/l))
+    prototypes[f'{key}_l']['infer'].append(((f'{key}_u',f'Π{key}'),lambda self,u,Π: Π/u))
 
 ## connect common and upper lower values in some cases where they
 ## might be the same
@@ -165,12 +180,6 @@ prototypes['τa'] = dict(description="Integrated optical depth from absorption o
 
 prototypes['σd'] = dict(description="Photodissociation cross section.",units="cm2.cm-1",kind='f',fmt='<10.5e',infer=[(('σ','ηd_u'),lambda self,σ,ηd_u: σ*ηd_u,)],)
 prototypes['Ttr'] = dict(description="Translational temperature",units="K", kind='f', fmt='0.2f', infer=[('Teq',lambda self,Teq:Teq,),],default_step=0.1)
-
-## Δ quantum numbers
-for key in ('J','N','S','Λ','Ω','Σ','v'):
-    prototypes[f'Δ{key}'] = dict(description=f"{key}upper - {key}lower", kind='i', fmt='<+4g', infer=[((f'{key}_u',f'{key}_l'),lambda self,u,l: u-l,)],)
-    prototypes[f'{key}_u']['infer'].append(((f'{key}_l',f'Δ{key}'),lambda self,l,Δ: l+Δ))
-    prototypes[f'{key}_l']['infer'].append(((f'{key}_u',f'Δ{key}'),lambda self,l,Δ: l-Δ))
 
 
 ## add calculation of column density from optical path length and pressure
@@ -478,8 +487,8 @@ class Generic(levels.Base):
             'point_group','mass','Zsource','_species_hash',
             'Eref',
             'ν','ν0','λ',
-            'ΔJ', 'branch',
-            'ΔJ',
+            'ΔJ','Πef',
+            'branch',
             'f','σ',
             # 'σ296K',
             'S','ΔS','S296K', 'τ', 'Ae','τa', 'Sij','μ','I','Finstr','σd',
@@ -813,9 +822,9 @@ class Generic(levels.Base):
             return_as='int',**get_combined_index_kwargs)
         if include == 'upper and lower':
             upper_lower = [['_u',index], ['_l',copy(index)]]
-        elif include == 'upper':
+        elif include in ('upper','u'):
             upper_lower = [['_u',index]]
-        elif include == 'lower':
+        elif include in ('lower','l'):
             upper_lower = [['_l',index]]
         else:
             raise Exception(f'Invalid argument {include=}, valid values: "upper", "lower", "upper and lower"')
@@ -1256,7 +1265,7 @@ class Generic(levels.Base):
             match_lower |= tl
         iu = tools.find(upper_level.match(match_upper))
         il = tools.find(lower_level.match(match_lower))
-        ## collect indices pairs of dipole-allowed transitions
+        ## collect index pairs of dipole-allowed transitions
         ku,kl = [],[]
         for species in np.unique(upper_level['species'][iu]):
             ## indices of common species
@@ -1267,7 +1276,7 @@ class Generic(levels.Base):
                     (0,-1),
                     (2,0),
             ):
-                ## look for electrid-dipole allowed Δef/ΔJ transitions
+                ## look for electric-dipole allowed Δef/ΔJ transitions
                 for ju in tiu:
                     for jl in til[
                             (np.abs(lower_level['ef',til]-upper_level['ef',ju]) == Δefabs)
@@ -1788,6 +1797,7 @@ class LinearTriatom(Linear):
         new_keys=(
             'fv', 'νv', 'μv',
             'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
+            'Δν1','Δν2','Δν3','Δl2',
         ))
     default_xkey = 'J_l'
     default_zkeys = ['species_u','ν1_u','ν2_u','ν3_u','l2_u','species_l','ν1_l','ν2_l','ν3_l','l2_l','ΔJ']
