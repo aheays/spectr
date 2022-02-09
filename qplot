@@ -116,9 +116,13 @@ for filename in args.filenames:
     ## may continue if one fails
     try:
 
-
         args = deepcopy(original_args)
 
+
+        data = Dataset()
+        data.attributes['filename'] = filename
+
+        
         ## include filename in label if multiple files plotted
         label_prefix = ''
         if len(args.filenames)>1:
@@ -144,7 +148,6 @@ for filename in args.filenames:
                 kwargs['filetype'] = tools.infer_filetype(filename)
             if kwargs['filetype'] == 'hdf5':
                 kwargs.setdefault('load_attributes',False)
-            data = Dataset()
             data.load(filename,**kwargs)
             ## special cases one data series only 'data' which must be a
             ## 1- or 2-dimensional array then load columns a 'column0' etc
@@ -156,15 +159,14 @@ for filename in args.filenames:
             file_to_array_kwargs = dict(unpack=True, awkscript=args.awkscript, skip_header=args.skip_header)
             if args.delimiter is not None:
                 file_to_array_kwargs['delimiter'] = args.delimiter
-            t = tools.file_to_array(filename,**file_to_array_kwargs)
-            if t.ndim==0:
-                data = {'column0':np.array(float(t))}
-            elif t.ndim==1:
-                data = {'column0':t}
+            columns = tools.file_to_array(filename,**file_to_array_kwargs)
+            if columns.ndim==0:
+                data['column0'] = np.array(float(columns))
+            elif columns.ndim==1:
+                data['column0'] = columns
             else:
-                data = collections.OrderedDict()
-                for (t0,t1) in enumerate(t):
-                    data['column'+str(t0)] = t1
+                for i,column in enumerate(columns):
+                    data[f'column{i}'] = column
 
     except Exception as err:
 
@@ -199,6 +201,13 @@ for filename in args.filenames:
     for key in [args.xkey]+args.ykeys:
         if not data.is_known(key):
             raise Exception(f'Unknown key {key!r}, known keys are {data.known_keys()!r}') 
+
+    if args.verbose:
+        print( '\ndata:')
+        data.describe()
+        print( '\n')
+        print(f'xkey: {args.xkey}')
+        print(f'ykeys: {args.ykeys}')
 
     ## loop through all ykeys and plot
     for ykey in args.ykeys:
