@@ -15,6 +15,279 @@ from . import optimise
 from .optimise import optimise_method,Parameter,Fixed,format_input_method
 from . import __version__
 
+
+
+##########################################
+## load and convert data_dict functions ##
+##########################################
+
+def _convert_flat_data_dict(flat_data_dict):
+    """Convert a data dict without nesting into a nested
+    dictionary."""
+    ## nested dict
+    data_dict = {}
+    ## initialise nested 'data' and 'attibute' dicts. Actually if
+    ## they already exist as dicitonaries in flat_data_dict then
+    ## just copy them
+    for key in ('data','attributes'):
+        if key in flat_data_dict and isinstance(flat_data_dict[key],dict()):
+            data_dict[key] = flat_data_dict.pop(key)
+        else:
+            data_dict[key] = {}
+    ## flat_data_dict key description is assumned to be the
+    ## description of this class
+    if 'description' in flat_data_dict:
+        data_dict['description'] = str(flat_data_dict.pop('description'))
+    ## add remaining keys in flat_data_dict to the data subdict
+    for key,val in flat_data_dict.items():
+        if r:=re.match(r'([^:]+)[:]([^:]+)',key): 
+            key,subkey = r.groups()
+        else:
+            subkey = 'value'
+        data_dict['data'].setdefault(key,{})
+        data_dict['data'][key][subkey] = val
+    return data_dict
+
+def _load_from_directory(filename):
+    """Load data stored in a structured directory tree."""
+    data_dict = tools.directory_to_dict(filename,evaluate_strings=True)
+    ## determine file formatting and version of spectr used to
+    ## save this directory
+    if ('format' in data_dict
+        and isinstance(data_dict['format'],dict)
+        and 'version' in data_dict['format']):
+        version = data_dict['format']['version']
+    else:
+        version = None
+    ## make any modificatiosn to make this compatible with the
+    ## current version
+    if version is None:
+        ## no version data
+        if 'data' not in data_dict:
+            ## no 'data' assume this is pre version 1.0.0 --
+            ## DELETE THIS BLOCK SOME DAY
+            ## 
+            ## add all keys to a data dict
+            data = {}
+            for key in list(data_dict):
+                if key not in ('classname','description','attributes','default_step'):
+                    data[key] = data_dict.pop(key)
+            data_dict['data'] = data
+            ## move data out of old 'assoc' subdict
+            for key in data:
+                if 'assoc' in list(data[key]):
+                    for subkey in data[key]['assoc']:
+                        data[key][subkey] = data[key]['assoc'][subkey]
+                    data[key].pop('assoc')
+        else:
+            ## assume most recent version
+            pass
+    else:
+        ## assume most recent version
+        pass
+    return data_dict
+
+def _load_from_hdf5(filename,load_attributes=True):
+    """Load data stored in a structured or unstructured hdf5 file."""
+    data = tools.hdf5_to_dict(filename,load_attributes=load_attributes)
+    ## hack to get flat data or not
+    for val in data.values():
+        if isinstance(val,dict):
+            flat = False
+            break
+    else:
+        flat = True
+    ## if data consists of a single 2D array then replace it with
+    ## with enumerated columns
+    if len(data) == 1:
+        key = list(data)[0]
+        val = data[key]
+        if isinstance(val,np.ndarray) and val.ndim == 2:
+            for i,column in enumerate(data.pop(key).T):
+                data[f'{key}{i}'] = column
+    ## HACK: make compatible with old data format
+    if 'data' not in data:
+        data['data'] = {}
+        for key in copy(data):
+            if (isinstance(data[key],dict)
+                and 'value' in data[key]):
+                data['data'][key] = data.pop(key)
+    ## end of HACK
+    if flat:
+        data = _convert_flat_data_dict(data)
+    return data
+
+def _load_from_npz(filename):
+    """numpy npz archive.  get as scalar rather than
+    zero-dimensional numpy array"""
+    data = {}
+    for key,val in np.load(filename).items():
+        if val.ndim == 0:
+            val = val.item()
+        data[key] = val
+    data = _convert_flat_data_dict(data)
+    return data
+
+def _load_from_org(filename,table_name=None):
+    """Load form org table"""
+    data = tools.org_table_to_dict(filename,table_name)
+    data = _convert_flat_data_dict(data)
+    return data
+
+def _load_from_text(
+        filename,
+        comment='#',
+        labels_commented=False, # data labels are commented
+        delimiter=' ',
+        txt_to_dict_kwargs=None,
+        header_commented=False, # header preceding data labels is commented
+):
+    """Load data from a text-formatted file."""
+    ## text table to dict with header
+    if txt_to_dict_kwargs is None:
+        txt_to_dict_kwargs = {}
+    txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':header_commented}
+    filename = tools.expand_path(filename)
+    data = {}
+    metadata = {}
+    ## load header
+    escaped_comment = re.escape(comment)
+    blank_line_re = re.compile(r'^ *$')
+    commented_line_re = re.compile(f'^ *{escaped_comment} *(.*)$')
+    beginning_of_section_re = re.compile(f'^ *\\[([^]]+)\\] *$') 
+    key_line_without_value_re = re.compile(f'^ *([^# ]+) *# *(.+) *') # no value in line
+    key_line_with_value_re = re.compile(f'^ *([^= ]+) *= *([^#]*[^ #])') # may also contain description
+    current_section = 'data'
+    valid_sections = ('classname','description','keys','data','metadata','attributes')
+    section_iline = 0       # how many lines read in this section
+    classname = None
+    description = None
+    attributes = []
+    with open(filename,'r') as fid:
+        for iline,line in enumerate(fid):
+            ## remove newline
+            line = line[:-1]
+            ## check for bad section title
+            if current_section not in valid_sections:
+                raise Exception(f'Invalid data section: {repr(current_section)}. Valid sections: {repr(valid_sections)}')
+            ## remove comment character unless in data section —
+            ## then skip the line, or description then keep it in
+            ## place
+            if r:=re.match(commented_line_re,line):
+                if header_commented:
+                    line = re.sub(f'^ *{escaped_comment} *','',line)
+                elif current_section == 'description':
+                    pass
+                else:
+                    continue
+            ## skip blank lines unless in the description
+            if re.match(blank_line_re,line) and current_section != 'description':
+                continue
+            ## moving forward in this section
+            section_iline += 1
+            ## process data from this line
+            if r:=re.match(beginning_of_section_re,line):
+                ## new section header line
+                current_section = r.group(1)
+                section_iline = 0
+                if current_section == 'description':
+                    description = ''
+                continue
+            elif current_section == 'classname':
+                ## save classname 
+                if section_iline > 1:
+                    raise Exception("Invalid classname section")
+                classname = line.strip()
+            elif current_section == 'description':
+                ## add to description
+                description += '\n'+line
+            elif current_section == 'attributes':
+                ## add global attribute
+                attributes.append(line)
+            elif current_section == 'keys':
+                ## decode key line getting key, value, and any metadata
+                r = re.match(
+                    f'^(?:{escaped_comment}| )*([^#= ]+) *(?:= *([^ #]+))? *(?:# *(.* *))?',
+                    line)
+                key = None
+                value = None
+                info = None
+                if r:
+                    if r.group(1) is not None:
+                        key = r.group(1)
+                    if r.group(2) is not None:
+                        value = tools.safe_eval_literal(r.group(2))
+                    if r.group(3) is not None:
+                        try:
+                            info = tools.safe_eval_literal(r.group(3))
+                            if not isinstance(info,dict):
+                                info = {'description':r.group(3)}
+                        except:
+                            info = {'description':r.group(3)}
+                    if value is not None:
+                        data[key] = value
+                    if info is not None:
+                        metadata[key] = info
+            elif current_section == 'metadata': 
+                ## decode key line getting key, value, and any
+                ## metadata from an python-encoded dictionary e.g.,
+                ## key={'description':"abd",kind='f',value=5.0,...}.
+                ## Or key=description_string.
+                r = re.match(f'^(?:{escaped_comment}| )*([^= ]+)(?: *= *(.+))?',line) 
+                if r:
+                    key = r.group(1)
+                    if r.group(2) is None:
+                        key_metadata = None
+                    else:
+                        try:
+                            key_metadata = tools.safe_eval_literal(r.group(2))
+                        except:
+                            raise Exception(f"Invalid metadata encoding for {repr(key)}: {repr(r.group(2))}")
+                        if isinstance(key_metadata,dict):
+                            pass
+                        elif isinstance(key_metadata,str):
+                            key_metadata = {'description':key_metadata}
+                        else:
+                            raise Exception(f'Could not decode key metadata for {key}: {repr(key_metadata)}')
+                        if 'default' in key_metadata:
+                            data[key] = key_metadata['default']
+                        metadata[key] = key_metadata
+            elif current_section == 'data':
+                ## remainder of data is data, no more header to
+                ## process
+                break
+    ## load array data
+    if header_commented:
+        ## iline will have skipped over labels otherwise
+        iline -= 1
+    data.update(
+        tools.txt_to_dict(
+            filename,
+            skiprows=iline,
+            try_cast_numeric=False,
+            **txt_to_dict_kwargs))
+    ## a blank key indicates a leading or trailing delimiter -- delete it
+    if '' in data:
+        data.pop('')
+    ## if there is no kind for this key then try and cast to numeric data
+    for key in data:
+        if key not in metadata or 'kind' not in metadata[key]:
+            data[key] = tools.try_cast_to_numeric_array(data[key])
+    ## return as non flat with metadata inserted 
+    data = _convert_flat_data_dict(data)
+    for key,metadata_val in metadata.items():
+        for subkey,val in metadata_val.items():
+            data['data'][key][subkey] = val
+    ## add other header data
+    if classname is not None:
+        data['classname'] = classname
+    if description is not None:
+        data['description'] = description
+    if len(attributes) > 0:
+        tdict = '{'+','.join(attributes)+'}'
+        data['attributes'] = tools.safe_eval_literal(tdict)
+    return data
+
 class Dataset(optimise.Optimiser):
 
     """Stores a table of data vectors of common length indexed by key.
@@ -76,6 +349,20 @@ class Dataset(optimise.Optimiser):
     default_zkeys = ()
     default_zlabel_format_function = tools.dict_to_kwargs
 
+
+    ## functions that load specific filetypes, used by dataset.load
+    default_load_functions = {
+        'hdf5'      : _load_from_hdf5,
+        'directory' : _load_from_directory,
+        'npz'       : _load_from_npz,
+        'org'       : _load_from_org,
+        'text'      : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : ' '}|kwargs)),
+        'rs'        : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '␞'}|kwargs)),
+        'psv'       : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '|'}|kwargs)),
+        'csv'       : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : ','}|kwargs)),
+    }
+
+
     def __init__(
             self,
             name=None,          # name of this Dataset
@@ -110,6 +397,7 @@ class Dataset(optimise.Optimiser):
         self._global_modify_time = timestamp() # record modification time of any explicit change
         self.default_ykeys = None             # used by plot
         self.default_xkeys = None             # used by plot
+        self.load_functions = copy(self.default_load_functions)
         ## whether to allow the addition of keys not found in
         ## prototypes
         if permit_nonprototyped_data is None:
@@ -825,6 +1113,12 @@ class Dataset(optimise.Optimiser):
     def explicitly_set_keys(self):
         """Return a list of keys that were not inferred."""
         return [key for key in self if not self.is_inferred(key)]
+
+    def known_keys(self):
+        """Return a list of all known keys."""
+        retval = [key for key in {*self.keys()}|{*self.prototypes.keys()}
+                  if self.is_known(key)]
+        return retval 
 
     def match_keys(self,regexp=None,beg=None,end=None,):
         """Return a list of keys matching any of regex or
@@ -1602,7 +1896,8 @@ class Dataset(optimise.Optimiser):
             subkeys=('value','unc','vary','step','ref','default','description','units','fmt','kind',),
             exclude_keys_with_leading_underscore=True, # if no keys specified, do not include those with leading underscores
             exclude_inferred_keys=False, # if no keys specified, do not include those which are not explicitly set
-            quote=False,
+            quote=False,                 # quote keys and strings in data
+            comment_header=False, # prepend all non-vector-data lines with #
     ):
         """Format data into a string representation."""
         if keys is None:
@@ -1671,13 +1966,6 @@ class Dataset(optimise.Optimiser):
                         if tkey not in metadata:
                             continue
                         tval = metadata[tkey]
-                        # ## description length for alignment is in
-                        # ## 40-char quanta, else 15 char
-                        # if tkey == 'description':
-                        #     tfmt = str(40*((len(tval)-1)//40+1))
-                        # else:
-                        #     tfmt= '25'
-                        # line += format(f'{tkey!r}: {tval!r}, ',tfmt)
                         line += f'{tkey!r}: {tval!r}, '
                     line += '}'
                 else:
@@ -1696,6 +1984,9 @@ class Dataset(optimise.Optimiser):
         if columns != []:
             if len(retval) > 0:
                 retval += '\n[data]\n'
+        if comment_header:
+            retval = '# '+retval.replace('\n','\n# ')
+        if columns != []:
             retval += line_ending.join([delimiter.join(t) for t in zip(*columns)])+line_ending
         return retval
 
@@ -1889,8 +2180,8 @@ class Dataset(optimise.Optimiser):
         ## kind of a hack to bypass reloading file if initially loaded
         ## by dataset.load to get the correct classname
         if _data_dict_provided:
-            data_dict,more_kwargs = _data_dict_provided
-            self.load_from_dict(data_dict,**load_from_dict_kwargs,**more_kwargs)
+            data_dict = _data_dict_provided
+            self.load_from_dict(data_dict,**load_from_dict_kwargs )
             return
         ## determine filetype if not given
         if filetype is None:
@@ -1902,29 +2193,11 @@ class Dataset(optimise.Optimiser):
         ## load to dict according to filetype. Each load function
         ## returns two dictionaries, the data, and any additional
         ## keyword arguments required for load_from_dict
-        if filetype == 'hdf5':
-            load_function = self._load_from_hdf5
-        elif filetype == 'directory':
-            load_function = self._load_from_directory
-        elif filetype == 'npz':
-            load_function = self._load_from_npz
-        elif filetype == 'org':
-            load_function = self._load_from_org
-        elif filetype == 'text':
-            load_function = self._load_from_text
-            load_function_kwargs.setdefault('delimiter',' ')
-        elif filetype == 'rs':
-            load_function = self._load_from_text
-            load_function_kwargs.setdefault('delimiter','␞')
-        elif filetype == 'psv':
-            load_function = self._load_from_text
-            load_function_kwargs.setdefault('delimiter','|')
-        elif filetype == 'csv':
-            load_function = self._load_from_text
-            load_function_kwargs.setdefault('delimiter',',')
+        if filetype in self.load_functions:
+            load_function = self.load_functions[filetype]
         else:
-            raise Exception(f"Unrecognised data filetype: {filename=} {filetype=}")
-        data_dict,more_kwargs = load_function(**load_function_kwargs)
+            raise Exception(f"No load_function found for file {filename!r} with filetype {filetype!r}") 
+        data_dict = load_function(**load_function_kwargs)
         ## deduce classname
         if 'classname' in data_dict:
             classname = str(data_dict.pop('classname'))
@@ -1955,12 +2228,12 @@ class Dataset(optimise.Optimiser):
             classname = hack_changed_classnames[classname]
         ## return classname only
         if _return_classname_and_data:
-            return classname,(data_dict,more_kwargs)
+            return classname,data_dict
         ## test loaded classname matches self
         if classname is not None and classname != self.classname:
-            warnings.warn(f'The loaded classname {repr(data_dict["classname"])} does not match self {repr(self.classname)}')
+            warnings.warn(f'The loaded classname {repr(classname)} does not match self {repr(self.classname)}')
         ## load data into self
-        self.load_from_dict(data_dict,**load_from_dict_kwargs,**more_kwargs)
+        self.load_from_dict(data_dict,**load_from_dict_kwargs)
 
     def load_from_dict(
             self,
@@ -2007,21 +2280,6 @@ class Dataset(optimise.Optimiser):
                     key = re.sub(match_re,sub_re,key)
                 if key != original_key:
                     data_dict[key] = data_dict.pop(original_key)
-        ## build structured data_dict from flat data_dict 
-        if flat:
-            flat_data_dict = data_dict
-            data_dict = {'data':{}}
-            for key,val in flat_data_dict.items():
-                if key == 'description':
-                    ## description attribute
-                    self.description = str(val)
-                else:
-                    if r:=re.match(r'([^:]+)[:]([^:]+)',key): 
-                        key,subkey = r.groups()
-                    else:
-                        subkey = 'value'
-                    data_dict['data'].setdefault(key,{})
-                    data_dict['data'][key][subkey] = val
         ## add metadata to data_dict dictionary, if metadata key is not
         ## present in data_dict then ignore it
         if metadata is not None:
@@ -2035,7 +2293,7 @@ class Dataset(optimise.Optimiser):
         ## END OF HACK
         ## description is saved in data_dict
         if 'description' in data_dict:
-            self.description = data_dict.pop('description')
+            self.description = str(data_dict.pop('description'))
         ## attributes are saved in data_dict, try to evalute as literal, or keep as string on fail
         if 'attributes' in data_dict:
             for key,val in data_dict.pop('attributes').items():
@@ -2132,233 +2390,6 @@ class Dataset(optimise.Optimiser):
                 data[key].append(val)
         ## add to self
         self.load_from_dict(data,flat=True)
-
-    def _load_from_directory(self,filename):
-        """Load data stored in a structured directory tree."""
-        data_dict = tools.directory_to_dict(filename,evaluate_strings=True)
-        ## determine file formatting and version of spectr used to
-        ## save this directory
-        if ('format' in data_dict
-            and isinstance(data_dict['format'],dict)
-            and 'version' in data_dict['format']):
-            version = data_dict['format']['version']
-        else:
-            version = None
-        ## make any modificatiosn to make this compatible with the
-        ## current version
-        if version is None:
-            ## no version data
-            if 'data' not in data_dict:
-                ## no 'data' assume this is pre version 1.0.0 --
-                ## DELETE THIS BLOCK SOME DAY
-                ## 
-                ## add all keys to a data dict
-                data = {}
-                for key in list(data_dict):
-                    if key not in ('classname','description','attributes','default_step'):
-                        data[key] = data_dict.pop(key)
-                data_dict['data'] = data
-                ## move data out of old 'assoc' subdict
-                for key in data:
-                    if 'assoc' in list(data[key]):
-                        for subkey in data[key]['assoc']:
-                            data[key][subkey] = data[key]['assoc'][subkey]
-                        data[key].pop('assoc')
-            else:
-                ## assume most recent version
-                pass
-        else:
-            ## assume most recent version
-            pass
-        return data_dict,{}
-
-    def _load_from_hdf5(self,filename,load_attributes=True):
-        """Load data stored in a structured or unstructured hdf5 file."""
-        data = tools.hdf5_to_dict(filename,load_attributes=load_attributes)
-        ## hack to get flat data or not
-        for val in data.values():
-            if isinstance(val,dict):
-                flat = False
-                break
-        else:
-            flat = True
-        ## if data consists of a single 2D array then replace it with
-        ## with enumerated columns
-        if len(data) == 1:
-            key = list(data)[0]
-            val = data[key]
-            if isinstance(val,np.ndarray) and val.ndim == 2:
-                for i,column in enumerate(data.pop(key).T):
-                    data[f'{key}{i}'] = column
-        ## HACK: make compatible with old data format
-        if 'data' not in data:
-            data['data'] = {}
-            for key in copy(data):
-                if (isinstance(data[key],dict)
-                    and 'value' in data[key]):
-                    data['data'][key] = data.pop(key)
-        ## end of HACK
-        return data,{'flat':flat}
-
-    def _load_from_npz(self,filename):
-        """numpy npz archive.  get as scalar rather than
-        zero-dimensional numpy array"""
-        data = {}
-        for key,val in np.load(filename).items():
-            if val.ndim == 0:
-                val = val.item()
-            data[key] = val
-        return data,{'flat':True}
-
-    def _load_from_org(self,filename,table_name=None):
-        """Load form org table"""
-        data = tools.org_table_to_dict(filename,table_name)
-        return data,{'flat':True}
-
-    def _load_from_text(
-            self,
-            filename,
-            comment='#',
-            labels_commented=False,
-            delimiter=' ',
-            txt_to_dict_kwargs=None,
-    ):
-        """Load data from a text-formatted file."""
-        ## text table to dict with header
-        if txt_to_dict_kwargs is None:
-            txt_to_dict_kwargs = {}
-        txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':labels_commented}
-        filename = tools.expand_path(filename)
-        data = {}
-        metadata = {}
-        ## load header
-        escaped_comment = re.escape(comment)
-        blank_line_re = re.compile(r'^ *$')
-        commented_line_re = re.compile(f'^ *{escaped_comment} *(.*)$')
-        beginning_of_section_re = re.compile(f'^ *\\[([^]]+)\\] *$') 
-        key_line_without_value_re = re.compile(f'^ *([^# ]+) *# *(.+) *') # no value in line
-        key_line_with_value_re = re.compile(f'^ *([^= ]+) *= *([^#]*[^ #])') # may also contain description
-        current_section = 'data'
-        valid_sections = ('classname','description','keys','data','metadata','attributes')
-        section_iline = 0       # how many lines read in this section
-        classname = None
-        description = None
-        attributes = []
-        with open(filename,'r') as fid:
-            for iline,line in enumerate(fid):
-                ## remove newline
-                line = line[:-1]
-                ## check for bad section title
-                if current_section not in valid_sections:
-                    raise Exception(f'Invalid data section: {repr(current_section)}. Valid sections: {repr(valid_sections)}')
-                ## remove comment character unless in data section —
-                ## then skip the line, or description then keep it in
-                ## place
-                if r:=re.match(commented_line_re,line):
-                        continue
-                ## skip blank lines unless in the description
-                elif re.match(blank_line_re,line) and current_section != 'description':
-                    continue
-                ## moving forward in this section
-                section_iline += 1
-                ## process data from this line
-                if r:=re.match(beginning_of_section_re,line):
-                    ## new section header line
-                    current_section = r.group(1)
-                    section_iline = 0
-                    if current_section == 'description':
-                        description = ''
-                    continue
-                elif current_section == 'classname':
-                    ## save classname 
-                    if section_iline > 1:
-                        raise Exception("Invalid classname section")
-                    classname = line.strip()
-                elif current_section == 'description':
-                    ## add to description
-                    description += '\n'+line
-                elif current_section == 'attributes':
-                    ## add global attribute
-                    attributes.append(line)
-                elif current_section == 'keys':
-                    ## decode key line getting key, value, and any metadata
-                    r = re.match(
-                        f'^(?:{escaped_comment}| )*([^#= ]+) *(?:= *([^ #]+))? *(?:# *(.* *))?',
-                        line)
-                    key = None
-                    value = None
-                    info = None
-                    if r:
-                        if r.group(1) is not None:
-                            key = r.group(1)
-                        if r.group(2) is not None:
-                            value = tools.safe_eval_literal(r.group(2))
-                        if r.group(3) is not None:
-                            try:
-                                info = tools.safe_eval_literal(r.group(3))
-                                if not isinstance(info,dict):
-                                    info = {'description':r.group(3)}
-                            except:
-                                info = {'description':r.group(3)}
-                        if value is not None:
-                            data[key] = value
-                        if info is not None:
-                            metadata[key] = info
-                elif current_section == 'metadata': 
-                    ## decode key line getting key, value, and any
-                    ## metadata from an python-encoded dictionary e.g.,
-                    ## key={'description':"abd",kind='f',value=5.0,...}.
-                    ## Or key=description_string.
-                    r = re.match(f'^(?:{escaped_comment}| )*([^= ]+)(?: *= *(.+))?',line) 
-                    if r:
-                        key = r.group(1)
-                        if r.group(2) is None:
-                            key_metadata = None
-                        else:
-                            try:
-                                key_metadata = tools.safe_eval_literal(r.group(2))
-                            except:
-                                raise Exception(f"Invalid metadata encoding for {repr(key)}: {repr(r.group(2))}")
-                            if isinstance(key_metadata,dict):
-                                pass
-                            elif isinstance(key_metadata,str):
-                                key_metadata = {'description':key_metadata}
-                            else:
-                                raise Exception(f'Could not decode key metadata for {key}: {repr(key_metadata)}')
-                            if 'default' in key_metadata:
-                                data[key] = key_metadata['default']
-                            metadata[key] = key_metadata
-                elif current_section == 'data':
-                    ## remainder of data is data, no more header to
-                    ## process
-                    break
-        ## load array data
-        if txt_to_dict_kwargs['labels_commented']:
-            ## iline will have skipped over labels otherwise
-            iline -= 1
-        data.update(
-            tools.txt_to_dict(
-                filename,
-                skiprows=iline,
-                try_cast_numeric=False,
-                **txt_to_dict_kwargs))
-        ## a blank key indicates a leading or trailing delimiter -- delete it
-        if '' in data:
-            data.pop('')
-        ## load classname and description
-        if classname is not None:
-            data['classname'] = classname
-        if description is not None:
-            data['description'] = description
-        if len(attributes) > 0:
-            tdict = '{'+','.join(attributes)+'}'
-            self.attributes |= tools.safe_eval_literal(tdict)
-        ## if there is no kind for this key then try and cast to numeric data
-        for key in data:
-            if key not in metadata or 'kind' not in metadata[key]:
-                data[key] = tools.try_cast_to_numeric_array(data[key])
-        ## load into self
-        return data,{'flat':True,'metadata':metadata}
 
     def load_from_string(
             self,
@@ -3078,5 +3109,6 @@ def copy_from(dataset,*args,**kwargs):
     classname = dataset.classname # use the same class as dataset
     retval = make(classname,*args,copy_from=dataset,**kwargs)
     return retval
+
 
 

@@ -1,4 +1,3 @@
- 
 import inspect,re
 from copy import copy,deepcopy
 from pprint import pprint
@@ -2311,6 +2310,16 @@ def load_spectrum(filename,**kwargs):
     x.load_from_directory(filename,**kwargs)
     return(x)
 
+
+def _load_desirs_fts(filename):
+    """ Load SOLEIL DESIRS FTS spectrum from file."""
+    x,y,header = load_soleil_spectrum_from_file(filename)
+    data = {}
+    data['attributes'] = {'filename':filename, 'data_source':'desirs fts',}
+    data['attributes'] |= header 
+    data['data'] = {'ν':{'value':x}, 'I':{'value':y}}
+    return data
+
 class Spectrum(Dataset):
     """A spectrum of some kind."""
 
@@ -2325,13 +2334,11 @@ class Spectrum(Dataset):
         'f':{'description':'Frequency scale'  , 'units':'MHz'  , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
         'σ':{'description':'Cross section'    , 'units':'cm2'  , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
         'τ':{'description':'Optical depth'    , 'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
-        'T':{'description':'Transmittance'    , 'kind':'a' , 'fmt':'0.8f' , 'infer':[
-            (('σ','N'),lambda self,σ,N: np.exp(-N*σ))
-        ]} , 
+        'T':{'description':'Transmittance'    , 'kind':'a' , 'fmt':'0.8f' , 'infer':[(('σ','N'),lambda self,σ,N: np.exp(-N*σ))]} , 
         'I':{'description':'Intensity'        ,  'kind':'a' , 'fmt':'0.8f' , 'infer':[]} , 
     }
-
-
+    default_load_functions = copy(Dataset.default_load_functions)
+    default_load_functions['desirs_fts'] = _load_desirs_fts
 
 class FitAbsorption():
 

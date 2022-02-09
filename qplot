@@ -195,6 +195,11 @@ for filename in args.filenames:
         for key in args.ykeys:
             data[key] = units(data[key],args.yunits[0],args.yunits[1])
 
+    ## check keys exist
+    for key in [args.xkey]+args.ykeys:
+        if not data.is_known(key):
+            raise Exception(f'Unknown key {key!r}, known keys are {data.known_keys()!r}') 
+
     ## loop through all ykeys and plot
     for ykey in args.ykeys:
         color,linestyle = plotting.newcolorlinestyle()

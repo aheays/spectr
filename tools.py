@@ -2503,6 +2503,8 @@ def infer_filetype(filename):
         return 'text'
     elif extension == '.psv':
         return 'psv'
+    elif extension == '.TXT':
+        return 'desirs_fts'
     elif re.match(r'.*\.[0-9]+$',basename(filename)):
         return 'opus'
     elif extension in ('spectrum','model','experiment',):
@@ -2526,6 +2528,7 @@ _get_extension_data = {
     'text':'',
     'opus':'',
     'directory':'',
+    'dataset':'.dataset',
     }
 def get_extension(filetype):
     return _get_extension_data[filetype]
