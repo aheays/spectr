@@ -1881,15 +1881,24 @@ class Dataset(optimise.Optimiser):
     ):
         """Iterate value data row by row, returns as a dictionary of
         scalar values."""
+        ## get keys/subkeys
         keys = tools.ensure_iterable(keys)
         if keys is None:
             keys = self.keys()
+        keys_subkeys_outkeys = []
+        for key in keys:
+            for subkey in tools.ensure_iterable(subkeys):
+                if subkey == 'value':
+                    outkey = key
+                else:
+                    outkey = f'{key}:{subkey}'
+                keys_subkeys_outkeys.append((key,subkey,outkey))
+        ## get indices to yield
         index = self.get_combined_index(
             return_as='int',**get_combined_index_kwargs)
         for i in index:
-            yield {(key if 'subkey' == 'value' else
-                    f'{key}:{subkey}'): self.get(key,subkey,i)
-                   for key,subkey in itertools.product(keys,subkeys)}
+            yield {outkey:self.get(key,subkey,i)
+                   for key,subkey,outkey in keys_subkeys_outkeys}
 
     def row_data(self,keys=None,index=None):
         """Iterate rows, returning data in a tuple (faster than

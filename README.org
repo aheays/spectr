@@ -1,102 +1,122 @@
-spectr — a hodge-podge library used in the scientific work of Alan Heays
-
+# -*- mode: org; eval: (auto-fill-mode 0); -*-
+#+OPTIONS: toc:2
+#+TITLE: A library used in the scientific work of Alan Heays
 * Install
+** Source code
+GPL source code is publically available on github at  [[https://github.com/aheays/spectr]].
+The repository can be cloned locally with =git clone --depth=1 https://github.com/aheays/spectr.git= (this will require git to be installed =sudo apt install git= on ubuntu). A subsequent =git pull= while inside the =spectr= source directory will download any updates. Otherwise, zip-archives of particular version can be downloaded e.g., https://github.com/aheays/spectr/archive/refs/tags/v1.3.0.zip.
+
 ** Python dependencies
-This modules has been tested and works with python 3.9 and 3.10, and
-will not work with version <3.9. It might be necessary to install and
-use it in a virtual environment (venv) on linux distributions with python
-version <3.9.
+This module has been tested and works with python 3.9 and 3.10, and will not work with version <3.9. Many non-standard python libraries are used and are available from linux distributions or via pip, with the following package names:
+#+BEGIN_SRC
+  bidict cycler hitran-api brukeropusreader dill h5py matplotlib
+  numpy openpyxl periodictable scipy sympy xmltodict pyqt5 py3nj
+#+END_SRC
 
-Many non-standard python libraries are used and are available
-from linux distributions or via pip, with the following package names:
+** Building the fortran extensions
+Fortran code used to generate python extensions with =f2py= and needed to speed up some calculations.  Some submodules will still import and run fine without these.
+To compile the extensions run =make= within the spectr source directory. The options in the =Makefile= are for the gfortran compiler and use the =lapack= library.  The following distribution packages might be sufficient to compile the code under linux:
+ - Debian / Ubuntu: =gfortran python3.9-dev liblapack-dev=
+ - Arch: =gcc-gfortran lapack=
+If the Makefile is not working, then the following should be enough to get things running:
+: f2py3 -c --quiet -llapack --f90flags="-Wall -ffree-line-length-none" --opt="-O3" fortran_tools.f90
+   
+** Matplotlib dependencies
+Under ubuntu, installing the packages =pyqt5= and =qt5-default= seem to be enough to get matplotlib to draw windowed figures.
 
- - bidict
- - cycler
- - hitran-api
- - brukeropusreader
- - dill
- - h5py
- - matplotlib
- - numpy
- - openpyxl
- - periodictable
- - py3nj
- - scipy
- - sympy
- - xmltodict
+** Installing in a linux virtual environment
+This is a recipe for installing spectr and its dependencies in a virtual environment, and not messing up the system python.
 
-Matplotlib will require a graphics binding package, perhaps pyqt5.
+ - Install python3.9 (or 3.10) somehow. Under ubuntu with =sudo apt install
+   python3.9=
+ - Create a virtual environment using python3.9: =python3.9 -m venv venv3.9=
+ - Start the virtual environment: =source venv3.9/bin/activate=
+ - Install the python dependencies with pip: =pip install bidict cycler hitran-api brukeropusreader dill h5py matplotlib numpy openpyxl periodictable scipy sympy xmltodict ; pip install py3nj= /For some reason py3nj must be intalled after everything else (2022-01-18)./ 
+ - The matplotlib Qt dependency can also be installed with pip, =pip install pyqt5=, but Qt must be installed on the system itself, e.g, with =sudo apt install qt5-default=
+ - Clone spectr code with =git clone --depth=1 https://github.com/aheays/spectr.git=
+ - Add =spectr= to the python path so it can be imported from anywhere
+   : cd venv3.9/lib/python3.9/site-packages/
+   : ln -s ../../../../spectr .
+   : cd -
+ - Add =qplot= to the path so it can be run from within the virtual environment
+   : cd venv3.9/bin
+   : ln -s ../../spectr/qplot .
+   : cd -
+ - I wrote a script that attempts to install the virtual environment: =bash install_in_venv.sh= 
 
-** Build fortran components
-Run "make" in the root directory to create .so extensions.
-
-The options in Makefile are for the gfortran compiler and
-use the lapack and openmp libraries.  
-
-*** Linux packages that might be needed to build
-**** Debian/Ubuntu
- - gfortran
- - python-dev or python3-dev
- - liblapack-dev
- - libomp-dev
-**** Arch Linux
- - gcc-gfortran
- - lapack
+** Testing the installation
+Test by importing spectr and trying to plot something
+   : source venv3.9/bin/activate
+   : echo "from spectr.env import *" | python
+   : qplot tests/data/CS2_experimental_spectrum.h5
 
 * Usage
-To import all submodules and many common functions directly into
-working namespace:
-: from spectr.env import *
+** Importing =spectr=
+A command to import all submodules and many common functions directly into the working namespace is =from spectr.env import *=.  Otherwise only the needed submodules can be imported, e.g., =import spectr.spectrum=
+** Optimising things
+The =optimiser.Optimiser= class is used to conveniently construct model objects with parameters that can be fit to experimental data. The real-number input arguments of most methods of objects base-classed on =Optimiser= can be marked for optimisation by replacing their values with a optimiser.Parameter object.  This has the abbreviated definition:
 
-Some example code is included in ~./examples~.
+#+BEGIN_SRC python
+  P(value=float,
+    vary=True|False,
+    step=float,
+    uncertainty=float,
+    bounds=(float,float))
+#+END_SRC
+
+Only the first argument is required. For example, =x=P(2,True,1e-5,bounds=(0,100))= defines a parameter =x= that will be varied from an initial value of 2 but constrained to the range 0 to 100.  When computing the finite-difference approximation to the linear dependence of model error on =x= a step size of \num{e-5} will be used.  The fitting uncertainty =unc= will be set automatically after optimisation.
+Multiple =Optimiser= objects can be combined in a hierarchy, so that multiple spectra can be fit at once to optimise a common parameter, for example a temperature-dependence coefficient fit to spectra at multiple temperatures.
+
+** Encoding diatomic quantum numbers
+
+** =qplot=
+<<=qplot=>>
+This is a command line programming for making line plots, e.g., =qplot datafile=, or =qplot -h= for a list of options.
 * Submodules
-** env.py
+** =env.py=
 Conveniently import all submodules.
-** dataset.py
+** =dataset.py=
 Storage, manipulation, and plotting of tabular data. Allows for the
 recursive calculation of derived quantities
-** tools.py
+** =tools.py=
 Functions for performing common mathematical and scripting tasks.
-** plotting.py
+** =plotting.py=
 Functions for plotting built on matplotlib.
-** convert.py
-Unit conversion and various conversion formulae.
-** optimise.py
+** =convert.py=
+Unit conversion, species name conversion, and various conversion formulae.
+** =optimise.py=
 General class for conveniently and hierarchically building numerical
 models with optimisable parameters.
-** atmosphere.py
-** lines.py
-Dataset subclasses for storing atomic and molecular quantum-mechanical
-stationary-state line data.
-** levels.py
-Dataset subclasses for storing atomic and molecular quantum-mechanical
-stationary-stat level data.
-** bruker.py
+** =atmosphere.py=
+Classes for analysing atmospheric photochemistry.
+** =lines.py=
+Dataset subclasses for storing atomic and molecular line data.
+** =levels.py=
+Dataset subclasses for storing atomic and molecular level data.
+** =bruker.py=
 Interact with output files of Bruker OPUS spectroscopic acquisition
 and analysis software. 
-** cross_section.py
-CrossSection object — stub. Probably overshadowed by spectrum.Spectrum.  
-** database.py
+** =database.py=
 Interface to internal spectroscopic and chemistry database.  
-** electronic_states.py
+** =electronic_states.py=
 Calculation of diatomic level energies from potential-energy curves.
-** exceptions.py
+** =exceptions.py=
 Exception used to internally communicate failure conditions.
-** hitran.py
+** =hitran.py=
 Access HITRAN spectroscopic data with hapy.
-** lineshapes.py
+** =lineshapes.py=
 Simulate individual and groups of spectra lines of various shapes.
-** quantum_numbers.py
+** =quantum_numbers.py=
 Functions for manipulating atomic and molecular quantum numbers.
-** spectrum.py
+** =spectrum.py=
 Classes for manipulating and modelling of experimental spectroscopic datea.
-** thermochemistry.py
+** =thermochemistry.py=
 Functions for computing thermochemical equilibrium with ggchem.
-** viblevel.py
+** =viblevel.py=
 Classes for simulating diatomic levels and lines defined by effective Hamiltonians.
-
-** fortran_tools.f90
+** =fortran_tools.f90=
 Various fortran functions and subroutines.
+
 * Bugs / improvements
 ** optimise.py
 *** inhibit =add_input_function= in =input_function_method=?
