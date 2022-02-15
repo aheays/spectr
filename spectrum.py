@@ -644,7 +644,8 @@ class Model(Optimiser):
     @format_input_method()
     def add_hitran_line(
             self,
-            species,
+            species,            # specify isotopologue or chemical species
+            chemical_species=None, # if isotopologue and chemical species is ambiguous, then specify it here
             min_S296K=0,        # only lines with greater absorption line strength
             *args,
             **kwargs
@@ -653,17 +654,13 @@ class Model(Optimiser):
         (isotopologue or natural abundance) and then call add_line."""
         line = hitran.get_line(
             species,
-            # cache=False,
-            # copy_cache=False,
-            # force_download= True,
-            # force_convert= True,
+            chemical_species=chemical_species,
             match={
                 'min_ν':self.x[0]-10,
                 'max_ν':self.x[-1]+10,
                 'min_S296K':min_S296K,
                 },
         )
-
         line.include_in_output = False
         line.clear_format_input_functions()
         self.add_line(line,*args,**kwargs)
@@ -828,6 +825,9 @@ class Model(Optimiser):
             _cache['line_copy_prev'] = line_copy.copy()
         if verbose:
             print(f'add_line: {line.name}: time = {timestamp()-timer_start:0.3e}')
+
+    # @optimise_method()
+    # def add_hitran_spectrum(self,filename):
 
     @optimise_method()
     def add_spectrum(self,spectrum,kind='absorption',_cache=None,**set_keys_vals):

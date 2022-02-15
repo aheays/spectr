@@ -290,19 +290,26 @@ def load_cross_section(filename,name='hitran_cross_section'):
 _get_line_cache = {}
 
 def get_line(
-        species,
-        name=None,
-        match=None,
+        species,                # chemical species or isotopologue
+        name=None,              # name of line object returned
         force_download=False,   # download HITRAN data even if it is already present
         force_convert=False,    # recompute line object from HITRAN data even if it is alreay present
-        use_cache=True,             # cache loaded line for later faster loading
+        use_cache=True,         # cache loaded line for later faster loading
         copy_cache=True,        # copy cached line to prevent side effects if loaded twice
-        **match_kwargs):
+        ## might need to specify this if if species is an isotopologue
+        ## and the corresponding isotopologue is ambiguous, e.g.,
+        ## '¹²C¹H₃²H' and 'CH₄'
+        chemical_species=None,  
+        ## only return matching data
+        match=None,             
+        **match_kwargs
+):
     """Hitran linelist.  If species not an isotopologue then load a list
     of the natural abundance mixture.  Adds some extra quantum numbers
     from additional_electronic_quantum_numbers_to_add."""
     species = database.normalise_species(species)
-    chemical_species = get_species_property(species,'chemical_formula')
+    if chemical_species is None:
+        chemical_species = get_species_property(species,'chemical_formula')
     directory = f'{database.data_directory}/hitran/cache/{species}'
     ## delete data directory to force download if requested
     hitran_filename = f'{directory}/hitran_linelist.data'
