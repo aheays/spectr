@@ -2312,12 +2312,71 @@ def load_spectrum(filename,**kwargs):
 
 
 def _load_desirs_fts(filename):
-    """ Load SOLEIL DESIRS FTS spectrum from file."""
-    x,y,header = load_soleil_spectrum_from_file(filename)
-    data = {}
-    data['attributes'] = {'filename':filename, 'data_source':'desirs fts',}
-    data['attributes'] |= header 
-    data['data'] = {'ν':{'value':x}, 'I':{'value':y}}
+    """ Load SOLEIL DESIRS FTS .TXT spectrum from file."""
+    attributes = {'filename':filename, 'data_source':'desirs fts',}
+    header = []
+    with open(filename,'r',encoding='latin-1') as fid:
+        for iline,line in enumerate(fid):
+            if re.match(r'^([0-9]+),([0-9.eE+-]+)$',line):
+                ## data started
+                break
+            header.append(line)
+    ## extract important information from header
+    attributes['header'] = ''.join(header)
+    for line in header:
+        ## post-processing zero-adding leads to an
+        ## interpolation of data by this factor
+        if r:=re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line):
+            attributes['interpolation_factor'] = float(r.group(1))
+        ## the resolution before any interpolation
+        if r:=re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line):
+            attributes['ds'] = float(r.group(1))
+        ## NMAX parameter indicates that the spectrometer is
+        ## being run at maximum resolution. This is not an
+        ## even power of two. Then the spectrum is zero padded
+        ## to have 2**21 points. This means that there is an
+        ## additional interpolation factor of 2**21/NMAX. This
+        ## will likely be non-integer.
+        if r:=re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line):
+            attributes['interpolation_factor'] *= 2**21/float(r.group(1))
+        ## extract pressure from header
+        if r:=re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line):
+            attributes['date_time'] = r.group(1)
+            attributes['pressure_pirani'] = float(r.group(2))
+            attributes['pressure_baratron'] = float(r.group(3))
+    ## compute instrumental resolution, FWHM
+    attributes['sinc_fwhm'] = 1.2*attributes['interpolation_factor']*attributes['ds'] 
+    ## load data
+    ## get end of  spectrum in file
+    skip_footer = None
+    with open(filename,'r',encoding='latin-1') as fid:
+        for iline,line in enumerate(fid):
+            if iline < len(header):
+                continue
+            if skip_footer is None and re.match(r'.*N=.*',line):
+                skip_footer = iline
+    skip_header = len(header)+1
+    if skip_footer is not None:
+        skip_footer = iline - skip_footer + 1 
+    else:
+        skip_footer = 0
+    x,y = tools.file_to_array_unpack(
+        filename,
+        skip_header=skip_header,
+        skip_footer=skip_footer,
+        encoding='latin-1',
+        delimiter=',',)
+    x *= attributes['ds']
+    ## compute band pass centre
+    attributes['xcentre'] = x[np.argmax(y)]
+    ## return data dict
+    data = {
+        'attributes':attributes,
+        'data': {
+            'ν':{'value':x},
+            'I':{'value':y}
+        },
+    }
     return data
 
 class Spectrum(Dataset):
@@ -2339,6 +2398,27 @@ class Spectrum(Dataset):
     }
     default_load_functions = copy(Dataset.default_load_functions)
     default_load_functions['desirs_fts'] = _load_desirs_fts
+
+    def load_desirs_fts(self,filename):
+        """Load soleil spectrum from file with given path, or for scan
+        beginning with filename."""
+        from glob import escape
+        trial_globs = (
+                escape(filename),
+                f'~/exp/SOLEIL/scans/{escape(filename)}',
+                f'~/exp/SOLEIL/scans/{escape(filename)}*.h5',
+                f'~/exp/SOLEIL/scans/{escape(filename)}*.TXT',
+        )
+        for trial_glob in trial_globs:
+            trial_glob = tools.expand_path(trial_glob)
+            try:
+                self.load(tools.glob_unique(trial_glob))
+                break
+            except:
+                pass
+        else:
+            raise Exception(f'Could not find file {filename!r} tried: {trial_globs!r}')
+
 
 class FitAbsorption():
 
