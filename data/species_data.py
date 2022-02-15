@@ -1,3 +1,4 @@
+
 metadata = {
     'E0'                            : { 'description' : 'Energy of the lowest physical energy level relative the equilibrium energy.','units':'cm-1',},
     'Inuclear'                      : { 'description' : 'Nuclear spin angulat momentum for homonuclear diatomic species'            ,         }        ,
@@ -606,6 +607,11 @@ data = {
     },
 
     '¹³C¹H₄'  :     {
+        'chemical_formula'  : 'CH₄',
+        'mass'              : 17.0,
+    },
+
+    '¹²C¹H₃²H'  :     {
         'chemical_formula'  : 'CH₄',
         'mass'              : 17.0,
     },
