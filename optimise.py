@@ -266,7 +266,7 @@ class Optimiser:
     
     def __init__(
             self,
-            name='optimiser',           # used to generate evaluable python code
+            name=None,           # used to generate evaluable python code
             *suboptimisers,     # Optimisers
             verbose=False,
             description=None,
@@ -274,6 +274,8 @@ class Optimiser:
     ):
         """Suboptimisers can be other Optimiser that are also
         optimised with this one."""
+        if name is None:
+            name = 'optimiser'
         assert isinstance(name,str),'Name must be a string.'
         self.name = tools.regularise_symbol(name,permit_attr=True) # for generating evaluatable references to self
         self.residual_scale_factor = 1 # scale all residuals by this amount -- useful when combining with other optimisers
