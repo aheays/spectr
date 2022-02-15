@@ -631,7 +631,7 @@ class Line(Optimiser):
     for single-photon transitions. """
 
     @format_input_method()
-    def __init__(self,name,level,ΔJ=(-1,0,+1)):
+    def __init__(self,level,name=None,ΔJ=(-1,0,+1)):
         ## add upper and lower levels
         Optimiser.__init__(self,name=name)
         self.level = level
