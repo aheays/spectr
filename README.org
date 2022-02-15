@@ -72,6 +72,9 @@ Multiple =Optimiser= objects can be combined in a hierarchy, so that multiple sp
 ** =qplot=
 <<=qplot=>>
 This is a command line programming for making line plots, e.g., =qplot datafile=, or =qplot -h= for a list of options.
+* Examples
+Some examples scripts are stored in the repository https://github.com/aheays/spectr_examples
+
 * Submodules
 ** =env.py=
 Conveniently import all submodules.
