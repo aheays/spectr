@@ -2726,6 +2726,51 @@ def try_cast_to_numeric_array(x):
         except ValueError:
             return np.array(x,dtype=str)
 
+def ods_reader(fileName,tableIndex=0):
+    """
+    Opens an odf spreadsheet, and returns a generator that will
+    iterate through its rows. Optional argument table indicates which
+    table within the spreadsheet. Note that retures all data as
+    strings, and not all rows are the same length.
+    """
+    import odf.opendocument,odf.table,odf.text
+    ## common path expansions
+    fileName = expand_path(fileName)
+    ## loads sheet
+    sheet = odf.opendocument.load(fileName).spreadsheet
+    ## Get correct table. If 'table' specified as an integer, then get
+    ## from numeric ordering of tables. If specified as a string then
+    ## search for correct table name.
+    if isinstance(tableIndex,int):
+        ## get by index
+        table = sheet.getElementsByType(odf.table.Table)[tableIndex]
+    elif isinstance(tableIndex,str):
+        ## search for table by name, if not found return error
+        for table in sheet.getElementsByType(odf.table.Table):
+            # if table.attributes[(u'urn:oasis:names:tc:opendocument:xmlns:table:1.0', u'name')]==tableIndex:
+            if table.getAttribute('name')==tableIndex:
+                break
+        else:
+            raise Exception('Table `'+str(tableIndex)+'\' not found in `'+str(fileName)+'\'')
+    else:
+        raise Exception('Table name/index`'+table+'\' not understood.')
+    ## divide into rows
+    rows = table.getElementsByType(odf.table.TableRow)
+    ## For each row divide into cells and then insert new cells for
+    ## those that are repeated (multiple copies are not stored in ods
+    ## format). The number of multiple copies is stored as a string of
+    ## an int.
+    for row in rows:
+        cellStrs = []
+        for cell in row.getElementsByType(odf.table.TableCell):
+            cellStrs.append(str(cell))
+            if cell.getAttribute('numbercolumnsrepeated')!=None:
+                for j in range(int(cell.getAttribute('numbercolumnsrepeated'))-1):
+                    cellStrs.append(str(cell))
+        ## yield each list of cells to make a generator
+        yield cellStrs
+
+
 def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
     """Converts csv or ods file, or list of lists to a dictionary.\n\nFor
     csv files, path can be open file object or path. For ods it must
@@ -2760,13 +2805,13 @@ def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
             quotechar=(kwargs.pop('quotechar') if 'quotechar' in kwargs else '"'),)
     elif isinstance(path,str) and path[-4:] =='.ods':
         kwargs.setdefault('sheet_name',0)
-        reader=odsReader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
+        reader=ods_reader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
     elif isinstance(path,str) and path[-5:] =='.xlsx':
         assert 'sheet_name' not in kwargs,'Not implemented'
         import openpyxl
         data = openpyxl.open(path,read_only=True,data_only=True,keep_links=False)
         print( data)
-        reader=odsReader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
+        reader=ods_reader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
     elif isinstance(path,io.IOBase):
         reader=csv.reader(expand_path(path),)
     else:
