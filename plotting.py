@@ -455,6 +455,25 @@ def qfig(
     fig.clf()
     return fig
 
+def qax(*qfig_args,**qfig_kwargs):
+    return qfig(*qfig_args,**qfig_kwargs).gca()
+
+def qfigax(fig=None,ax=None,**qfig_kwargs):
+    """Get a figure and ax object."""
+    if ax is None:
+        if fig is None:
+            fig = gcf()
+        elif isinstance(fig,int):
+            fig = qfig(n=fig,**qfig_kwargs)
+        elif isinstance(fig,matplotlib.figure.Figure):
+            pass
+        else:
+            raise Exception('Invalid input: {fig=}. Must be None, Figure, or an int')
+        ax = fig.gca()
+    else:
+        fig = ax.get_figure()
+    return fig,ax
+
 def qupdate(fig=None):
     """Exisint figures will be updated figure without blocking or
 raising. New figures non-blocking show and be raised."""
@@ -473,9 +492,6 @@ raising. New figures non-blocking show and be raised."""
         ## update existing figure
         fig.canvas.draw()
         fig.canvas.start_event_loop(1e-10)
-
-def qax(*qfig_args,**qfig_kwargs):
-    return qfig(*qfig_args,**qfig_kwargs).gca()
 
 def figax(*args,**kwargs):
     f = fig(*args,**kwargs)
@@ -1685,16 +1701,18 @@ def connect_zoom_in_axis(ax1,ax2,**line_kwargs):
         # ax1.axvline(data2_end,**line_kwargs)
     return((line1,line2))
         
-def arrow(x1y1,x2y2,
-          arrowstyle='->',
-          # label=None,
-          xcoords='data',      # affects both ends of arrow
-          ycoords='data',      # affects both ends of arrow
-          ax=None,
-          color='black',
-          labelpad=10,
-          fontsize=10,
-          **arrow_kwargs):
+def arrow(
+        x1y1,
+        x2y2,
+        arrowstyle='->',
+        label=None,
+        xcoords='data',      # affects both ends of arrow
+        ycoords='data',      # affects both ends of arrow
+        ax=None,
+        color='black',
+        labelpad=1,
+        fontsize=10,
+        **arrow_kwargs):
     """
     Trying to make a nice simple arrow drawing function.  kwargs are
     passed directly to matplotlib.Patches.FancyArrowPatch. There are
@@ -1730,23 +1748,23 @@ def arrow(x1y1,x2y2,
             transform=matplotlib.transforms.blended_transform_factory(xtransform,ytransform),
             **arrowParams),)
     ## add label parallel to arrow
-    # if label is not None:
-        # ## transform to display coordinates
-        # x1,y1 = ax.transData.transform((x1,y1))
-        # x2,y2 = ax.transData.transform((x2,y2))
-        # midpoint = (0.5*(x1+x2),0.5*(y1+y2))
-        # try:
-            # angle  = np.arctan((y2-y1)/(x2-x1))
-        # except ZeroDivisionError:
-            # angle = np.pi/2.
-        # ax.annotate(str(label),
-                    # ax.transData.inverted().transform(midpoint),
-                    # xycoords='data',
-                    # xytext=(-labelpad*fontsize*np.sin(angle),labelpad*fontsize*np.cos(angle)),
-                    # # xytext=(0,0),
-                    # textcoords='offset points',
-                    # rotation=angle/np.pi*180,
-                    # ha='center',va='center',fontsize=fontsize,color=color)
+    if label is not None:
+        ## transform to display coordinates
+        x1,y1 = ax.transData.transform(x1y1)
+        x2,y2 = ax.transData.transform(x2y2)
+        midpoint = (0.5*(x1+x2),0.5*(y1+y2))
+        try:
+            angle  = np.arctan((y2-y1)/(x2-x1))
+        except ZeroDivisionError:
+            angle = np.pi/2.
+        ax.annotate(str(label),
+                    ax.transData.inverted().transform(midpoint),
+                    xycoords='data',
+                    xytext=(-labelpad*fontsize*np.sin(angle),labelpad*fontsize*np.cos(angle)),
+                    # xytext=(0,0),
+                    textcoords='offset points',
+                    rotation=angle/np.pi*180,
+                    ha='center',va='center',fontsize=fontsize,color=color)
     return(arrow)
 
 myArrow=arrow
@@ -2290,9 +2308,9 @@ def show(show_in_ipython=False,block=True):
         qupdate()
         plt.show(block=block)
 
-def qplot(figure_number,*plot_args,show=False,**plot_kwargs):
+def qplot(*plot_args,fig=None,show=False,**plot_kwargs):
     """Issue a plot command and then output to file."""
-    ax = qax(figure_number)
+    ax = qax(fig)
     ax.plot(*plot_args,**plot_kwargs)
     legend()
     ax.grid(True)
@@ -2557,10 +2575,12 @@ def annotate_spectrum_by_branch(
         retval.append(annotate_spectrum(zline[xkey],labels=labels,ylevel=ybeg+iz*ystep,**kwargs))
     return retval
 
-def plot_stick_spectrum(x,y,ax=None,**plot_kwargs):
+def plot_stick_spectrum(
+        x,y,
+        fig=None, ax=None,
+        **plot_kwargs):
     assert len(x)==len(y)
-    if ax is None:
-        ax = plt.gca()
+    fig,ax = plotting.qfigax(fig,ax)
     x = np.row_stack((x,x,x))
     t = np.zeros(y.shape)
     y = np.row_stack((t,y,t))
