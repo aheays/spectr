@@ -3,6 +3,7 @@ from copy import copy,deepcopy
 from pprint import pprint,pformat
 import importlib
 import warnings
+import itertools
 
 import numpy as np
 from numpy import nan,arange,linspace,array
@@ -21,16 +22,53 @@ from . import __version__
 ## load and convert data_dict functions ##
 ##########################################
 
+## Dataset.load_from_dict loads data from a dictionary mirroring the
+## structure of the dataset class, with an example below.  The
+## ['data'][key] subdicts must contain a 'value' and optionally any
+## other valid Dataset subkey. The various _load_* functions below
+## have the task of converting a data source into a valid data_dict.
+
+_example_data_dict = {
+    'description': 'string',
+    'attributes': {'attr0':'string','attr1':1,'attr2':['a',3,None]},
+    'data': {
+        'key0': {
+            'value': [1,2,3],
+            'description': 'string',
+            'fmt': 'g',},
+        'key1': {
+            'value': ['a','b','c'],},}}
+
+
+
 def _convert_flat_data_dict(flat_data_dict):
-    """Convert a data dict without nesting into a nested
-    dictionary."""
+    """Convert a data dict without nesting into a nested dictionary in the
+    correct format for load_from_dict. With subkeys specified as
+    'key:subkey'.
+
+    An example flat dict:
+    
+    flat_data_dict = {
+        'key0':['a','b','c'],
+        'key1':[1,2,3],
+        'key1:fmt':'d',
+        'key1:unc':[0.1,0.1,0.2],}
+
+    is converted to
+
+    data_dict = {
+        'data': {
+            'key0': {'value':['a','b','c'],},
+            'key1':{'value':[1,2,3],'fmt':'d','unc':[0.1,0.1,0.2],},},}
+
+    """
     ## nested dict
     data_dict = {}
     ## initialise nested 'data' and 'attibute' dicts. Actually if
     ## they already exist as dicitonaries in flat_data_dict then
     ## just copy them
     for key in ('data','attributes'):
-        if key in flat_data_dict and isinstance(flat_data_dict[key],dict()):
+        if key in flat_data_dict and isinstance(flat_data_dict[key],dict):
             data_dict[key] = flat_data_dict.pop(key)
         else:
             data_dict[key] = {}
@@ -288,6 +326,11 @@ def _load_from_text(
         data['attributes'] = tools.safe_eval_literal(tdict)
     return data
 
+
+#######################
+## The Dataset class ##
+#######################
+
 class Dataset(optimise.Optimiser):
 
     """Stores a table of data vectors of common length indexed by key.
@@ -350,7 +393,10 @@ class Dataset(optimise.Optimiser):
     default_zlabel_format_function = tools.dict_to_kwargs
 
 
-    ## functions that load specific filetypes, used by dataset.load
+    ## functions that load specific filetypes, used by
+    ## dataset.load. The first input is a filename and any other
+    ## kwargs passed to dataset.load (except thoseused by load itself
+    ## or load_data_dict) are passed on.
     default_load_functions = {
         'hdf5'      : _load_from_hdf5,
         'directory' : _load_from_directory,
@@ -422,6 +468,10 @@ class Dataset(optimise.Optimiser):
         self.prototypes = copy(self.default_prototypes)
         if prototypes is not None:
             self.prototypes |= prototypes
+        ## dictionary to store global attributes
+        self.attributes = {}
+        if attributes is not None:
+            self.attributes |= attributes
         ## new format input function -- INCOMPLETE
         def format_input_function():
             retval = f'{self.name} = {self.classname}({repr(self.name)},'
@@ -473,10 +523,6 @@ class Dataset(optimise.Optimiser):
         ## limit to matching data
         if limit_to_match is not None:
             self.limit_to_match(**limit_to_match)
-        ## dictionary to store global attributes
-        self.attributes = {}
-        if attributes is not None:
-            self.attributes |= attributes
 
 
     def __len__(self):
@@ -610,10 +656,11 @@ class Dataset(optimise.Optimiser):
             key,
             unique_keys,
             default=None,
+            vary=True,          # whether to set to be varied or not
             **limit_to_match_kwargs
     ):
-        """Find all unique_keys combinations and set the value of key to a
-        Parameter set to the first matching current value."""
+        """Find all unique_keys combinations and set the value of key
+        to a Parameter set to the first matching current value."""
         from .optimise import P
         unique_keys = tools.ensure_iterable(unique_keys)
         ## set a default value if key is not currently known
@@ -621,7 +668,7 @@ class Dataset(optimise.Optimiser):
             self[key] = default
         matches = self.matches(**limit_to_match_kwargs)
         for d,i in matches.unique_dicts_match(*unique_keys):
-            self.set_value(key,P(self[key,i][0],True),**d,**limit_to_match_kwargs)
+            self.set_value(key,P(self[key,i][0],vary),**d,**limit_to_match_kwargs)
 
     @optimise_method(format_multi_line=3)
     def set_spline(
@@ -1063,19 +1110,19 @@ class Dataset(optimise.Optimiser):
                 retval = np.arange(len(self))
         return retval
             
-    def get_combined_index_bool(self,*get_combined_index_args,**get_combined_index_kwargs):
-        """Combined specified index with match arguments as integer array. If
-        no data given the return None"""
-        raise DeprecationWarning('use get_combined_index(return_as="bool") instead')
-        index = self.get_combined_index(*get_combined_index_args,**get_combined_index_kwargs)
-        if index is None:
-            raise Exception('Cannot return bool array combined index if None.')
-        if np.isscalar(index):
-            raise Exception("Cannot return bool array for Single index.")
-        ## convert to boolean array
-        retval = np.full(len(self),False)
-        retval[index] = True
-        return retval
+    # def get_combined_index_bool(self,*get_combined_index_args,**get_combined_index_kwargs):
+        # """Combined specified index with match arguments as integer array. If
+        # no data given the return None"""
+        # raise DeprecationWarning('use get_combined_index(return_as="bool") instead')
+        # index = self.get_combined_index(*get_combined_index_args,**get_combined_index_kwargs)
+        # if index is None:
+            # raise Exception('Cannot return bool array combined index if None.')
+        # if np.isscalar(index):
+            # raise Exception("Cannot return bool array for Single index.")
+        # ## convert to boolean array
+        # retval = np.full(len(self),False)
+        # retval[index] = True
+        # return retval
 
     def keys(self):
         return list(self._data.keys())
@@ -1826,18 +1873,23 @@ class Dataset(optimise.Optimiser):
         return {key:self.get(key,'value',int(index)) for key in keys}
         
         
-    def rows(self,keys=None,*match_args,**match_kwargs):
+    def rows(
+            self,
+            keys=None,
+            subkeys=('value',),
+            **get_combined_index_kwargs
+    ):
         """Iterate value data row by row, returns as a dictionary of
         scalar values."""
         keys = tools.ensure_iterable(keys)
         if keys is None:
             keys = self.keys()
-        if len(match_args) + len(match_kwargs) == 0:
-            index = range(len(self))
-        else:
-            index = self.match(*match_args,**match_kwargs)
+        index = self.get_combined_index(
+            return_as='int',**get_combined_index_kwargs)
         for i in index:
-            yield {key:self.get(key,'value',i) for key in keys}
+            yield {(key if 'subkey' == 'value' else
+                    f'{key}:{subkey}'): self.get(key,subkey,i)
+                   for key,subkey in itertools.product(keys,subkeys)}
 
     def row_data(self,keys=None,index=None):
         """Iterate rows, returning data in a tuple (faster than
@@ -2044,6 +2096,7 @@ class Dataset(optimise.Optimiser):
                 'dtype':{'kind':'U'},
                 'memory':{'kind':'f','fmt':"0.1e"},
                 'units':{'kind':'U'},
+                'unique':{'kind':'i'},
                 'description':{'kind':'U'},
             },
         )
@@ -2060,9 +2113,9 @@ class Dataset(optimise.Optimiser):
                     d['dtype'] = str(self[key,subkey].dtype)
                     d['memory'] = sys.getsizeof(self._data[key][subkey])
                     total_memory += d['memory']
+                    d['unique'] = len(self.unique(key))
                     d['units'] = (self[key,'units'] if subkey == 'value' and self.is_known(key,'units') else '')
-                    d['description'] = (self[key,'description'] if subkey == 'value'
-                                        else self.vector_subkinds[subkey]['description'])
+                    d['description'] = (self[key,'description'] if subkey == 'value' else self.vector_subkinds[subkey]['description'])
                     data.append(d)
         description = []
         description.append(f'name: {self.name!r}')
@@ -2388,6 +2441,8 @@ class Dataset(optimise.Optimiser):
                     datai[key] = nan
             for key,val in datai.items():
                 data[key].append(val)
+        ## unflatten
+        data = _convert_flat_data_dict(data)
         ## add to self
         self.load_from_dict(data,flat=True)
 
@@ -2403,9 +2458,11 @@ class Dataset(optimise.Optimiser):
         tmpfile.write(string.encode())
         tmpfile.flush()
         tmpfile.seek(0)
-        data,load_from_dict_kwargs = self._load_from_text(
-            tmpfile.name,delimiter=delimiter,**load_kwargs)
-        self.load_from_dict(data,**load_from_dict_kwargs)
+        self.load_from_dict(
+            _load_from_text(
+                tmpfile.name,
+                delimiter=delimiter,
+                **load_kwargs))
 
     def load_from_lists(self,keys,*values):
         """Add many lines of data efficiently, with values possible
