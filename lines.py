@@ -531,6 +531,7 @@ class Generic(levels.Base):
     def plot_spectrum(
             self,
             *calculate_spectrum_args,
+            fig=None,
             ax=None,
             plot_kwargs=None,
             plot_labels=False,
@@ -540,9 +541,8 @@ class Generic(levels.Base):
     ):
         """Plot a nice cross section. If zkeys given then divide into multiple
         lines accordings."""
+        fig,ax = plotting.qfigax(fig,ax)
         ## deal with default args
-        if ax is None:
-            ax = plotting.gca()
         if plot_kwargs is None:
             plot_kwargs = {}
         ## calculate spectrum
@@ -577,6 +577,7 @@ class Generic(levels.Base):
     def plot_transmission_spectrum(
             self,
             *args,
+            fig=None,
             ax=None,
             plot_kwargs=None,
             zkeys=None,
@@ -584,9 +585,8 @@ class Generic(levels.Base):
     ):
         """Plot a nice cross section. If zkeys given then divide into multiple
         lines accordings."""
-        ## deal with default args
-        if ax is None:
-            ax = plotting.qax()
+        ## deal with input args
+        fig,ax = plotting.qfigax(fig,ax)
         if plot_kwargs is None:
             plot_kwargs = {}
         ## calculate spectrum
@@ -607,16 +607,16 @@ class Generic(levels.Base):
             xkey='ν',
             ykey='σ',
             zkeys=None,         # None or list of keys to plot as separate lines
+            fig=None,
             ax=None,
             plot_labels=True,
             plot_legend=True,
             **plot_kwargs # can be calculate_spectrum or plot kwargs
     ):
         """No  lineshapes, just plot as sticks."""
-        if ax is None:
-            ax = plotting.plt.gca()
+        fig,ax = plotting.qfigax(fig,ax)
         if zkeys is None:
-            zkeys = self.default_zkeys
+            zkeys = [key for key in self.default_zkeys if self.is_known(key)]
         ## compute keys before dividing into z matches
         self.assert_known(xkey)
         self.assert_known(ykey)
@@ -1276,12 +1276,13 @@ class Generic(levels.Base):
                     (0,-1),
                     (2,0),
             ):
-                ## look for electric-dipole allowed Δef/ΔJ transitions
+                ## look transitions thatare energetically positive and
+                ## have electric-dipole allowed Δef/ΔJ
                 for ju in tiu:
                     for jl in til[
-                            (np.abs(lower_level['ef',til]-upper_level['ef',ju]) == Δefabs)
-                            &
-                            ((upper_level['J',ju]-lower_level['J',til]) == ΔJ)
+                            (upper_level['E',ju] > lower_level['E',til] )
+                            & (np.abs(lower_level['ef',til]-upper_level['ef',ju]) == Δefabs)
+                            & ((upper_level['J',ju]-lower_level['J',til]) == ΔJ)
                     ]:
                         ku.append(ju)
                         kl.append(jl)
