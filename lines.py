@@ -1846,6 +1846,7 @@ class LinearTriatom(Linear):
 def generate_from_levels(
         upper_level,
         lower_level,
+        name=None,
         *args_generate_from_levels,
         **kwargs_generate_from_levels
 ):
@@ -1860,7 +1861,9 @@ def generate_from_levels(
         if not hasattr(lines,classtype):
             raise Exception(f'Unknown lines class: {classtype!r}')
     ## make obj
-    retval = getattr(lines,classtype)()
+    if name is None:
+        name = f'generate_from_levels_{upper_level.name}_{lower_level.name}'
+    retval = getattr(lines,classtype)(name=name)
     retval.generate_from_levels(upper_level,lower_level,*args_generate_from_levels,**kwargs_generate_from_levels)
     # retval.name = f'generated_from_{upper_level.name}_and_{lower_level.name}'
     retval.name = f'generated_from_level'
