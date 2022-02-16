@@ -647,7 +647,7 @@ def band_fvalue_to_transition_moment(fv,νv,Λp,Λpp):
 
 def band_strength_to_band_fvalue(Sv,νv,Λp,Λpp):
     """Convert band summed linestrength to a band-summed f-value."""
-    return(Sv*3.038e-6*νv*(2-my.kronecker_delta(0,Λp+Λpp))/(2-my.kronecker_delta(0,Λpp)))
+    return(Sv*3.038e-6*νv*(2-tools.kronecker_delta(0,Λp+Λpp))/(2-tools.kronecker_delta(0,Λpp)))
 
 def band_fvalue_to_band_strength(fv,νv,Λp,Λpp):
     """Convert band summed linestrength to a band-summed f-value."""
@@ -656,12 +656,12 @@ def band_fvalue_to_band_strength(fv,νv,Λp,Λpp):
 def band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp):
     """Convert band summed linestrength to a band-averaged emission
     rate."""
-    return(2.026e-6*νv**3*Sv *(2-my.kronecker_delta(0,Λp+Λpp)) /(2-my.kronecker_delta(0,Λp)))
+    return(2.026e-6*νv**3*Sv *(2-tools.kronecker_delta(0,Λp+Λpp)) /(2-tools.kronecker_delta(0,Λp)))
 
 def band_emission_rate_to_band_strength(Aev,νv,Λp,Λpp):
     """Convert band summed linestrength to a band-averaged emission
     rate."""
-    return(Aev/(2.026e-6*νv**3 *(2-my.kronecker_delta(0,Λp+Λpp)) /(2-my.kronecker_delta(0,Λp))))
+    return(Aev/(2.026e-6*νv**3 *(2-tools.kronecker_delta(0,Λp+Λpp)) /(2-tools.kronecker_delta(0,Λp))))
 
 def band_emission_rate_to_band_fvalue(Aev,νv,Λp,Λpp):
     return(band_strength_to_band_fvalue(

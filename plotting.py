@@ -2232,7 +2232,7 @@ def set_ticks(
        for label in axis.get_ticklabels():
            label.set_size(fontsize)
 
-def rotate_tick_labels(x_or_y,rotation=90,ax=None):
+def rotate_tick_labels(x_or_y='x',rotation=90,ax=None):
     if ax is None: ax=plt.gca()
     assert x_or_y in ('x','y')
     if x_or_y=='x':
@@ -2240,7 +2240,7 @@ def rotate_tick_labels(x_or_y,rotation=90,ax=None):
         verticalalignment = 'top'
         horizontalalignment = 'right'
     elif x_or_y=='y':
-        labels = ax.xaxis.get_ticklabels()
+        labels = ax.yaxis.get_ticklabels()
         verticalalignment = 'center'
         horizontalalignment = 'right'
     else:

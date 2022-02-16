@@ -329,7 +329,7 @@ def _f1(self,Aev,ν,Λp,Λpp):
     return(Sv)
 prototypes['Sv'] =dict(description="Band strength, ⟨vp|Re|vpp⟩**2",units="au", kind='f',  fmt='<10.5e',cast=cast_abs_float_array, infer=[
     (('Sij','SJ'), lambda self,Sij,SJ: Sij/SJ),
-    ( ('μ',),lambda self,μ:μ**2),
+    ( ('μv',),lambda self,μv:μv**2),
     (('fv','ν','Λp','Λpp'),lambda self,fv,ν,Λp,Λpp: band_fvalue_to_band_strength(fv,ν,Λp,Λpp)),
     (('fv','νv','Λp','Λpp'),lambda self,fv,νv,Λp,Λpp : band_fvalue_to_band_strength(fv,νv,Λp,Λpp)),
     (('Aev','ν','Λp','Λpp'),lambda self,Aev,ν,Λp,Λpp : band_emission_rate_to_band_strength(Aev,ν,Λp,Λpp )),
@@ -340,8 +340,8 @@ def _f1(self,f,SJ,J_l,Λ_u,Λ_l):
     fv[(Λ_l==0)&(Λ_u!=0)] *= 2
     return fv
 prototypes['fv'] = dict(description="Band f-value",units="dimensionless",kind='f',fmt='<10.5e',default_step=1e-5,cast=cast_abs_float_array,infer=[
-    (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  band_strength_to_band_fvalue(Sv,ν, Λ_u,Λ_l)),
-    ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
+    (('Sv','ν','Λ_u','Λ_l'),  lambda self,Sv,ν,Λ_u,Λ_l :  convert.band_strength_to_band_fvalue(Sv,ν,Λ_u,Λ_l)),
+    ( ('Sv','νv','Λ_u','Λ_l'), lambda self,Sv,νv,Λ_u,Λ_l:  convert.band_strength_to_band_fvalue(Sv,νv,Λ_u,Λ_l)),
     ( ('f','SJ','J_l','Λ_u','Λ_l'), _f1,)])
 prototypes['Aev'] =dict(description="Einstein A coefficient / emission rate averaged over a band.",units="s-1", kind='f',  fmt='<10.5e', infer=[(('Sv','ν' ,'Λp','Λpp'), lambda self,Sv,ν ,Λp,Λpp: band_strength_to_band_emission_rate(Sv,ν ,Λp,Λpp)),( ('Sv','νv','Λp','Λpp'), lambda self,Sv,νv,Λp,Λpp: band_strength_to_band_emission_rate(Sv,νv,Λp,Λpp),)],) 
 prototypes['σv'] =dict(description="Integrated cross section of an entire band.",units="cm2.cm-1", kind='f',  fmt='<10.5e', infer=[(('fv',),lambda self,fv: band_fvalue_to_band_cross_section(fv),)],)
@@ -1512,7 +1512,7 @@ class Linear(Generic):
         level_class=levels.Linear,
         base_class=Generic,
         new_keys=(
-            'fv', 'νv', 'μv',
+            'fv', 'νv', 'μv','Sv',
             'FCfactor','Aev',
             'SJ','ΔΣ','ΔΩ','ΔΛ','ΔN',
             'electric_dipole_allowed',
