@@ -2134,15 +2134,16 @@ class Model(Optimiser):
     def output_data_to_directory(
             self,
             directory,
-            output_model_residual=False,
             output_transition_linelists=False,
-            output_individual_optical_depths=False,
     ):
         """Save various files from this optimsiation to a directory."""
         tools.mkdir(directory)
         ## model data
         if self.x is not None and self.y is not None:
-            t = Spectrum(ν=self.x,I=self.y,description=f'Model spectrum of {self.name}')
+            t = Spectrum(description=f'Model spectrum of {self.name}')
+            t['ν'] = self.x
+            t['I'] = self.y
+            t['I','error'] = self.yexp-self.y
             t.save(f'{directory}/spectrum',filetype='directory')
         if self._figure is not None:
             ## svg / pdf are the fastest output formats. Significantly

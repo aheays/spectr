@@ -357,11 +357,36 @@ class Dataset(optimise.Optimiser):
     ## same length as 'value'. All subkinds other than value must have
     ## a default.
     vector_subkinds = {
-        'value' :  { 'description' : 'Value of this data'                          }           , 
-        'unc'   :  { 'description' : 'Uncertainty'                                 , 'default' : 0.0   , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '0.1e' ,  }  , 
-        'step'  :  { 'description' : 'Default numerical differentiation step size' , 'default' : 1e-8  , 'kind' : 'f' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : lambda x                           : np.abs(x , dtype=float) , 'fmt' : '0.1e' ,  }  , 
-        'vary'  :  { 'description' : 'Whether to vary during optimisation'         , 'default' : False , 'kind' : 'b' , 'valid_kinds' : ('f'     , 'a')         , 'cast'       : tools.convert_to_bool_vector_array , 'fmt'    : ''           ,       }        , 
-        'ref'   :  { 'description' : 'Source reference'                            , 'default' : nan   , 'kind' : 'U' , 'cast'        : lambda x : np.array(x , dtype='U20') , 'fmt'                              : 's'      ,              }       , 
+        'value':    { 'description': 'Value of this data' }, 
+        'unc':      { 'description': 'Uncertainty',
+                      'default': 0.0,
+                      'kind': 'f',
+                      'valid_kinds': ('f', 'a'),
+                      'cast': lambda x: np.abs(x, dtype=float),
+                      'fmt': '0.1e', }, 
+        'step':     { 'description': 'Default numerical differentiation step size', 
+                      'default': 1e-8, 
+                      'kind': 'f', 
+                      'valid_kinds': ('f', 'a'), 
+                      'cast': lambda x: np.abs(x, dtype=float),
+                      'fmt': '0.1e', }, 
+        'vary':     { 'description': 'Whether to vary during optimisation',
+                      'default': False,
+                      'kind': 'b',
+                      'valid_kinds': ('f', 'a'),
+                      'cast': tools.convert_to_bool_vector_array,
+                      'fmt': '', }, 
+        'ref':      { 'description': 'Source reference',
+                      'default': nan,
+                      'kind': 'U',
+                      'cast': lambda x: np.array(x, dtype='U20'),
+                      'fmt': 's', }, 
+        'error':    { 'description': 'Residual error',
+                      'default': nan,
+                      'kind': 'f',
+                      'valid_kinds': ('f', 'a'),
+                      'cast': lambda x: np.array(x, dtype=float),
+                      'fmt': '+0.12e',}, 
     }
     assert np.all(['default' in val or key == 'value' for key,val in vector_subkinds.items()])
 
@@ -3194,5 +3219,11 @@ def copy_from(dataset,*args,**kwargs):
     retval = make(classname,*args,copy_from=dataset,**kwargs)
     return retval
 
+def decode_flat_key(key):
+    if r:=re.match(r'([^:]+):([^:]+)',key):
+        key,subkey = r.groups()
+    else:
+        key,subkey = key,'value'
+    return key,subkey
 
 
