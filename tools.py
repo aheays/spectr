@@ -524,33 +524,34 @@ def mkdir(
         trash_existing=False,
         override_trash_existing_safety_check=False,):
     """Create directory tree (or multiple) if it doesn't exist."""
-    ## if multiple loop through them
     if len(directories)>1:
+        ## multiple directories then loop through them
         for directory in directories:
-            mkdir(directory)
-        return
-    ## if single then do it
-    directory = expand_path(directories[0])
-    if os.path.isdir(directory):
-        if trash_existing:
-            ## This deletes the directory contents but keeps the
-            ## directory.  Much slower on some filesystems but allows
-            ## automatic file updates in emacs. A very poor test to
-            ## avoid destructive mistakes
+            mkdir(directory,
+                  trash_existing=trash_existing,
+                  override_trash_existing_safety_check=override_trash_existing_safety_check)
+    else:
+        ## expand file name
+        directory = expand_path(directories[0])
+        ## trash first if requested
+        if trash_existing and os.path.isdir(directory):
+            ## A very poor test to avoid destructive mistakes
             if directory in ('/','/home','.','./','../') and not override_trash_existing_safety_check:
                 raise Exception(f'Will not trash directory {repr(directory)}. Set override_trash_existing_safety_check=True to proceed. ')
-            # for t in glob(f'{directory}/*'):
             trash(directory)
-        return
-    ## walk parent directories making if necessary
-    partial_directories = directory.split('/')
-    for i in range(len(partial_directories)):
-        partial_directory = '/'.join(partial_directories[0:i+1])
-        if partial_directory=='' or os.path.isdir(partial_directory):
-            continue
-        else:
-            if os.path.exists(partial_directory): raise Exception("Exists and is not a directory: "+partial_directory)
-            os.mkdir(partial_directory)
+        ## do nothing if it already exists
+        if os.path.isdir(directory):
+            return
+        ## walk parent directories making if necessary
+        partial_directories = directory.split('/')
+        for i in range(len(partial_directories)):
+            partial_directory = '/'.join(partial_directories[0:i+1])
+            if partial_directory=='' or os.path.isdir(partial_directory):
+                continue
+            else:
+                if os.path.exists(partial_directory):
+                    raise Exception("Exists and is not a directory: "+partial_directory)
+                os.mkdir(partial_directory)
 
 #####################
 ## text formatting ##
