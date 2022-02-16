@@ -494,13 +494,14 @@ class Optimiser:
             self,
             directory,
             residual_format=None, # 'npy' (default) or 'text'
+            trash_existing=True,
     ):
         """Save results of model and optimisation to a directory. WILL
         FIRST DELETE CONTENTS OF DIRECTORY!"""
         if residual_format is None:
             residual_format = 'npy'
         directory = tools.expand_path(directory)
-        tools.mkdir(directory,trash_existing=True)
+        tools.mkdir(directory,trash_existing=trash_existing)
         ## output self and all suboptimisers into a flat subdirectory
         ## structure
         optimisers = [t for t in self.get_all_suboptimisers()
@@ -1103,7 +1104,7 @@ class Optimiser:
             self._ncpus = ncpus
         ## get residual at current solution
         self.construct()
-        residual = self.residual
+        residual = self.total_residual
         ## get current parameter
         parameters,number_of_parameters,all_parameters = self._get_parameters()
         if verbose or self.verbose:
