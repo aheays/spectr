@@ -543,14 +543,11 @@ class Optimiser:
         for optimiser in optimisers:
             for suboptimiser in optimiser._suboptimisers:
                 if suboptimiser.include_in_output:
-                    tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/')
-                    try:
-                        os.symlink(
-                            f'../../{suboptimiser._unique_name}',
-                            f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
-                            target_is_directory=True)
-                    except Exception as err:
-                        warnings.warn(f'{self.name}: save_to_directory: could not create symlink to {suboptimiser._unique_name!r}, with error message: {err!r}')
+                    tools.mkdir(f'{directory}/{optimiser._unique_name}/suboptimisers/',trash_existing= True)
+                    os.symlink(
+                        f'../../{suboptimiser._unique_name}',
+                        f'{directory}/{optimiser._unique_name}/suboptimisers/{suboptimiser._unique_name}',
+                        target_is_directory=True)
 
     def plot_residual(self,fig=None,**plot_kwargs):
         """Plot residual error."""
