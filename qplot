@@ -134,10 +134,13 @@ for filename in args.filenames:
                 t = ax.set_title(filename)
                 t.set_in_layout(False)
 
-        ## load data into a dictionary of arrays -- REPLACE ONE DAY
-        ## WITH DATASET.LOAD
+        ## load something in a Dataset format
         root,extension = os.path.splitext(filename)
-        if args.xkey is not None or extension in ('h5','hdf5',):
+        if (
+                args.xkey is not None
+                or extension in ('h5','hdf5',)
+                or os.path.isdir(filename)
+        ):
             ## load as dictionary
             kwargs = {}
             if args.labels_commented is not None:
@@ -187,8 +190,10 @@ for filename in args.filenames:
 
     ## get default ykeys
     if len(args.ykeys) == 0:
-        xlen = len(data[args.xkey])
-        args.ykeys = [key for key in list(data.keys()) if key!=args.xkey and len(data[key])==xlen]
+        if len(data.keys()) == 2:
+            args.ykeys = [key for key in list(data.keys()) if key!=args.xkey]
+        else:
+            raise Exception(f'No ykeys specified, options are: {data.keys()!r}')
 
     ## unit conversions
     if args.xunits is not None:
@@ -196,8 +201,6 @@ for filename in args.filenames:
     if args.yunits is not None:
         for key in args.ykeys:
             data[key] = units(data[key],args.yunits[0],args.yunits[1])
-
-    data.describe()             #  DEBUG
 
     ## expand keys to keys and subkeys
     xkey,xsubkey = dataset.decode_flat_key(args.xkey)
@@ -224,6 +227,8 @@ for filename in args.filenames:
             linestyle = args.linestyle
         if args.color is not None:
             color = args.color
+        ## sort by xkey
+        data.sort(xkey)
         ## data to plot
         x =  data[xkey,xsubkey]
         y =  data[ykey,ysubkey]
@@ -254,7 +259,7 @@ for filename in args.filenames:
             if dx is None and dy is None:
                 ax.plot(x,y,**kwargs)
             else:
-                ax.plot(x,y, yerr=dy,xerr=dx,**kwargs)
+                ax.errorbar(x,y, yerr=dy,xerr=dx,**kwargs)
         elif args.plot_library=='fastplot':
             plt.plot(x,y,label=label_prefix+ykey_in,color=color,)
 
