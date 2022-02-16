@@ -618,7 +618,6 @@ class Dataset(optimise.Optimiser):
             value,
             default=None,
             _cache=None,
-            optimise=True,
             **get_combined_index_kwargs
     ):
         """Set a value and it will be updated every construction and may be a
@@ -642,7 +641,7 @@ class Dataset(optimise.Optimiser):
                 self.set(key,'value',value,index=index,set_changed_only=True)
                 self.set(key,'unc' ,value.unc ,index=index,set_changed_only=True)
         else:
-            ## constant valuem, set if self has changed
+            ## constant value, set if self has changed
             if (
                     self._clean_construct
                     or self[key,'_modify_time'] > self._last_construct_time
@@ -653,22 +652,33 @@ class Dataset(optimise.Optimiser):
 
     def set_value_to_current(
             self,
-            key,
-            unique_keys,
-            default=None,
+            key,                # key to set
+            unique_keys,        # set rows matching these combinations to a common value
+            default=None,       # set key to this value rather than current value
             vary=True,          # whether to set to be varied or not
+            step=None,          # optimisation step
+            bounds=None,        # optimisation bounds
             **limit_to_match_kwargs
     ):
         """Find all unique_keys combinations and set the value of key
         to a Parameter set to the first matching current value."""
         from .optimise import P
-        unique_keys = tools.ensure_iterable(unique_keys)
         ## set a default value if key is not currently known
-        if not self.is_known(key) and default is not None:
-            self[key] = default
+        if not self.is_known(key):
+            if default is None:
+                raise Exception(f'Key {key!r} is not known and default value is not set.')
+            else:
+                self[key] = default
         matches = self.matches(**limit_to_match_kwargs)
+        unique_keys = tools.ensure_iterable(unique_keys)
         for d,i in matches.unique_dicts_match(*unique_keys):
-            self.set_value(key,P(self[key,i][0],vary),**d,**limit_to_match_kwargs)
+            if default is None:
+                value = self[key,i][0]
+            else:
+                value = default
+            self.set_value(
+                key,P(value,vary,step,bounds=bounds),
+                **d,**limit_to_match_kwargs)
 
     @optimise_method(format_multi_line=3)
     def set_spline(
@@ -943,7 +953,15 @@ class Dataset(optimise.Optimiser):
     row_modify_time = property(lambda self:self._row_modify_time[:self._length])
     global_modify_time = property(lambda self:self._global_modify_time)
 
-    def get(self,key,subkey='value',index=None,units=None,match=None,**match_kwargs):
+    def get(
+            self,
+            key,
+            subkey='value',
+            index=None,
+            units=None,
+            match=None,
+            **match_kwargs
+    ):
         """Get value for key or (key,subkey). This is the data in place, not a
         copy."""
         index = self.get_combined_index(index,match,**match_kwargs)
