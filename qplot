@@ -197,10 +197,18 @@ for filename in args.filenames:
         for key in args.ykeys:
             data[key] = units(data[key],args.yunits[0],args.yunits[1])
 
+    data.describe()             #  DEBUG
+
+    ## expand keys to keys and subkeys
+    xkey,xsubkey = dataset.decode_flat_key(args.xkey)
+    ykeys_ysubkeys = [dataset.decode_flat_key(key) for key in args.ykeys]
+    
     ## check keys exist
-    for key in [args.xkey]+args.ykeys:
+    for key,subkey in [(xkey,xsubkey)]+ykeys_ysubkeys:
         if not data.is_known(key):
             raise Exception(f'Unknown key {key!r}, known keys are {data.known_keys()!r}') 
+        elif not data.is_known(key,subkey):
+            raise Exception(f'Unknown (key,subkey) {(key,subkey)!r}, known keys are {data.known_keys()!r}') 
 
     if args.verbose:
         print( '\ndata:')
@@ -210,14 +218,23 @@ for filename in args.filenames:
         print(f'ykeys: {args.ykeys}')
 
     ## loop through all ykeys and plot
-    for ykey in args.ykeys:
+    for ykey_in,(ykey,ysubkey) in zip(args.ykeys,ykeys_ysubkeys):
         color,linestyle = plotting.newcolorlinestyle()
         if args.linestyle is not None:
             linestyle = args.linestyle
         if args.color is not None:
             color = args.color
         ## data to plot
-        x,y =  data[args.xkey],data[ykey]
+        x =  data[xkey,xsubkey]
+        y =  data[ykey,ysubkey]
+        if xsubkey == 'value' and data.is_set(xkey,'unc'):
+            dx = data[xkey,'unc']
+        else:
+            dx = None
+        if ysubkey == 'value' and data.is_set(ykey,'unc'):
+            dy = data[ykey,'unc']
+        else:
+            dy = None
         ## shift by offset if requested
         if args.offset_plots!=0:
             y = y+plot_count*args.offset_plots
@@ -227,9 +244,19 @@ for filename in args.filenames:
         ## the actual plot command
         plot_count += 1
         if args.plot_library=='matplotlib':
-            ax.plot(x,y,label=label_prefix+ykey,color=color,linestyle=linestyle,linewidth=args.linewidth,marker=args.marker)
+            kwargs = dict(
+                label=label_prefix+ykey_in,
+                color=color,
+                linestyle=linestyle,
+                linewidth=args.linewidth,
+                marker=args.marker
+            )
+            if dx is None and dy is None:
+                ax.plot(x,y,**kwargs)
+            else:
+                ax.plot(x,y, yerr=dy,xerr=dx,**kwargs)
         elif args.plot_library=='fastplot':
-            plt.plot(x,y,label=label_prefix+ykey,color=color,)
+            plt.plot(x,y,label=label_prefix+ykey_in,color=color,)
 
 if plot_count == 0:
     raise Exception('There is nothing to plot.')
