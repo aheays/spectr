@@ -519,11 +519,6 @@ class Model(Optimiser):
             iexp = _cache['iexp']
             self.xexp = self.experiment.x[iexp]
             self.yexp = self.experiment.y[iexp]
-            ## record whether this is a different x-grid to the
-            ## previous model construct
-            self._x_has_changed = ('previous_x' not in _cache
-                                   or len(self.x) != len(_cache['previous_x'])
-                                   or np.any(self.x!=_cache['previous_x']))
             ## get model x grid, perhaps interpolate to a finer grid
             if self.interpolate_to_grid is None:
                 self.x = self.xexp
@@ -544,8 +539,13 @@ class Model(Optimiser):
             self._compute_residual = True
         else:
             raise Exception('One of initialisation arguments "experiment" or "x" required to define the x-grid.')
+        ## record whether this is a different x-grid to the
+        ## previous model construct
+        self._x_has_changed = ('previous_x' not in _cache
+                               or len(self.x) != len(_cache['previous_x'])
+                               or np.any(self.x!=_cache['previous_x']))
+        _cache['previous_x'] = copy(self.x)
         ## make zero y
-        _cache['previous_x'] = self.x
         self.y = np.zeros(self.x.shape,dtype=float)
 
     def __len__(self):
