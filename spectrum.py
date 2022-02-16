@@ -126,7 +126,7 @@ class Experiment(Optimiser):
                 pprint(self.experimental_parameters)
             _cache['x'],_cache['y'] = x,y
         ## every iteration make a copy -- more memory but survives
-        ## in-place other changes
+        ## in-place changes
         self.x,self.y = copy(_cache['x']),copy(_cache['y']) 
 
     def output_data_to_directory(self,directory):
@@ -519,6 +519,11 @@ class Model(Optimiser):
             iexp = _cache['iexp']
             self.xexp = self.experiment.x[iexp]
             self.yexp = self.experiment.y[iexp]
+            ## record whether this is a different x-grid to the
+            ## previous model construct
+            self._x_has_changed = ('previous_x' not in _cache
+                                   or len(self.x) != len(_cache['previous_x'])
+                                   or np.any(self.x!=_cache['previous_x']))
             ## get model x grid, perhaps interpolate to a finer grid
             if self.interpolate_to_grid is None:
                 self.x = self.xexp
@@ -540,6 +545,7 @@ class Model(Optimiser):
         else:
             raise Exception('One of initialisation arguments "experiment" or "x" required to define the x-grid.')
         ## make zero y
+        _cache['previous_x'] = self.x
         self.y = np.zeros(self.x.shape,dtype=float)
 
     def __len__(self):
@@ -680,6 +686,7 @@ class Model(Optimiser):
             use_cache=None,     # defaults to using the cache
             match=None,         # only include lines matching keys:vals in this dictionary
             xedge=1, # include lines within this much of the domain edges
+            add_infer_functions=None,
             _cache=None,
             **set_keys_vals
     ):
@@ -701,6 +708,9 @@ class Model(Optimiser):
             keys = [key for key in line.explicitly_set_keys() if key not in set_keys_vals]
             line_copy = line.copy(index=imatch,keys=keys,optimise=True)
             line_copy.include_in_output = False
+            if add_infer_functions is not None:
+                for key,dependencies,function in add_infer_functions:
+                    line_copy.add_infer_function(key,dependencies,function)
             if verbose is not None:
                 line_copy.verbose = verbose
             if verbose:
@@ -743,10 +753,21 @@ class Model(Optimiser):
         if len(line_copy) == 0:
             return
         ## update spectrum if line_copy has changed
-        if line_copy._last_construct_time > self._last_construct_time:
+        if (
+                line_copy._last_construct_time > self._last_construct_time
+                or not use_cache
+                or self._x_has_changed
+        ):
             line_copy_prev = _cache['line_copy_prev']
             _calculate_spectrum = _cache['_calculate_spectrum']
-            if self._clean_construct or not use_cache:
+            if (
+                    ## firt construct
+                    self._clean_construct
+                    ## no cache requested
+                    or not use_cache
+                    ## x grid has changed
+                    or self._x_has_changed
+                ):
                 ##  full calculation
                 if verbose:
                     print(f'add_line: {line.name}: {self._clean_construct=} {use_cache=}, full recalculation')
