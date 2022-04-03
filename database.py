@@ -4,6 +4,8 @@ from functools import lru_cache
 import warnings
 from pprint import pprint
 from copy import copy,deepcopy
+import os
+import re
 
 ## non-standard library
 import numpy as np
@@ -20,7 +22,12 @@ from . import kinetics
 ## get a dynamic absolute path to the data directory.  Requires import
 ## of parent module, which is a bit ugly.
 import spectr
+
+## most data stored here
 data_directory = spectr.__path__[0]+'/data'
+
+## SOLEIL spectra stored here
+soleil_data_directory = '/home/heays/exp/SOLEIL' 
 
 @tools.vectorise(cache=True,dtype='U30')
 def normalise_species(species):
@@ -268,3 +275,135 @@ def get_hitran_lines(species,**match):
     """Load spectral lines from reference data."""
     from . import hitran
     return hitran.get_lines(species,**match)
+
+
+def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
+    """ Load soleil spectrum from file with given path."""
+    ## resolve soleil filename
+    for trial_filename in (
+            filename,
+            tools.expand_path(filename),
+            f'{soleil_data_directory}/data/{filename}.wavenumbers.hdf5',
+            f'{soleil_data_directory}/data/{filename}.wavenumbers.h5',
+            f'{soleil_data_directory}/data/{filename}.h5',
+            ):
+        if os.path.exists(trial_filename):
+            filename = trial_filename
+            break
+    else:
+        ## else look for unique prefix in scan database
+        t = dataset.load(f'{soleil_data_directory}/summary_of_scans.psv')
+        i = tools.find_regexp(r'^'+re.escape(filename)+'.*',t['filename'])
+        if len(i)==1:
+            filename = t['filename'][int(i)]
+            filename = f'{soleil_data_directory}/scans/{filename}.h5'
+        else:
+            raise Exception(f"Could not find SOLEIL spectrum: {repr(filename)}")
+    extension = os.path.splitext(filename)[1]
+    ## get header data if possible, not possible if an hdf5 file is used.
+    header = dict(filename=filename,header=[])
+    if extension in ('.TXT','.wavenumbers'): 
+        with open(filename,'r',encoding='latin-1') as fid:
+            header['header'] = []
+            while True:
+                line = fid.readline()[:-1]
+                if re.match(r'^ *[0-9.eE+-]+[, ]+[0-9.eE+-]+ *$',line): break # end of header
+                header['header'].append(line) # save all lines to 'header'
+                ## post-processing zero-adding leads to an
+                ## interpolation of data by this factor
+                r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
+                if r:
+                    header['interpolation_factor'] = float(r.group(1))
+                ## the resolution before any interpolation
+                r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
+                if r: header['ds'] = float(r.group(1))
+                ## NMAX parameter indicates that the spectrometer is
+                ## being run at maximum resolution. This is not an
+                ## even power of two. Then the spectrum is zero padded
+                ## to have 2**21 points. This means that there is an
+                ## additional interpolation factor of 2**21/NMAX. This
+                ## will likely be non-integer.
+                r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
+                if r:
+                    header['interpolation_factor'] *= 2**21/float(r.group(1))
+                ## extract pressure from header
+                r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
+                if r:
+                    header['date_time'] = r.group(1)
+                    header['pressure_pirani'] = float(r.group(2))
+                    header['pressure_baratron'] = float(r.group(3))
+            header['header'] = '\n'.join(header['header'])
+            ## compute instrumental resolution, FWHM
+    elif extension == '.h5':
+        ## newer binary format 2022-04-04
+        data = tools.hdf5_to_dict(filename)
+        header = data['attributes']
+    elif extension == '.hdf5':
+        ## older binary format 2022-04-04
+        data = tools.hdf5_to_dict(filename)
+        header['header'] = data['README']
+        for line in header['header'].split('\n'):
+            ## post-processing zero-adding leads to an
+            ## interpolation of data by this factor
+            r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
+            if r:
+                header['interpolation_factor'] = float(r.group(1))
+            ## the resolution before any interpolation
+            r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
+            if r: header['ds'] = float(r.group(1))
+            ## NMAX parameter -- see above
+            r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
+            if r:
+                header['interpolation_factor'] *= 2**21/float(r.group(1))
+            ## extract pressure from header
+            r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
+            if r:
+                header['date_time'] = r.group(1)
+                header['pressure_pirani'] = float(r.group(2))
+                header['pressure_baratron'] = float(r.group(3))
+    else:
+        raise Exception(f"bad extension: {repr(extension)}")
+    ## compute instrumental resolution, FWHM
+    header['sinc_fwhm'] = 1.2*header['interpolation_factor']*header['ds'] 
+    ## get spectrum
+    if extension=='.TXT':
+        x,y = [],[]
+        data_started = False
+        for line in tools.file_to_lines(filename,encoding='latin-1'):
+            r = re.match(r'^([0-9]+),([0-9.eE+-]+)$',line) # data point line
+            if r:
+                data_started = True # header is passed
+                x.append(float(r.group(1))),y.append(float(r.group(2))) # data point
+            else:
+                if data_started: break            # end of data
+                else: continue                    # skip header line
+        x,y = np.array(x)*header['ds'],np.array(y)
+    elif extension=='.wavenumbers':
+        x,y = tools.file_to_array(filename,unpack=True,comments='#',encoding='latin-1')
+    elif extension == '.h5':
+        ## newer binary format 2022-04-04
+        # data = tools.hdf5_to_dict(filename)
+        x = data['data']['ν']['value']
+        y = data['data']['I']['value']
+    elif extension == '.hdf5':
+        ## older binary format 2022-04-04
+        # data = tools.hdf5_to_dict(filename)
+        x,y = data['data'].transpose()
+    else:
+        raise Exception(f"bad extension: {repr(extension)}")
+    ## process a bit. Sort and remove HeNe line profile and jitter
+    ## estimate. This is done assumign the spectrum comes
+    ## first. and finding the first index were the wavenumber
+    ## scale takes a backward step
+    if remove_HeNe:
+        i = x>31600
+        x,y = x[i],y[i]
+    t = tools.find(np.diff(x)<0)
+    if len(t)>0:
+        i = t[0]+1 
+        x,y = x[:i],y[:i]
+    ## get x range
+    header['xmin'],header['xmax'] = x.min(),x.max()
+    header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
+    return (x,y,header)
+

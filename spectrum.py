@@ -253,7 +253,7 @@ class Experiment(Optimiser):
         if 'has_run' in _cache:
             return
         _cache['has_run'] = True
-        x,y,header = load_soleil_spectrum_from_file(filename)
+        x,y,header = database.load_soleil_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
         self.experimental_parameters['data_source'] = 'DESIRS FTS'
         self.experimental_parameters.update(header)
@@ -288,7 +288,7 @@ class Experiment(Optimiser):
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
         if self._clean_construct:
-            x,y,header = load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
+            x,y,header = database.load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
         ## get signum convolution kernel
@@ -1897,7 +1897,7 @@ class Model(Optimiser):
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
         if self._clean_construct:
-            x,y,header = load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
+            x,y,header = database.load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
         ## get signum convolution kernel if it is the first run or one
@@ -2154,125 +2154,6 @@ class Model(Optimiser):
             tools.mkdir_if_necessary(directory+'/transitions')
             for transition in self.absorption_transitions:
                 transition.save_to_file(directory+'/transitions/'+transition.name+'.h5')
-
-def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
-    """ Load soleil spectrum from file with given path."""
-    ## resolve soleil filename
-    if os.path.exists(tools.expand_path(filename)):
-        ## filename is an actual path to a file
-        filename = tools.expand_path(filename)
-    elif os.path.exists(f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.hdf5'):
-        ## filename is a scan base name in default data directory
-        filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.hdf5'
-    elif os.path.exists(f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'):
-        ## filename is a scan base name in default data directory
-        filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'
-    else:
-        ## else look for unique prefix in scan database
-        # t = tools.sheet_to_dict('/home/heays/exp/SOLEIL/summary_of_scans.rs',comment='#')
-        t = dataset.load('/home/heays/exp/SOLEIL/summary_of_scans.rs')
-        i = tools.find_regexp(r'^'+re.escape(filename)+'.*',t['filename'])
-        if len(i)==1:
-            filename = t['filename'][int(i)]
-            filename = f'/home/heays/exp/SOLEIL/scans/{filename}.wavenumbers.h5'
-        else:
-            raise Exception(f"Could not find SOLEIL spectrum: {repr(filename)}")
-    extension = os.path.splitext(filename)[1]
-    ## get header data if possible, not possible if an hdf5 file is used.
-    header = dict(filename=filename,header=[])
-    if extension in ('.TXT','.wavenumbers'): 
-        with open(filename,'r',encoding='latin-1') as fid:
-            header['header'] = []
-            while True:
-                line = fid.readline()[:-1]
-                if re.match(r'^ *[0-9.eE+-]+[, ]+[0-9.eE+-]+ *$',line): break # end of header
-                header['header'].append(line) # save all lines to 'header'
-                ## post-processing zero-adding leads to an
-                ## interpolation of data by this factor
-                r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
-                if r:
-                    header['interpolation_factor'] = float(r.group(1))
-                ## the resolution before any interpolation
-                r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
-                if r: header['ds'] = float(r.group(1))
-                ## NMAX parameter indicates that the spectrometer is
-                ## being run at maximum resolution. This is not an
-                ## even power of two. Then the spectrum is zero padded
-                ## to have 2**21 points. This means that there is an
-                ## additional interpolation factor of 2**21/NMAX. This
-                ## will likely be non-integer.
-                r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
-                if r:
-                    header['interpolation_factor'] *= 2**21/float(r.group(1))
-                ## extract pressure from header
-                r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
-                if r:
-                    header['date_time'] = r.group(1)
-                    header['pressure_pirani'] = float(r.group(2))
-                    header['pressure_baratron'] = float(r.group(3))
-            header['header'] = '\n'.join(header['header'])
-            ## compute instrumental resolution, FWHM
-    elif extension in ('.hdf5','.h5'): # expect header stored in 'README'
-        data = tools.hdf5_to_dict(filename)
-        header['header'] = data['README']
-        for line in header['header'].split('\n'):
-            ## post-processing zero-adding leads to an
-            ## interpolation of data by this factor
-            r = re.match(r'^.*Interpol[^0-9]+([0-9]+).*',line)
-            if r:
-                header['interpolation_factor'] = float(r.group(1))
-            ## the resolution before any interpolation
-            r = re.match(r'^[ "#]*([0-9.]+), , ds\(cm-1\)',line)
-            if r: header['ds'] = float(r.group(1))
-            ## NMAX parameter -- see above
-            r = re.match(r'^[ #"]*Nmax=([0-9]+)[" ]*$',line)
-            if r:
-                header['interpolation_factor'] *= 2**21/float(r.group(1))
-            ## extract pressure from header
-            r = re.match(r".*date/time 1rst scan: (.*)  Av\(Pirani\): (.*) mbar  Av\(Baratron\): (.*) mbar.*",line)
-            if r:
-                header['date_time'] = r.group(1)
-                header['pressure_pirani'] = float(r.group(2))
-                header['pressure_baratron'] = float(r.group(3))
-    else:
-        raise Exception(f"bad extension: {repr(extension)}")
-    ## compute instrumental resolution, FWHM
-    header['sinc_fwhm'] = 1.2*header['interpolation_factor']*header['ds'] 
-    ## get spectrum
-    if extension=='.TXT':
-        x,y = [],[]
-        data_started = False
-        for line in tools.file_to_lines(filename,encoding='latin-1'):
-            r = re.match(r'^([0-9]+),([0-9.eE+-]+)$',line) # data point line
-            if r:
-                data_started = True # header is passed
-                x.append(float(r.group(1))),y.append(float(r.group(2))) # data point
-            else:
-                if data_started: break            # end of data
-                else: continue                    # skip header line
-        x,y = np.array(x)*header['ds'],np.array(y)
-    elif extension=='.wavenumbers':
-        x,y = tools.file_to_array(filename,unpack=True,comments='#',encoding='latin-1')
-    elif extension in ('.hdf5','.h5'):
-        data = tools.hdf5_to_dict(filename)
-        x,y = data['data'].transpose()
-    else:
-        raise Exception(f"bad extension: {repr(extension)}")
-    ## process a bit. Sort and remove HeNe line profile and jitter
-    ## estimate. This is done assumign the spectrum comes
-    ## first. and finding the first index were the wavenumber
-    ## scale takes a backward step
-    if remove_HeNe:
-        i = x>31600
-        x,y = x[i],y[i]
-    t = tools.find(np.diff(x)<0)
-    if len(t)>0:
-        i = t[0]+1 
-        x,y = x[:i],y[:i]
-    ## get x range
-    header['xmin'],header['xmax'] = x.min(),x.max()
-    header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
-    return (x,y,header)
 
 class Spline(Optimiser):
     """A spline curve with optimisable knots.  Internally stores last
