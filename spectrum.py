@@ -490,6 +490,7 @@ class Model(Optimiser):
         self.add_save_to_directory_function(self.output_data_to_directory)
         self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
+        self._lines_to_label = [] # line objects that will be used to plot labels
 
     @optimise_method(add_format_input_function=False)
     def _initialise(self,_cache=None):
@@ -708,6 +709,7 @@ class Model(Optimiser):
             keys = [key for key in line.explicitly_set_keys() if key not in set_keys_vals]
             line_copy = line.copy(index=imatch,keys=keys,optimise=True)
             line_copy.include_in_output = False
+            self._lines_to_label.append(line_copy)
             if add_infer_functions is not None:
                 for key,dependencies,function in add_infer_functions:
                     line_copy.add_infer_function(key,dependencies,function)
@@ -1808,7 +1810,7 @@ class Model(Optimiser):
                 else:
                     kwargs['blackman_harris_resolution'] = P(data['resolution'],vary,bounds=(0,inf))
         ## SOLEIL DESIRS FTS boxcar apodisation0
-        elif data['data_source'] == 'DESIRS FTS':
+        elif data['data_source'] in ('DESIRS FTS','desirs fts'):
             if vary is None:
                 kwargs['sinc_fwhm'] = float(data['sinc_fwhm'])
             else:
@@ -2039,7 +2041,7 @@ class Model(Optimiser):
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
-            for line in self.suboptimisers:
+            for line in self._lines_to_label:
                 if not isinstance(line,lines.Generic):
                     continue
                 ## limit to qn -- if fail to match to label_match then
