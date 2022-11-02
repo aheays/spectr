@@ -98,8 +98,8 @@ groups = {
         'cal'       :4.184               ,
         'eV'        :1.602176634e-19     ,
         'erg'       :1e-7                   ,
-        'Hartree'   :4.35974434e-18      , # atomic units /hartree
-        'au'        :4.35974434e-18      , # atomic units /hartree
+        'Hartree'   :4.3597447222071e-18      , # atomic units /hartree, ref: wikipedia 2022-07-03
+        'au'        :4.3597447222071e-18      , # atomic units /hartree, ref: wikipedia 2022-07-03
         'kJ.mol-1'  :1e3/constants.Avogadro,
         'kcal.mol-1':6.9477e-21          ,
     },
@@ -133,17 +133,23 @@ groups = {
     },
 
     'photon': {
+        ## canonical unit is frequency
         'Hz'   : 1,
         'kHz'  : 1e3,
         'MHz'  : 1e6,
         'GHz'  : 1e9,
+        ## energy
         'J'    : 1/constants.h,
         'eV'   : constants.electron_volt/constants.h,
         'meV'  : 1e-3*constants.electron_volt/constants.h,
+        'Hartree'   :4.3597447222071e-18/constants.h      , # atomic units /hartree, ref: wikipedia 2022-07-03
+        'au'        :4.3597447222071e-18/constants.h      , # atomic units /hartree, ref: wikipedia 2022-07-03
+        ## wavelength
         'm'    : (lambda m     : constants.c/m,lambda Hz           : constants.c/Hz),
         'μm'   : (lambda μm    : constants.c/(μm*1e-6),lambda Hz   : 1e6*constants.c/Hz),
         'nm'   : (lambda nm    : constants.c/(nm*1e-9),lambda Hz   : 1e9*constants.c/Hz),
         'Å'    : (lambda Å     : constants.c/(Å*1e-10),lambda Hz   : 1e10*constants.c/Hz),
+        ## wavenumber
         'm-1'  : (lambda m     : m*constants.c,lambda Hz           : Hz/constants.c,),
         'cm-1' : (lambda invcm : constants.c*(1e2*invcm),lambda Hz : 1e-2/(constants.c/Hz)),
     },
