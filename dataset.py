@@ -166,6 +166,35 @@ def _load_from_npz(filename):
     data = _convert_flat_data_dict(data)
     return data
 
+def _load_from_sqlite(filename,table_name=None,keys=None):
+    """Load from a sqlite database using standard library module
+    sqlite3. table_name defaults to a strictly unique value."""
+    ## open database
+    import sqlite3
+    with sqlite3.connect(filename) as database_connection:
+        database_cursor = database_connection.cursor()
+        ## get unique table name if not given in input arguments
+        if table_name is None:
+            table_names = database_cursor.execute(
+                "SELECT name FROM sqlite_master"
+            ).fetchall()
+            if len(table_names)!=1:
+                raise Exception("Can only load sqlite database for one and only one data table.")
+            table_name = table_names[0][0]
+        ## get keys if not given in input arguments
+        if keys is None:
+            keys = database_cursor.execute(f"SELECT name FROM pragma_table_info('{table_name}');").fetchall()
+            keys = [t[0] for t in keys]
+        ## load data into dict. SLOW USES LISTS AND NOT ARRAYS?!?
+        data = {}
+        for key in keys:
+            tdata = database_cursor.execute(
+                f"SELECT {key} FROM {table_name}").fetchall()
+            data[key] = np.array(tdata).flatten()
+    ## make structure dict and return
+    data = _convert_flat_data_dict(data)
+    return data
+ 
 def _load_from_org(filename,table_name=None):
     """Load form org table"""
     data = tools.org_table_to_dict(filename,table_name)
@@ -431,6 +460,7 @@ class Dataset(optimise.Optimiser):
         'rs'        : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '␞'}|kwargs)),
         'psv'       : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '|'}|kwargs)),
         'csv'       : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : ','}|kwargs)),
+        'sqlite'    : _load_from_sqlite,
     }
 
 
