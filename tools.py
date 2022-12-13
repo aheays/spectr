@@ -465,6 +465,19 @@ def uniquify_strings(strings):
             retval.append(s+'_'+str(counts[s]))
     return retval
 
+def paginate_string(x,width=70):
+    """Split string on words up to width."""
+    x = x.replace('\n',' ')     # remove old line breaks
+    xbreak = []
+    while len(x)>width:
+        i = x[:width].rfind(' ')
+        assert i!=-1,'Not implemented no spaces within width'
+        xbreak.append(x[:i])
+        x = x[i+1:]
+    xbreak.append(x)
+    retval = '\n'.join(xbreak)
+    return retval
+
 def warnings_off():
     warnings.simplefilter("ignore")
 
@@ -2807,7 +2820,9 @@ def sheet_to_dict(path,return_all_tables=False,skip_header=None,**kwargs):
     elif isinstance(path,str) and path[-4:] =='.ods':
         kwargs.setdefault('sheet_name',0)
         reader=ods_reader(expand_path(path),tableIndex=kwargs.pop('sheet_name'))
-    elif isinstance(path,str) and path[-5:] =='.xlsx':
+    elif isinstance(path,str) and (
+            path[-5:] =='.xlsx'
+            or path[-4:] =='.xls'):
         assert 'sheet_name' not in kwargs,'Not implemented'
         import openpyxl
         data = openpyxl.open(path,read_only=True,data_only=True,keep_links=False)

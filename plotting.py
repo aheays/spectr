@@ -1574,8 +1574,15 @@ def supxlabel(text,fig=None,x=0.5,y=0.02,loc='bottom',**kwargs):
     if fig is None: fig = plt.gcf()
     fig.text(x,y,text,**kwargs)
 
-def suplegend(fig=None,lines=None,labels=None,
-              ax=None,loc='below',**legend_kwargs):
+def suplegend(
+        fig=None,
+        lines=None,
+        labels=None,
+        ax=None,
+        loc='below',
+        frame_on=True,
+        **legend_kwargs
+):
     """Plot a legend for the entire figure. This is useful when
     several subplots have the same series and common legend is more
     efficient. """
@@ -1602,8 +1609,10 @@ def suplegend(fig=None,lines=None,labels=None,
         legend_kwargs['loc'] = loc
     leg = fig.legend(lines,labels,**legend_kwargs)
     ## remove frame and resize text
-    # leg.draw_frame(False)
-    for t in leg.get_texts():  t.set_fontsize(fontsize)
+    if not frame_on:
+        leg.draw_frame(False)
+    for t in leg.get_texts(): 
+        t.set_fontsize(fontsize)
     return(leg)
 
 def turnOffOffsetTicklabels(ax=None):
@@ -2232,13 +2241,22 @@ def set_ticks(
        for label in axis.get_ticklabels():
            label.set_size(fontsize)
 
-def rotate_tick_labels(x_or_y='x',rotation=90,ax=None):
+def rotate_tick_labels(
+        x_or_y='x',
+        rotation=90,
+        ax=None,
+        verticalalignment=None,
+        horizontalalignment=None,
+
+):
     if ax is None: ax=plt.gca()
     assert x_or_y in ('x','y')
     if x_or_y=='x':
         labels = ax.xaxis.get_ticklabels()
-        verticalalignment = 'top'
-        horizontalalignment = 'right'
+        if verticalalignment is None:
+            verticalalignment = 'top'
+        if horizontalalignment is None:
+            horizontalalignment = 'right'
     elif x_or_y=='y':
         labels = ax.yaxis.get_ticklabels()
         verticalalignment = 'center'

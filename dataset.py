@@ -2818,6 +2818,8 @@ class Dataset(optimise.Optimiser):
             zlabel_format_function=None, # accept key=val pairs, defaults to printing them
             label_prefix='', # put this before label otherwise generated
             plot_errorbars=True, # if uncertainty available
+            plot_xlabel=True,
+            plot_ylabel=True,
             xlog=False,
             ylog=False,
             ncolumns=None,       # number of columsn of subplot -- None to automatically select
@@ -2836,7 +2838,6 @@ class Dataset(optimise.Optimiser):
             return
         ## re-use or make a new figure/axes
         if ax is not None:
-            xnewaxes = ynewaxes = znewaxes = False
             fig = ax.figure
         elif fig is None:
             fig = plt.gcf()
@@ -2938,6 +2939,8 @@ class Dataset(optimise.Optimiser):
                         color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(iz),plotting.newlinestyle(iz)
                     elif not xnewaxes and not ynewaxes and not znewaxes:
                         color,marker,linestyle = plotting.newcolor(iy),plotting.newmarker(ix),plotting.newlinestyle(iz)
+                    else:
+                        assert('should not happen')
                     ## plotting kwargs
                     kwargs = copy(plot_kwargs)
                     kwargs.setdefault('marker',marker)
@@ -3000,11 +3003,9 @@ class Dataset(optimise.Optimiser):
                                 plt.annotate(annotation,(x[i],y[i]),fontsize='x-small',in_layout=False)
                     if title is not None:
                         tax.set_title(title)
-                    # elif auto_title is not None:
-                        # tax.set_title(auto_title)
-                    if ylabel is not None:
+                    if ylabel is not None and plot_ylabel:
                         tax.set_ylabel(ylabel)
-                    if xlabel is not None:
+                    if xlabel is not None and plot_xlabel:
                         tax.set_xlabel(xlabel)
                     if 'label' in kwargs:
                         if legend:
