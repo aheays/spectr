@@ -566,6 +566,36 @@ def mkdir(
                     raise Exception("Exists and is not a directory: "+partial_directory)
                 os.mkdir(partial_directory)
 
+def trial_for_existing_path(
+        paths,
+        prefixes=(),
+        suffixes=(),
+        expanduser=False,
+        raise_exception_on_fail=True, # else return None
+):
+    """Test which path in list of paths exists, return the first
+    found. If prefixes and suffixes provided then trial all
+    combinations. If expanduser=True also try version with expanded ~."""
+    trialled_paths = []
+    for prefix in prefixes:
+        for suffix in suffixes:
+            for path in paths:
+                if expanduser:
+                    trial_paths = [
+                        prefix+path+suffix,
+                        os.path.expanduser(prefix+path+suffix)]
+                else:
+                    trial_paths = [prefix+path+suffix]
+                for trial_path in trial_paths:
+                    trialled_paths.append(trial_path)
+                    if os.path.exists(trial_path):
+                        return trial_path
+    if raise_exception_on_fail:
+        paths = "\n".join(trialled_paths)
+        raise Exception(f'Could not find existing path after trialling: {paths}')
+    else:
+        return None
+
 #####################
 ## text formatting ##
 #####################
