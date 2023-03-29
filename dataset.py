@@ -9,7 +9,7 @@ import numpy as np
 from numpy import nan,arange,linspace,array
 
 from . import tools
-from .tools import timestamp
+from .tools import timestamp,cache
 from .exceptions import InferException,NonUniqueValueException
 from . import convert
 from . import optimise
@@ -3242,6 +3242,12 @@ def load(
     retval = make(classname,**init_kwargs)
     retval.load(filename,_data_dict_provided=data,**load_kwargs)
     return retval
+
+@cache
+def load_and_cache(*args,**kwargs):
+    """Load Dataset using dataset.load and cache the result for faster
+    reload."""
+    return load(*args,**kwargs)
 
 def copy_from(dataset,*args,**kwargs):
     """Make a copy of dataset with additional initialisation args and
