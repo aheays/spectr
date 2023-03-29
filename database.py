@@ -276,31 +276,16 @@ def get_hitran_lines(species,**match):
     from . import hitran
     return hitran.get_lines(species,**match)
 
-
 def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     """ Load soleil spectrum from file with given path."""
-    ## resolve soleil filename
-    for trial_filename in (
-            filename,
-            tools.expand_path(filename),
-            f'{soleil_data_directory}/data/{filename}.wavenumbers.hdf5',
-            f'{soleil_data_directory}/data/{filename}.wavenumbers.h5',
-            f'{soleil_data_directory}/data/{filename}.h5',
-            ):
-        if os.path.exists(trial_filename):
-            filename = trial_filename
-            break
-    else:
-        ## else look for unique prefix in scan database
-        t = dataset.load(f'{soleil_data_directory}/summary_of_scans.psv')
-        i = tools.find_regexp(r'^'+re.escape(filename)+'.*',t['filename'])
-        if len(i)==1:
-            filename = t['filename'][int(i)]
-            filename = f'{soleil_data_directory}/scans/{filename}.h5'
-        else:
-            raise Exception(f"Could not find SOLEIL spectrum: {repr(filename)}")
-    extension = os.path.splitext(filename)[1]
+    ## load from given location, or search for unique match as the
+    ## beginning of a file in the SOLEIL scan data directory
+    filename = tools.expand_path(filename)
+    if not os.path.exists(filename):
+        filename = tools.glob_unique(
+            f'{soleil_data_directory}/scans/{filename}*.h5')
     ## get header data if possible, not possible if an hdf5 file is used.
+    extension = os.path.splitext(filename)[1]
     header = dict(filename=filename,header=[])
     if extension in ('.TXT','.wavenumbers'): 
         with open(filename,'r',encoding='latin-1') as fid:
