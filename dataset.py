@@ -2191,7 +2191,7 @@ class Dataset(optimise.Optimiser):
                     d['key'] = key
                     d['subkey'] = subkey
                     d['inferred'] = self.is_inferred(key)
-                    # d['kind'] = (self[key,'kind'] if subkey == 'value' else '')
+                    ### d['kind'] = (self[key,'kind'] if subkey == 'value' else '')
                     d['dtype'] = str(self[key,subkey].dtype)
                     d['memory'] = sys.getsizeof(self._data[key][subkey])
                     total_memory += d['memory']

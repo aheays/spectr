@@ -390,5 +390,9 @@ def load_soleil_spectrum_from_file(filename,remove_HeNe=False):
     ## get x range
     header['xmin'],header['xmax'] = x.min(),x.max()
     header['xcentre'] = 0.5*(header['xmin']+header['xmax'])
-    return (x,y,header)
+    # return (x,y,header)
+    from . import spectrum
+    d = spectrum.Spectrum(ν=x,I=y,attributes={'header':header})
+    return d
+    # return (x,y,header)
 

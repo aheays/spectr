@@ -253,11 +253,11 @@ class Experiment(Optimiser):
         if 'has_run' in _cache:
             return
         _cache['has_run'] = True
-        x,y,header = database.load_soleil_spectrum_from_file(filename)
+        data = database.load_soleil_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
         self.experimental_parameters['data_source'] = 'DESIRS FTS'
-        self.experimental_parameters.update(header)
-        self.set_spectrum(x,y,xbeg,xend)
+        self.experimental_parameters.update(data.attributes['header'])
+        self.set_spectrum(data['ν'],data['I'],xbeg,xend)
         self.pop_format_input_function() 
 
     @optimise_method()
@@ -288,7 +288,8 @@ class Experiment(Optimiser):
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
         if self._clean_construct:
-            x,y,header = database.load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
+            data = database.load_soleil_spectrum_from_file(filename)
+            x,y,header = data['ν'],data['I'],data.attributes['header']
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
         ## get signum convolution kernel
@@ -1899,7 +1900,8 @@ class Model(Optimiser):
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
         if self._clean_construct:
-            x,y,header = database.load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
+            data = database..load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
+            x,y,header = data['ν'],data['I'],data.attributes['header']
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
         ## get signum convolution kernel if it is the first run or one
