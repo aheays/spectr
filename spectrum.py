@@ -1900,7 +1900,7 @@ class Model(Optimiser):
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
         if self._clean_construct:
-            data = database..load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
+            data = database.load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
             x,y,header = data['ν'],data['I'],data.attributes['header']
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
@@ -1957,6 +1957,7 @@ class Model(Optimiser):
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
             minimum_Sij_to_label=None, # for emission lines
+            label_vline=False,         # whether to plot_vline in annotate_spectrum
             ## show reference line frequencies
             plot_contaminants=False,
             contaminants=None,
@@ -2077,6 +2078,7 @@ class Model(Optimiser):
                     length=-0.02, # fraction of axes coords
                     labelsize='small',namesize='medium', namepos='float',    
                     label_key=(line.default_xkey if label_key == 'default' else label_key),
+                    plot_vline = label_vline,
                 )
                 ymax += ystep*(len(branch_annotations)+1)
         # ## plot branch heads
