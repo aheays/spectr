@@ -738,8 +738,14 @@ class Model(Optimiser):
                 if len(line) == 0:
                     return np.full(len(self.x),0.0)
                 x,y = line.calculate_spectrum(
-                    x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
-                    ymin=ymin, ncpus=ncpus, lineshape=lineshape,index=index,
+                    x=self.x,
+                    xkey='ν',
+                    ykey=ykey,
+                    nfwhmG=nfwhmG,
+                    nfwhmL=nfwhmL,
+                    ymin=ymin,ncpus=ncpus,
+                    lineshape=lineshape,
+                    index=index,
                     xedge=xedge)
                 if kind == 'absorption':
                     y = np.exp(-y)
