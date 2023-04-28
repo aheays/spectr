@@ -2418,6 +2418,7 @@ def annotate_spectrum(
         labelsize=None,
         clip= True,
         label_replacements={},  # substitute keys with values in labels
+        plot_vline=False,       # plot a axvline as well as ticks showing line position
         color='black'           # colour of everything
 ):
     """Put simple rotational series labels at list of x. Length
@@ -2451,8 +2452,10 @@ def annotate_spectrum(
         labelpad = -0.4*length
     ## dwim text alignment
     textkwargs.setdefault('horizontalalignment','center')
-    if np.sign(length)<0:   textkwargs.setdefault('verticalalignment','bottom')
-    else:                   textkwargs.setdefault('verticalalignment','top')
+    if np.sign(length)<0:
+        textkwargs.setdefault('verticalalignment','bottom')
+    else:
+        textkwargs.setdefault('verticalalignment','top')
     ## draw back bone
     ax.plot([min(x),max(x)],[ylevel,ylevel],**plotkwargs)
     ## draw lines in Jpp,energy lists and annotate labels
@@ -2466,7 +2469,9 @@ def annotate_spectrum(
         labelkwargs['verticalalignment'] = 'top'
     for (i,e) in enumerate(x):
         ax.plot([e,e],[ylevel,ylevel+length],**plotkwargs)
-        if len(labels)>i:
+        if plot_vline:
+            ax.axvline(e,**(plotkwargs|{'alpha':0.2}))
+        if len(labels) > i:
             # label = format(labels[i])
             label = tools.format_string_or_general_numeric(labels[i])
             if label in list(label_replacements.keys()):
