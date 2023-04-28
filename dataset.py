@@ -594,7 +594,7 @@ class Dataset(optimise.Optimiser):
             kind=None,
             **match_kwargs
     ):
-        """Set value of key or (key,data)"""
+        """Set value of key or (key,subkey)"""
         ## check for invalid key
         forbidden_character_regexp = r'.*([\'"=#,:]).*' 
         if r:=re.match(forbidden_character_regexp,key):
@@ -623,6 +623,8 @@ class Dataset(optimise.Optimiser):
             if subkey == 'value':
                 self._set_value(key,value,combined_index,kind=kind)
             else:
+                # if not self.is_explicit(key):
+                    # raise Exception(f'Setting {subkey=} for non-explicitly set {key=}, to avoid bugs this should resul in this key becoming explicitly set, but this is not implemented')
                 self._set_subdata(key,subkey,value,combined_index)
         else:
             raise Exception(f'Invalid subkey: {repr(subkey)}')
@@ -1381,6 +1383,10 @@ class Dataset(optimise.Optimiser):
         self._length = 0
         self._data.clear()
 
+    def _is_valid_key_subkey(self,key,subkey):
+        if subkey not in self.vector_subkinds:
+            raise Exception(f'{subkey=} is not a valid vector_subkinds={list(self.vector_subkinds.keys())!r}')
+
     def unset(self,key,subkey='value'):
         """Delete (key,subkey) data.  Also clean up inferences."""
         if not self.permit_indexing and (subkey == 'value' and not self.is_inferred(key)):
@@ -1388,6 +1394,7 @@ class Dataset(optimise.Optimiser):
         elif not self.permit_dereferencing:
             raise Exception(f'Cannot unset {(key,subkey)!r}: {self.permit_dereferencing=}')
         if key in self:
+            self._is_valid_key_subkey(key,subkey)
             if subkey == 'value':
                 self.unlink_inferences(key)
                 self._data.pop(key)
@@ -1700,6 +1707,15 @@ class Dataset(optimise.Optimiser):
                 elif len(key) > 4 and key[:4] == 'min_':
                     ## find all larger values
                     i &= (self[key[4:],subkey] >= val)
+                elif len(key) > 8 and key[:8] == 'nonzero_':
+                    ## find all nonzero values
+                    i &= (self[key[8:],subkey] != 0)
+                elif len(key) > 10 and key[:10] == 'abovezero_':
+                    ## find all values greater than zero
+                    i &= (self[key[10:],subkey] > 0)
+                elif len(key) > 10 and key[:10] == 'belowzero_':
+                    ## find all values greater than zero
+                    i &= (self[key[10:],subkey] < 0)
                 elif len(key) > 4 and key[:4] == 'max_':
                     ## find all smaller values
                     i &= (self[key[4:],subkey] <= val)
@@ -2246,6 +2262,7 @@ class Dataset(optimise.Optimiser):
             keys=None,
             subkeys=None,
             filetype=None,           # 'text' (default), 'hdf5', 'directory'
+            explicit_keys_only=False,
             **format_kwargs,
     ):
         """Save some or all data to a file.  Valid filetypes are: [
@@ -2259,6 +2276,8 @@ class Dataset(optimise.Optimiser):
                 filetype = 'text'
         if keys is None:
             keys = self.keys()
+        if explicit_keys_only:
+            keys = [key for key in keys if self.is_explicit(key)]
         if subkeys is None:
             ## get a list of default subkeys, ignore those beginning
             ## with "_" and some specific keys
@@ -2382,39 +2401,6 @@ class Dataset(optimise.Optimiser):
             match=None,         # limit what is loaded
     ):
         """Load from a structured dictionary as produced by as_dict."""
-        ## translate key with direct substitutions
-        if translate_keys is None:
-            translate_keys = {}
-        ## this block should be part of lines.py and levels.py not here
-        if translate_from_anh_spectrum:
-            translate_keys.update({
-                'Jp':'J_u', 'Sp':'S_u', 'Tp':'E_u',
-                'labelp':'label_u', 'sp':'s_u',
-                'speciesp':'species_u', 'Λp':'Λ_u', 'vp':'v_u',
-                'column_densityp':'Nself_u', 'temperaturep':'Teq_u',
-                'Jpp':'J_l', 'Spp':'S_l', 'Tpp':'E_l',
-                'labelpp':'label_l', 'spp':'s_l',
-                'speciespp':'species_l', 'Λpp':'Λ_l', 'vpp':'v_l',
-                'column_densitypp':'Nself_l', 'temperaturepp':'Teq_l',
-                'Treduced_common_polynomialp':None, 'Tref':'Eref',
-                'branch':'branch', 'dfv':None,
-                'level_transition_type':None, 'partition_source':None,
-                'Γ':'Γ','df':None,
-            })
-        for from_key,to_key in translate_keys.items():
-            if from_key in data_dict:
-                if to_key is None:
-                    data_dict.pop(from_key)
-                else:
-                    data_dict[to_key] = data_dict.pop(from_key)
-        ## translate keys with regexps
-        if translate_keys_regexp is not None:
-            for key in list(data_dict.keys()):
-                original_key = key
-                for match_re,sub_re in translate_keys_regexp:
-                    key = re.sub(match_re,sub_re,key)
-                if key != original_key:
-                    data_dict[key] = data_dict.pop(original_key)
         ## add metadata to data_dict dictionary, if metadata key is not
         ## present in data_dict then ignore it
         if metadata is not None:
@@ -2436,6 +2422,39 @@ class Dataset(optimise.Optimiser):
         ## actual data dict stored in 'data'
         if 'data' in data_dict:
             data = data_dict['data']
+            ## translate keys if given in input arguments
+            if translate_keys is None:
+                translate_keys = {}
+            ## this block should be part of lines.py and levels.py not here
+            if translate_from_anh_spectrum:
+                translate_keys.update({
+                    'Jp':'J_u', 'Sp':'S_u', 'Tp':'E_u',
+                    'labelp':'label_u', 'sp':'s_u',
+                    'speciesp':'species_u', 'Λp':'Λ_u', 'vp':'v_u',
+                    'column_densityp':'Nself_u', 'temperaturep':'Teq_u',
+                    'Jpp':'J_l', 'Spp':'S_l', 'Tpp':'E_l',
+                    'labelpp':'label_l', 'spp':'s_l',
+                    'speciespp':'species_l', 'Λpp':'Λ_l', 'vpp':'v_l',
+                    'column_densitypp':'Nself_l', 'temperaturepp':'Teq_l',
+                    'Treduced_common_polynomialp':None, 'Tref':'Eref',
+                    'branch':'branch', 'dfv':None,
+                    'level_transition_type':None, 'partition_source':None,
+                    'Γ':'Γ','df':None,
+                })
+            for from_key,to_key in translate_keys.items():
+                if from_key in data:
+                    if to_key is None:
+                        data.pop(from_key)
+                    else:
+                        data[to_key] = data.pop(from_key)
+            ## translate keys with regexps
+            if translate_keys_regexp is not None:
+                for key in list(data.keys()):
+                    original_key = key
+                    for match_re,sub_re in translate_keys_regexp:
+                        key = re.sub(match_re,sub_re,key)
+                    if key != original_key:
+                        data[key] = data.pop(original_key)
             ## Set data in self and selected attributes
             scalar_data = {}
             for key in data:
