@@ -12,6 +12,7 @@ This module has been tested and works with python 3.9 and 3.10, and will not wor
   bidict cycler hitran-api brukeropusreader dill h5py matplotlib
   numpy openpyxl periodictable scipy sympy xmltodict pyqt5 py3nj
 #+END_SRC
+Note: py3nj can be successfully installed only if gfortran is already installed
 
 ** Building the fortran extensions
 Fortran code used to generate python extensions with =f2py= and needed to speed up some calculations.  Some submodules will still import and run fine without these.
