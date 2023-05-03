@@ -13,9 +13,12 @@ from spectr.optimise import P
 make_plot =  True 
 
 def test_init():
-    spectrum.Experiment()
-    spectrum.Model()
-
+    experiment = spectrum.Experiment()
+    model = spectrum.Model(x=np.arange(100,200,0.01))
+    experiment = spectrum.Experiment(x=np.arange(100,200,0.01),
+                                     y=np.arange(100,200,0.01),)
+    model = spectrum.Model(experiment=experiment)
+    
 def test_construct_experiment():
     t = spectrum.Experiment()
     t.construct()
@@ -23,11 +26,13 @@ def test_construct_experiment():
     assert t.y is None
 
 def test_construct_model():
-    t = spectrum.Model()
-    x = np.arange(1,100,0.1)
-    y = t.get_spectrum(x)
-    assert np.all(y==0)
-    assert len(x) == 990
+    m = spectrum.Model(x=np.arange(1,100,0.1))
+    m.construct()
+    assert np.all(m.y==0)
+    assert len(m.x) == len(m.y)
+    # x = np.arange(1,100,0.05)
+    # y = m.get_spectrum(x)
+    # assert len(x) == len(y)
 
 def test_load_exp_spectrum():
     t = spectrum.Experiment()
@@ -39,15 +44,15 @@ def test_load_exp_spectrum():
     assert t.y[0] == approx(1.0121078158037908)
 
 def test_model_intensity():
-    t = spectrum.Model()
-    t.add_intensity(intensity=1)
-    t.get_spectrum(range(5))
+    t = spectrum.Model(x=np.arange(5))
+    t.add_constant(1)
+    # t.get_spectrum(range(5))
     assert len(t.y) == 5
     assert t.x[0] == 0
     assert t.y[0] == 1
-    t = spectrum.Model()
-    t.add_intensity(intensity=P(1,False,1e-3))
-    t.get_spectrum(range(5))
+    t = spectrum.Model(x=np.arange(5))
+    t.add_constant(P(1,False,1e-3))
+    # t.get_spectrum(range(5))
     assert len(t.y) == 5
     assert t.x[0] == 0
     assert t.y[0] == 1
@@ -55,16 +60,16 @@ def test_model_intensity():
 def test_residual_intensity():
     e = spectrum.Experiment(filename='data/CS2_experimental_spectrum.h5')
     t = spectrum.Model(experiment=e)
-    t.add_intensity(intensity=1)
+    t.add_constant(1)
     t.construct()
     assert len(t.y) == 25000
-    assert np.min(t.residual) == approx(-0.7982384401866275)
-    assert np.max(t.residual) == approx(0.041907587784343336)
+    assert np.min(t.get_residual()) == approx(-0.7982384401866275)
+    assert np.max(t.get_residual()) == approx(0.041907587784343336)
 
 def test_fit_intensity():
     e = spectrum.Experiment(filename='data/CS2_experimental_spectrum.h5')
     t = spectrum.Model(experiment=e)
-    t.add_intensity(intensity=P(1.1, True,1e-3))
+    t.add_constant(P(1.1, True,1e-3))
     t.optimise()
     if make_plot:
         fig = plotting.qfig()
@@ -74,17 +79,14 @@ def test_fit_intensity():
 def test_model_some_lines():
     linelist = lines.Generic('linelist')
     linelist.load_from_string('''
-    species = 'H2O'
-    Teq = 300
-    ν  |τ  |Γ
-    100|0.1|1
-    110|0.5|1
-    115|2  |3
+    species | Teq | ν   | τ   | Γ
+    H₂O     | 300 | 100 | 0.1 | 1
+    H₂O     | 300 | 110 | 0.5 | 1
+    H₂O     | 300 | 115 | 2   | 3
     ''')
-    mod = spectrum.Model('mod')
-    mod.add_intensity(intensity=1)
-    mod.add_absorption_lines(lines=linelist)
-    mod.get_spectrum(x=np.arange(90,130,1e-2))
+    mod = spectrum.Model('mod',x=np.arange(90,130,1e-2))
+    mod.add_constant(1)
+    mod.add_line(linelist)
     if make_plot:
         plotting.qfig()
         mod.plot()
