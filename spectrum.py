@@ -555,6 +555,7 @@ class Model(Optimiser):
         
     def get_spectrum(self,x):
         """Construct a model spectrum at x."""
+        assert False, "buggy, needs review"
         self._xin = np.asarray(x,dtype=float) # needed in _initialise
         # self.timestamp = -1     # force reconstruction, but not suboptimisers
         self._clean_construct = True   # force reconstruction
