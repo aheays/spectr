@@ -118,6 +118,7 @@ def _f1(self,fv,SJ,J_l,Λ_u,Λ_l):
     f = fv*SJ/(2.*J_l+1.)       # correct? What about 2S+1?
     f[(Λ_l==0)&(Λ_u!=0)] /= 2
     return f
+
 prototypes['f'] = dict(description="Line f-value",units="dimensionless",kind='f',fmt='<10.5e', cast=cast_abs_float_array,infer=[
     (('Ae','ν','g_u','g_l'),lambda self,Ae,ν,g_u,g_l: Ae*1.49951*g_u/g_l/ν**2),
     (('Sij','ν','J_l'), lambda self,Sij,ν,J_l: 3.038e-6*ν*Sij/(2*J_l+1)), 
@@ -1477,15 +1478,25 @@ class Generic(levels.Base):
                         # vali.value = self[key][i][0]
                 # self.set_parameter(key,vali,match=d)
     
-    def vary_upper_level_energy(self,match=None,vary=False,step=None):
-        """Vary lines with common upper level energy with as common
-        parameter."""
-        if match is not None:
-            raise ImplementationError()
+    # def vary_upper_level_energy(self,match=None,vary=False,step=None):
+    #     """Vary lines with common upper level energy with as common
+    #     parameter."""
+    #     if match is not None:
+    #         raise ImplementationError()
+    #     keys = [key+'_u' for key in self._level_class.defining_qn]
+    #     for d,m in self.unique_dicts_match(*keys):
+    #         i = tools.find(m)
+    #         self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)
+
+    def vary_common_upper_level(self,key='E_u',vary= True,step=None,):
+        """Vary lines with common upper quantum numbers. All
+        initialised set to the existing value of the first
+        occurence."""
         keys = [key+'_u' for key in self._level_class.defining_qn]
         for d,m in self.unique_dicts_match(*keys):
             i = tools.find(m)
-            self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)
+            if len(i) > 0:
+                self.set_value(key,P(self[key,i[0]],vary,step),**d)
 
     def sort_upper_lower_level(self):
         """Swap upper and lower levels if E_u < E_l.  DOES NOT CHANGE
