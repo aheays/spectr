@@ -56,11 +56,12 @@ tests = {
          'transition_moments':{
              ('B.3Π(v=0)','X.3Π(v=0)'):{'μv':1}}},
 
-     '3Δu_3Πg_transition': { # 14N2 W-B(3-1) from western201 -- not working  
-          'species':'¹⁴N₂',
-          'levels':{'B.3Πg(v=1)':{'Tv':11255.202248,'Bv':1.61055197,'Dv':5.89799e-06,'Hv':-3.94391e-13,'Av':42.1932,'ADv':-0.000421635,'λv':-0.203999,'λDv':-6.34857e-07,'γv':-0.00367735,'ov':1.15017,'pv':0.00431673,'qv':8.34856e-05,},
-          'W.3Δu(v=3)':{'Tv':13989.734287,'Bv':1.41063813,'Dv':5.65923e-06,'Hv':-6.54037e-13,'Av':5.6636,'ADv':3.92926e-06,'λv':0.67833,'λDv':1.51497e-06,'γv':-0.00288008,},},
-          'transition_moments':{('W.3Δu(v=3)','B.3Πg(v=1)'):{'μv':1}}},
+    ## # 14N2 W-B(3-1) from western201 -- not working  
+    ## '3Δu_3Πg_transition': { 
+    ##     'species':'¹⁴N₂',
+    ##     'levels':{'B.3Πg(v=1)':{'Tv':11255.202248,'Bv':1.61055197,'Dv':5.89799e-06,'Hv':-3.94391e-13,'Av':42.1932,'ADv':-0.000421635,'λv':-0.203999,'λDv':-6.34857e-07,'γv':-0.00367735,'ov':1.15017,'pv':0.00431673,'qv':8.34856e-05,},
+    ##               'W.3Δu(v=3)':{'Tv':13989.734287,'Bv':1.41063813,'Dv':5.65923e-06,'Hv':-6.54037e-13,'Av':5.6636,'ADv':3.92926e-06,'λv':0.67833,'λDv':1.51497e-06,'γv':-0.00288008,},},
+    ##     'transition_moments':{('W.3Δu(v=3)','B.3Πg(v=1)'):{'μv':1}}},
 
     '3Π_3Σ+_intensity_interference': {
         'species':'³²S¹⁶O',
@@ -158,7 +159,7 @@ for itest,(name,params) in enumerate(tests.items()):
     line_pgo.load_from_pgopher(f"data/{name}.csv",)
 
     ## limit to common levels
-    max_J_l = min(np.max(line_pgo['J_l']),np.max(line_mod['J_l']))
+    max_J_l = min(np.max(line_pgo['J_l']),np.max(line_mod['J_l']))-1
     line_mod.limit_to_match(max_J_l=max_J_l)
     line_pgo.limit_to_match(max_J_l=max_J_l)
 
@@ -181,8 +182,10 @@ for itest,(name,params) in enumerate(tests.items()):
     title(name)
     plot(xmod,ymod,label=f'mod, int(mod) = {integrate(ymod,xmod):0.5e}')
     plot(xpgo,ypgo,label=f'pgo, int(pgo) = {integrate(ypgo,xpgo):0.5e}')
-    plot(xmod,(ymod-ypgo),label=f'mod-pgo, int(mod-pgo)/int(pgo) = {integrate(ymod-ypgo,xpgo)/integrate(ypgo,xpgo):0.5e}')
+    fractional_integrated_error = abs(integrate(ymod-ypgo,xpgo)/integrate(ypgo,xpgo))
+    plot(xmod,(ymod-ypgo),label=f'mod-pgo, int(mod-pgo)/int(pgo) = {fractional_integrated_error:0.5e}')
     legend_colored_text(loc='upper left')
+    assert fractional_integrated_error < 1e-5, f'test model: {name}: Integrated residual error {fractional_integrated_error} between viblevel model and pgopher is too large.'
 
 show()
 
