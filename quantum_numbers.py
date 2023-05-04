@@ -250,7 +250,11 @@ def decode_linear_level(encoded):
                     qn['gu'] = decode_gu(r2.group(4))
         ## decode data in parentheses
         if r.group(3) is not None:
-            qn |= decode_comma_separated_equalities(r.group(3)[1:-1])
+            comma_separated_equalities = r.group(3)[1:-1]
+            ## special case integer alone is vibrational number
+            if re.match(r'[0-9]+',comma_separated_equalities):
+                comma_separated_equalities = 'v='+comma_separated_equalities
+            qn |= decode_comma_separated_equalities(comma_separated_equalities)
     else:
         raise Exception(f'Could not decode_linear_level from {encoded!r}')
     return qn
