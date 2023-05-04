@@ -582,44 +582,51 @@ data = {
         'mass'              : 48.0,
     },
 
+    'H₂O'  :     {
+        'chemical_formula'  : 'H₂O',
+        'mass'              : 18.015,
+        'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
+        'characteristic_infrared_lines': [[1552,1580],],
+    },
+
     '¹H₂¹⁶O'  :     {
         'chemical_formula'  : 'H₂O',
-        'mass'              : 18.0,
+        'mass'              : 18.010565 ,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
         'characteristic_infrared_lines': [[1552,1580],],
     },
     
     '¹H₂¹⁸O'  :     {
         'chemical_formula'  : 'H₂O',
-        'mass'              : 18.0,
+        'mass'              : 20.0,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
         'characteristic_infrared_lines': [[1552,1580],],
     },
     
     '¹H₂¹⁷O'  :     {
         'chemical_formula'  : 'H₂O',
-        'mass'              : 18.0,
+        'mass'              : 19.0,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
         'characteristic_infrared_lines': [[1552,1580],],
     },
     
     '¹H²H¹⁶O'  :     {
         'chemical_formula'  : 'H₂O',
-        'mass'              : 18.0,
+        'mass'              : 19.0,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
         'characteristic_infrared_lines': [[1552,1580],],
     },
     
     '¹H²H¹⁸O'  :     {
         'chemical_formula'  : 'H₂O',
-        'mass'              : 18.0,
+        'mass'              : 21.0,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
         'characteristic_infrared_lines': [[1552,1580],],
     },
     
     '¹H²H¹⁷O'  :     {
         'chemical_formula'  : 'H₂O',
-        'mass'              : 18.0,
+        'mass'              : 20.0,
         'characteristic_infrared_bands': [[1400,1750],[3800,4000],],
         'characteristic_infrared_lines': [[1552,1580],],
     },
