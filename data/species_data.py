@@ -813,6 +813,13 @@ data = {
         'characteristic_infrared_lines': [[1770,1780]],
     },
 
+    'HCN'     :     {
+        'chemical_formula'  : 'HCN',
+        'mass'              : 27.025,
+        'characteristic_infrared_bands': [[3200,3400],],
+        'characteristic_infrared_lines': [[3325,3350],],
+    },
+
     '¹H¹²C¹⁴N'     :     {
         'chemical_formula'  : 'HCN',
         'mass'              : 27.010899,
