@@ -1369,7 +1369,8 @@ def _permute_to_minimise_difference(x,y):
 
 def calc_viblevel(
         name='viblevel',
-        species=None,J=None,
+        species=None,
+        J=None,
         levels=None,         # {name:add_manifold_kwargs,...}
         couplings=None, # None or {name1,name2:add_coupling_kwargs,...}
         spline_widths=None, # None or {name:add_spline_width_kwargs,...}
@@ -1403,21 +1404,23 @@ def calc_level(*args_viblevel,match=None,**kwargs_viblevel):
         return v.level
 
 def calc_line(
-        species=None,J_l=None,ΔJ=None,
-        upper=None,           # kwargs for calc_level
-        lower=None,           # kwargs for calc_level
-        transition_moments=None,# None or {name_u,name_l:add_transition_moment,...}
+        species,
+        levels=None,
+        couplings=None,
+        transition_moments=None, 
+        ΔJ=None,
 ):
     """Compute a Level model and return the generated level
     object. levels and splinewidths etc are lists of kwargss for
     add_manifold, add_spline_width etc."""
-    upper['species'] = lower['species'] = species
-    upper = calc_viblevel(**upper)
-    lower = calc_viblevel(**lower)
-    v = Line('vibline',upper,lower,J_l=J_l,ΔJ=ΔJ)
-    if transition_moments is not None:
-        for (name1,name2),kwargs in transition_moments.items():
-            v.add_transition_moment(name1,name2,**kwargs)
+    level = calc_viblevel(
+        species=species,
+        levels=levels,
+        couplings=couplings,
+    )
+    v = Line(level,'vibline',ΔJ=ΔJ)
+    for (name1,name2),kwargs in transition_moments.items():
+        v.add_transition_moment(name1,name2,**kwargs)
     v.construct()
     return v.line
 
