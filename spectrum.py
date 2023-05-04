@@ -2149,14 +2149,19 @@ class Model(Optimiser):
             directory,
             output_transition_linelists=False,
     ):
-        """Save various files from this optimsiation to a directory."""
+        """Save various files from this optimisation to a directory."""
         tools.mkdir(directory)
         ## model data
         if self.x is not None and self.y is not None:
             t = Spectrum(description=f'Model spectrum of {self.name}')
             t['ν'] = self.x
             t['I'] = self.y
-            t['I','error'] = self.yexp-self.y
+            if self._interpolate_factor is None:
+                yres = self.get_residual()
+            else:
+                yres = np.full(len(t),np.nan)
+                yres[::self._interpolate_factor] = self.get_residual()
+            t['I','error'] = yres
             t.save(f'{directory}/spectrum',filetype='directory')
         if self._figure is not None:
             ## svg / pdf are the fastest output formats. Significantly
@@ -2932,7 +2937,7 @@ def fit_species_absorption(
         *species,               # species, e.g., "HCN", or "H2O", or "¹³C¹⁶O₂"
         **fit_kwargs            # passed to Fit_Absorption.fit
 ):
-    """Shortuct to fit one or more species."""
+    """Shortcut to fit one or more species."""
     ## assemble kwargs
     kwargs = {
         'species_to_fit': species,
