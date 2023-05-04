@@ -1062,13 +1062,15 @@ class Generic(levels.Base):
                             ## N=float(r.group(5)),
                             Fi=float(r.group(4)),
                             ## ef=float(1 if r.group(5) == 'e' else -1),
-                            **self.level_class.decode_qn(None,r.group(1)))
+                            # **self.decode_qn(r.group(1)))
+                            **quantum_numbers.decode_linear_level(r.group(1))) # will fail if not a linear molecule
                     elif r:=re.match(re.escape(manifold_name)+r" +([^ ]+) +([0-9.]+) +([ef]) *$",name):
                         return dict(
                             ## N=float(r.group(5)),
                             ## Fi=float(r.group(4)),
                             ## ef=float(1 if r.group(5) == 'e' else -1),
-                            **self.level_class.decode_qn(None,r.group(1)))
+                            # **self.decode_qn(r.group(1)))
+                            **quantum_numbers.decode_linear_level(r.group(1)))  # will fail if not a linear molecule
                     elif r:=re.match(r"{mainf ([a-zA-Z0-9']+)v=([0-9]+) +([0-9.]+) +([0-9.]+) +F([0-9]+)([ef]) *$",name):
                         ## e.g., "Excited Av=1 0.5  1 F2f"
                         return(dict(
@@ -1114,7 +1116,7 @@ class Generic(levels.Base):
         for key in [t for t in data.keys()]:
             if len(data[key])==0: data.pop(key) # remove empty keys
             
-        self.extend(**data,keys='new')
+        self.extend(**data)
 
     def load_pgopher_constants(
             self,
