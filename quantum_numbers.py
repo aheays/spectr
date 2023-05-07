@@ -336,7 +336,17 @@ def decode_linear_line(encoded):
             raise InvalidEncodingException(f"Could not decode linear line: {repr(encoded)}")
     return qn
 
-def encode_linear_line(qn=None,qnl=None,qnu=None,mathtext=False):
+def encode_linear_line(
+        qn=None,                # quantum numbers, either Δi transition numbers or _u _l suffixed level numbers
+        qnl=None,               # lower level quantum numbers
+        qnu=None,               # upper level quantum numbers
+        mathtext=False,
+):
+    """Return a string encoding given quantum numbers."""
+    if qn is None:
+        qn = {}
+    else:
+        qn = copy(qn)
     ## decode branch
     if 'branch' in qn:
         qn |= decode_rotational_transition(qn.pop('branch'))
@@ -355,15 +365,14 @@ def encode_linear_line(qn=None,qnl=None,qnu=None,mathtext=False):
         mathtext=mathtext)
     else:
         rotational_transition = None
-    if qn is not None:
-        for key,val in qn.items():
-            if key=='species':
-                qnu.setdefault(key,val)
-            if len(key)>2:
-                if key[-2:]=='_u':
-                    qnu.setdefault(key[:-2],val)
-                if key[-2:]=='_l':
-                    qnl.setdefault(key[:-2],val)
+    for key,val in qn.items():
+        if key=='species':
+            qnu.setdefault(key,val)
+        if len(key)>2:
+            if key[-2:]=='_u':
+                qnu.setdefault(key[:-2],val)
+            if key[-2:]=='_l':
+                qnl.setdefault(key[:-2],val)
     if 'species' in qnl and 'species' in qnu and qnu['species']==qnl['species']:
         qnl.pop('species')
     upper_level = encode_linear_level(qnu)
