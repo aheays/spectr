@@ -13,7 +13,7 @@ from .tools import timestamp,cache
 from .exceptions import InferException,NonUniqueValueException
 from . import convert
 from . import optimise
-from .optimise import optimise_method,Parameter,Fixed,format_input_method
+from .optimise import optimise_method,Parameter,Fixed,format_input_method,P
 from . import __version__
 
 
@@ -710,32 +710,31 @@ class Dataset(optimise.Optimiser):
     def set_value_to_current(
             self,
             key,                # key to set
-            unique_keys,        # set rows matching these combinations to a common value
-            default=None,       # set key to this value rather than current value
-            vary=True,          # whether to set to be varied or not
-            step=None,          # optimisation step
-            bounds=None,        # optimisation bounds
-            **limit_to_match_kwargs
+            common_keys,        # set rows matching these combinations to a common value
+            vary=True,          # whether Parameter is to be varied or not
+            step=None,          # Paramater optimisation step
+            bounds=None,        # Parameter optimisation bounds
+            **limit_to_match_kwargs # only set matching data
     ):
-        """Find all unique_keys combinations and set the value of key
-        to a Parameter set to the first matching current value."""
-        from .optimise import P
-        ## set a default value if key is not currently known
-        if not self.is_known(key):
-            if default is None:
-                raise Exception(f'Key {key!r} is not known and default value is not set.')
-            else:
-                self[key] = default
-        matches = self.matches(**limit_to_match_kwargs)
-        unique_keys = tools.ensure_iterable(unique_keys)
-        for d,i in matches.unique_dicts_match(*unique_keys):
-            if default is None:
-                value = self[key,i][0]
-            else:
-                value = default
-            self.set_value(
-                key,P(value,vary,step,bounds=bounds),
-                **d,**limit_to_match_kwargs)
+        """Set key to an optimisation Parameter with its current
+        value.  If common_keys is a list of keys then all values of
+        key that are unique matches of common_keys are set to the same
+        Parameter, with value taken from the first match."""
+        common_keys = tools.ensure_iterable(common_keys)
+        imatch = self.match(**limit_to_match_kwargs)
+        for dcommon,icommon in self.unique_dicts_match(*common_keys):
+            # i = tools.find(icommon & imatch)
+            # if len(i) > 0:
+            #     self.set_value(
+            #         key,
+            #         P(self[key,i][0],vary,step,bounds=bounds),
+            #         index=i,)
+            i = icommon & imatch
+            if np.any(i):
+                self.set_value(
+                    key,
+                    P(self[key,i][0],vary,step,bounds=bounds),
+                    **dcommon,**limit_to_match_kwargs)
 
     @optimise_method(format_multi_line=3)
     def set_spline(
@@ -1669,7 +1668,6 @@ class Dataset(optimise.Optimiser):
             re_key=string          -- match to this regular expression
         If key is a (key,vector_subkey) pair then match these.
         """
-        
         ## joint kwargs to keys_vals dict
         if keys_vals is None:
             keys_vals = {}
