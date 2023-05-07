@@ -1462,44 +1462,26 @@ class Generic(levels.Base):
             for key in level:
                 self[f'{key}_{suffix}'] = level[key,l][j]
                     
-    def set_common_levels(
+    def set_common_levels_to_current(
             self,
-            upper_or_lower,
-            key,            # key to set, e.g. E_u
-            value=None,     # if None use first matching current value
-            vary= True,
-            step=None,
-            bounds=None,
-            _cache=None,
-            **limit_to_match_kwargs
+            upper_or_lower=('upper','lower'),
+            key='E',
+            **kwargs_set_value_to_current
     ):
-        """Vary lines with common upper quantum numbers. All
-        initialised set to the existing value of the first
-        occurence."""
-         ## determine level common qn, upper or lower levels
-        if upper_or_lower in ('u','upper'):
-            suffix = '_u'
-        elif upper_or_lower in ('l','lower'):
-            suffix = '_l'
-        else:
-            raise Exception(f'Invalid value: {upper_or_lower=}. Valid values are "upper", "lower", "u", or "l".')
-        # common_qn = [key+suffix for key in self._level_class.defining_qn]
-        ## find any matching levels with common upper/lower qn
-        imatch= self.match(**limit_to_match_kwargs)
-        for dcommon,icommon in self.unique_dicts_match('qn_encoded'+suffix):
-            i = icommon & imatch
-            if np.any(i):
-                ## set vale as given or to a Parameter with value
-                ## taken from the first matching value
-                if value is not None:
-                    tvalue = value
-                else:
-                    tvalue = P(self[key+suffix,i][0],
-                               vary,step,bounds=bounds)
-                self.set_value(key=key+suffix,
-                               value=tvalue,
-                               **dcommon,
-                               **limit_to_match_kwargs)
+        """Set level data in common for lines with the same upper or
+        lower quantum numbers to a Parameter with initial values set
+        to the current value of the first occurence for each level."""
+        for upper_or_lower_i in tools.ensure_iterable(upper_or_lower):
+            if upper_or_lower in ('u','upper'):
+                suffix = '_u'
+            elif upper_or_lower in ('l','lower'):
+                suffix = '_l'
+            else:
+                raise Exception(f'Invalid value: {upper_or_lower=}. Valid values are "upper", "lower", "u", or "l".')
+            self.set_value_to_current(
+                key=key+suffix,
+                common_keys='qn_encoded'+suffix,
+                **kwargs_set_value_to_current)
 
     def sort_upper_lower_level(self):
         """Swap upper and lower levels if E_u < E_l.  DOES NOT CHANGE

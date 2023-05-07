@@ -710,26 +710,45 @@ class Dataset(optimise.Optimiser):
     def set_value_to_current(
             self,
             key,                # key to set
-            common_keys,        # set rows matching these combinations to a common value
+            common_keys=None, # set rows matching these combinations to a common value
             vary=True,          # whether Parameter is to be varied or not
             step=None,          # Paramater optimisation step
             bounds=None,        # Parameter optimisation bounds
             **limit_to_match_kwargs # only set matching data
     ):
         """Set key to an optimisation Parameter with its current
-        value.  If common_keys is a list of keys then all values of
-        key that are unique matches of common_keys are set to the same
-        Parameter, with value taken from the first match."""
-        common_keys = tools.ensure_iterable(common_keys)
+        value.  If common_keys is None then set all data, if it is a
+        key or list of keys then groups of unique matches to these
+        keys are set to the same value, taken from the first match."""
+        self.assert_known(key)
+        ## limit to these matches
         imatch = self.match(**limit_to_match_kwargs)
-        for dcommon,icommon in self.unique_dicts_match(*common_keys):
-            i = icommon & imatch
-            if np.any(i):
+        if common_keys is None:
+            ## no common keys to find, adjust all data separately
+            for i in tools.find(imatch):
                 self.set_value(
                     key=key,
-                    value=P(self[key,i][0],vary,step,bounds=bounds),
-                    **dcommon,
-                    **limit_to_match_kwargs)
+                    value=P(
+                        value=self[key,i],
+                        vary=vary,
+                        step=(self[key,'step',i] if step is None else step),
+                        bounds=bounds),
+                    index=i)
+        else:
+            ## adjust common data in groups
+            common_keys = tools.ensure_iterable(common_keys)
+            for dcommon,icommon in self.unique_dicts_match(*common_keys):
+                i = icommon & imatch
+                if np.any(i):
+                    self.set_value(
+                        key=key,
+                        value=P(
+                            value=self[key,i][0],
+                            vary=vary,
+                            step=(self[key,'step',i][0] if step is None else step),
+                            bounds=bounds),
+                        **dcommon,
+                        **limit_to_match_kwargs)
 
     @optimise_method(format_multi_line=3)
     def set_spline(
