@@ -750,6 +750,8 @@ class Optimiser:
             raise Exception("No residuals to optimise.")
         ## monitor
         rms = tools.rms(residuals)
+        if self._number_of_optimisation_function_calls == 1:
+            self._initial_rms = rms
         if np.isinf(rms) or np.isnan(rms):
             raise Exception(f'rms is {rms}')
         if (
@@ -766,7 +768,12 @@ class Optimiser:
         ## print rms
         current_time = timestamp()
         if self._monitor_iterations:
-            print(f'call: {self._number_of_optimisation_function_calls:>6d}    time: {current_time-self._previous_time:<7.2e}    rms: {rms:<12.8e}    nparams: {len(p)}')
+            print('  '.join([
+                f'call: {self._number_of_optimisation_function_calls:>5d}',
+                f'time: {current_time-self._previous_time:<7.2e}',
+                f'rms: {rms:<12.7e}',
+                f'init: {self._initial_rms:<8.3e}',
+                f'npar: {len(p)}']))
         self._previous_time = current_time
         if rms < self._rms_minimum:
             self._rms_minimum = rms
