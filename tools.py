@@ -20,12 +20,13 @@ from numpy import array,arange,nan,inf
 cache = functools.lru_cache
 
 def vectorise(vargs=None,vkeys=None,dtype=None,cache=False):
-    """Vectorise a scalar-argument scalar-return value function.  If all
-    arguments are scalar return a scalar result. If args is None
-    vectorise all arguments. If a list of indices vectorise only those
-    arguments. If dtype is given return value is an array of this
-    type, else a list is returned. If cache is True then cache
-    indivdual scalar function calls."""
+    """Vectorise a scalar-argument scalar-return value function.  If
+    all arguments are scalar return a scalar result. If vargs is None
+    vectorise all arguments, if it is a list of indices vectorise only
+    those arguments. vkeys otherwise indicates keys to vectorise by
+    name. If dtype is given return value is an array of this type, else
+    a list is returned. If cache is True then cache indivdual scalar
+    function calls."""
     import functools
     def actual_decorator(function):
         ## get a cached version fo the function if requested
