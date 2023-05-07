@@ -1492,7 +1492,7 @@ class Generic(levels.Base):
                 ## set vale as given or to a Parameter with value
                 ## taken from the first matching value
                 if value is not None:
-                    tvalue = value if value is not None else
+                    tvalue = value
                 else:
                     tvalue = P(self[key+suffix,i][0],
                                vary,step,bounds=bounds)
