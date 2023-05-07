@@ -1167,7 +1167,7 @@ class Parameter():
             step=None,
             unc=0.0,
             bounds=None,
-            fmt='0.12g',
+            fmt='+0.12g',
             description='parameter',
     ):
         ## this hack means that a Parameter can be initialised from
