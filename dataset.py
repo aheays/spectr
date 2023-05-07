@@ -723,18 +723,13 @@ class Dataset(optimise.Optimiser):
         common_keys = tools.ensure_iterable(common_keys)
         imatch = self.match(**limit_to_match_kwargs)
         for dcommon,icommon in self.unique_dicts_match(*common_keys):
-            # i = tools.find(icommon & imatch)
-            # if len(i) > 0:
-            #     self.set_value(
-            #         key,
-            #         P(self[key,i][0],vary,step,bounds=bounds),
-            #         index=i,)
             i = icommon & imatch
             if np.any(i):
                 self.set_value(
-                    key,
-                    P(self[key,i][0],vary,step,bounds=bounds),
-                    **dcommon,**limit_to_match_kwargs)
+                    key=key,
+                    value=P(self[key,i][0],vary,step,bounds=bounds),
+                    **dcommon,
+                    **limit_to_match_kwargs)
 
     @optimise_method(format_multi_line=3)
     def set_spline(

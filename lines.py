@@ -442,8 +442,11 @@ def _collect_prototypes(level_class,base_class,new_keys):
     ## get defining qn from levels
     defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
                         +[key+'_l' for key in level_class.defining_qn])
-    ## add infer functions for '_qnhash' and 'qn' to and from
-    ## defining_qn
+    ## add infer functions for '_qnhash' and 'qn_encoded' to and from
+    ## defining_qn, also make sure upper and lower level versions are
+    ## computable.  This must be computed here rather than in the
+    ## prototype definitions because they depend on the defining
+    ## quantum numbers which differ for all line / level classes.
     if '_qnhash' in default_prototypes:
         default_prototypes['_qnhash']['infer'].append((defining_qn,levels._qn_hash))
     if '_qnhash_u' in default_prototypes:
@@ -458,9 +461,15 @@ def _collect_prototypes(level_class,base_class,new_keys):
                      [self.encode_qn(
                          {key:val[i] for key,val in zip(defining_qn,defining_qn_values)})
                       for i in range(len(self))]))
-    # for key in defining_qn:
-        # default_prototypes[key]['infer'].append(
-            # ('qn', lambda self,qn,key=key: _get_key_from_qn(self,qn,key)))
+    for suffix in ('_u','_l'):
+        if 'qn_encoded'+suffix in default_prototypes:
+            default_prototypes['qn_encoded'+suffix]['infer'].append(
+                ([f'{key}'+suffix for key in level_class.defining_qn],
+                 lambda self,*defining_qn_values:
+                         [level_class.encode_qn(None,
+                             {key:val[i] for key,val in zip(
+                                 level_class.defining_qn,defining_qn_values)})
+                          for i in range(len(self))]))
     ## add Ereduced
     if 'Ereduced_JJ_u' in default_prototypes:
         z = [f'{key}_u' for key in level_class.defining_qn if key!='J']
@@ -1453,52 +1462,44 @@ class Generic(levels.Base):
             for key in level:
                 self[f'{key}_{suffix}'] = level[key,l][j]
                     
-    # def set_levels(self,match=None,**keys_vals):
-        # """Set level data from keys_vals into self."""
-        # for key,val in keys_vals.items():
-            # suffix = key[-2:]
-            # assert suffix in ('_u','_l')
-            # qn_keys = [t+suffix for t in self._level_class.defining_qn]
-            # ## find match if requested
-            # if match is not None:
-                # imatch = self.match(**match)
-            # ## loop through all sets of common levels setting key=val
-            # for d,i in self.unique_dicts_match(*qn_keys):
-                # ## limit to match is requested
-                # if match is not None:
-                    # i &= imatch
-                    # if not np.any(i):
-                        # continue
-                # ## make a copy of value -- and a Parameter if
-                # ## necessary. Substitute current value into if is NaN
-                # ## is given
-                # if np.isscalar(val):
-                    # vali = val
-                # else:
-                    # vali = Parameter(*val)
-                    # if np.isnan(vali.value):
-                        # vali.value = self[key][i][0]
-                # self.set_parameter(key,vali,match=d)
-    
-    # def vary_upper_level_energy(self,match=None,vary=False,step=None):
-    #     """Vary lines with common upper level energy with as common
-    #     parameter."""
-    #     if match is not None:
-    #         raise ImplementationError()
-    #     keys = [key+'_u' for key in self._level_class.defining_qn]
-    #     for d,m in self.unique_dicts_match(*keys):
-    #         i = tools.find(m)
-    #         self.set_parameter('E_u',Parameter(self['E_u'][i[0]],vary,step),match=d)
-
-    def vary_common_upper_level(self,key='E_u',vary= True,step=None,):
+    def set_common_levels(
+            self,
+            upper_or_lower,
+            key,            # key to set, e.g. E_u
+            value=None,     # if None use first matching current value
+            vary= True,
+            step=None,
+            bounds=None,
+            _cache=None,
+            **limit_to_match_kwargs
+    ):
         """Vary lines with common upper quantum numbers. All
         initialised set to the existing value of the first
         occurence."""
-        keys = [key+'_u' for key in self._level_class.defining_qn]
-        for d,m in self.unique_dicts_match(*keys):
-            i = tools.find(m)
-            if len(i) > 0:
-                self.set_value(key,P(self[key,i[0]],vary,step),**d)
+         ## determine level common qn, upper or lower levels
+        if upper_or_lower in ('u','upper'):
+            suffix = '_u'
+        elif upper_or_lower in ('l','lower'):
+            suffix = '_l'
+        else:
+            raise Exception(f'Invalid value: {upper_or_lower=}. Valid values are "upper", "lower", "u", or "l".')
+        # common_qn = [key+suffix for key in self._level_class.defining_qn]
+        ## find any matching levels with common upper/lower qn
+        imatch= self.match(**limit_to_match_kwargs)
+        for dcommon,icommon in self.unique_dicts_match('qn_encoded'+suffix):
+            i = icommon & imatch
+            if np.any(i):
+                ## set vale as given or to a Parameter with value
+                ## taken from the first matching value
+                if value is not None:
+                    tvalue = value if value is not None else
+                else:
+                    tvalue = P(self[key+suffix,i][0],
+                               vary,step,bounds=bounds)
+                self.set_value(key=key+suffix,
+                               value=tvalue,
+                               **dcommon,
+                               **limit_to_match_kwargs)
 
     def sort_upper_lower_level(self):
         """Swap upper and lower levels if E_u < E_l.  DOES NOT CHANGE

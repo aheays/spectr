@@ -657,8 +657,14 @@ class Base(Dataset):
                             raise Exception
                         for key in qni:
                             t[key].append(qni[key])
+        ## set defining qn of the line and the upper and lower
+        ## levels. Bit of a hack could use
+        ## self._level_class.defining_qn instead of the _u _l string
+        ## matches
         if defining_qn is not None:
             self.defining_qn = defining_qn
+        self.defining_qn_u = [key for key in self.defining_qn if len(key)>2 and key[-2:] == '_u']
+        self.defining_qn_l = [key for key in self.defining_qn if len(key)>2 and key[-2:] == '_l']
         Dataset.__init__(self,*args,**kwargs)
 
     def decode_qn(self,encoded_qn):
@@ -753,7 +759,7 @@ class Generic(Base):
         'JJ','Ereduced_JJ',
         '_species_hash',
         'chemical_species','isotopologue_ratio',
-        'reference','_qnhash',
+        'reference','qn_encoded','_qnhash',
         'point_group',
         'mass','reduced_mass',
         'E','Ee','E0','Ereduced','Ereduced_common','Eref','Eres','Eexp',
