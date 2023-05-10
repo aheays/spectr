@@ -1462,27 +1462,6 @@ class Generic(levels.Base):
             for key in level:
                 self[f'{key}_{suffix}'] = level[key,l][j]
                     
-    def set_common_levels_to_current(
-            self,
-            upper_or_lower=('upper','lower'),
-            key='E',
-            **kwargs_set_value_to_current
-    ):
-        """Set level data in common for lines with the same upper or
-        lower quantum numbers to a Parameter with initial values set
-        to the current value of the first occurence for each level."""
-        for upper_or_lower_i in tools.ensure_iterable(upper_or_lower):
-            if upper_or_lower in ('u','upper'):
-                suffix = '_u'
-            elif upper_or_lower in ('l','lower'):
-                suffix = '_l'
-            else:
-                raise Exception(f'Invalid value: {upper_or_lower=}. Valid values are "upper", "lower", "u", or "l".')
-            self.set_value_to_current(
-                key=key+suffix,
-                common_keys='qn_encoded'+suffix,
-                **kwargs_set_value_to_current)
-
     def sort_upper_lower_level(self):
         """Swap upper and lower levels if E_u < E_l.  DOES NOT CHANGE
         CALCULATED TRANSITION DATA!!!"""

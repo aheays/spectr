@@ -707,49 +707,125 @@ class Dataset(optimise.Optimiser):
                 if self.is_set(key,'unc'):
                     self.set(key,'unc',nan,index=index,set_changed_only=True)
 
-    def set_value_to_current(
-            self,
-            key,                # key to set
-            common_keys=None, # set rows matching these combinations to a common value
-            vary=True,          # whether Parameter is to be varied or not
-            step=None,          # Paramater optimisation step
-            bounds=None,        # Parameter optimisation bounds
-            **limit_to_match_kwargs # only set matching data
-    ):
-        """Set key to an optimisation Parameter with its current
-        value.  If common_keys is None then set all data, if it is a
-        key or list of keys then groups of unique matches to these
-        keys are set to the same value, taken from the first match."""
-        self.assert_known(key)
-        ## limit to these matches
-        imatch = self.match(**limit_to_match_kwargs)
-        if common_keys is None:
-            ## no common keys to find, adjust all data separately
-            for i in tools.find(imatch):
-                self.set_value(
-                    key=key,
-                    value=P(
-                        value=self[key,i],
-                        vary=vary,
-                        step=(self[key,'step',i] if step is None else step),
-                        bounds=bounds),
-                    index=i)
-        else:
-            ## adjust common data in groups
-            common_keys = tools.ensure_iterable(common_keys)
-            for dcommon,icommon in self.unique_dicts_match(*common_keys):
-                i = icommon & imatch
-                if np.any(i):
-                    self.set_value(
-                        key=key,
-                        value=P(
-                            value=self[key,i][0],
-                            vary=vary,
-                            step=(self[key,'step',i][0] if step is None else step),
-                            bounds=bounds),
-                        **dcommon,
-                        **limit_to_match_kwargs)
+    # def set_value_to_current(
+            # self,
+            # key,                # key to set
+            # common_keys=None, # set rows matching these combinations to a common value
+            # vary=True,          # whether Parameter is to be varied or not
+            # step=None,          # Paramater optimisation step
+            # bounds=None,        # Parameter optimisation bounds
+            # **limit_to_match_kwargs # if specified then only set matching data
+    # ):
+        # """Set key to an optimisation Parameter with its current
+        # value.  If common_keys is None then set all data matching
+        # limit_to_match_kwargs.  If common_keys is a key or list of
+        # keys then groups of unique matches (respecting
+        # limit_to_match_kwargs) to these keys are set to the same value
+        # initialised to the first match.  In the latter case, all
+        # grouped data is modified (without consideration of
+        # limit_to_match_kwargs if any of it falls within
+        # limit_to_match_kwargs."""
+        # self.assert_known(key)
+        # ## limit to these matches
+        # imatch = self.match(**limit_to_match_kwargs)
+        # if common_keys is None:
+            # ## no common keys to find, adjust all data separately
+            # for i in tools.find(imatch):
+                # self.set_value(
+                    # key=key,
+                    # value=P(
+                        # value=self[key,i],
+                        # vary=vary,
+                        # step=(self[key,'step',i] if step is None else step),
+                        # bounds=bounds),
+                    # index=i)
+        # else:
+            # ## adjust common data in groups
+            # common_keys = tools.ensure_iterable(common_keys)
+            # for dcommon,icommon in self.unique_dicts_match(*common_keys):
+                # i = icommon & imatch
+                # if np.any(i):
+                    # self.set_value(
+                        # key=key,
+                        # value=P(
+                            # value=self[key,i][0],
+                            # vary=vary,
+                            # step=(self[key,'step',i][0] if step is None else step),
+                            # bounds=bounds),
+                        # **dcommon,
+                        # ## It is tempting to include
+                        # ## **limit_to_match_kwargs here so only data
+                        # ## within limit_to_match_kwargs is every
+                        # ## modified. But, then data matching
+                        # ## common_keysthere can have inconsistent
+                        # ## values if some fall outside
+                        # ## limit_to_match_kwargs.
+                    # )
 
+    def auto_set_matching_values(
+            self,
+            values,             # dictionary key to set
+            combination_keys, # set rows matching these combinations to a common value
+            limit_to_match_kwargs=None, # if specified then only set matching data
+    ):
+        """Set values to groups of data with unique combinations of
+        combinations_parameters. Values are Parameters or will be cast
+        into parameters. If they are an empty list then their initial
+        value is taking from the first datum in each combination.
+        Note that limit_to_match_kwargs is used to find combinations,
+        but if any elements are found then all data (including outside
+        limit_to_match_kwargs) will then be set."""
+        ## get unique combinations of unique_combination_keys for data
+        ## conformign to limit_to_match_kwargs
+        combinations = self.matches(
+            **limit_to_match_kwargs).unique_dicts(
+                *tools.ensure_iterable(combination_keys))
+        ## initialise each parameter
+        combinations_parameters = []
+        for combination in combinations:
+            parameters = {}
+            for key,val in values.items():
+                if len(val) < 1:
+                    val = (self[key,self.match(**combination)][0],)
+                if len(val) < 2:
+                    val = (val[0],True)
+                if len(val) < 3 and self.is_set(key,'default_step'):
+                    val = (*val[0:2],self[key,'default_step'])
+                parameters[key] = Parameter(*val)
+            combinations_parameters.append((combination, parameters))
+        ## pass to set_matching_values
+        self.set_matching_values(*combinations_parameters)
+        
+    def set_matching_values(self,*combinations_parameters):
+        """Find lines matching a combination of parameters and set the
+        values of multiple keys to Parameter values. \nE.g.,
+        dataset_object.set_matching_values(
+           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=2)'}, {'E_u': P(+53498.5926545,True ,0.001,0.58)}),
+           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=3)'}, {'E_u': P(+53507.5796186,True ,0.001,0.15)}),
+           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=4)'}, {'E_u': P(+53519.5803927,True ,0.001,0.08)}),
+           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=5)'}, {'E_u': P(+53534.6089568,True ,0.001,0.052)}),
+        ) """
+        ## find indices matching the input combination dictionaries
+        combinations,parameters = zip(*combinations_parameters)
+        i = [self.match(**combination) for combination in combinations]
+        ## add all Parameters in the input parameters dictionaries
+        for parameter in parameters:
+            for p in parameter.values():
+                self.add_parameter(p)
+        ## add a construct function that insers the parameters into
+        ## the data in self
+        def construct_function(self=self,i=i,parameter=parameter):
+            for i,parameter in zip(i,parameters):
+                for key,p in parameter.items():
+                    self[key,i] = p
+        self.add_construct_function(construct_function)
+        ## a new input line including optimised Parameters
+        self.add_format_input_function(
+            lambda: '\n'.join([f'{self.name}.set_matching_values(']
+                              +['   '+repr(t)+',' for t in combinations_parameters]
+                              +[')']))
+            
+            
     @optimise_method(format_multi_line=3)
     def set_spline(
             self,
