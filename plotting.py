@@ -728,8 +728,8 @@ def _extra_interaction_on_key(event):
             axes.set_ylim(ymin=ymin)
         if not np.isinf(ymax):
             axes.set_ylim(ymax=ymax)
-    ## zoom to full yscale
     elif event.key=='y':
+        ## zoom to full yscale
         ## use all lines if none selected
         if axes._my_extra_interaction['selected_line'] is None:
             lines  = axes.get_lines()

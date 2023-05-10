@@ -1155,8 +1155,8 @@ class Model(Optimiser):
         self.add_construct_function(f) # multiply spline during construct
 
     @optimise_method()
-    def add_constant(self,constant=1):
-        """Shift by a spline defined function."""
+    def add_constant(self,constant=0):
+        """Shift by a constant."""
         self.y += float(constant)
 
     @optimise_method()
@@ -1276,7 +1276,7 @@ class Model(Optimiser):
     
     @optimise_method()
     def add_spline(self,knots=None,order=3,_cache=None,autovary=False):
-        """Multiple y by a spline function."""
+        """Add a spline function."""
         if self._clean_construct:
             spline = Spline(knots=knots,order=order)
             i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
