@@ -707,61 +707,6 @@ class Dataset(optimise.Optimiser):
                 if self.is_set(key,'unc'):
                     self.set(key,'unc',nan,index=index,set_changed_only=True)
 
-    # def set_value_to_current(
-            # self,
-            # key,                # key to set
-            # common_keys=None, # set rows matching these combinations to a common value
-            # vary=True,          # whether Parameter is to be varied or not
-            # step=None,          # Paramater optimisation step
-            # bounds=None,        # Parameter optimisation bounds
-            # **limit_to_match_kwargs # if specified then only set matching data
-    # ):
-        # """Set key to an optimisation Parameter with its current
-        # value.  If common_keys is None then set all data matching
-        # limit_to_match_kwargs.  If common_keys is a key or list of
-        # keys then groups of unique matches (respecting
-        # limit_to_match_kwargs) to these keys are set to the same value
-        # initialised to the first match.  In the latter case, all
-        # grouped data is modified (without consideration of
-        # limit_to_match_kwargs if any of it falls within
-        # limit_to_match_kwargs."""
-        # self.assert_known(key)
-        # ## limit to these matches
-        # imatch = self.match(**limit_to_match_kwargs)
-        # if common_keys is None:
-            # ## no common keys to find, adjust all data separately
-            # for i in tools.find(imatch):
-                # self.set_value(
-                    # key=key,
-                    # value=P(
-                        # value=self[key,i],
-                        # vary=vary,
-                        # step=(self[key,'step',i] if step is None else step),
-                        # bounds=bounds),
-                    # index=i)
-        # else:
-            # ## adjust common data in groups
-            # common_keys = tools.ensure_iterable(common_keys)
-            # for dcommon,icommon in self.unique_dicts_match(*common_keys):
-                # i = icommon & imatch
-                # if np.any(i):
-                    # self.set_value(
-                        # key=key,
-                        # value=P(
-                            # value=self[key,i][0],
-                            # vary=vary,
-                            # step=(self[key,'step',i][0] if step is None else step),
-                            # bounds=bounds),
-                        # **dcommon,
-                        # ## It is tempting to include
-                        # ## **limit_to_match_kwargs here so only data
-                        # ## within limit_to_match_kwargs is every
-                        # ## modified. But, then data matching
-                        # ## common_keysthere can have inconsistent
-                        # ## values if some fall outside
-                        # ## limit_to_match_kwargs.
-                    # )
-
     def auto_set_matching_values(
             self,
             values,             # dictionary key to set
@@ -790,7 +735,7 @@ class Dataset(optimise.Optimiser):
                 if len(val) < 2:
                     val = (val[0],True)
                 if len(val) < 3 and self.is_set(key,'default_step'):
-                    val = (*val[0:2],self[key,'default_step'])
+                    val = (val[0],val[1],self[key,'default_step'])
                 parameters[key] = Parameter(*val)
             combinations_parameters.append((combination, parameters))
         ## pass to set_matching_values
@@ -814,10 +759,10 @@ class Dataset(optimise.Optimiser):
                 self.add_parameter(p)
         ## add a construct function that insers the parameters into
         ## the data in self
-        def construct_function(self=self,i=i,parameter=parameter):
-            for i,parameter in zip(i,parameters):
+        def construct_function():
+            for ii,parameter in zip(i,parameters):
                 for key,p in parameter.items():
-                    self[key,i] = p
+                    self[key,ii] = p
         self.add_construct_function(construct_function)
         ## a new input line including optimised Parameters
         self.add_format_input_function(
