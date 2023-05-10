@@ -737,21 +737,24 @@ class Dataset(optimise.Optimiser):
                 if len(val) < 3 and self.is_set(key,'default_step'):
                     val = (val[0],val[1],self[key,'default_step'])
                 parameters[key] = Parameter(*val)
-            combinations_parameters.append((combination, parameters))
+            combinations_parameters.append(combination|parameters)
         ## pass to set_matching_values
         self.set_matching_values(*combinations_parameters)
         
     def set_matching_values(self,*combinations_parameters):
-        """Find lines matching a combination of parameters and set the
-        values of multiple keys to Parameter values. \nE.g.,
-        dataset_object.set_matching_values(
-           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=2)'}, {'E_u': P(+53498.5926545,True ,0.001,0.58)}),
-           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=3)'}, {'E_u': P(+53507.5796186,True ,0.001,0.15)}),
-           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=4)'}, {'E_u': P(+53519.5803927,True ,0.001,0.08)}),
-           ({'qn_encoded_u': '¹²C¹⁶O_a(v=3,Σ=-1,ef=-1,J=5)'}, {'E_u': P(+53534.6089568,True ,0.001,0.052)}),
-        ) """
+        """Find lines matching a combination of keys=vals and set the
+        values of multiple keys=Parameter values."""
         ## find indices matching the input combination dictionaries
-        combinations,parameters = zip(*combinations_parameters)
+        combinations,parameters = [],[]
+        for t in combinations_parameters:
+            t_parameters,t_combinations = {},{}
+            for key,val in t.items():
+                if isinstance(val,Parameter):
+                    t_parameters[key] = val
+                else:
+                    t_combinations[key] = val
+            combinations.append(t_combinations)
+            parameters.append(t_parameters)
         i = [self.match(**combination) for combination in combinations]
         ## add all Parameters in the input parameters dictionaries
         for parameter in parameters:
@@ -767,9 +770,11 @@ class Dataset(optimise.Optimiser):
         ## a new input line including optimised Parameters
         self.add_format_input_function(
             lambda: '\n'.join([f'{self.name}.set_matching_values(']
-                              +['   '+repr(t)+',' for t in combinations_parameters]
+                              +['   dict('+','.join(
+                                  [f'{key}={val!r}'
+                                   for key,val in (tc|tp).items()])+',),'
+                                for tc,tp in zip(combinations,parameters)]
                               +[')']))
-            
             
     @optimise_method(format_multi_line=3)
     def set_spline(
