@@ -306,7 +306,13 @@ def encode_linear_level(qn=None,**more_qn):
         t = []
         for key,val in qn.items():
             if not isinstance(val,str):
-                val = format(val,'g')
+                if key in ('Σ','ef','gu','sa',):
+                    fmt = '+g'
+                elif key in ('J','N',):
+                    fmt = '<2g'
+                else:
+                    fmt = 'g'
+                val = format(val,fmt)
             t.append(f'{key}={val}')
         retval = retval + '('+','.join(t)+')'
     return retval
