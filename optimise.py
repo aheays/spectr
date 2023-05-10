@@ -349,15 +349,19 @@ class Optimiser:
 
     suboptimisers = property(lambda self: self._suboptimisers)
 
-    def add_parameter(self,parameter,*args,**kwargs):
+    def add_parameter(self,parameter
+                      # ,*args,**kwargs
+                      ):
         """Add one parameter. Return a reference to it. Args are as in
         pP or one are is a P."""
+        if not isinstance(parameter,Parameter):
+            raise TypeError(f'Parameter expected: {parameter}')
         if hasattr(parameter,'_in_store'):
             optimiser = parameter._in_store._parent
             if optimiser is not self and optimiser not in self.suboptimisers:
                 self.add_suboptimiser(optimiser)
-        if not isinstance(parameter,Parameter):
-            parameter = Parameter(*tools.tools.ensure_iterable(parameter),*args,**kwargs)
+        # if not isinstance(parameter,Parameter):
+            # parameter = Parameter(*tools.tools.ensure_iterable(parameter),*args,**kwargs)
         self.parameters.append(parameter)
         return parameter
     
