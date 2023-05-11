@@ -1,13 +1,13 @@
 # -*- mode: org; eval: (auto-fill-mode 0); -*-
 #+OPTIONS: toc:2
 #+TITLE: A library used in the scientific work of Alan Heays
-* Install
+* Installation
 ** Source code
 GPL source code is publically available on github at  [[https://github.com/aheays/spectr]].
 The repository can be cloned locally with =git clone --depth=1 https://github.com/aheays/spectr.git= (this will require git to be installed =sudo apt install git= on ubuntu). A subsequent =git pull= while inside the =spectr= source directory will download any updates. Otherwise, zip-archives of particular version can be downloaded e.g., https://github.com/aheays/spectr/archive/refs/tags/v1.3.0.zip.
 
 ** Python dependencies
-This module has been tested and works with python 3.9 and 3.10, and will not work with version <3.9. Many non-standard python libraries are used and are available from linux distributions or via pip, with the following package names:
+This module has been tested and works with python >=3.9. Many non-standard python libraries are used and are available from linux distributions or via pip, with the following package names:
 #+BEGIN_SRC
   bidict cycler hitran-api brukeropusreader dill h5py matplotlib
   numpy openpyxl periodictable scipy sympy xmltodict pyqt5 py3nj
@@ -17,7 +17,7 @@ Note: py3nj can be successfully installed only if gfortran is already installed
 ** Building the fortran extensions
 Fortran code used to generate python extensions with =f2py= and needed to speed up some calculations.  Some submodules will still import and run fine without these.
 To compile the extensions run =make= within the spectr source directory. The options in the =Makefile= are for the gfortran compiler and use the =lapack= library.  The following distribution packages might be sufficient to compile the code under linux:
- - Debian / Ubuntu: =gfortran python3.9-dev liblapack-dev=
+ - Debian / Ubuntu: =gfortran python3-dev liblapack-dev=
  - Arch: =gcc-gfortran lapack=
 If the Makefile is not working, then the following should be enough to get things running:
 : f2py3 -c --quiet -llapack --f90flags="-Wall -ffree-line-length-none" --opt="-O3" fortran_tools.f90
@@ -26,30 +26,29 @@ If the Makefile is not working, then the following should be enough to get thing
 Under ubuntu, installing the packages =pyqt5= and =qt5-default= seem to be enough to get matplotlib to draw windowed figures.
 
 ** Installing in a linux virtual environment
-This is a recipe for installing spectr and its dependencies in a virtual environment, and not messing up the system python.
+This is a recipe for installing spectr and its dependencies in a virtual environment, and not messing up the system python.  The script =install_in_venv.sh= attempts to do everything necessary, requiring only python3, gfortran, and lapack to be installed: =bash install_in_venv.sh=.
 
- - Install python3.9 (or 3.10) somehow. Under ubuntu with =sudo apt install
-   python3.9=
- - Create a virtual environment using python3.9: =python3.9 -m venv venv3.9=
- - Start the virtual environment: =source venv3.9/bin/activate=
+Individual steps:
+ - Install python3 (or >=3.9 required) somehow. Under ubuntu with =sudo apt install python3=.
+ - Create a virtual environment using python3: =python3 -m venv venv3=
+ - Start the virtual environment: =source venv3/bin/activate=
  - Install the python dependencies with pip: =pip install bidict cycler hitran-api brukeropusreader dill h5py matplotlib numpy openpyxl periodictable scipy sympy xmltodict ; pip install py3nj= /For some reason py3nj must be intalled after everything else (2022-01-18)./ 
  - The matplotlib Qt dependency can also be installed with pip, =pip install pyqt5=, but Qt must be installed on the system itself, e.g, with =sudo apt install qt5-default=
  - Clone spectr code with =git clone --depth=1 https://github.com/aheays/spectr.git=
  - Add =spectr= to the python path so it can be imported from anywhere
-   : cd venv3.9/lib/python3.9/site-packages/
+   : cd venv3/lib/python3/site-packages/
    : ln -s ../../../../spectr .
    : cd -
  - Add =qplot= to the path so it can be run from within the virtual environment
-   : cd venv3.9/bin
+   : cd venv3/bin
    : ln -s ../../spectr/qplot .
    : cd -
- - I wrote a script that attempts to install the virtual environment: =bash install_in_venv.sh= 
 
 ** Testing the installation
 Test by importing spectr and trying to plot something
-   : source venv3.9/bin/activate
+   : source venv3/bin/activate
    : echo "from spectr.env import *" | python
-   : qplot tests/data/CS2_experimental_spectrum.h5
+   : qplot absorption/data/2021_11_30_bcgr.0
 
 * Usage
 ** Importing =spectr=
@@ -68,13 +67,14 @@ The =optimiser.Optimiser= class is used to conveniently construct model objects 
 Only the first argument is required. For example, =x=P(2,True,1e-5,bounds=(0,100))= defines a parameter =x= that will be varied from an initial value of 2 but constrained to the range 0 to 100.  When computing the finite-difference approximation to the linear dependence of model error on =x= a step size of \num{e-5} will be used.  The fitting uncertainty =unc= will be set automatically after optimisation.
 Multiple =Optimiser= objects can be combined in a hierarchy, so that multiple spectra can be fit at once to optimise a common parameter, for example a temperature-dependence coefficient fit to spectra at multiple temperatures.
 
-** Encoding diatomic quantum numbers
+** Encoding linear molecule quantum numbers
+TBD
 
 ** =qplot=
 <<=qplot=>>
 This is a command line programming for making line plots, e.g., =qplot datafile=, or =qplot -h= for a list of options.
 * Examples
-Some examples scripts are stored in the repository https://github.com/aheays/spectr_examples
+Some examples scripts are provided in the repository https://github.com/aheays/spectr_examples
 
 * Submodules
 ** =env.py=
