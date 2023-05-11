@@ -708,9 +708,9 @@ class Dataset(optimise.Optimiser):
                     self.set(key,'unc',nan,index=index,set_changed_only=True)
 
     def auto_set_matching_values(
-            self,
-            values,             # dictionary key to set
-            combination_keys, # set rows matching these combinations to a common value
+            self,               
+            parameters,         # keys to vary
+            combinations,       # keys to find unique combinations of
             limit_to_match_kwargs=None, # if specified then only set matching data
     ):
         """Set values to groups of data with unique combinations of
@@ -722,22 +722,17 @@ class Dataset(optimise.Optimiser):
         limit_to_match_kwargs) will then be set."""
         ## get unique combinations of unique_combination_keys for data
         ## conformign to limit_to_match_kwargs
-        combinations = self.matches(
+        matches = self.matches(
             **limit_to_match_kwargs).unique_dicts(
-                *tools.ensure_iterable(combination_keys))
+                *tools.ensure_iterable(combinations))
         ## initialise each parameter
-        combinations_parameters = []
-        for combination in combinations:
-            parameters = {}
-            for key,val in values.items():
-                if len(val) < 1:
-                    val = (self[key,self.match(**combination)][0],)
-                if len(val) < 2:
-                    val = (val[0],True)
-                if len(val) < 3 and self.is_set(key,'default_step'):
-                    val = (val[0],val[1],self[key,'default_step'])
-                parameters[key] = Parameter(*val)
-            combinations_parameters.append(combination|parameters)
+        combinations_parameters = [
+            match | {key:Parameter(
+                        value=self[key,self.match(**combination)][0],
+                        vary=True,
+                        step=(self[key,'default_step'] if self.is_set(key,'default_step') else None),)
+                      for key in values}
+                for match in matches]
         ## pass to set_matching_values
         self.set_matching_values(*combinations_parameters)
         
@@ -1680,7 +1675,10 @@ class Dataset(optimise.Optimiser):
                         ## this key needs updating
                         for subkey in ('value','unc'):
                             if source.is_set(key,subkey):
-                                self.set(key, subkey, source[key,subkey,source_index],index,set_changed_only=True)
+                                self.set(key,subkey, 
+                                         source[key,subkey,source_index],
+                                         index,
+                                         set_changed_only=True)
             self.add_construct_function(construct_function)
             ## prevent optimisation-breaking changes
             source.permit_indexing = False
