@@ -53,7 +53,7 @@ for key in (
         'Zsource', 'Eref',
         'reference',
         '_qnhash', 
-        'qn_encoded', 
+        'qnenc', 
         '_species_hash',
 ):
     prototypes[key] = copy(levels.prototypes[key])
@@ -442,7 +442,7 @@ def _collect_prototypes(level_class,base_class,new_keys):
     ## get defining qn from levels
     defining_qn = tuple([key+'_u' for key in level_class.defining_qn]
                         +[key+'_l' for key in level_class.defining_qn])
-    ## add infer functions for '_qnhash' and 'qn_encoded' to and from
+    ## add infer functions for '_qnhash' and 'qnenc' to and from
     ## defining_qn, also make sure upper and lower level versions are
     ## computable.  This must be computed here rather than in the
     ## prototype definitions because they depend on the defining
@@ -455,15 +455,15 @@ def _collect_prototypes(level_class,base_class,new_keys):
     if '_qnhash_l' in default_prototypes:
         default_prototypes['_qnhash_l']['infer'].append(
             ([f'{key}_l' for key in level_class.defining_qn], levels._qn_hash))
-    if 'qn_encoded' in default_prototypes:
-        default_prototypes['qn_encoded']['infer'].append(
+    if 'qnenc' in default_prototypes:
+        default_prototypes['qnenc']['infer'].append(
             (defining_qn, lambda self,*defining_qn_values:
                      [self.encode_qn(
                          {key:val[i] for key,val in zip(defining_qn,defining_qn_values)})
                       for i in range(len(self))]))
     for suffix in ('_u','_l'):
-        if 'qn_encoded'+suffix in default_prototypes:
-            default_prototypes['qn_encoded'+suffix]['infer'].append(
+        if 'qnenc'+suffix in default_prototypes:
+            default_prototypes['qnenc'+suffix]['infer'].append(
                 ([f'{key}'+suffix for key in level_class.defining_qn],
                  lambda self,*defining_qn_values:
                          [level_class.encode_qn(None,
@@ -492,7 +492,7 @@ class Generic(levels.Base):
         base_class=levels.Base,
         new_keys=(
             'reference',
-            '_qnhash', 'qn_encoded',
+            '_qnhash', 'qnenc',
             'species', 'chemical_species','isotopologue_ratio',
             'point_group','mass','Zsource','_species_hash',
             'Eref',
