@@ -728,10 +728,10 @@ class Dataset(optimise.Optimiser):
         ## initialise each parameter
         combinations_parameters = [
             match | {key:Parameter(
-                        value=self[key,self.match(**combination)][0],
+                        value=self[key,self.match(**match)][0],
                         vary=True,
                         step=(self[key,'default_step'] if self.is_set(key,'default_step') else None),)
-                      for key in values}
+                      for key in parameters}
                 for match in matches]
         ## pass to set_matching_values
         self.set_matching_values(*combinations_parameters)
@@ -761,6 +761,7 @@ class Dataset(optimise.Optimiser):
             for ii,parameter in zip(i,parameters):
                 for key,p in parameter.items():
                     self[key,ii] = p
+                    self[key,'unc',ii] = p.unc
         self.add_construct_function(construct_function)
         ## a new input line including optimised Parameters
         self.add_format_input_function(
