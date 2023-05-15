@@ -572,11 +572,8 @@ def extra_interaction(fig=None,pickradius=5):
     fig.canvas.mpl_connect('button_press_event', _extra_interaction_on_button_press)
     fig.canvas.mpl_connect('scroll_event', _extra_interaction_on_scroll_event)
 
-def _extra_interaction_select_axes(axes):
-    """"""
-    fig = axes.figure          
-    fig.sca(axes) # set clicked axes to gca
-    ## initialise dictionrary to store useful data
+def _extra_interaction_initialise_axes_if_necessary(axes):
+    """Setup this dictionary if not set."""
     if not hasattr(axes,'_my_extra_interaction'):
         axes._my_extra_interaction = dict(
             selected_line = None,
@@ -584,6 +581,13 @@ def _extra_interaction_select_axes(axes):
             currently_selecting_points = False,
             make_point_annotations = False,
             list_of_point_annotations = [],) 
+
+def _extra_interaction_select_axes(axes):
+    """"""
+    fig = axes.figure          
+    fig.sca(axes) # set clicked axes to gca
+    ## initialise dictionrary to store useful data
+    _extra_interaction_initialise_axes_if_necessary(axes)
     ## set all lines to requested picker values
     if fig._my_extra_interaction['pickradius'] is not None:
         for line in axes.lines:
@@ -621,6 +625,7 @@ def _extra_interaction_select_line(line):
     what to do when a deselected line is picked"""
     print(line.get_label())
     axes = line.axes
+    _extra_interaction_initialise_axes_if_necessary(axes)
     axes._my_extra_interaction['selected_line_annotation'] = axes.annotate(
         line.get_label(),(0.1,0.1),xycoords='axes fraction',
         ha='left',va='top',fontsize='medium',in_layout=False)
@@ -633,6 +638,7 @@ def _extra_interaction_deselect_line(line):
     axes = line.axes
     line.set_linewidth(line.get_linewidth()/2)
     line.set_markersize(line.get_markersize()/2)
+    _extra_interaction_initialise_axes_if_necessary(axes)
     if axes._my_extra_interaction['selected_line_annotation']!=None:
         axes._my_extra_interaction['selected_line_annotation'].remove()
     axes._my_extra_interaction['selected_line_annotation'] = None
@@ -642,6 +648,7 @@ def _extra_interaction_on_button_press(event):
     """If turned on annotate click point coordinates."""
     if event.inaxes:
         axes = event.inaxes
+        _extra_interaction_initialise_axes_if_necessary(axes)
         _extra_interaction_select_axes(axes)
         if axes._my_extra_interaction['make_point_annotations']:
             ## annotate point
@@ -674,6 +681,7 @@ def _extra_interaction_on_pick(event):
     """on picking of line etc"""
     line = event.artist
     axes = line.axes
+    _extra_interaction_initialise_axes_if_necessary(axes)
     if axes._my_extra_interaction['currently_selecting_points'] is True:
         pass
     elif axes._my_extra_interaction['selected_line'] is None:
@@ -692,6 +700,7 @@ def _extra_interaction_on_key(event):
         ## quit already handled
         return              
     axes = plt.gca()
+    _extra_interaction_initialise_axes_if_necessary(axes)
     move_factor = 0.2
     zoom_factor = 1.5
     if event.key=='d':
