@@ -201,6 +201,13 @@ def _load_from_org(filename,table_name=None):
     data = _convert_flat_data_dict(data)
     return data
 
+def _load_from_simple_text(filename,**txt_to_dict_kwargs):
+    """Load data from a simple text table without any formatted header information."""
+    filename = tools.expand_path(filename)
+    data = tools.txt_to_dict(filename,**txt_to_dict_kwargs)
+    data = _convert_flat_data_dict(data)
+    return data
+
 def _load_from_text(
         filename,
         comment='#',
@@ -209,11 +216,11 @@ def _load_from_text(
         txt_to_dict_kwargs=None,
         header_commented=False, # header preceding data labels is commented
 ):
-    """Load data from a text-formatted file."""
+    """Load data from a text-formatted Dataset file."""
     ## text table to dict with header
     if txt_to_dict_kwargs is None:
         txt_to_dict_kwargs = {}
-    txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':header_commented}
+    txt_to_dict_kwargs |= {'delimiter':delimiter,'labels_commented':labels_commented}
     filename = tools.expand_path(filename)
     data = {}
     metadata = {}
@@ -452,15 +459,16 @@ class Dataset(optimise.Optimiser):
     ## kwargs passed to dataset.load (except thoseused by load itself
     ## or load_data_dict) are passed on.
     default_load_functions = {
-        'hdf5'      : _load_from_hdf5,
-        'directory' : _load_from_directory,
-        'npz'       : _load_from_npz,
-        'org'       : _load_from_org,
-        'text'      : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : ' '}|kwargs)),
-        'rs'        : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '␞'}|kwargs)),
-        'psv'       : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '|'}|kwargs)),
-        'csv'       : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : ','}|kwargs)),
-        'sqlite'    : _load_from_sqlite,
+        'hdf5'         : _load_from_hdf5,
+        'directory'    : _load_from_directory,
+        'npz'          : _load_from_npz,
+        'org'          : _load_from_org,
+        'text'         : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : ' '}|kwargs)),
+        'rs'           : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '␞'}|kwargs)),
+        'psv'          : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : '|'}|kwargs)),
+        'csv'          : lambda *args,**kwargs : _load_from_text(*args,**({'delimiter' : ','}|kwargs)),
+        'sqlite'       : _load_from_sqlite,
+        'simple_text'  : _load_from_simple_text,
     }
 
 
@@ -912,8 +920,14 @@ class Dataset(optimise.Optimiser):
         if isinstance(value,Parameter):
             value = float(value)
         ## If an index is provided then data must already exist, set
-        ## new indexed data.
-        if index is not None or self.is_set(key):
+        ## new indexed data.  If the key is set and len(self)==0 then
+        ## that that implies only a default value is set, so skip this
+        ## block and instaed create an entirely new array below - but
+        ## erasing default!
+        if (
+                index is not None
+                or ( self.is_set(key) and len(self) > 0)
+        ):
             ## set index to all data if not provided
             if index is None and self.is_set(key):
                 index = slice(0,len(self)) 
@@ -951,9 +965,13 @@ class Dataset(optimise.Optimiser):
                 data['kind'] = 'U'
             ## some other prototype data based on kind
             data = self.data_kinds[data['kind']] | data
-            ## if a scalar expand to length of self
-            ## and set as default value
+            ## If this is a scalar value then expand it to the length
+            ## of self and also set as default value.  But if there is
+            ## no data at all in self then raise an error, otherwise a
+            ## zero-length self with be created.
             if not tools.isiterable(value):
+                #  if len(self.keys()) == 0:
+                    #  raise Exception(f'It is not implemented to set a scalar value ({key=}, {value=}) in a Dataset containing new data because this will create an awkward zero-length Dataset.')
                 data['default'] = value
                 value = np.full(len(self),value)
             ## if this is the first data then allocate an initial
@@ -1527,7 +1545,7 @@ class Dataset(optimise.Optimiser):
 
     def remove(self,index):
         """Remove indices."""
-        index = self.get_combined_index_bool(index)
+        index = self.get_combined_index(index, return_as='bool')
         self.index(~index)
 
     # ## caused a memory leak somehow. Is it really faster?
@@ -2360,7 +2378,7 @@ class Dataset(optimise.Optimiser):
             **kwargs
     ):
         '''Load data from a file. Valid filetypes are ["hdf5",
-        "directory", "npz", "org", "text", "rs", "psv", "csv"['''
+        "directory", "npz", "org", "text", "rs", "psv", "csv"], "simple_text"'''
         ## kwargs are for load_from_dict or the load method.  Divide these up.
         import inspect
         all_load_from_dict_kwargs = inspect.getfullargspec(self.load_from_dict).args

@@ -1666,11 +1666,16 @@ class Diatom(Linear):
             if key_old in data:
                 data[key_new] = data.pop(key_old)
         ## data to modify
+        ##
+        ## convert ef = 'e' or 'f' to ef = +1 or -1
         for key in ('ef_u','ef_l'):
             if key in data:
                 i = data[key]=='f'
                 data[key] = np.full(len(data[key]),+1,dtype=int)
                 data[key][i] = -1
+        ## vacuum wavenumbers are not ν0 and not ν
+        if 'ν' in data and 'ν0' not in data:
+            data['ν0'] = data['ν']
         ## data to ignore
         for key in (
                 'level_transition_type',
@@ -1685,6 +1690,7 @@ class Diatom(Linear):
                 'name',
                 'Sv',
                 'mass_l',
+                'author',
         ):
             if key in data:
                 data.pop(key)
