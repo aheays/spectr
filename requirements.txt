@@ -1,0 +1,15 @@
+bidict
+cycler
+hitran-api
+brukeropusreader
+dill
+h5py
+matplotlib
+numpy
+openpyxl
+periodictable
+scipy
+sympy
+xmltodict
+pyqt5
+
