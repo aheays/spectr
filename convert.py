@@ -431,10 +431,7 @@ def _f(name):
     """Translate ASCII name into unicode unicode name. E.g., echo
     NH3→NH₃, 14N16O→¹⁴N¹⁶O, AlBr3.6H2O→AlBr₃•6H₂O   
     """
-    if name[0] in '0123456789':
-        ## initial multiplicity not allowed -- could implement
-        raise Exception(f'Cannot translate: {name}')
-    elif r:=re.match(r'^([0-9]+)([A-Z][a-z]?)([0-9]+)([A-Z][a-z]?)(\+*|-*)$',name):
+    if r:=re.match(r'^([0-9]+)([A-Z][a-z]?)([0-9]+)([A-Z][a-z]?)(\+*|-*)$',name):
         ## e.g., 14N16O→¹⁴N¹⁶O
         retval = (tools.superscript_numerals(r.group(1))+r.group(2)
                   +tools.superscript_numerals(r.group(3))+r.group(4))
@@ -442,6 +439,9 @@ def _f(name):
             retval += tools.superscript_numerals(r.group(5))
         elif len(r.group(5)) > 1:
             retval += tools.superscript_numerals(str(len(r.group(5)))+r.group(5)[0])
+    elif name[0] in '0123456789':
+        ## initial multiplicity not allowed -- could implement
+        raise Exception(f'Cannot translate: {name}')
     elif r:=re.match(r'^\[([0-9]+)([A-Za-z])\]\[([0-9]+)([A-Za-z])\]',name):
         ## e.g., [14N][16O]→¹⁴N¹⁶O
         retval = (tools.superscript_numerals(r.group(1))+r.group(2)

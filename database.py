@@ -164,7 +164,6 @@ def get_species_property(species,prop,encoding='ascii_or_unicode'):
 @tools.cache
 def _get_level_internal(species):
     """Cached load of level from data/levels"""
-    import pdb; pdb.set_trace(); # DEBUG
     retval =  dataset.load(f'{data_directory}/levels/{species}.h5')
     return retval
 
@@ -201,7 +200,6 @@ def get_level_energy(species,Eref=0,**match_qn):
     """Get uniquely matching level energies."""
     ## get level
     species = normalise_species(species)
-    import pdb; pdb.set_trace(); # DEBUG
     level = get_level(species)
     try:
         i = level.find_unique(match_qn,species=species)
