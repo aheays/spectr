@@ -2670,24 +2670,27 @@ class Dataset(optimise.Optimiser):
                 self[key,subkey] = default[key,subkey]
         ## if keys to concatenate not specified as an input argument
         ## then use all explicitly set keys in self or new_data
-        if keys ==  None:
+        if keys == None:
             keys = copy(self.explicitly_set_keys())
             for key in new_dataset.explicitly_set_keys():
                 if key not in keys:
                     keys.append(key)
         ## determine which subkeys are set in either self or new_dataset,
-        ## these will be concatenated
+        ## these will be concatenated.  Value must be included.
         keys_subkeys = []
         for key in keys:
             for subkey in self.vector_subkinds:
-                if self.is_set(key,subkey) or new_dataset.is_set(key,subkey):
+                if (
+                        subkey == 'value' or
+                        self.is_set(key,subkey) or
+                        new_dataset.is_set(key,subkey)
+                ):
                     keys_subkeys.append((key,subkey))
         ## test if self is totally empty or has zero length and all
         ## keys have default set. If so then permit concatenation of
         ## unset keys by initialising them here to empty arrays
-        if ( len(self.keys()) == 0
-            or ( len(self) == 0
-                 and np.all([self.is_set(key,'default') for key in self]) )):
+        if ( len(self) == 0
+             and np.all([self.is_set(key,'default') for key in self]) ):
             ## currently no data at all then, initialise keys as empty
             ## arrays to be concatenated, complex indexing preserves
             ## default if it exists
@@ -2697,7 +2700,7 @@ class Dataset(optimise.Optimiser):
                         self[key] = []
                     else:
                         self.set_new(key,value=[],kind=new_dataset[key,'kind'])
-        ## make sure concatenated keys are known to self
+        ## make sure keys are known to self
         for key,subkey in keys_subkeys:
             if not self.is_known(key,subkey):
                 raise Exception(f'Concatenated (key,subkey) not known to self: {(key,subkey)!r}')
