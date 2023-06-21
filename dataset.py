@@ -398,13 +398,13 @@ class Dataset(optimise.Optimiser):
                       'default': 0.0,
                       'kind': 'f',
                       'valid_kinds': ('f', 'a'),
-                      'cast': lambda x: np.abs(x, dtype=float),
+                      'cast': tools.cast_abs_float_array,
                       'fmt': '0.1e', }, 
         'step':     { 'description': 'Default numerical differentiation step size', 
                       'default': 1e-8, 
                       'kind': 'f', 
                       'valid_kinds': ('f', 'a'), 
-                      'cast': lambda x: np.abs(x, dtype=float),
+                      'cast': tools.cast_abs_float_array,
                       'fmt': '0.1e', }, 
         'vary':     { 'description': 'Whether to vary during optimisation',
                       'default': False,
@@ -3339,5 +3339,6 @@ def decode_flat_key(key):
     else:
         key,subkey = key,'value'
     return key,subkey
+
 
 
