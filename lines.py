@@ -1648,37 +1648,12 @@ class Diatom(Linear):
                     data[r.group(1)] = np.full(length,r.group(2))
                 elif r:=re.match(r'^# ([^ ]+) = "(.*)" .*',line):
                     data[r.group(1)] = np.full(length,r.group(2))
-        ## keys to translate
+        ## translate suffices
         for key in list(data):
             if r:=re.match(r'^(.+)pp$',key):
                 data[r.group(1)+'_l'] = data.pop(key)
             elif r:=re.match(r'^(.+)p$',key):
                 data[r.group(1)+'_u'] = data.pop(key)
-        _already_warned = False
-        for key in list(data):
-            if r:=re.match(r'^d(.+)$',key):
-                if not _already_warned:
-                    print(f'Load spectrum uncertainty not implemented: {key}')
-                    _already_warned = True 
-                data.pop(key)
-                ## data[r.group(1)+':unc'] = data.pop(key)
-        for key_old,key_new in (
-                ('T_u','E_u'), ('T_l','E_l'),
-                ('F_l','Fi_l'), ('F_u','Fi_u'),
-                ):
-            if key_old in data:
-                data[key_new] = data.pop(key_old)
-        ## data to modify
-        ##
-        ## convert ef = 'e' or 'f' to ef = +1 or -1
-        for key in ('ef_u','ef_l'):
-            if key in data:
-                i = data[key]=='f'
-                data[key] = np.full(len(data[key]),+1,dtype=int)
-                data[key][i] = -1
-        ## vacuum wavenumbers are not ν0 and not ν
-        if 'ν' in data and 'ν0' not in data:
-            data['ν0'] = data['ν']
         ## data to ignore
         for key in (
                 'level_transition_type',
@@ -1694,10 +1669,42 @@ class Diatom(Linear):
                 'Sv',
                 'mass_l',
                 'author',
+                'description',
+                'data_identifier',
+                'dsystem_energy',
+                'dsystem_strength',
+                'date',
         ):
             if key in data:
                 data.pop(key)
-        self.extend(**data)
+        ## deal with uncertainties -- prefixed by 'd' in old style,
+        ## postfixed by :unc in new
+        for key in list(data):
+            if r:=re.match(r'^d(.+)$',key):
+                tkey = r.group(1)
+                if tkey in self.prototypes:
+                    data[tkey,'unc'] = data.pop(key)
+        ## translate old key names to new
+        for key_old,key_new in (
+                ('T_u','E_u'), ('T_l','E_l'),
+                ('F_l','Fi_l'), ('F_u','Fi_u'),
+                ):
+            if key_old in data:
+                data[key_new] = data.pop(key_old)
+            if (key_old,'unc') in data:
+                data[(key_new,'unc')] = data.pop((key_old,'unc'))
+        ## data to modify
+        ##
+        ## convert ef = 'e' or 'f' to ef = +1 or -1
+        for key in ('ef_u','ef_l'):
+            if key in data:
+                i = data[key]=='f'
+                data[key] = np.full(len(data[key]),+1,dtype=int)
+                data[key][i] = -1
+        ## vacuum wavenumbers are not ν0 and not ν
+        if 'ν' in data and 'ν0' not in data:
+            data['ν0'] = data['ν']
+        self.extend(data)
 
     def load_from_thesis_table(self,filename,**extra_data):
         """Old filetype. Incomplete"""
