@@ -328,7 +328,12 @@ def _f0(self,species,E,Eref,g,Zsource):
     kB = convert.units(constants.Boltzmann,'J','cm-1')
     α = g*np.exp(-(E-Eref)/(kB*Tex))/Z
     return α
-prototypes['α296K'] = dict(description="Equilibrium level population at 296K",units="dimensionless", kind='f', fmt='<10.5e',cast=tools.cast_abs_float_array,infer=[(('species','E','Eref','g','Zsource'),_f0),])
+prototypes['α296K'] = dict(description="Equilibrium level population at 296K",
+                           units="dimensionless",
+                           kind='f',
+                           fmt='<10.5e',
+                           cast=tools.cast_abs_float_array,
+                           infer=[(('species','E','Eref','g','Zsource'),_f0),])
 
 ## should these columns even be in levels?
 prototypes['Nchemical_species'] = dict(description="Combined column density of all isotopolouges of this chemical species",units="cm-2",kind='a',fmt='<11.3e', infer=[])
