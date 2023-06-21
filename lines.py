@@ -1654,9 +1654,12 @@ class Diatom(Linear):
                 data[r.group(1)+'_l'] = data.pop(key)
             elif r:=re.match(r'^(.+)p$',key):
                 data[r.group(1)+'_u'] = data.pop(key)
+        _already_warned = False
         for key in list(data):
             if r:=re.match(r'^d(.+)$',key):
-                print(f'Load spectrum uncertainty not implemented: {key}')
+                if not _already_warned:
+                    print(f'Load spectrum uncertainty not implemented: {key}')
+                    _already_warned = True 
                 data.pop(key)
                 ## data[r.group(1)+':unc'] = data.pop(key)
         for key_old,key_new in (
