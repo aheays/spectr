@@ -2681,9 +2681,13 @@ class Dataset(optimise.Optimiser):
         for key in keys:
             for subkey in self.vector_subkinds:
                 if (
-                        subkey == 'value' or
-                        self.is_set(key,subkey) or
-                        new_dataset.is_set(key,subkey)
+                        ## this weird .and. construct is needed for
+                        ## subkey=='unc'. The is_known(key) statement
+                        ## ensures that this is_set if key is known.
+                        ## Testing is_known(key,'unc') will unnecessarily set all
+                        ## uncertainties, defaulting to zero.
+                        (self.is_known(key) and self.is_set(key,subkey)) or
+                        (new_dataset.is_known(key) and new_dataset.is_set(key,subkey))
                 ):
                     keys_subkeys.append((key,subkey))
         ## test if self is totally empty or has zero length and all
