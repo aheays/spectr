@@ -2910,7 +2910,7 @@ class Dataset(optimise.Optimiser):
             title=None,
             xsort=True,         # True sort by xkey, False, do not sort, or else a key or list of keys to sort by
             annotate_points_keys=None,
-            **plot_kwargs,      # e.g. color, linestyle, label etc
+            plot_kwargs=None,      # e.g. color, linestyle, label etc
     ):
         """Plot data. Good luck."""
         from matplotlib import pyplot as plt
@@ -3023,7 +3023,7 @@ class Dataset(optimise.Optimiser):
                     else:
                         assert('should not happen')
                     ## plotting kwargs
-                    kwargs = copy(plot_kwargs)
+                    kwargs = {} if plot_kwargs is None else copy(plot_kwargs)
                     kwargs.setdefault('marker',marker)
                     kwargs.setdefault('ls',linestyle)
                     kwargs.setdefault('mew',1)
