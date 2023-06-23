@@ -2316,6 +2316,7 @@ class Dataset(optimise.Optimiser):
             filename,
             keys=None,
             subkeys=None,
+            exclude_subkeys=None, 
             filetype=None,           # 'text' (default), 'hdf5', 'directory'
             explicit_keys_only=False,
             **format_kwargs,
@@ -2338,6 +2339,8 @@ class Dataset(optimise.Optimiser):
             ## with "_" and some specific keys
             subkeys = [subkey for subkey in self.all_subkinds if
                        (subkey[0] != '_') and subkey not in ('infer','cast')]
+        if exclude_subkeys is not None:
+            subkeys = [t for t in subkeys if t not in exclude_subkeys]
         if filetype == 'hdf5':
             ## hdf5 file
             tools.dict_to_hdf5(filename,self.as_dict(keys=keys,subkeys=subkeys),verbose=False)
