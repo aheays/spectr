@@ -2353,19 +2353,19 @@ class Dataset(optimise.Optimiser):
         elif filetype == 'text':
             ## space-separated text file
             format_kwargs.setdefault('delimiter',' ')
-            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+            tools.string_to_file(filename,self.format(keys,subkeys=subkeys,**format_kwargs))
         elif filetype == 'rs':
             ## ␞-separated text file
             format_kwargs.setdefault('delimiter',' ␞ ')
-            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+            tools.string_to_file(filename,self.format(keys,subkeys=subkeys,**format_kwargs))
         elif filetype == 'psv':
             ## |-separated text file
             format_kwargs.setdefault('delimiter',' | ')
-            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+            tools.string_to_file(filename,self.format(keys,subkeys=subkeys,**format_kwargs))
         elif filetype == 'csv':
             ## comma-separated text file
             format_kwargs.setdefault('delimiter',', ')
-            tools.string_to_file(filename,self.format(keys,**format_kwargs))
+            tools.string_to_file(filename,self.format(keys,subkeys=subkeys,**format_kwargs))
         else:
             raise Exception(f'Do not know how save to {filetype=}')
             
@@ -2915,8 +2915,6 @@ class Dataset(optimise.Optimiser):
         """Plot data. Good luck."""
         from matplotlib import pyplot as plt
         from spectr import plotting
-        if len(self)==0:
-            return
         ## re-use or make a new figure/axes
         if ax is not None:
             fig = ax.figure
@@ -2925,6 +2923,9 @@ class Dataset(optimise.Optimiser):
             fig.clf()
         elif isinstance(fig,int):
             fig = plotting.qfig(fig)
+        ## no data, do nothing
+        if len(self)==0:
+            return
         ## xkey, ykeys, zkeys
         if xkeys is None:
             if self.default_xkeys is not None:
