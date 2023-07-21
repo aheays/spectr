@@ -52,6 +52,12 @@ class OpusData:
         x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
         y = self.data['ScRf'][:parameters['NPT']] # for some reason the data in the datablock can be too long
         return x,y
+        
+    def set_background_spectrum(self,y):
+        assert self.has_background(),'No background (ScRf) found.'
+        parameters = self.data[f'ScRf Data Parameter']
+        x = np.linspace(parameters['FXV'], parameters['LXV'], parameters['NPT'])
+        self.data['ScRf'][:parameters['NPT']] = y # for some reason the data in the datablock can be too long
     
     def get_interpolation_factor(self):
         return float(self.data['Fourier Transformation']['ZFF'])
