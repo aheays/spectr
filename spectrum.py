@@ -245,7 +245,53 @@ class Experiment(Optimiser):
             y /= len(other_filenames)+1
         self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
-    
+      
+    @format_input_method()
+    def set_background_spectrum_from_opus_file(self,filename,xbeg=None,xend=None,_cache=None):
+        """Load a background in an Bruker opus binary file. If filename is a
+        list of filenames then compute the average."""
+        self.experimental_parameters['filename'] = filename
+        ## divide first filename from the rest for averaging
+        if isinstance(filename,str):
+            other_filenames = []
+        else:
+            filename,other_filenames = filename[0],filename[1:]
+        ## load first filename
+        opusdata = bruker.OpusData(filename)
+        x,y = opusdata.get_background()
+        d = opusdata.data
+        self.experimental_parameters['data_source'] = 'opus'
+        translate_apodisation_function = {'BX':'boxcar','B3':'Blackman-Harris 3-term',}
+        if 'Fourier Transformation' in d:
+            self.experimental_parameters['interpolation_factor'] = float(d['Fourier Transformation']['ZFF'])
+            self.experimental_parameters['apodisation_function'] = translate_apodisation_function[d['Fourier Transformation']['APF']]
+        if 'Acquisition' in d:
+            ## opus resolution is zero-to-zero of central sinc function peak
+            ##self.experimental_parameters['resolution'] = float(d['Acquisition']['RES'])
+            self.experimental_parameters['resolution'] = opusdata.get_resolution(kind='resolution',return_none_on_error=True)
+            self.experimental_parameters['sinc_fwhm'] = opusdata.get_resolution(kind='fwhm',return_none_on_error=True)
+        ## if necessary load further filenames and average
+        if len(other_filenames) > 0:
+            for filename in other_filenames: 
+                opusdata = bruker.OpusData(filename)
+                xnew,ynew = opusdata.get_background()
+                if not np.all(xnew==x):
+                    raise Exception(f'x-grid of {filename} does not match {self.experimental_parameters["filename"]}')
+                y += ynew
+                d = opusdata.data
+                if 'interpolation_factor' in self.experimental_parameters:
+                    if self.experimental_parameters['interpolation_factor'] != float(d['Fourier Transformation']['ZFF']):
+                        raise Exception(f'Interpolation factor of {filename} does not match {self.experimental_parameters["filename"]}')
+                if 'apodisation_function' in  self.experimental_parameters:
+                    if self.experimental_parameters['apodisation_function'] != translate_apodisation_function[d['Fourier Transformation']['APF']]:
+                        raise Exception(f'Apodisation function of {filename} does not match {self.experimental_parameters["filename"]}')
+                if 'resolution' in  self.experimental_parameters:
+                    if self.experimental_parameters['resolution'] != opusdata.get_resolution():
+                        raise Exception(f'Sinc FWHM function of {filename} does not match {self.experimental_parameters["filename"]}')
+            y /= len(other_filenames)+1
+        self.set_spectrum(x,y,xbeg,xend)
+        self.pop_format_input_function() 
+        
     @optimise_method()
     def set_spectrum_from_soleil_file(self,filename,xbeg=None,xend=None,_cache=None):
         """ Load soleil spectrum from file with given path."""
@@ -253,11 +299,11 @@ class Experiment(Optimiser):
         if 'has_run' in _cache:
             return
         _cache['has_run'] = True
-        data = database.load_soleil_spectrum_from_file(filename)
+        x,y,header = database.load_soleil_spectrum_from_file(filename)
         self.experimental_parameters['filename'] = filename
         self.experimental_parameters['data_source'] = 'DESIRS FTS'
-        self.experimental_parameters.update(data.attributes['header'])
-        self.set_spectrum(data['ν'],data['I'],xbeg,xend)
+        self.experimental_parameters.update(header)
+        self.set_spectrum(x,y,xbeg,xend)
         self.pop_format_input_function() 
 
     @optimise_method()
@@ -288,8 +334,7 @@ class Experiment(Optimiser):
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
         if self._clean_construct:
-            data = database.load_soleil_spectrum_from_file(filename)
-            x,y,header = data['ν'],data['I'],data.attributes['header']
+            x,y,header = database.load_soleil_spectrum_from_file(self.experimental_parameters['filename'])
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
         ## get signum convolution kernel
@@ -491,7 +536,6 @@ class Model(Optimiser):
         self.add_save_to_directory_function(self.output_data_to_directory)
         self.add_plot_function(lambda: self.plot(plot_labels=False))
         self._figure = None
-        self._lines_to_label = [] # line objects that will be used to plot labels
 
     @optimise_method(add_format_input_function=False)
     def _initialise(self,_cache=None):
@@ -555,7 +599,6 @@ class Model(Optimiser):
         
     def get_spectrum(self,x):
         """Construct a model spectrum at x."""
-        assert False, "buggy, needs review"
         self._xin = np.asarray(x,dtype=float) # needed in _initialise
         # self.timestamp = -1     # force reconstruction, but not suboptimisers
         self._clean_construct = True   # force reconstruction
@@ -711,7 +754,6 @@ class Model(Optimiser):
             keys = [key for key in line.explicitly_set_keys() if key not in set_keys_vals]
             line_copy = line.copy(index=imatch,keys=keys,optimise=True)
             line_copy.include_in_output = False
-            self._lines_to_label.append(line_copy)
             if add_infer_functions is not None:
                 for key,dependencies,function in add_infer_functions:
                     line_copy.add_infer_function(key,dependencies,function)
@@ -739,14 +781,8 @@ class Model(Optimiser):
                 if len(line) == 0:
                     return np.full(len(self.x),0.0)
                 x,y = line.calculate_spectrum(
-                    x=self.x,
-                    xkey='ν',
-                    ykey=ykey,
-                    nfwhmG=nfwhmG,
-                    nfwhmL=nfwhmL,
-                    ymin=ymin,ncpus=ncpus,
-                    lineshape=lineshape,
-                    index=index,
+                    x=self.x,xkey='ν',ykey=ykey,nfwhmG=nfwhmG,nfwhmL=nfwhmL,
+                    ymin=ymin, ncpus=ncpus, lineshape=lineshape,index=index,
                     xedge=xedge)
                 if kind == 'absorption':
                     y = np.exp(-y)
@@ -1155,8 +1191,8 @@ class Model(Optimiser):
         self.add_construct_function(f) # multiply spline during construct
 
     @optimise_method()
-    def add_constant(self,constant=0):
-        """Shift by a constant."""
+    def add_constant(self,constant=1):
+        """Shift by a spline defined function."""
         self.y += float(constant)
 
     @optimise_method()
@@ -1276,7 +1312,7 @@ class Model(Optimiser):
     
     @optimise_method()
     def add_spline(self,knots=None,order=3,_cache=None,autovary=False):
-        """Add a spline function."""
+        """Multiple y by a spline function."""
         if self._clean_construct:
             spline = Spline(knots=knots,order=order)
             i = (self.x >= np.min(spline.xs)) & (self.x <= np.max(spline.xs))
@@ -1818,7 +1854,7 @@ class Model(Optimiser):
                 else:
                     kwargs['blackman_harris_resolution'] = P(data['resolution'],vary,bounds=(0,inf))
         ## SOLEIL DESIRS FTS boxcar apodisation0
-        elif data['data_source'] in ('DESIRS FTS','desirs fts'):
+        elif data['data_source'] == 'DESIRS FTS':
             if vary is None:
                 kwargs['sinc_fwhm'] = float(data['sinc_fwhm'])
             else:
@@ -1907,8 +1943,7 @@ class Model(Optimiser):
         leftwards by shift (cm-1) and scaled by ±yscale."""
         ## load and cache spectrum
         if self._clean_construct:
-            data = database.load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
-            x,y,header = data['ν'],data['I'],data.attributes['header']
+            x,y,header = database.load_soleil_spectrum_from_file(self.experiment.experimental_parameters['filename'])
             _cache['x'],_cache['y'] = x,y
         x,y = _cache['x'],_cache['y']
         ## get signum convolution kernel if it is the first run or one
@@ -1964,7 +1999,6 @@ class Model(Optimiser):
             minimum_τ_to_label=None, # for absorption lines
             minimum_I_to_label=None, # for emission lines
             minimum_Sij_to_label=None, # for emission lines
-            label_vline=False,         # whether to plot_vline in annotate_spectrum
             ## show reference line frequencies
             plot_contaminants=False,
             contaminants=None,
@@ -2051,7 +2085,7 @@ class Model(Optimiser):
         ## annotate rotational series
         if plot_labels:
             ystep = ymax/20.
-            for line in self._lines_to_label:
+            for line in self.suboptimisers:
                 if not isinstance(line,lines.Generic):
                     continue
                 ## limit to qn -- if fail to match to label_match then
@@ -2085,7 +2119,6 @@ class Model(Optimiser):
                     length=-0.02, # fraction of axes coords
                     labelsize='small',namesize='medium', namepos='float',    
                     label_key=(line.default_xkey if label_key == 'default' else label_key),
-                    plot_vline = label_vline,
                 )
                 ymax += ystep*(len(branch_annotations)+1)
         # ## plot branch heads
@@ -2149,19 +2182,14 @@ class Model(Optimiser):
             directory,
             output_transition_linelists=False,
     ):
-        """Save various files from this optimisation to a directory."""
+        """Save various files from this optimsiation to a directory."""
         tools.mkdir(directory)
         ## model data
         if self.x is not None and self.y is not None:
             t = Spectrum(description=f'Model spectrum of {self.name}')
             t['ν'] = self.x
             t['I'] = self.y
-            if self._interpolate_factor is None:
-                yres = self.get_residual()
-            else:
-                yres = np.full(len(t),np.nan)
-                yres[::self._interpolate_factor] = self.get_residual()
-            t['I','error'] = yres
+            t['I','error'] = self.yexp-self.y
             t.save(f'{directory}/spectrum',filetype='directory')
         if self._figure is not None:
             ## svg / pdf are the fastest output formats. Significantly
@@ -2937,7 +2965,7 @@ def fit_species_absorption(
         *species,               # species, e.g., "HCN", or "H2O", or "¹³C¹⁶O₂"
         **fit_kwargs            # passed to Fit_Absorption.fit
 ):
-    """Shortcut to fit one or more species."""
+    """Shortuct to fit one or more species."""
     ## assemble kwargs
     kwargs = {
         'species_to_fit': species,
