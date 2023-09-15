@@ -13,3 +13,4 @@ spectr/Makefile.bak
 spectr/__pycache__/
 spectr/data/__pycache__/
 tests/__pycache__/
+build/
