@@ -14,3 +14,4 @@ spectr/__pycache__/
 spectr/data/__pycache__/
 tests/__pycache__/
 build/
+/spectr/fortran_tools-f2pywrappers2.f90
