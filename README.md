@@ -1,143 +1,59 @@
-
-# Table of Contents
-
-1.  [Installation](#org5a4dfc1)
-    1.  [Source code](#org50036bc)
-    2.  [Python dependencies](#org523172d)
-    3.  [Building the fortran extensions](#org6fabff1)
-    4.  [Matplotlib dependencies](#orgbfaf1b3)
-    5.  [Installing in a linux virtual environment](#orgd4140fb)
-    6.  [Testing the installation](#org3298cf3)
-2.  [Usage](#org147597b)
-    1.  [Importing `spectr`](#org464376e)
-    2.  [Optimising things](#org9b30690)
-    3.  [Encoding linear molecule quantum numbers](#orga1eb910)
-    4.  [`qplot`](#org1895833)
-3.  [Examples](#org2110ef9)
-4.  [Submodules](#orgbb75b11)
-    1.  [`env.py`](#org89f5cc3)
-    2.  [`dataset.py`](#org56f7c45)
-    3.  [`tools.py`](#orgaaa27c7)
-    4.  [`plotting.py`](#org7b92b0d)
-    5.  [`convert.py`](#org05a186c)
-    6.  [`optimise.py`](#org60446f5)
-    7.  [`atmosphere.py`](#orgd9bcc3d)
-    8.  [`lines.py`](#org20edc6c)
-    9.  [`levels.py`](#org1223f31)
-    10. [`bruker.py`](#orgd636383)
-    11. [`database.py`](#org1a7110f)
-    12. [`electronic_states.py`](#orgdc1843f)
-    13. [`exceptions.py`](#orgf9e2f8a)
-    14. [`hitran.py`](#org4bd04b2)
-    15. [`lineshapes.py`](#org79dedd5)
-    16. [`quantum_numbers.py`](#orga5fce86)
-    17. [`spectrum.py`](#org750f7ad)
-    18. [`thermochemistry.py`](#org0b5c98f)
-    19. [`viblevel.py`](#org5f368e1)
-    20. [`fortran_tools.f90`](#orgbaa288a)
-5.  [Bugs / improvements](#org12464c8)
-    1.  [optimise.py](#org28258b0)
-    2.  [viblevel.py](#orgbdaebe1)
-
-
-
-<a id="org5a4dfc1"></a>
-
 # Installation
 
 
-<a id="org50036bc"></a>
-
 ## Source code
 
-GPL source code is publically available on github at  <https://github.com/aheays/spectr>.
-The repository can be cloned locally with `git clone --depth=1 https://github.com/aheays/spectr.git` (this will require git to be installed `sudo apt install git` on ubuntu). A subsequent `git pull` while inside the `spectr` source directory will download any updates. Otherwise, zip-archives of particular version can be downloaded e.g., <https://github.com/aheays/spectr/archive/refs/tags/v1.3.0.zip>.
+Source code is available at  <https://github.com/aheays/spectr>.
+The repository can be cloned locally with `git clone --depth=1 https://github.com/aheays/spectr.git` or a zip archive downloaded from [https://github.com/aheays/spectr/tags].
 
+## External dependencies
 
-<a id="org523172d"></a>
+### Python
 
-## Python dependencies
+Version 3.11 or above will be necessary. 
 
-This module has been tested and works with python >=3.9. Many non-standard python libraries are used and are available from linux distributions or via pip, with the following package names:
+### Fortran extensions
 
-    bidict cycler hitran-api brukeropusreader dill h5py matplotlib
-    numpy openpyxl periodictable scipy sympy xmltodict pyqt5 py3nj
+It is necessary to have gfortran and lapack available on the system before installation to enable fortran extensions.
 
-Note: py3nj can be successfully installed only if gfortran is already installed
-
-
-<a id="org6fabff1"></a>
-
-## Building the fortran extensions
-
-Fortran code used to generate python extensions with `f2py` and needed to speed up some calculations.  Some submodules will still import and run fine without these.
-To compile the extensions run `make` within the spectr source directory. The options in the `Makefile` are for the gfortran compiler and use the `lapack` library.  The following distribution packages might be sufficient to compile the code under linux:
-
+The necessary linux packages are
 -   Debian / Ubuntu: `gfortran python3-dev liblapack-dev`
 -   Arch: `gcc-gfortran lapack`
 
-If the Makefile is not working, then the following should be enough to get things running:
+
+The extension can be build in the `spectr/` subdirectory with the following command.
 
     f2py3 -c --quiet -llapack --f90flags="-Wall -ffree-line-length-none" --opt="-O3" fortran_tools.f90
 
+### Matplotlib dependencies
 
-<a id="orgbfaf1b3"></a>
+Under ubuntu, installing the package `qt5-default` seem to be enough to get matplotlib to draw windowed figures.
 
-## Matplotlib dependencies
+## Building and installing in a Python virtual environment
 
-Under ubuntu, installing the packages `pyqt5` and `qt5-default` seem to be enough to get matplotlib to draw windowed figures.
+The following shell commands should get things going in a linux environment if the external dependencies are met.
 
-
-<a id="orgd4140fb"></a>
-
-## Installing in a linux virtual environment
-
-This is a recipe for installing spectr and its dependencies in a virtual environment, and not messing up the system python.  The script `install_in_venv.sh` attempts to do everything necessary, requiring only python3, gfortran, and lapack to be installed: `bash install_in_venv.sh`.
-
-Individual steps:
-
--   Install python3 (or >=3.9 required) somehow. Under ubuntu with `sudo apt install python3`.
--   Create a virtual environment using python3: `python3 -m venv venv3`
--   Start the virtual environment: `source venv3/bin/activate`
--   Install the python dependencies with pip: `pip install bidict cycler hitran-api brukeropusreader dill h5py matplotlib numpy openpyxl periodictable scipy sympy xmltodict ; pip install py3nj` *For some reason py3nj must be intalled after everything else (2022-01-18).*
--   The matplotlib Qt dependency can also be installed with pip, `pip install pyqt5`, but Qt must be installed on the system itself, e.g, with `sudo apt install qt5-default`
--   Clone spectr code with `git clone --depth=1 https://github.com/aheays/spectr.git`
--   Add `spectr` to the python path so it can be imported from anywhere
-    
-        cd venv3/lib/python3/site-packages/
-        ln -s ../../../../spectr .
-        cd -
--   Add `qplot` to the path so it can be run from within the virtual environment
-    
-        cd venv3/bin
-        ln -s ../../spectr/qplot .
-        cd -
-
-
-<a id="org3298cf3"></a>
+-   Get external dependencies.  On Ubuntu: `sudo apt update && sudo apt install gfortran python3-dev liblapack-dev qt5-default`
+-   Clone spectr: `git clone --depth=1 https://github.com/aheays/spectr.git`
+-   Create a virtual environment using python: `python -m venv env`
+-   Activate the virtual environment: `source env/bin/activate`
+-   Build and install: `pip install ./spectr`
 
 ## Testing the installation
 
 Test by importing spectr and trying to plot something
 
-    source venv3/bin/activate
+    source env/bin/activate
     echo "from spectr.env import *" | python
     qplot absorption/data/2021_11_30_bcgr.0
 
-
-<a id="org147597b"></a>
-
 # Usage
-
-
-<a id="org464376e"></a>
-
+    
 ## Importing `spectr`
 
 A command to import all submodules and many common functions directly into the working namespace is `from spectr.env import *`.  Otherwise only the needed submodules can be imported, e.g., `import spectr.spectrum`
 
 
-<a id="org9b30690"></a>
 
 ## Optimising things
 
@@ -153,41 +69,34 @@ Only the first argument is required. For example, `x=P(2,True,1e-5,bounds=(0,100
 Multiple `Optimiser` objects can be combined in a hierarchy, so that multiple spectra can be fit at once to optimise a common parameter, for example a temperature-dependence coefficient fit to spectra at multiple temperatures.
 
 
-<a id="orga1eb910"></a>
 
 ## Encoding linear molecule quantum numbers
 
 TBD
 
 
-<a id="org1895833"></a>
 
 ## `qplot`
 
-<a id="org00e4ee0"></a>
 This is a command line programming for making line plots, e.g., `qplot datafile`, or `qplot -h` for a list of options.
 
 
-<a id="org2110ef9"></a>
 
 # Examples
 
 Some examples scripts are provided in the repository <https://github.com/aheays/spectr_examples>
 
 
-<a id="orgbb75b11"></a>
 
 # Submodules
 
 
-<a id="org89f5cc3"></a>
 
 ## `env.py`
 
 Conveniently import all submodules.
 
 
-<a id="org56f7c45"></a>
 
 ## `dataset.py`
 
@@ -195,28 +104,24 @@ Storage, manipulation, and plotting of tabular data. Allows for the
 recursive calculation of derived quantities
 
 
-<a id="orgaaa27c7"></a>
 
 ## `tools.py`
 
 Functions for performing common mathematical and scripting tasks.
 
 
-<a id="org7b92b0d"></a>
 
 ## `plotting.py`
 
 Functions for plotting built on matplotlib.
 
 
-<a id="org05a186c"></a>
 
 ## `convert.py`
 
 Unit conversion, species name conversion, and various conversion formulae.
 
 
-<a id="org60446f5"></a>
 
 ## `optimise.py`
 
@@ -224,28 +129,24 @@ General class for conveniently and hierarchically building numerical
 models with optimisable parameters.
 
 
-<a id="orgd9bcc3d"></a>
 
 ## `atmosphere.py`
 
 Classes for analysing atmospheric photochemistry.
 
 
-<a id="org20edc6c"></a>
 
 ## `lines.py`
 
 Dataset subclasses for storing atomic and molecular line data.
 
 
-<a id="org1223f31"></a>
 
 ## `levels.py`
 
 Dataset subclasses for storing atomic and molecular level data.
 
 
-<a id="orgd636383"></a>
 
 ## `bruker.py`
 
@@ -253,82 +154,70 @@ Interact with output files of Bruker OPUS spectroscopic acquisition
 and analysis software. 
 
 
-<a id="org1a7110f"></a>
 
 ## `database.py`
 
 Interface to internal spectroscopic and chemistry database.  
 
 
-<a id="orgdc1843f"></a>
 
 ## `electronic_states.py`
 
 Calculation of diatomic level energies from potential-energy curves.
 
 
-<a id="orgf9e2f8a"></a>
 
 ## `exceptions.py`
 
 Exception used to internally communicate failure conditions.
 
 
-<a id="org4bd04b2"></a>
 
 ## `hitran.py`
 
 Access HITRAN spectroscopic data with hapy.
 
 
-<a id="org79dedd5"></a>
 
 ## `lineshapes.py`
 
 Simulate individual and groups of spectra lines of various shapes.
 
 
-<a id="orga5fce86"></a>
 
 ## `quantum_numbers.py`
 
 Functions for manipulating atomic and molecular quantum numbers.
 
 
-<a id="org750f7ad"></a>
 
 ## `spectrum.py`
 
 Classes for manipulating and modelling of experimental spectroscopic datea.
 
 
-<a id="org0b5c98f"></a>
 
 ## `thermochemistry.py`
 
 Functions for computing thermochemical equilibrium with ggchem.
 
 
-<a id="org5f368e1"></a>
 
 ## `viblevel.py`
 
 Classes for simulating diatomic levels and lines defined by effective Hamiltonians.
 
 
-<a id="orgbaa288a"></a>
 
 ## `fortran_tools.f90`
 
 Various fortran functions and subroutines.
 
 
-<a id="org12464c8"></a>
 
 # Bugs / improvements
 
 
-<a id="org28258b0"></a>
 
 ## optimise.py
 
@@ -336,7 +225,6 @@ Various fortran functions and subroutines.
 ### inhibit `add_input_function` in `input_function_method`?
 
 
-<a id="orgbdaebe1"></a>
 
 ## viblevel.py
 
