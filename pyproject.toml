@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools","numpy"]
+requires = ["setuptools>=64","numpy","setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-
 name = "spectr"
 version = "0.1.0"
+# version = ["version"]           # filled in by setuptools_scm
 requires-python = ">= 3.11"
 authors = [{name="Alan Heays",email="aheays@fastmail.com"},]
 description = "A collection of tools for spectrosocopic data analysis and modelling"
@@ -27,7 +27,6 @@ dependencies = [
              "xmltodict",
              "pyqt5",
 ]
-
 classifiers = [
               "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
               "Programming Language :: Python",
@@ -37,9 +36,16 @@ classifiers = [
 [project.urls]
 Repository = "https://github.com/aheays/spectr"
 
+[tool.setuptools]
+## if setuptools_scm is used, this will add all git-controlled files as package data
+include-package-data = true
+
+# [tool.setuptools_scm]
 
 # [tool.setuptools.packages.find]
 # where = ["src"]  # ["."] by default
 
-[tool.setuptools.package-data]
-"*" = ["*.so","*.f90","Makefile"]
+# [tool.setuptools.package-data]
+# "*" = ["*.so","*.f90","Makefile"]
+
+
