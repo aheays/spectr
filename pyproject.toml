@@ -36,6 +36,9 @@ classifiers = [
 [project.urls]
 Repository = "https://github.com/aheays/spectr"
 
+[project.scripts]
+qplot = "spectr.qplot:qplot"
+
 [tool.setuptools]
 ## if setuptools_scm is used, this will add all git-controlled files as package data
 include-package-data = true
