@@ -1,21 +1,23 @@
-# Installation
+# `spectr`
 
-## Description
+## Installation
+
+### Description
 
 A real grab-bag of tools for spectroscopic data analysis and modelling.
 
-## Source code
+### Source code
 
 Source code is available at  <https://github.com/aheays/spectr>.
-The repository can be cloned locally with `git clone --depth=1 https://github.com/aheays/spectr.git` or a zip archive downloaded from [https://github.com/aheays/spectr/tags].
+The repository can be cloned locally with `git clone --depth=1 https://github.com/aheays/spectr.git` or a zip archive downloaded from [GitHub](https://github.com/aheays/spectr/tags).
 
-## External dependencies
+### External dependencies
 
-### Python
+#### Python
 
 Version 3.11 or above will be necessary. 
 
-### Fortran extensions
+#### Fortran extensions
 
 It is necessary to have gfortran and lapack available on the system before installation to enable fortran extensions.
 
@@ -28,11 +30,11 @@ The extension can be build in the `spectr/` subdirectory with the following comm
 
     f2py3 -c --quiet -llapack --f90flags="-Wall -ffree-line-length-none" --opt="-O3" fortran_tools.f90
 
-### Matplotlib dependencies
+#### Matplotlib dependencies
 
 Under ubuntu, installing the package `qt5-default` seem to be enough to get matplotlib to draw windowed figures.
 
-## Building and installing in a Python virtual environment
+### Building and installing in a Python virtual environment
 
 The following shell commands should get things going in a linux environment if the external dependencies are met.
 
@@ -42,7 +44,7 @@ The following shell commands should get things going in a linux environment if t
 -   Activate the virtual environment: `source env/bin/activate`
 -   Build and install: `pip install ./spectr`
 
-## Testing the installation
+### Testing the installation
 
 Test by importing spectr and trying to plot something
 
@@ -50,15 +52,18 @@ Test by importing spectr and trying to plot something
     echo "from spectr.env import *" | python
     qplot absorption/data/2021_11_30_bcgr.0
 
-# Usage
+
+Examples of using `spectr` are provided [`spectr_examples`](https://github.com/aheays/spectr_examples)
+
+## Usage
     
-## Importing `spectr`
+### Importing `spectr`
 
 A command to import all submodules and many common functions directly into the working namespace is `from spectr.env import *`.  Otherwise only the needed submodules can be imported, e.g., `import spectr.spectrum`
 
 
 
-## Optimising things
+### Optimising things
 
 The `optimiser.Optimiser` class is used to conveniently construct model objects with parameters that can be fit to experimental data. The real-number input arguments of most methods of objects base-classed on `Optimiser` can be marked for optimisation by replacing their values with a optimiser.Parameter object.  This has the abbreviated definition:
 
@@ -73,166 +78,166 @@ Multiple `Optimiser` objects can be combined in a hierarchy, so that multiple sp
 
 
 
-## Encoding linear molecule quantum numbers
+### Encoding linear molecule quantum numbers
 
 TBD
 
 
 
-## `qplot`
+### `qplot`
 
 This is a command line programming for making line plots, e.g., `qplot datafile`, or `qplot -h` for a list of options.
 
 
 
-# Examples
+## Examples
 
 Some examples scripts are provided in the repository <https://github.com/aheays/spectr_examples>
 
 
 
-# Submodules
+## Submodules
 
 
 
-## `env.py`
+### `env.py`
 
 Conveniently import all submodules.
 
 
 
-## `dataset.py`
+### `dataset.py`
 
 Storage, manipulation, and plotting of tabular data. Allows for the
 recursive calculation of derived quantities
 
 
 
-## `tools.py`
+### `tools.py`
 
 Functions for performing common mathematical and scripting tasks.
 
 
 
-## `plotting.py`
+### `plotting.py`
 
 Functions for plotting built on matplotlib.
 
 
 
-## `convert.py`
+### `convert.py`
 
 Unit conversion, species name conversion, and various conversion formulae.
 
 
 
-## `optimise.py`
+### `optimise.py`
 
 General class for conveniently and hierarchically building numerical
 models with optimisable parameters.
 
 
 
-## `atmosphere.py`
+### `atmosphere.py`
 
 Classes for analysing atmospheric photochemistry.
 
 
 
-## `lines.py`
+### `lines.py`
 
 Dataset subclasses for storing atomic and molecular line data.
 
 
 
-## `levels.py`
+### `levels.py`
 
 Dataset subclasses for storing atomic and molecular level data.
 
 
 
-## `bruker.py`
+### `bruker.py`
 
 Interact with output files of Bruker OPUS spectroscopic acquisition
 and analysis software. 
 
 
 
-## `database.py`
+### `database.py`
 
 Interface to internal spectroscopic and chemistry database.  
 
 
 
-## `electronic_states.py`
+### `electronic_states.py`
 
 Calculation of diatomic level energies from potential-energy curves.
 
 
 
-## `exceptions.py`
+### `exceptions.py`
 
 Exception used to internally communicate failure conditions.
 
 
 
-## `hitran.py`
+### `hitran.py`
 
 Access HITRAN spectroscopic data with hapy.
 
 
 
-## `lineshapes.py`
+### `lineshapes.py`
 
 Simulate individual and groups of spectra lines of various shapes.
 
 
 
-## `quantum_numbers.py`
+### `quantum_numbers.py`
 
 Functions for manipulating atomic and molecular quantum numbers.
 
 
 
-## `spectrum.py`
+### `spectrum.py`
 
 Classes for manipulating and modelling of experimental spectroscopic datea.
 
 
 
-## `thermochemistry.py`
+### `thermochemistry.py`
 
 Functions for computing thermochemical equilibrium with ggchem.
 
 
 
-## `viblevel.py`
+### `viblevel.py`
 
 Classes for simulating diatomic levels and lines defined by effective Hamiltonians.
 
 
 
-## `fortran_tools.f90`
+### `fortran_tools.f90`
 
 Various fortran functions and subroutines.
 
 
 
-# Bugs / improvements
+## Bugs / improvements
 
 
 
-## optimise.py
+### optimise.py
 
 
-### inhibit `add_input_function` in `input_function_method`?
+#### inhibit `add_input_function` in `input_function_method`?
 
 
 
-## viblevel.py
+### viblevel.py
 
 
-### Implement general Λ-doubling formula of brown1979
+#### Implement general Λ-doubling formula of brown1979
 
 Currently the o/p/q Λ-doubling is handled with effective
 (S,Λ)-dependent forumulae.  Instead implement the last three terms of
@@ -240,7 +245,7 @@ Eq. 18 of brown1979 into \_get<sub>linear</sub><sub>H</sub>()
 .
 
 
-### Phase error in ⟨³Π|LS|¹Δ⟩
+#### Phase error in ⟨³Π|LS|¹Δ⟩
 
 When comparing thismodel with pgopher, everything works find except
 the sign of the interactions a³Π(v=12)~D¹Δ(v=1), a³Π(v=12)~d³Δ(v=5),
