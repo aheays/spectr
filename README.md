@@ -1,5 +1,8 @@
 # Installation
 
+## Description
+
+A real grab-bag of tools for spectroscopic data analysis and modelling.
 
 ## Source code
 
