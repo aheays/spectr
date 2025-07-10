@@ -354,7 +354,9 @@ class Level(Optimiser):
 
     @optimise_method()
     def add_spline_width(self,name,knots,ef=None,Σ=None,order=3):
-        """Add complex width to manifold 'name' according to the given spline knots.. If ef and Σ are not none then set these levels only."""
+        """Add complex width to manifold 'name' according to the given
+        spline knots.. If ef and Σ are not none then set these levels
+        only."""
         ## load data about this level from name
         kw = self._manifolds[name]
         ibeg = kw['ibeg']
